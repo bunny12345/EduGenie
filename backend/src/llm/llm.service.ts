@@ -21,8 +21,8 @@ export class LlmService {
         console.warn('LLM request failed', res.status);
         return 'Sorry, I could not generate a reply right now.';
       }
-      const data = await res.json();
-      return data.reply || data.text || JSON.stringify(data);
+      const data: any = await res.json();
+      return data?.reply || data?.text || JSON.stringify(data);
     } catch (e) {
       console.warn('LLM request error', e?.message || e);
       return 'Sorry, I could not generate a reply right now.';

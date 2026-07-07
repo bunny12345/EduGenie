@@ -1,5 +1,7 @@
 .App {
   text-align: center;
+  font-family: Inter, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial;
+  color: #111;
 }
 
 .App-logo {
@@ -14,15 +16,63 @@
 }
 
 .App-header {
-  background-color: #282c34;
-  min-height: 100vh;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  font-size: calc(10px + 2vmin);
-  color: white;
+  padding: 20px;
 }
+
+/* layout */
+.App > h1 { margin-bottom: 12px }
+.App div[style] { align-items: start }
+
+/* simple card */
+.card {
+  background: #fff;
+  border: 1px solid #eee;
+  border-radius: 8px;
+  padding: 12px;
+  box-shadow: 0 2px 6px rgba(18,18,18,0.04);
+}
+
+input { padding: 8px 10px; border: 1px solid #ddd; border-radius: 6px }
+button { padding: 8px 12px; border-radius: 6px; border: 1px solid #0b5fff; background:#0b5fff; color:#fff }
+
+.App .grid { display: grid; grid-template-columns: 1fr 360px; gap: 20px; align-items: start }
+
+.memories-list { list-style: none; padding: 0; margin: 0 }
+.memories-list li { padding: 8px; border-bottom: 1px solid #f2f2f2 }
+
+/* chat specific */
+.chat-input { display:flex; gap:8px }
+.chat-input input{ flex:1; padding:10px 12px }
+.chat-area { height: 420px; overflow:auto }
+
+/* Message row */
+.message-row { display:flex; align-items:flex-end; margin: 8px 0 }
+.message-row.user { justify-content: flex-end }
+.message-row.assistant { justify-content: flex-start }
+.avatar { width:36px; height:36px; border-radius:50%; background: linear-gradient(135deg,#ffd27a,#ffb27a); display:flex; align-items:center; justify-content:center; margin-right:8px; flex:0 0 36px }
+.avatar-right { margin-left:8px; margin-right:0; background: linear-gradient(135deg,#a7f3d0,#6ee7b7) }
+.avatar-initials { font-weight:700; color:#123; font-size:12px }
+
+.message-bubble { border-radius:12px; padding:10px 12px; max-width:76%; box-shadow: 0 1px 4px rgba(16,24,40,0.06); }
+.assistant-bubble { background:#fff; color:#111; border: 1px solid #eef2ff }
+.user-bubble { background:linear-gradient(90deg,#0b5fff,#2a7fff); color:#fff }
+.message-text { white-space:pre-wrap; word-break:break-word }
+.message-ts { font-size:11px; color:#8892a6; margin-top:6px }
+
+/* entrance animation */
+.animate-up { animation: fadeUp 260ms ease both }
+@keyframes fadeUp { from { opacity: 0; transform: translateY(6px) } to { opacity:1; transform: translateY(0) } }
+
+/* typing indicator */
+.typing { display:flex; gap:6px; align-items:center }
+.dot { width:8px; height:8px; background:#cbd5e1; border-radius:50%; animation: blink 1s infinite; }
+.dot:nth-child(2) { animation-delay: 0.15s }
+.dot:nth-child(3) { animation-delay: 0.3s }
+@keyframes blink { 0% { opacity: .25 } 50% { opacity: 1 } 100% { opacity: .25 } }
+
+/* header */
+.App h1 { color: #044289 }
+.card h3 { margin: 0 0 8px 0 }
 
 .App-link {
   color: #61dafb;

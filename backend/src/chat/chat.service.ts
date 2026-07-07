@@ -36,12 +36,14 @@ export class ChatService {
 
     // retrieve relevant memories (nearest by cosine)
     let memoryPrompt = '';
+    let studentName: string | null = null;
+    let memRows: any[] = [];
     try {
       const res = await this.db.client.from('memories').select('*').eq('student_id', studentId);
-      const rows = (res && res.data) || (Array.isArray(res) ? res : []);
-      if (Array.isArray(rows) && rows.length > 0) {
+      memRows = (res && (res as any).data) || (Array.isArray(res) ? res : []);
+      if (Array.isArray(memRows) && memRows.length > 0) {
         // compute similarity for each memory that has embedding
-        const scored = rows
+        const scored = memRows
           .map((r: any) => {
             const mEmb = r.embedding;
             if (!mEmb || !Array.isArray(mEmb)) return { r, score: -1 };
@@ -57,9 +59,27 @@ export class ChatService {
       // ignore retrieval errors in prototype
     }
 
+    // Try to fetch a student profile (name) from students table; fallback to a memory with key containing 'name'
+    try {
+      const sres = await this.db.client.from('students').select('id,name').eq('id', studentId).limit(1);
+      const srows = (sres && sres.data) || (Array.isArray(sres) ? sres : []);
+      if (Array.isArray(srows) && srows[0] && srows[0].name) {
+        studentName = srows[0].name;
+      } else {
+        // fallback: look for a memory whose key suggests the student's name
+        if (Array.isArray(memRows) && memRows.length > 0) {
+          const nameMem = memRows.find((r: any) => (r.key || '').toLowerCase().includes('name'));
+          if (nameMem && nameMem.value) studentName = nameMem.value;
+        }
+      }
+    } catch (e) {
+      // ignore
+    }
+
     if (!memoryPrompt) memoryPrompt = `Student ${studentId} memory: [none].`;
 
-    const prompt = `${memoryPrompt}\nStudent asks: ${message}\nTeacher reply:`;
+    const nameLine = studentName ? `StudentName: ${studentName}` : '';
+    const prompt = `${nameLine}\n${memoryPrompt}\nStudent asks: ${message}\nTeacher reply:`;
     const reply = await this.llm.query(prompt);
 
     // store reply
@@ -134,10 +154,21 @@ export class ChatService {
           // texts are equivalent after normalization — return existing
           return existing;
         }
-
-        // Not text-equal: compute embedding and update the existing row (overwrite)
+        // Not text-equal: compute embedding and decide whether to treat as duplicate
         const emb = await this.embeddings.embed(value);
         try {
+          const threshold = parseFloat(process.env.MEMORY_DEDUPE_THRESHOLD || '0.95');
+          if (existing.embedding && Array.isArray(existing.embedding)) {
+            const sim = this.embeddings.cosine(emb, existing.embedding);
+            console.log(`addMemory: cosine similarity with existing: ${sim}`);
+            if (!isNaN(sim) && sim >= threshold) {
+              // Considered a duplicate by semantic similarity — return existing
+              console.log(`addMemory: skipping update, similarity ${sim} >= threshold ${threshold}`);
+              return existing;
+            }
+          }
+
+          // Not similar enough: update the existing row (overwrite)
           const upd = await this.db.client.from('memories').update({ value, embedding: emb }).eq('id', existing.id).select();
           console.log('addMemory update result:', JSON.stringify(upd));
           if (upd && upd.data && upd.data[0]) return upd.data[0];
@@ -232,6 +263,127 @@ export class ChatService {
     } catch (e) {
       console.warn('createStudent failed', e?.message || e);
       return row;
+    }
+  }
+
+  async getStudentById(studentId: string) {
+    try {
+      const res = await this.db.client.from('students').select('*').eq('id', studentId).limit(1);
+      const rows = (res && res.data) || (Array.isArray(res) ? res : []);
+      if (Array.isArray(rows) && rows[0]) return rows[0];
+      return null;
+    } catch (e) {
+      // fallback: try reading all and filter
+      try {
+        const res2 = await this.db.client.from('students').select('*');
+        const rows2 = (res2 && res2.data) || (Array.isArray(res2) ? res2 : []);
+        if (Array.isArray(rows2)) return rows2.find((r) => r.id === studentId) || null;
+      } catch (e) {}
+      return null;
+    }
+  }
+
+  /**
+   * Prune duplicate memories keeping the latest row per (student_id, key).
+   * Requires the server to be running with the Supabase Service Role key.
+   * Attempts to call an RPC named `sql` if available; otherwise returns the SQL to run manually.
+   */
+  async pruneDuplicateMemories() {
+    const sql = `WITH ranked AS (
+      SELECT id, ROW_NUMBER() OVER (PARTITION BY student_id, key ORDER BY created_at DESC) AS rn
+      FROM public.memories
+    ) DELETE FROM public.memories WHERE id IN (SELECT id FROM ranked WHERE rn > 1);`;
+
+    // Use pg to execute raw SQL with the service role DATABASE_URL
+    try {
+      // Lazy-require pg so projects without the dep still load until this path is invoked
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      const { Client } = require('pg');
+      const databaseUrl = process.env.DATABASE_URL;
+      if (!databaseUrl) return { success: false, error: 'no_database_url', message: 'DATABASE_URL not configured on server' };
+
+      const client = new Client({ connectionString: databaseUrl });
+      await client.connect();
+      try {
+        await client.query('BEGIN');
+        const res = await client.query(sql);
+        await client.query('COMMIT');
+        await client.end();
+        return { success: true, result: { rowCount: res.rowCount } };
+      } catch (err) {
+        await client.query('ROLLBACK').catch(() => {});
+        await client.end().catch(() => {});
+        return { success: false, error: 'query_failed', message: String(err) };
+      }
+    } catch (e) {
+      // If pg cannot connect (DNS/network), fall back to doing the pruning via the
+      // Supabase REST API: fetch memories, compute duplicates server-side, then
+      // delete duplicate ids using the Supabase client. This avoids direct DB TCP.
+      try {
+        const res = await this.db.client.from('memories').select('id,student_id,key,created_at');
+        const rows = (res && res.data) || (Array.isArray(res) ? res : []);
+        if (!Array.isArray(rows) || rows.length === 0) return { success: true, result: { rowCount: 0 } };
+
+        const groups: Record<string, any[]> = {};
+        for (const r of rows) {
+          const gk = `${r.student_id}||${r.key}`;
+          if (!groups[gk]) groups[gk] = [];
+          groups[gk].push(r);
+        }
+
+        const toDelete: string[] = [];
+        for (const gk of Object.keys(groups)) {
+          const list = groups[gk].sort((a: any, b: any) => {
+            const ta = new Date(a.created_at || 0).getTime();
+            const tb = new Date(b.created_at || 0).getTime();
+            return tb - ta;
+          });
+          const older = list.slice(1);
+          for (const o of older) toDelete.push(o.id);
+        }
+
+        if (toDelete.length === 0) return { success: true, result: { rowCount: 0 } };
+
+        // Delete duplicates via Supabase REST
+        const del = await this.db.client.from('memories').delete().in('id', toDelete);
+        return { success: true, result: { deleted: toDelete.length, raw: del } };
+      } catch (err2) {
+        return { success: false, error: 'fallback_failed', message: String(err2) };
+      }
+    }
+  }
+
+  /**
+   * Compute admin stats about memories: duplicate groups and per-student counts.
+   * Returns small aggregations computed in-memory via the Supabase REST client.
+   */
+  async getStats() {
+    try {
+      const res = await this.db.client.from('memories').select('id,student_id,key,created_at');
+      const rows = (res && res.data) || (Array.isArray(res) ? res : []);
+
+      const groups: Record<string, any[]> = {};
+      const perStudent: Record<string, number> = {};
+      for (const r of rows) {
+        const gk = `${r.student_id}||${r.key}`;
+        if (!groups[gk]) groups[gk] = [];
+        groups[gk].push(r);
+
+        perStudent[r.student_id] = (perStudent[r.student_id] || 0) + 1;
+      }
+
+      const duplicates = Object.entries(groups)
+        .filter(([_, list]) => list.length > 1)
+        .map(([k, list]) => ({ key: k.split('||')[1], student_id: k.split('||')[0], count: list.length, ids: list.map((x: any) => x.id) }));
+
+      const perStudentCounts = Object.entries(perStudent)
+        .map(([student_id, cnt]) => ({ student_id, count: cnt }))
+        .sort((a: any, b: any) => b.count - a.count)
+        .slice(0, 100);
+
+      return { success: true, duplicates, perStudentCounts, totalMemories: rows.length };
+    } catch (e) {
+      return { success: false, error: String(e) };
     }
   }
 }

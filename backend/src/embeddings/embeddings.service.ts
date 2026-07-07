@@ -5,6 +5,8 @@ import fetch from 'node-fetch';
 @Injectable()
 export class EmbeddingsService {
   dim = 8;
+  // target dim when using semantic embeddings (OpenAI/HF). Default to 1536.
+  targetDim = parseInt(process.env.EMBEDDING_DIM || '1536', 10);
 
   // Map a possibly larger embedding into our internal dim by pooling
   private compressToDim(arr: number[]): number[] {
@@ -25,6 +27,7 @@ export class EmbeddingsService {
     const trimmed = (text || '').trim();
     // Prefer external semantic provider if configured
     try {
+      // OpenAI (preferred when key is present)
       if (process.env.OPENAI_API_KEY) {
         const model = process.env.OPENAI_EMBEDDING_MODEL || 'text-embedding-3-small';
         const res = await fetch('https://api.openai.com/v1/embeddings', {
@@ -35,11 +38,22 @@ export class EmbeddingsService {
           },
           body: JSON.stringify({ input: trimmed, model })
         });
-        const data = await res.json();
+        const data: any = await res.json();
         if (data && data.data && data.data[0] && Array.isArray(data.data[0].embedding)) {
-          return this.compressToDim(data.data[0].embedding as number[]);
+          const emb = data.data[0].embedding as number[];
+          // If the model produces a different dim, down/up-sample to targetDim by pooling.
+          if (emb.length === this.targetDim) return emb.map((v) => Number(v));
+          // If targetDim smaller than emb, compress by pooling; if larger, pad with zeros.
+          if (this.targetDim !== this.dim) {
+            // return full-dim target array for DB storage; do NOT compress to 8-d anymore when OpenAI used
+            return this.poolToDim(emb, this.targetDim);
+          }
+          return this.compressToDim(emb);
         }
-      } else if (process.env.HF_API_KEY && process.env.SEMANTIC_EMBEDDINGS_PROVIDER === 'hf') {
+      }
+
+      // Hugging Face (optional)
+      if (process.env.HF_API_KEY && process.env.SEMANTIC_EMBEDDINGS_PROVIDER === 'hf') {
         const model = process.env.HF_EMBEDDING_MODEL || 'sentence-transformers/all-MiniLM-L6-v2';
         const res = await fetch(`https://api-inference.huggingface.co/embeddings/${model}`, {
           method: 'POST',
@@ -49,9 +63,9 @@ export class EmbeddingsService {
           },
           body: JSON.stringify({ inputs: trimmed })
         });
-        const data = await res.json();
+        const data: any = await res.json();
         if (data && Array.isArray(data)) {
-          return this.compressToDim(data as number[]);
+          return this.poolToDim(data as number[], this.targetDim);
         }
       }
     } catch (e) {
@@ -84,5 +98,26 @@ export class EmbeddingsService {
     }
     if (na === 0 || nb === 0) return 0;
     return dot / (Math.sqrt(na) * Math.sqrt(nb));
+  }
+
+  // Pool or stretch an embedding to a target dimension by averaging chunks or padding with zeros.
+  private poolToDim(arr: number[], target: number) {
+    if (!arr || arr.length === 0) return Array(target).fill(0);
+    if (arr.length === target) return arr.map((v) => Number(v));
+    if (arr.length > target) {
+      const out: number[] = [];
+      const chunk = Math.floor(arr.length / target) || 1;
+      for (let i = 0; i < target; i++) {
+        const start = i * chunk;
+        const slice = arr.slice(start, start + chunk);
+        const avg = slice.reduce((s, x) => s + x, 0) / (slice.length || 1);
+        out.push(Number(avg));
+      }
+      return out;
+    }
+    // arr.length < target: pad with zeros
+    const out = arr.map((v) => Number(v));
+    while (out.length < target) out.push(0);
+    return out;
   }
 }

@@ -1,0 +1,508 @@
+openapi: 3.0.0
+info:
+  title: EduGenie API
+  version: 0.1.0
+  description: OpenAPI spec for EduGenie prototype (dashboard, chat, homework, tests, progress, calendar, rewards, library, settings)
+servers:
+  - url: http://localhost:3000
+    description: Local dev server
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+  schemas:
+    Student:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        age:
+          type: integer
+        class:
+          type: string
+        board:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+    Message:
+      type: object
+      properties:
+        id:
+          type: string
+        role:
+          type: string
+          enum: [user, ai]
+        text:
+          type: string
+        ts:
+          type: string
+    Memory:
+      type: object
+      properties:
+        id:
+          type: string
+        student_id:
+          type: string
+        key:
+          type: string
+        value:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+    DashboardResponse:
+      type: object
+      properties:
+        greetingName:
+          type: string
+        todayPlan:
+          type: array
+          items:
+            type: object
+            properties:
+              type: { type: string }
+              title: { type: string }
+              dueAt: { type: string, format: date-time }
+              status: { type: string }
+        subjects:
+          type: array
+          items:
+            type: object
+            properties:
+              id: { type: string }
+              name: { type: string }
+              score: { type: number }
+              goal: { type: number }
+        streak:
+          type: object
+          properties:
+            days: { type: integer }
+        recommendations:
+          type: array
+          items:
+            type: object
+            properties:
+              topic: { type: string }
+              reason: { type: string }
+    ChatRequest:
+      type: object
+      properties:
+        studentId:
+          type: string
+        message:
+          type: string
+        personality:
+          type: string
+    ChatResponse:
+      type: object
+      properties:
+        reply:
+          type: string
+        followups:
+          type: array
+          items:
+            type: string
+        conversationId:
+          type: string
+    Homework:
+      type: object
+      properties:
+        id: { type: string }
+        title: { type: string }
+        subject: { type: string }
+        dueAt:
+          type: string
+          format: date-time
+        status: { type: string }
+    TestQuestion:
+      type: object
+      properties:
+        id: { type: string }
+        text: { type: string }
+        options:
+          type: array
+          items: { type: string }
+    TestAttempt:
+      type: object
+      properties:
+        attemptId: { type: string }
+        score: { type: number }
+        feedback: { type: string }
+    ProgressResponse:
+      type: object
+      properties:
+        timeSpent: { type: number }
+        subjectScores:
+          type: array
+          items:
+            type: object
+            properties:
+              subject: { type: string }
+              score: { type: number }
+              trend: { type: string }
+    Event:
+      type: object
+      properties:
+        id: { type: string }
+        title: { type: string }
+        start: { type: string }
+        end: { type: string }
+        type: { type: string }
+    Reward:
+      type: object
+      properties:
+        coins: { type: integer }
+        badges:
+          type: array
+          items: { type: string }
+    Resource:
+      type: object
+      properties:
+        id: { type: string }
+        title: { type: string }
+        type: { type: string }
+        url: { type: string }
+paths:
+  /dashboard:
+    get:
+      summary: Dashboard for student
+      parameters:
+        - in: query
+          name: studentId
+          schema: { type: string }
+          required: true
+      responses:
+        '200':
+          description: Dashboard payload
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DashboardResponse'
+  /chat:
+    post:
+      summary: Send a chat message
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChatRequest'
+      responses:
+        '200':
+          description: Chat reply
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChatResponse'
+  /chat/history:
+    get:
+      summary: Get chat history
+      parameters:
+        - in: query
+          name: studentId
+          schema: { type: string }
+        - in: query
+          name: conversationId
+          schema: { type: string }
+      responses:
+        '200':
+          description: Messages
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  messages:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Message'
+  /chat/memory:
+    post:
+      summary: Add a memory
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                studentId: { type: string }
+                key: { type: string }
+                value: { type: string }
+      responses:
+        '200':
+          description: memory created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  memory:
+                    $ref: '#/components/schemas/Memory'
+  /chat/memories:
+    get:
+      summary: List memories for a student
+      parameters:
+        - in: query
+          name: studentId
+          schema: { type: string }
+      responses:
+        '200':
+          description: memories
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  memories:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Memory'
+  /chat/student:
+    get:
+      summary: Get student profile
+      parameters:
+        - in: query
+          name: studentId
+          schema: { type: string }
+      responses:
+        '200':
+          description: student
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  student:
+                    $ref: '#/components/schemas/Student'
+    post:
+      summary: Create or update student profile
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Student'
+      responses:
+        '200':
+          description: saved student
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  student:
+                    $ref: '#/components/schemas/Student'
+  /homework:
+    get:
+      summary: List homework for a student
+      parameters:
+        - in: query
+          name: studentId
+          schema: { type: string }
+      responses:
+        '200':
+          description: homework list
+    post:
+      summary: Create homework
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Homework'
+      responses:
+        '200': { description: created }
+  /homework/{id}/submit:
+    post:
+      summary: Submit homework
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                studentId: { type: string }
+                answers: { type: array, items: { type: object } }
+      responses:
+        '200':
+          description: submission result
+  /tests:
+    get:
+      summary: List tests
+      parameters:
+        - in: query
+          name: studentId
+          schema: { type: string }
+      responses:
+        '200': { description: tests list }
+  /tests/{testId}/start:
+    post:
+      summary: Start test attempt
+      parameters:
+        - in: path
+          name: testId
+          required: true
+          schema: { type: string }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                studentId: { type: string }
+      responses:
+        '200':
+          description: attempt started
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TestAttempt'
+  /tests/attempts/{attemptId}/submit:
+    post:
+      summary: Submit test answers
+      parameters:
+        - in: path
+          name: attemptId
+          required: true
+          schema: { type: string }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                studentId: { type: string }
+                answers: { type: array, items: { type: object } }
+      responses:
+        '200':
+          description: score and feedback
+  /progress:
+    get:
+      summary: Student progress and analytics
+      parameters:
+        - in: query
+          name: studentId
+          schema: { type: string }
+        - in: query
+          name: period
+          schema: { type: string }
+      responses:
+        '200':
+          description: progress
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProgressResponse'
+  /calendar:
+    get:
+      summary: Calendar events
+      parameters:
+        - in: query
+          name: studentId
+          schema: { type: string }
+      responses:
+        '200': { description: events }
+    post:
+      summary: Create calendar event
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Event'
+      responses:
+        '200': { description: event created }
+  /calendar/{id}:
+    delete:
+      summary: Delete calendar event
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      responses:
+        '200': { description: deleted }
+  /rewards:
+    get:
+      summary: Get rewards summary
+      parameters:
+        - in: query
+          name: studentId
+          schema: { type: string }
+      responses:
+        '200':
+          description: rewards
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Reward'
+  /rewards/redeem:
+    post:
+      summary: Redeem a reward
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                studentId: { type: string }
+                rewardId: { type: string }
+      responses:
+        '200': { description: redeem result }
+  /library:
+    get:
+      summary: Search library resources
+      parameters:
+        - in: query
+          name: topic
+          schema: { type: string }
+        - in: query
+          name: level
+          schema: { type: string }
+      responses:
+        '200':
+          description: resources
+  /library/{id}:
+    get:
+      summary: Get resource
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: resource
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Resource'
+  /settings:
+    get:
+      summary: Get settings for student
+      parameters:
+        - in: query
+          name: studentId
+          schema: { type: string }
+      responses:
+        '200': { description: settings }
+    post:
+      summary: Save settings
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        '200': { description: saved }
