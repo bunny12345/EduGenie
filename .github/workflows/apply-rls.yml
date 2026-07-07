@@ -28,7 +28,7 @@ jobs:
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
         run: |
-          supabase db execute \
+          supabase db query \
             --project-ref htydcedtuuczxjwtqrqx \
             --file backend/db/rls_policies.sql
 
@@ -36,6 +36,6 @@ jobs:
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
         run: |
-          supabase db execute \
+          supabase db query \
             --project-ref htydcedtuuczxjwtqrqx \
             --file backend/db/rls_policies_roles.sql
