@@ -103,6 +103,73 @@ CREATE TABLE IF NOT EXISTS public.class_members (
   created_at  timestamptz DEFAULT now()
 );
 
+-- Upgrade path for earlier placeholder tables created without full schema
+-- homework_attempts
+ALTER TABLE public.homework_attempts ADD COLUMN IF NOT EXISTS attempt_no int DEFAULT 1;
+ALTER TABLE public.homework_attempts ADD COLUMN IF NOT EXISTS answer_text text;
+ALTER TABLE public.homework_attempts ADD COLUMN IF NOT EXISTS score int;
+ALTER TABLE public.homework_attempts ADD COLUMN IF NOT EXISTS feedback text;
+ALTER TABLE public.homework_attempts ADD COLUMN IF NOT EXISTS submitted_at timestamptz DEFAULT now();
+ALTER TABLE public.homework_attempts ADD COLUMN IF NOT EXISTS created_at timestamptz DEFAULT now();
+
+-- progress_metrics
+ALTER TABLE public.progress_metrics ADD COLUMN IF NOT EXISTS subject text DEFAULT 'general';
+ALTER TABLE public.progress_metrics ADD COLUMN IF NOT EXISTS metric_key text;
+ALTER TABLE public.progress_metrics ADD COLUMN IF NOT EXISTS metric_value numeric;
+ALTER TABLE public.progress_metrics ADD COLUMN IF NOT EXISTS details jsonb;
+ALTER TABLE public.progress_metrics ADD COLUMN IF NOT EXISTS recorded_at timestamptz DEFAULT now();
+ALTER TABLE public.progress_metrics ADD COLUMN IF NOT EXISTS created_at timestamptz DEFAULT now();
+
+-- events
+ALTER TABLE public.events ADD COLUMN IF NOT EXISTS title text DEFAULT 'Untitled event';
+ALTER TABLE public.events ADD COLUMN IF NOT EXISTS description text;
+ALTER TABLE public.events ADD COLUMN IF NOT EXISTS event_type text DEFAULT 'study';
+ALTER TABLE public.events ADD COLUMN IF NOT EXISTS starts_at timestamptz DEFAULT now();
+ALTER TABLE public.events ADD COLUMN IF NOT EXISTS ends_at timestamptz;
+ALTER TABLE public.events ADD COLUMN IF NOT EXISTS all_day boolean DEFAULT false;
+ALTER TABLE public.events ADD COLUMN IF NOT EXISTS created_at timestamptz DEFAULT now();
+
+-- student_rewards
+ALTER TABLE public.student_rewards ADD COLUMN IF NOT EXISTS reward_type text DEFAULT 'coin';
+ALTER TABLE public.student_rewards ADD COLUMN IF NOT EXISTS label text;
+ALTER TABLE public.student_rewards ADD COLUMN IF NOT EXISTS amount int DEFAULT 1;
+ALTER TABLE public.student_rewards ADD COLUMN IF NOT EXISTS reason text;
+ALTER TABLE public.student_rewards ADD COLUMN IF NOT EXISTS awarded_at timestamptz DEFAULT now();
+ALTER TABLE public.student_rewards ADD COLUMN IF NOT EXISTS created_at timestamptz DEFAULT now();
+
+-- redemptions
+ALTER TABLE public.redemptions ADD COLUMN IF NOT EXISTS reward_id uuid;
+ALTER TABLE public.redemptions ADD COLUMN IF NOT EXISTS amount int DEFAULT 1;
+ALTER TABLE public.redemptions ADD COLUMN IF NOT EXISTS note text;
+ALTER TABLE public.redemptions ADD COLUMN IF NOT EXISTS redeemed_at timestamptz DEFAULT now();
+ALTER TABLE public.redemptions ADD COLUMN IF NOT EXISTS created_at timestamptz DEFAULT now();
+
+-- settings
+ALTER TABLE public.settings ADD COLUMN IF NOT EXISTS ai_persona text DEFAULT 'friendly';
+ALTER TABLE public.settings ADD COLUMN IF NOT EXISTS language text DEFAULT 'en';
+ALTER TABLE public.settings ADD COLUMN IF NOT EXISTS theme text DEFAULT 'light';
+ALTER TABLE public.settings ADD COLUMN IF NOT EXISTS tts_enabled boolean DEFAULT false;
+ALTER TABLE public.settings ADD COLUMN IF NOT EXISTS stt_enabled boolean DEFAULT false;
+ALTER TABLE public.settings ADD COLUMN IF NOT EXISTS preferences jsonb;
+ALTER TABLE public.settings ADD COLUMN IF NOT EXISTS updated_at timestamptz DEFAULT now();
+ALTER TABLE public.settings ADD COLUMN IF NOT EXISTS created_at timestamptz DEFAULT now();
+
+-- test_attempts
+ALTER TABLE public.test_attempts ADD COLUMN IF NOT EXISTS test_id text;
+ALTER TABLE public.test_attempts ADD COLUMN IF NOT EXISTS subject text;
+ALTER TABLE public.test_attempts ADD COLUMN IF NOT EXISTS score int;
+ALTER TABLE public.test_attempts ADD COLUMN IF NOT EXISTS max_score int;
+ALTER TABLE public.test_attempts ADD COLUMN IF NOT EXISTS answers jsonb;
+ALTER TABLE public.test_attempts ADD COLUMN IF NOT EXISTS started_at timestamptz;
+ALTER TABLE public.test_attempts ADD COLUMN IF NOT EXISTS submitted_at timestamptz DEFAULT now();
+ALTER TABLE public.test_attempts ADD COLUMN IF NOT EXISTS created_at timestamptz DEFAULT now();
+
+-- class_members
+ALTER TABLE public.class_members ADD COLUMN IF NOT EXISTS class_id text;
+ALTER TABLE public.class_members ADD COLUMN IF NOT EXISTS teacher_id uuid;
+ALTER TABLE public.class_members ADD COLUMN IF NOT EXISTS parent_id uuid;
+ALTER TABLE public.class_members ADD COLUMN IF NOT EXISTS created_at timestamptz DEFAULT now();
+
 -- Useful indexes
 CREATE INDEX IF NOT EXISTS idx_homework_attempts_student  ON public.homework_attempts(student_id);
 CREATE INDEX IF NOT EXISTS idx_progress_metrics_student   ON public.progress_metrics(student_id);
