@@ -7,6 +7,7 @@ on:
       - 'backend/db/rls_policies.sql'
       - 'backend/db/rls_policies_roles.sql'
       - 'backend/db/apply_rls.sh'
+      - 'backend/db/migrations/**'
 
 jobs:
   apply-rls:
@@ -31,6 +32,15 @@ jobs:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
         run: |
           supabase link --project-ref htydcedtuuczxjwtqrqx --yes
+
+      - name: Run migrations (app tables)
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: |
+          for f in backend/db/migrations/*.sql; do
+            echo "Running migration: $f"
+            supabase db query --linked -f "$f"
+          done
 
       - name: Apply rls_policies.sql
         env:
