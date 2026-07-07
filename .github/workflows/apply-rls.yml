@@ -17,17 +17,25 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Install PostgreSQL client
-        run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y --no-install-recommends postgresql-client
+      # Supabase CLI communicates over HTTPS (Management API) — no direct DB port needed.
+      # Requires SUPABASE_ACCESS_TOKEN secret (supabase.com → Account → Access Tokens).
+      - name: Setup Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: latest
 
-      - name: Make apply script executable
-        run: chmod +x backend/db/apply_rls.sh
-
-      - name: Apply RLS policies
+      - name: Apply rls_policies.sql
         env:
-          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
         run: |
-          cd backend/db
-          DATABASE_URL="$DATABASE_URL" bash apply_rls.sh rls_policies.sql rls_policies_roles.sql
+          supabase db execute \
+            --project-ref htydcedtuuczxjwtqrqx \
+            --file backend/db/rls_policies.sql
+
+      - name: Apply rls_policies_roles.sql
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: |
+          supabase db execute \
+            --project-ref htydcedtuuczxjwtqrqx \
+            --file backend/db/rls_policies_roles.sql
