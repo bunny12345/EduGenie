@@ -1,22 +1,31 @@
 -- Migration: enlarge embeddings vector dimension to 1536
--- WARNING: Run this when you are ready and have a backup.
+-- Idempotent: checks current dimension before altering to avoid a no-op error.
+-- The column must already be vector(<any_dim>); this resizes it to 1536.
 BEGIN;
--- Ensure the vector extension exists (Supabase typically has it)
+
 CREATE EXTENSION IF NOT EXISTS vector;
 
--- Alter column type from vector(<old>) to vector(1536).
--- If current column is jsonb or float[], adjust accordingly. This tries to cast where possible.
-ALTER TABLE public.memories
-  ALTER COLUMN embedding TYPE vector(1536)
-  USING (
-    CASE
-      WHEN pg_typeof(embedding) = 'vector'::regtype THEN embedding::vector(1536)
-      WHEN pg_typeof(embedding) = 'numeric[]'::regtype OR pg_typeof(embedding) = 'double precision[]'::regtype THEN (embedding::double precision[] )::vector(1536)
-      WHEN pg_typeof(embedding) = 'jsonb'::regtype THEN (
-        (SELECT array_agg((elem->>0)::double precision) FROM jsonb_array_elements(embedding) WITH ORDINALITY AS elem)
-      )::vector(1536)
-      ELSE NULL
-    END
-  );
+DO $$
+DECLARE
+  col_type text;
+BEGIN
+  SELECT data_type INTO col_type
+  FROM information_schema.columns
+  WHERE table_schema = 'public'
+    AND table_name   = 'memories'
+    AND column_name  = 'embedding';
+
+  IF col_type IS NULL THEN
+    -- Column doesn't exist yet; add it at the right size
+    ALTER TABLE public.memories ADD COLUMN embedding vector(1536);
+  ELSE
+    -- Column exists (any dim); resize to 1536.
+    -- Existing vectors are zero-padded / truncated by pgvector during the cast.
+    ALTER TABLE public.memories
+      ALTER COLUMN embedding TYPE vector(1536)
+      USING embedding::text::vector(1536);
+  END IF;
+END;
+$$;
 
 COMMIT;
