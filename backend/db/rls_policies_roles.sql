@@ -69,7 +69,7 @@ CREATE POLICY "events_insert_with_staff" ON public.events
     student_id = auth.uid()
     OR EXISTS (
       SELECT 1 FROM public.class_members cm
-      WHERE cm.student_id = NEW.student_id
+      WHERE cm.student_id = public.events.student_id
         AND (cm.teacher_id = auth.uid() OR cm.parent_id = auth.uid())
     )
   );
