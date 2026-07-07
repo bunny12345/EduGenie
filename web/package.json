@@ -10,7 +10,8 @@
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
     "react-scripts": "5.0.1",
-    "web-vitals": "^2.1.4"
+    "web-vitals": "^2.1.4",
+    "@supabase/supabase-js": "^2.0.0"
   },
   "scripts": {
     "start": "react-scripts start",

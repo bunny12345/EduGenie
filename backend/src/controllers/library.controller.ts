@@ -1,12 +1,14 @@
-import { Controller, Get, Param, Query } from '@nestjs/common';
+import { Controller, Get, Param, Query, UseGuards, Req } from '@nestjs/common';
 import { SupabaseService } from '../supabase.service';
+import { AuthGuard } from '../auth/auth.guard';
 
 @Controller('library')
 export class LibraryController {
   constructor(private readonly db: SupabaseService) {}
 
   @Get()
-  async search(@Query('topic') topic: string, @Query('level') level: string) {
+  @UseGuards(AuthGuard)
+  async search(@Req() req: any, @Query('topic') topic: string, @Query('level') level: string) {
     try {
       const q = this.db.client.from('resources').select('*');
       const res = await q;

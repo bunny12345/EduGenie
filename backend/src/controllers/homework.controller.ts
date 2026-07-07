@@ -1,14 +1,17 @@
-import { Controller, Get, Post, Body, Query, Param } from '@nestjs/common';
+import { Controller, Get, Post, Body, Query, Param, UseGuards, Req } from '@nestjs/common';
 import { SupabaseService } from '../supabase.service';
+import { AuthGuard } from '../auth/auth.guard';
 
 @Controller('homework')
 export class HomeworkController {
   constructor(private readonly db: SupabaseService) {}
 
   @Get()
-  async list(@Query('studentId') studentId: string) {
+  @UseGuards(AuthGuard)
+  async list(@Req() req: any, @Query('studentId') studentId: string) {
+    const id = req.studentId || studentId;
     try {
-      const res = await this.db.client.from('homework').select('*').eq('student_id', studentId).order('due_at', { ascending: true });
+      const res = await this.db.client.from('homework').select('*').eq('student_id', id).order('due_at', { ascending: true });
       return { homework: (res && (res as any).data) || [] };
     } catch (e) {
       return { homework: [] };
@@ -16,9 +19,12 @@ export class HomeworkController {
   }
 
   @Post()
-  async create(@Body() payload: any) {
+  @UseGuards(AuthGuard)
+  async create(@Req() req: any, @Body() payload: any) {
     try {
-      const res = await this.db.client.from('homework').insert([payload]).select();
+      // ensure student_id is set from authenticated token
+      const toInsert = { ...payload, student_id: payload.student_id || req.studentId };
+      const res = await this.db.client.from('homework').insert([toInsert]).select();
       return { success: true, homework: (res && (res as any).data && (res as any).data[0]) || payload };
     } catch (e) {
       return { success: false, error: String(e) };
@@ -26,9 +32,10 @@ export class HomeworkController {
   }
 
   @Post(':id/submit')
-  async submit(@Param('id') id: string, @Body() body: any) {
+  @UseGuards(AuthGuard)
+  async submit(@Req() req: any, @Param('id') id: string, @Body() body: any) {
     try {
-      const attempt = { homework_id: id, student_id: body.studentId, answers: body.answers || null, created_at: new Date().toISOString() };
+      const attempt = { homework_id: id, student_id: body.studentId || req.studentId, answers: body.answers || null, created_at: new Date().toISOString() };
       const res = await this.db.client.from('homework_attempts').insert([attempt]).select();
       return { success: true, attempt: (res && (res as any).data && (res as any).data[0]) || attempt };
     } catch (e) {

@@ -1,6 +1,7 @@
 import React, { useState, useRef } from 'react';
 import { sendChat, addMemory } from '../api';
 import ProfileEditor from './ProfileEditor';
+import Auth from './Auth';
 import MessageBubble from './MessageBubble';
 
 export default function Chat({ studentId = 'test' }) {
@@ -79,6 +80,7 @@ export default function Chat({ studentId = 'test' }) {
   return (
     <div className="card" style={{ display: 'flex', flexDirection: 'column', height: 520 }}>
       <h3 style={{ marginTop: 0 }}>Chat</h3>
+      <Auth />
       <ProfileEditor studentId={studentId} onSaved={(s) => { /* could show toast */ }} />
       <div ref={messagesRef} style={{ flex: 1, overflowY: 'auto', padding: 12 }}>
         {history.length === 0 && <div style={{ color: '#666' }}>Ask EduGenie a question about the student.</div>}

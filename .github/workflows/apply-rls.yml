@@ -1,0 +1,33 @@
+name: Apply RLS Policies
+
+on:
+  workflow_dispatch:        # run manually from GitHub Actions UI
+  push:
+    paths:
+      - 'backend/db/rls_policies.sql'
+      - 'backend/db/rls_policies_roles.sql'
+      - 'backend/db/apply_rls.sh'
+
+jobs:
+  apply-rls:
+    name: Apply Supabase RLS SQL
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install PostgreSQL client
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends postgresql-client
+
+      - name: Make apply script executable
+        run: chmod +x backend/db/apply_rls.sh
+
+      - name: Apply RLS policies
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: |
+          cd backend/db
+          DATABASE_URL="$DATABASE_URL" bash apply_rls.sh rls_policies.sql rls_policies_roles.sql
