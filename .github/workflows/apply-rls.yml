@@ -24,18 +24,22 @@ jobs:
         with:
           version: latest
 
+      # Link the CLI to the remote project (uses SUPABASE_ACCESS_TOKEN for auth).
+      # This enables --linked flag which routes SQL over the HTTPS Management API.
+      - name: Link Supabase project
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: |
+          supabase link --project-ref htydcedtuuczxjwtqrqx --yes
+
       - name: Apply rls_policies.sql
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
         run: |
-          supabase db query \
-            --project-ref htydcedtuuczxjwtqrqx \
-            --file backend/db/rls_policies.sql
+          supabase db query --linked -f backend/db/rls_policies.sql
 
       - name: Apply rls_policies_roles.sql
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
         run: |
-          supabase db query \
-            --project-ref htydcedtuuczxjwtqrqx \
-            --file backend/db/rls_policies_roles.sql
+          supabase db query --linked -f backend/db/rls_policies_roles.sql
