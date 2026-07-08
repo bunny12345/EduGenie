@@ -21,9 +21,37 @@ export class RewardsController {
         amount: r.amount || 0,
         createdAt: r.created_at || null
       }));
-      return { coins: head.coins || 0, badges: head.badges || [], recentRewards };
+      return { success: true, coins: head.coins || 0, badges: head.badges || [], recentRewards };
     } catch (e) {
-      return { coins: 0, badges: [], recentRewards: [] };
+      return { success: false, error: String((e as any)?.message || e || 'rewards failed'), coins: 0, badges: [], recentRewards: [] };
+    }
+  }
+
+  @Post('earn')
+  @UseGuards(AuthGuard)
+  async earn(@Req() req: any, @Body() body: any) {
+    const sid = body.studentId || req.studentId;
+    const coins = Math.max(1, Math.min(1000, Number(body.coins || 10)));
+    const reason = String(body.reason || 'Activity reward').slice(0, 200);
+    try {
+      // Upsert: add coins to existing row or insert new
+      const existing = await this.db.client.from('student_rewards').select('id,coins').eq('student_id', sid).limit(1);
+      const row = (existing as any)?.data?.[0] || null;
+      if (row) {
+        const newCoins = (Number(row.coins) || 0) + coins;
+        await this.db.client.from('student_rewards').update({ coins: newCoins }).eq('id', row.id);
+        return { success: true, newBalance: newCoins };
+      } else {
+        const ins = await this.db.client
+          .from('student_rewards')
+          .insert([{ student_id: sid, coins, badges: [], label: reason, reason, reward_type: 'coin', amount: coins }])
+          .select();
+        const newRow = (ins as any)?.data?.[0] || { coins };
+        return { success: true, newBalance: newRow.coins || coins };
+      }
+    } catch (e) {
+      // Graceful: return optimistic balance on DB failure
+      return { success: false, error: String(e), newBalance: coins };
     }
   }
 
@@ -31,7 +59,6 @@ export class RewardsController {
   @UseGuards(AuthGuard)
   async redeem(@Req() req: any, @Body() body: any) {
     try {
-      // mock redeem: insert into redemptions table
       const sid = body.studentId || req.studentId;
       const rec = { student_id: sid, reward_id: body.rewardId, created_at: new Date().toISOString() };
       await this.db.client.from('redemptions').insert([rec]);

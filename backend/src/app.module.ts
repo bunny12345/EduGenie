@@ -14,6 +14,7 @@ import { SchoolController } from './controllers/school.controller';
 import { SupabaseService } from './supabase.service';
 import { AuthGuard } from './auth/auth.guard';
 import { StudentAuthService } from './auth/student-auth.service';
+import { LocalFeedService } from './shared/local-feed.service';
 
 @Module({
   imports: [ChatModule],
@@ -30,6 +31,6 @@ import { StudentAuthService } from './auth/student-auth.service';
     AuthController,
     SchoolController
   ],
-  providers: [SupabaseService, AuthGuard, StudentAuthService]
+  providers: [SupabaseService, AuthGuard, StudentAuthService, LocalFeedService]
 })
 export class AppModule {}

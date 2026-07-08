@@ -2,6 +2,7 @@ import { Body, Controller, ForbiddenException, Get, Param, Post, Query, Req, Use
 import { SupabaseService } from '../supabase.service';
 import { AuthGuard } from '../auth/auth.guard';
 import { StudentAuthService } from '../auth/student-auth.service';
+import { LocalFeedService } from '../shared/local-feed.service';
 
 function isTeacher(role: any) {
   const raw = String(role || '').toLowerCase();
@@ -11,12 +12,10 @@ function isTeacher(role: any) {
 @Controller('teacher')
 @UseGuards(AuthGuard)
 export class TeacherController {
-  private static localAnnouncements: any[] = [];
-  private static localAssignments: any[] = [];
-
   constructor(
     private readonly db: SupabaseService,
-    private readonly studentAuth: StudentAuthService
+    private readonly studentAuth: StudentAuthService,
+    private readonly localFeed: LocalFeedService
   ) {}
 
   private sampleStudents() {
@@ -82,13 +81,14 @@ export class TeacherController {
           }))
         : this.sampleStudents();
 
-      const mergedAnnouncements = announcements.length ? announcements : TeacherController.localAnnouncements;
+      const mergedAnnouncements = announcements.length ? announcements : this.localFeed.listAnnouncements();
+      const mergedHomeworkRows = homeworkRows.length ? homeworkRows : this.localFeed.listHomeworkForStudents(studentIds);
 
       return {
         success: true,
         summary: {
           studentsCount: normalizedStudents.length,
-          activeHomework: homeworkRows.filter((h: any) => String(h?.status || 'pending') !== 'completed').length,
+          activeHomework: mergedHomeworkRows.filter((h: any) => String(h?.status || 'pending') !== 'completed').length,
           avgScore,
           announcementsCount: mergedAnnouncements.length,
           activeInvites: invites.filter((i: any) => i.status === 'active').length
@@ -107,13 +107,13 @@ export class TeacherController {
         success: true,
         summary: {
           studentsCount: this.sampleStudents().length,
-          activeHomework: TeacherController.localAssignments.length,
+          activeHomework: this.localFeed.listHomeworkForStudents(this.sampleStudents().map((s) => s.id)).length,
           avgScore: 0,
-          announcementsCount: TeacherController.localAnnouncements.length,
+          announcementsCount: this.localFeed.listAnnouncements().length,
           activeInvites: 0
         },
         students: this.sampleStudents(),
-        recentAnnouncements: TeacherController.localAnnouncements.slice(0, 5),
+        recentAnnouncements: this.localFeed.listAnnouncements().slice(0, 5),
         invites: []
       };
     }
@@ -182,12 +182,26 @@ export class TeacherController {
   }
 
   @Get('invites/student')
-  async studentInvites(@Req() req: any) {
+  async studentInvites(
+    @Req() req: any,
+    @Query('q') q?: string,
+    @Query('status') status?: 'all' | 'active' | 'used' | 'revoked' | 'expired',
+    @Query('page') page?: string,
+    @Query('limit') limit?: string
+  ) {
     this.ensureTeacher(req);
     const schoolId = req?.user?.schoolId || 'school-local';
     const teacherId = req?.user?.sub || 'teacher-local';
-    const res = await this.studentAuth.listInvitesByScope({ schoolId, teacherId, role: 'student' });
-    return { success: true, invites: res.invites || [] };
+    const res = await this.studentAuth.listInvitesByScope({
+      schoolId,
+      teacherId,
+      role: 'student',
+      q,
+      status,
+      page: page ? Number(page) : undefined,
+      limit: limit ? Number(limit) : undefined
+    });
+    return { success: true, invites: res.invites || [], pagination: res.pagination || null };
   }
 
   @Post('invites/student/:token/revoke')
@@ -256,6 +270,7 @@ export class TeacherController {
 
       if (!subjectScores.length) {
         return {
+          success: true,
           studentId,
           subjectScores: [
             { subject: 'Mathematics', avgScore: 78 },
@@ -271,6 +286,7 @@ export class TeacherController {
       }
 
       return {
+        success: true,
         studentId,
         subjectScores,
         timeline: rows.slice(0, 10).map((r: any) => ({
@@ -281,6 +297,8 @@ export class TeacherController {
       };
     } catch (e) {
       return {
+        success: false,
+        error: String((e as any)?.message || e || 'student progress failed'),
         studentId,
         subjectScores: [
           { subject: 'Mathematics', avgScore: 76 },
@@ -300,7 +318,7 @@ export class TeacherController {
     const dueAt = body?.dueAt || null;
     const studentIds = Array.isArray(body?.studentIds) ? body.studentIds : [];
     if (!studentIds.length) {
-      return { created: 0, assignments: [], error: 'studentIds is required' };
+      return { success: false, created: 0, assignments: [], error: 'studentIds is required' };
     }
 
     const scopedStudents = await this.studentAuth.listStudentsByScope({
@@ -309,11 +327,15 @@ export class TeacherController {
     });
     const allowed = new Set((scopedStudents.students || []).map((s: any) => s.id));
     const filteredStudentIds = studentIds.filter((id: string) => allowed.has(id));
-    if (!filteredStudentIds.length) {
-      return { created: 0, assignments: [], error: 'No valid students in teacher scope' };
+    const hasScopedRoster = Array.isArray(scopedStudents.students) && scopedStudents.students.length > 0;
+    const effectiveStudentIds = filteredStudentIds.length
+      ? filteredStudentIds
+      : (!hasScopedRoster ? studentIds : []);
+    if (!effectiveStudentIds.length) {
+      return { success: false, created: 0, assignments: [], error: 'No valid students in teacher scope' };
     }
 
-    const rows = filteredStudentIds.map((studentId: string) => ({
+    const rows = effectiveStudentIds.map((studentId: string) => ({
       student_id: studentId,
       subject,
       title,
@@ -326,6 +348,7 @@ export class TeacherController {
     try {
       const res = await this.db.client.from('homework').insert(rows).select();
       const inserted = Array.isArray((res as any)?.data) ? (res as any).data : rows;
+      this.localFeed.addHomework(inserted);
       return {
         success: true,
         created: inserted.length,
@@ -339,7 +362,7 @@ export class TeacherController {
       };
     } catch (e) {
       const inserted = rows.map((r: any, idx: number) => ({ ...r, id: `local-hw-${Date.now()}-${idx}` }));
-      TeacherController.localAssignments = inserted.concat(TeacherController.localAssignments);
+      this.localFeed.addHomework(inserted);
       return {
         success: true,
         created: inserted.length,
@@ -367,9 +390,9 @@ export class TeacherController {
         audience: a.audience || 'students',
         createdAt: a.created_at || null
       }));
-      return { success: true, announcements: normalized.length ? normalized : TeacherController.localAnnouncements };
+      return { success: true, announcements: normalized.length ? normalized : this.localFeed.listAnnouncements() };
     } catch (e) {
-      return { success: true, announcements: TeacherController.localAnnouncements };
+      return { success: true, announcements: this.localFeed.listAnnouncements() };
     }
   }
 
@@ -386,7 +409,17 @@ export class TeacherController {
     try {
       const res = await this.db.client.from('announcements').insert([row]).select();
       const inserted = (res as any)?.data?.[0] || row;
+      this.localFeed.addAnnouncements([
+        {
+          id: inserted.id || null,
+          title: inserted.title,
+          message: inserted.message,
+          audience: inserted.audience,
+          createdAt: inserted.created_at || row.created_at
+        }
+      ]);
       return {
+        success: true,
         announcement: {
           id: inserted.id || null,
           title: inserted.title,
@@ -403,8 +436,12 @@ export class TeacherController {
         audience: row.audience,
         createdAt: row.created_at
       };
-      TeacherController.localAnnouncements = [local, ...TeacherController.localAnnouncements].slice(0, 100);
-      return { announcement: local };
+      this.localFeed.addAnnouncements([local]);
+      return {
+        success: false,
+        error: String((e as any)?.message || e || 'announcement post failed'),
+        announcement: local
+      };
     }
   }
 
@@ -412,9 +449,10 @@ export class TeacherController {
   async teacherAi(@Req() req: any, @Body() body: any) {
     this.ensureTeacher(req);
     const prompt = String(body?.prompt || '').trim();
-    if (!prompt) return { reply: 'Please enter a prompt.' };
+    if (!prompt) return { success: false, error: 'Please enter a prompt.', reply: 'Please enter a prompt.' };
 
     return {
+      success: true,
       reply: `Teaching assistant suggestion: For "${prompt}", start with a 5-minute recap, then assign one easy, one medium, and one challenge question.`,
       tips: [
         'Share one real-world example to increase engagement.',

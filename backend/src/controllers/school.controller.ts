@@ -1,4 +1,4 @@
-import { Body, Controller, ForbiddenException, Get, Param, Post, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, ForbiddenException, Get, Param, Post, Query, Req, UseGuards } from '@nestjs/common';
 import { AuthGuard } from '../auth/auth.guard';
 import { StudentAuthService } from '../auth/student-auth.service';
 
@@ -42,27 +42,67 @@ export class SchoolController {
   }
 
   @Get('teachers')
-  async teachers(@Req() req: any) {
+  async teachers(
+    @Req() req: any,
+    @Query('q') q?: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string
+  ) {
     this.ensureSchoolAdmin(req);
     const schoolId = req?.user?.schoolId || req?.user?.sub || 'school-local';
-    const teachersRes = await this.authFlow.listTeachersBySchool(schoolId);
-    return { success: true, teachers: teachersRes.teachers || [] };
+    const teachersRes = await this.authFlow.listTeachersBySchool(schoolId, {
+      q,
+      page: page ? Number(page) : undefined,
+      limit: limit ? Number(limit) : undefined
+    });
+    return {
+      success: true,
+      teachers: teachersRes.teachers || [],
+      pagination: teachersRes.pagination || null
+    };
   }
 
   @Get('invites')
-  async invites(@Req() req: any) {
+  async invites(
+    @Req() req: any,
+    @Query('q') q?: string,
+    @Query('status') status?: 'all' | 'active' | 'used' | 'revoked' | 'expired',
+    @Query('page') page?: string,
+    @Query('limit') limit?: string
+  ) {
     this.ensureSchoolAdmin(req);
     const schoolId = req?.user?.schoolId || req?.user?.sub || 'school-local';
-    const invitesRes = await this.authFlow.listInvitesByScope({ schoolId, role: 'teacher' });
-    return { success: true, invites: invitesRes.invites || [] };
+    const invitesRes = await this.authFlow.listInvitesByScope({
+      schoolId,
+      role: 'teacher',
+      q,
+      status,
+      page: page ? Number(page) : undefined,
+      limit: limit ? Number(limit) : undefined
+    });
+    return { success: true, invites: invitesRes.invites || [], pagination: invitesRes.pagination || null };
   }
 
   @Get('students')
-  async students(@Req() req: any) {
+  async students(
+    @Req() req: any,
+    @Query('q') q?: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string
+  ) {
     this.ensureSchoolAdmin(req);
     const schoolId = req?.user?.schoolId || req?.user?.sub || 'school-local';
-    const studentsRes = await this.authFlow.listStudentsByScope({ schoolId });
-    return { success: true, students: studentsRes.students || [] };
+    const studentsRes = await this.authFlow.listStudentsByScope({
+      schoolId,
+      q,
+      page: page ? Number(page) : undefined,
+      limit: limit ? Number(limit) : undefined
+    });
+    return {
+      success: true,
+      students: studentsRes.students || [],
+      pagination: studentsRes.pagination || null
+    };
   }
 
   @Post('teachers/register')

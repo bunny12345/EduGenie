@@ -31,9 +31,9 @@ export class LibraryController {
         url: r.url,
         summary: r.summary || ''
       }));
-      return { resources };
+      return { success: true, resources };
     } catch (e) {
-      return { resources: [] };
+      return { success: false, error: String((e as any)?.message || e || 'library search failed'), resources: [] };
     }
   }
 
@@ -42,9 +42,9 @@ export class LibraryController {
     try {
       const res = await this.db.client.from('resources').select('*').eq('id', id).limit(1);
       const row = (res && (res as any).data && (res as any).data[0]) || { id, title: 'Resource', type: 'article', url: '', summary: '' };
-      return { resource: row };
+      return { success: true, resource: row };
     } catch (e) {
-      return { resource: { id, title: 'Resource', type: 'article', url: '', summary: '' } };
+      return { success: false, error: String((e as any)?.message || e || 'library get failed'), resource: { id, title: 'Resource', type: 'article', url: '', summary: '' } };
     }
   }
 }

@@ -597,13 +597,40 @@ export class StudentAuthService {
     return this.loginStudent(details?.loginId, details?.password);
   }
 
-  async listTeachersBySchool(schoolIdRaw: string) {
+  async listTeachersBySchool(
+    schoolIdRaw: string,
+    opts?: {
+      q?: string;
+      page?: number;
+      limit?: number;
+    }
+  ) {
     const schoolId = String(schoolIdRaw || '').trim();
-    if (!schoolId) return { teachers: [] as any[] };
+    if (!schoolId) {
+      return {
+        teachers: [] as any[],
+        pagination: { page: 1, limit: 10, total: 0, totalPages: 1 }
+      };
+    }
+
+    const queryText = String(opts?.q || '').trim().toLowerCase();
+    const hasPaging = opts?.page !== undefined || opts?.limit !== undefined || !!queryText;
+    const page = Math.max(1, Number(opts?.page || 1));
+    const limit = hasPaging
+      ? Math.min(100, Math.max(1, Number(opts?.limit || 10)))
+      : 500;
+    const from = (page - 1) * limit;
+    const to = from + limit - 1;
 
     try {
-      const res = await this.db.client.from('teachers').select('*').eq('school_id', schoolId).order('created_at', { ascending: false }).limit(500);
+      let q = this.db.client.from('teachers').select('*', { count: 'exact' }).eq('school_id', schoolId);
+      if (queryText) {
+        q = q.or(`name.ilike.%${queryText}%,email.ilike.%${queryText}%,subject.ilike.%${queryText}%,login_id.ilike.%${queryText}%`);
+      }
+      const res = await q.order('created_at', { ascending: false }).range(from, to);
       const rows = Array.isArray((res as any)?.data) ? (res as any).data : [];
+      const total = Number((res as any)?.count || rows.length);
+      const totalPages = Math.max(1, Math.ceil(total / limit));
       return {
         teachers: rows.map((r: any) => ({
           id: r.id,
@@ -613,11 +640,22 @@ export class StudentAuthService {
           subject: r.subject || 'General',
           loginId: r.login_id || null,
           createdAt: r.created_at || null
-        }))
+        })),
+        pagination: {
+          page,
+          limit,
+          total,
+          totalPages
+        }
       };
     } catch (e) {
       const locals = Array.from(StudentAuthService.teacherAccounts.values())
         .filter((t) => t.schoolId === schoolId)
+        .filter((t) => {
+          if (!queryText) return true;
+          const text = `${t.name || ''} ${t.email || ''} ${t.subject || ''} ${t.loginId || ''}`.toLowerCase();
+          return text.includes(queryText);
+        })
         .map((t) => ({
           id: t.teacherId,
           schoolId: t.schoolId,
@@ -627,20 +665,52 @@ export class StudentAuthService {
           loginId: t.loginId,
           createdAt: null
         }));
-      return { teachers: locals };
+      const total = locals.length;
+      const totalPages = Math.max(1, Math.ceil(total / limit));
+      const pagedLocals = locals.slice(from, from + limit);
+      return {
+        teachers: pagedLocals,
+        pagination: {
+          page,
+          limit,
+          total,
+          totalPages
+        }
+      };
     }
   }
 
-  async listStudentsByScope(scope: { schoolId?: string; teacherId?: string }) {
+  async listStudentsByScope(
+    scope: {
+      schoolId?: string;
+      teacherId?: string;
+      q?: string;
+      page?: number;
+      limit?: number;
+    }
+  ) {
     const schoolId = String(scope.schoolId || '').trim();
     const teacherId = String(scope.teacherId || '').trim();
+    const queryText = String(scope.q || '').trim().toLowerCase();
+    const hasPaging = scope.page !== undefined || scope.limit !== undefined || !!queryText;
+    const page = Math.max(1, Number(scope.page || 1));
+    const limit = hasPaging
+      ? Math.min(100, Math.max(1, Number(scope.limit || 10)))
+      : 500;
+    const from = (page - 1) * limit;
+    const to = from + limit - 1;
 
     try {
-      let q = this.db.client.from('students').select('*');
+      let q = this.db.client.from('students').select('*', { count: 'exact' });
       if (teacherId) q = q.eq('teacher_id', teacherId);
       else if (schoolId) q = q.eq('school_id', schoolId);
-      const res = await q.order('created_at', { ascending: false }).limit(500);
+      if (queryText) {
+        q = q.or(`name.ilike.%${queryText}%,full_name.ilike.%${queryText}%,class_name.ilike.%${queryText}%,class.ilike.%${queryText}%,grade.ilike.%${queryText}%`);
+      }
+      const res = await q.order('created_at', { ascending: false }).range(from, to);
       const rows = Array.isArray((res as any)?.data) ? (res as any).data : [];
+      const total = Number((res as any)?.count || rows.length);
+      const totalPages = Math.max(1, Math.ceil(total / limit));
       return {
         students: rows.map((r: any) => ({
           id: r.id,
@@ -650,12 +720,23 @@ export class StudentAuthService {
           className: r.class_name || r.class || r.grade || 'Class',
           email: r.email || null,
           createdAt: r.created_at || null
-        }))
+        })),
+        pagination: {
+          page,
+          limit,
+          total,
+          totalPages
+        }
       };
     } catch (e) {
       const locals = Array.from(StudentAuthService.localAccounts.values())
         .filter((s) => (teacherId ? s.teacherId === teacherId : true))
         .filter((s) => (schoolId ? s.schoolId === schoolId : true))
+        .filter((s) => {
+          if (!queryText) return true;
+          const text = `${s.name || ''} ${s.className || ''} ${s.loginId || ''}`.toLowerCase();
+          return text.includes(queryText);
+        })
         .map((s) => ({
           id: s.studentId,
           schoolId: s.schoolId || null,
@@ -665,22 +746,63 @@ export class StudentAuthService {
           email: null,
           createdAt: null
         }));
-      return { students: locals };
+      const total = locals.length;
+      const totalPages = Math.max(1, Math.ceil(total / limit));
+      const pagedLocals = locals.slice(from, from + limit);
+      return {
+        students: pagedLocals,
+        pagination: {
+          page,
+          limit,
+          total,
+          totalPages
+        }
+      };
     }
   }
 
-  async listInvitesByScope(scope: { schoolId?: string; teacherId?: string; role?: 'teacher' | 'student' }) {
+  async listInvitesByScope(scope: {
+    schoolId?: string;
+    teacherId?: string;
+    role?: 'teacher' | 'student';
+    q?: string;
+    status?: 'all' | 'active' | 'used' | 'revoked' | 'expired';
+    page?: number;
+    limit?: number;
+  }) {
     const schoolId = String(scope.schoolId || '').trim();
     const teacherId = String(scope.teacherId || '').trim();
     const role = scope.role;
+    const queryText = String(scope.q || '').trim().toLowerCase();
+    const status = String(scope.status || 'all').trim().toLowerCase() as 'all' | 'active' | 'used' | 'revoked' | 'expired';
+    const hasPaging = scope.page !== undefined || scope.limit !== undefined;
+    const page = Math.max(1, Number(scope.page || 1));
+    const limit = Math.min(100, Math.max(1, Number(scope.limit || (hasPaging ? 10 : 500))));
+    const from = (page - 1) * limit;
+    const to = from + limit - 1;
+    const nowIso = new Date().toISOString();
 
     try {
-      let q = this.db.client.from('registration_invites').select('*');
+      let q = this.db.client.from('registration_invites').select('*', { count: 'exact' });
       if (schoolId) q = q.eq('school_id', schoolId);
       if (teacherId) q = q.eq('teacher_id', teacherId);
       if (role) q = q.eq('role', role);
-      const res = await q.order('created_at', { ascending: false }).limit(500);
+      if (queryText) q = q.ilike('token', `%${queryText}%`);
+
+      if (status === 'used') {
+        q = q.eq('consumed', true);
+      } else if (status === 'revoked') {
+        q = q.eq('revoked', true);
+      } else if (status === 'active') {
+        q = q.eq('consumed', false).eq('revoked', false).gt('expires_at', nowIso);
+      } else if (status === 'expired') {
+        q = q.eq('consumed', false).eq('revoked', false).lte('expires_at', nowIso);
+      }
+
+      const res = await q.order('created_at', { ascending: false }).range(from, to);
       const rows = Array.isArray((res as any)?.data) ? (res as any).data : [];
+      const total = Number((res as any)?.count || rows.length);
+      const totalPages = Math.max(1, Math.ceil(total / limit));
       return {
         invites: rows.map((r: any) => ({
           token: r.token,
@@ -694,13 +816,28 @@ export class StudentAuthService {
           createdAt: r.created_at || null,
           status: this.inviteStatus(r),
           link: `${process.env.WEB_BASE_URL || 'http://localhost:3001'}/?inviteToken=${encodeURIComponent(r.token)}`
-        }))
+        })),
+        pagination: {
+          page,
+          limit,
+          total,
+          totalPages
+        }
       };
     } catch (e) {
       const locals = Array.from(StudentAuthService.invites.values())
         .filter((i) => (schoolId ? i.schoolId === schoolId : true))
         .filter((i) => (teacherId ? i.teacherId === teacherId : true))
         .filter((i) => (role ? i.role === role : true))
+        .filter((i) => {
+          if (!queryText) return true;
+          return `${i.token} ${i.role}`.toLowerCase().includes(queryText);
+        })
+        .filter((i) => (status === 'all' ? true : this.inviteStatus(i) === status));
+
+      const total = locals.length;
+      const totalPages = Math.max(1, Math.ceil(total / limit));
+      const pagedLocals = locals.slice(from, from + limit)
         .map((i) => ({
           token: i.token,
           role: i.role,
@@ -714,7 +851,15 @@ export class StudentAuthService {
           status: this.inviteStatus(i),
           link: `${process.env.WEB_BASE_URL || 'http://localhost:3001'}/?inviteToken=${encodeURIComponent(i.token)}`
         }));
-      return { invites: locals };
+      return {
+        invites: pagedLocals,
+        pagination: {
+          page,
+          limit,
+          total,
+          totalPages
+        }
+      };
     }
   }
 

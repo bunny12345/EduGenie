@@ -1,10 +1,14 @@
 import { Controller, Get, Post, Body, Query, Param, UseGuards, Req } from '@nestjs/common';
 import { SupabaseService } from '../supabase.service';
 import { AuthGuard } from '../auth/auth.guard';
+import { LocalFeedService } from '../shared/local-feed.service';
 
 @Controller('homework')
 export class HomeworkController {
-  constructor(private readonly db: SupabaseService) {}
+  constructor(
+    private readonly db: SupabaseService,
+    private readonly localFeed: LocalFeedService
+  ) {}
 
   @Get()
   @UseGuards(AuthGuard)
@@ -13,7 +17,8 @@ export class HomeworkController {
     try {
       const res = await this.db.client.from('homework').select('*').eq('student_id', id).order('due_at', { ascending: true });
       const rows = (res && (res as any).data) || [];
-      const homework = (Array.isArray(rows) ? rows : []).map((h: any) => ({
+      const mergedRows = (Array.isArray(rows) && rows.length) ? rows : this.localFeed.listHomeworkForStudent(id);
+      const homework = (Array.isArray(mergedRows) ? mergedRows : []).map((h: any) => ({
         id: h.id,
         title: h.title || h.file_url || 'Homework',
         subject: h.subject || 'General',
@@ -21,9 +26,9 @@ export class HomeworkController {
         status: h.status || (h.graded ? 'completed' : 'pending'),
         progress: h.progress ?? (h.graded ? 100 : 0)
       }));
-      return { homework };
+      return { success: true, homework };
     } catch (e) {
-      return { homework: [] };
+      return { success: false, error: String((e as any)?.message || e || 'homework list failed'), homework: [] };
     }
   }
 
@@ -42,7 +47,9 @@ export class HomeworkController {
       };
       const res = await this.db.client.from('homework').insert([toInsert]).select();
       const row = (res && (res as any).data && (res as any).data[0]) || toInsert;
+      this.localFeed.addHomework([row]);
       return {
+        success: true,
         homework: {
           id: row.id,
           title: row.title || 'Homework',
@@ -53,7 +60,7 @@ export class HomeworkController {
         }
       };
     } catch (e) {
-      return { homework: null, error: String(e) };
+      return { success: false, homework: null, error: String(e) };
     }
   }
 
@@ -70,9 +77,9 @@ export class HomeworkController {
       };
       const res = await this.db.client.from('homework_attempts').insert([attempt]).select();
       const row = (res && (res as any).data && (res as any).data[0]) || attempt;
-      return { attemptId: row.id || null, grade: row.score ?? null };
+      return { success: true, attemptId: row.id || null, grade: row.score ?? null };
     } catch (e) {
-      return { attemptId: null, grade: null, error: String(e) };
+      return { success: false, attemptId: null, grade: null, error: String(e) };
     }
   }
 
@@ -82,9 +89,9 @@ export class HomeworkController {
     const sid = req.studentId || studentId;
     try {
       const res = await this.db.client.from('homework_attempts').select('*').eq('homework_id', id).eq('student_id', sid).order('created_at', { ascending: false });
-      return { attempts: (res && (res as any).data) || [] };
+      return { success: true, attempts: (res && (res as any).data) || [] };
     } catch (e) {
-      return { attempts: [] };
+      return { success: false, error: String((e as any)?.message || e || 'homework attempts failed'), attempts: [] };
     }
   }
 }

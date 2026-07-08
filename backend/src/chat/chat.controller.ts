@@ -12,7 +12,7 @@ export class ChatController {
     const { message, personality, conversationId } = payload;
     const studentId = req.studentId || payload.studentId || 'anon';
     const response = await this.chatService.handleMessage(studentId, message, { personality, conversationId });
-    return response;
+    return { success: true, ...response };
   }
 
   @Get('history')
@@ -20,13 +20,13 @@ export class ChatController {
   async history(@Req() req: any, @Query('studentId') studentId?: string, @Query('conversationId') conversationId?: string) {
     const id = req.studentId || studentId || 'anon';
     const messages = await this.chatService.getHistory(id, conversationId);
-    return { messages };
+    return { success: true, messages };
   }
 
   @Get('seed')
   async seed() {
     const student = await this.chatService.createTestStudent();
-    return { student, id: student.id };
+    return { success: true, student, id: student.id };
   }
 
   @Post('memory')
@@ -35,13 +35,13 @@ export class ChatController {
     const { key, value } = payload;
     const studentId = req.studentId || 'anon';
     const mem = await this.chatService.addMemory(studentId, key || 'note', value);
-    return { memory: mem };
+    return { success: true, memory: mem };
   }
 
   @Post('student')
   async createStudent(@Body() payload: { name: string; age?: number; class?: string; board?: string }) {
     const student = await this.chatService.createStudent(payload);
-    return { student };
+    return { success: true, student };
   }
 
   @Get('student')
@@ -60,14 +60,14 @@ export class ChatController {
   @Get('memories_all')
   async allMemories() {
     const mems = await this.chatService.listAllMemories();
-    return { memories: mems };
+    return { success: true, memories: mems };
   }
 
   @Get('seed_memories')
   async seedMemories() {
     const student = await this.chatService.createTestStudent();
     const mems = await this.chatService.seedMemories(student.id || 'anon');
-    return { student, id: student.id, memoriesSeeded: mems };
+    return { success: true, student, id: student.id, memoriesSeeded: mems };
   }
 
   @Get('memories')
@@ -75,7 +75,7 @@ export class ChatController {
   async listMemories(@Req() req: any, @Query('studentId') studentId?: string) {
     const id = req.studentId || studentId || 'anon';
     const mems = await this.chatService.listMemories(id);
-    return { memories: mems };
+    return { success: true, memories: mems };
   }
 
   @Post('prune_memories')

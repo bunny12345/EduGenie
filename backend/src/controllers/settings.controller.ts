@@ -13,9 +13,9 @@ export class SettingsController {
     try {
       const res = await this.db.client.from('settings').select('*').eq('student_id', id).limit(1);
       const row = (res && (res as any).data && (res as any).data[0]) || null;
-      return { studentId: id, prefs: row?.prefs || row || {} };
+      return { success: true, studentId: id, prefs: row?.prefs || row || {} };
     } catch (e) {
-      return { studentId: id, prefs: {} };
+      return { success: false, error: String((e as any)?.message || e || 'settings get failed'), studentId: id, prefs: {} };
     }
   }
 

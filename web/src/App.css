@@ -627,6 +627,23 @@ textarea {
   margin-top: 8px;
 }
 
+.eg-inline-form {
+  margin-top: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.eg-inline-input {
+  border: 1px solid #dfe5f7;
+  border-radius: 8px;
+  padding: 5px 8px;
+  font-size: 11px;
+  color: #42528a;
+  background: #f7f8ff;
+  font-family: inherit;
+}
+
 .eg-link-btn {
   border: 0;
   background: transparent;
@@ -1225,6 +1242,35 @@ textarea {
   font-weight: 700;
 }
 
+/* Standalone input class for use outside td-form grids */
+.td-input {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid #dfe5f7;
+  border-radius: 10px;
+  padding: 8px 10px;
+  font-size: 12px;
+  font-family: 'Poppins', 'Avenir Next', 'Segoe UI', sans-serif;
+  background: #fafbff;
+}
+
+.td-inline-btn {
+  border: 0;
+  border-radius: 8px;
+  background: #ecebff;
+  color: #3f41a8;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 4px 9px;
+  cursor: pointer;
+}
+
+.td-inline-btn.danger {
+  background: #ffeaea;
+  color: #b83232;
+}
+
 .td-announcements {
   list-style: none;
   margin: 10px 0 0;
@@ -1316,6 +1362,35 @@ textarea {
 .invite-badge.expired {
   background: #fff6e8;
   color: #a56b07;
+}
+
+.invite-toolbar {
+  margin-top: 10px;
+  display: grid;
+  grid-template-columns: 1fr 160px;
+  gap: 8px;
+}
+
+.invite-search,
+.invite-filter {
+  border: 1px solid #dfe5f7;
+  border-radius: 9px;
+  min-height: 34px;
+  padding: 0 10px;
+  font-family: 'Poppins', 'Avenir Next', 'Segoe UI', sans-serif;
+  font-size: 12px;
+  color: #42528a;
+  background: #fff;
+}
+
+.invite-pager {
+  margin-top: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  color: #6170a0;
+  font-size: 12px;
 }
 
 .td-ai-reply {
@@ -1671,6 +1746,10 @@ textarea {
   .td-grid,
   .td-progress-grid,
   .sd-stats {
+    grid-template-columns: 1fr;
+  }
+
+  .invite-toolbar {
     grid-template-columns: 1fr;
   }
 

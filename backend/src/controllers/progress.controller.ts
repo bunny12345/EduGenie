@@ -1,4 +1,4 @@
-import { Controller, Get, Query, UseGuards, Req } from '@nestjs/common';
+import { Controller, Get, Post, Query, Body, UseGuards, Req } from '@nestjs/common';
 import { SupabaseService } from '../supabase.service';
 import { AuthGuard } from '../auth/auth.guard';
 
@@ -38,9 +38,39 @@ export class ProgressController {
         .slice(0, 5)
         .map((s) => ({ topic: s.subject, confidence: Math.max(0, Math.min(100, 100 - s.score)) }));
 
-      return { timeSpent, subjectScores, weakTopics };
+      return { success: true, timeSpent, subjectScores, weakTopics };
     } catch (e) {
-      return { timeSpent: 0, subjectScores: [], weakTopics: [] };
+      return { success: false, error: String((e as any)?.message || e || 'progress failed'), timeSpent: 0, subjectScores: [], weakTopics: [] };
+    }
+  }
+
+  @Post()
+  @UseGuards(AuthGuard)
+  async record(@Req() req: any, @Body() body: any) {
+    const sid = body.studentId || req.studentId;
+    const subject = String(body.subject || 'General').slice(0, 100);
+    const score = Math.max(0, Math.min(100, Number(body.score ?? 0)));
+    const minutes = Math.max(0, Number(body.minutes || body.timeSpent || 0));
+    const metricKey = String(body.metricKey || subject);
+    const date = body.date ? String(body.date) : new Date().toISOString().split('T')[0];
+    try {
+      const row = {
+        student_id: sid,
+        subject,
+        metric_key: metricKey,
+        score,
+        metric_value: score,
+        minutes,
+        time_spent: minutes,
+        date,
+        source: String(body.source || 'activity').slice(0, 50),
+        created_at: new Date().toISOString()
+      };
+      const res = await this.db.client.from('progress_metrics').insert([row]).select();
+      const inserted = (res as any)?.data?.[0] || row;
+      return { success: true, metric: { id: inserted.id || null, subject: inserted.subject, score: inserted.score, date: inserted.date } };
+    } catch (e) {
+      return { success: false, error: String((e as any)?.message || e || 'progress record failed') };
     }
   }
 }

@@ -20,9 +20,9 @@ export class CalendarController {
       if (rangeStart) q = q.gte('start', rangeStart);
       if (rangeEnd) q = q.lte('start', rangeEnd);
       const res = await q.order('start', { ascending: true });
-      return { events: (res && (res as any).data) || [] };
+      return { success: true, events: (res && (res as any).data) || [] };
     } catch (e) {
-      return { events: [] };
+      return { success: false, error: String((e as any)?.message || e || 'calendar list failed'), events: [] };
     }
   }
 

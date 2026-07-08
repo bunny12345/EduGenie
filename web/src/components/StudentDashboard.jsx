@@ -1,22 +1,25 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
+  createCalendarEvent,
+  earnReward,
+  getCalendar,
+  getChatHistory,
   getDashboard,
   getHomework,
-  getProgress,
-  getCalendar,
-  getRewards,
-  getTests,
-  startTest,
-  submitTestAttempt,
-  getTestAttempt,
+  getHomeworkAttempts,
   getLibrary,
   getLibraryResource,
+  getProgress,
+  getRewards,
   getSettings,
+  getTestAttempt,
+  getTests,
+  recordProgress,
   saveSettings,
+  sendChat,
+  startTest,
   submitHomework,
-  getHomeworkAttempts,
-  getChatHistory,
-  sendChat
+  submitTestAttempt
 } from '../api';
 
 function safeArray(v) {
@@ -46,15 +49,6 @@ function buildProgressSummary(rows) {
     bySubject.set(s, prev);
   });
 
-  if (bySubject.size === 0) {
-    return [
-      { subject: 'Mathematics', score: 76 },
-      { subject: 'Science', score: 82 },
-      { subject: 'English', score: 65 },
-      { subject: 'Social Science', score: 70 }
-    ];
-  }
-
   return Array.from(bySubject.entries()).slice(0, 4).map(([subject, arr]) => {
     const avg = Math.round(arr.reduce((a, b) => a + b, 0) / arr.length);
     return { subject, score: avg };
@@ -62,9 +56,7 @@ function buildProgressSummary(rows) {
 }
 
 function buildTrendPoints(rows) {
-  const points = rows.map(getScore).filter((n) => n !== null).slice(-7);
-  if (points.length >= 5) return points;
-  return [64, 68, 63, 71, 69, 74, 76];
+  return rows.map(getScore).filter((n) => n !== null).slice(-7);
 }
 
 function Sparkline({ values }) {
@@ -91,17 +83,39 @@ function Sparkline({ values }) {
 
 export default function StudentDashboard({ studentId = 'test', onLogout }) {
   const [loading, setLoading] = useState(true);
-  const [data, setData] = useState({
-    dashboard: null,
-    homework: [],
-    progress: [],
-    events: [],
-    rewards: { coins: 0, badges: [] },
-    tests: [],
-    library: [],
-    settings: { prefs: {} },
-    chatHistory: []
+  const [panelLoading, setPanelLoading] = useState({
+    dashboard: false,
+    homework: false,
+    progress: false,
+    calendar: false,
+    rewards: false,
+    tests: false,
+    library: false,
+    settings: false,
+    chat: false
   });
+  const [panelError, setPanelError] = useState({
+    dashboard: '',
+    homework: '',
+    progress: '',
+    calendar: '',
+    rewards: '',
+    tests: '',
+    library: '',
+    settings: '',
+    chat: ''
+  });
+
+  const [dashboard, setDashboard] = useState(null);
+  const [homework, setHomework] = useState([]);
+  const [progress, setProgress] = useState([]);
+  const [events, setEvents] = useState([]);
+  const [rewards, setRewards] = useState({ coins: 0, badges: [] });
+  const [tests, setTests] = useState([]);
+  const [library, setLibrary] = useState([]);
+  const [settings, setSettings] = useState({ prefs: {} });
+  const [chatHistory, setChatHistory] = useState([]);
+
   const [startingTestId, setStartingTestId] = useState('');
   const [startingHomeworkId, setStartingHomeworkId] = useState('');
   const [chatInput, setChatInput] = useState('');
@@ -111,60 +125,199 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
   const [selectedResource, setSelectedResource] = useState(null);
   const [settingsSaving, setSettingsSaving] = useState(false);
 
+  // Calendar event creation
+  const [newEventTitle, setNewEventTitle] = useState('');
+  const [newEventDate, setNewEventDate] = useState('');
+  const [calendarAdding, setCalendarAdding] = useState(false);
+  const [calendarNote, setCalendarNote] = useState('');
+
+  // Rewards earn
+  const [rewardsNote, setRewardsNote] = useState('');
+  const [rewardsEarning, setRewardsEarning] = useState(false);
+
+  const setPanelLoadingKey = (key, value) => {
+    setPanelLoading((prev) => ({ ...prev, [key]: value }));
+  };
+
+  const setPanelErrorKey = (key, value) => {
+    setPanelError((prev) => ({ ...prev, [key]: value }));
+  };
+
+  async function loadDashboardPanel() {
+    setPanelLoadingKey('dashboard', true);
+    setPanelErrorKey('dashboard', '');
+    try {
+      const res = await getDashboard(studentId);
+      setDashboard(res || null);
+    } catch (e) {
+      setPanelErrorKey('dashboard', e?.message || 'Unable to load dashboard.');
+      setDashboard(null);
+    } finally {
+      setPanelLoadingKey('dashboard', false);
+    }
+  }
+
+  async function loadHomeworkPanel() {
+    setPanelLoadingKey('homework', true);
+    setPanelErrorKey('homework', '');
+    try {
+      const res = await getHomework(studentId);
+      setHomework(safeArray(res?.homework));
+    } catch (e) {
+      setPanelErrorKey('homework', e?.message || 'Unable to load homework.');
+      setHomework([]);
+    } finally {
+      setPanelLoadingKey('homework', false);
+    }
+  }
+
+  async function loadProgressPanel() {
+    setPanelLoadingKey('progress', true);
+    setPanelErrorKey('progress', '');
+    try {
+      const res = await getProgress(studentId);
+      setProgress(safeArray(res?.subjectScores));
+    } catch (e) {
+      setPanelErrorKey('progress', e?.message || 'Unable to load progress.');
+      setProgress([]);
+    } finally {
+      setPanelLoadingKey('progress', false);
+    }
+  }
+
+  async function loadCalendarPanel() {
+    setPanelLoadingKey('calendar', true);
+    setPanelErrorKey('calendar', '');
+    try {
+      const res = await getCalendar(studentId);
+      setEvents(safeArray(res?.events));
+    } catch (e) {
+      setPanelErrorKey('calendar', e?.message || 'Unable to load calendar.');
+      setEvents([]);
+    } finally {
+      setPanelLoadingKey('calendar', false);
+    }
+  }
+
+  async function loadRewardsPanel() {
+    setPanelLoadingKey('rewards', true);
+    setPanelErrorKey('rewards', '');
+    try {
+      const res = await getRewards(studentId);
+      setRewards(res || { coins: 0, badges: [] });
+    } catch (e) {
+      setPanelErrorKey('rewards', e?.message || 'Unable to load rewards.');
+      setRewards({ coins: 0, badges: [] });
+    } finally {
+      setPanelLoadingKey('rewards', false);
+    }
+  }
+
+  async function loadTestsPanel() {
+    setPanelLoadingKey('tests', true);
+    setPanelErrorKey('tests', '');
+    try {
+      const res = await getTests(studentId, 'upcoming');
+      setTests(safeArray(res?.tests));
+    } catch (e) {
+      setPanelErrorKey('tests', e?.message || 'Unable to load tests.');
+      setTests([]);
+    } finally {
+      setPanelLoadingKey('tests', false);
+    }
+  }
+
+  async function loadLibraryPanel() {
+    setPanelLoadingKey('library', true);
+    setPanelErrorKey('library', '');
+    try {
+      const res = await getLibrary('', '', 1);
+      setLibrary(safeArray(res?.resources));
+    } catch (e) {
+      setPanelErrorKey('library', e?.message || 'Unable to load library.');
+      setLibrary([]);
+    } finally {
+      setPanelLoadingKey('library', false);
+    }
+  }
+
+  async function loadSettingsPanel() {
+    setPanelLoadingKey('settings', true);
+    setPanelErrorKey('settings', '');
+    try {
+      const res = await getSettings(studentId);
+      setSettings(res || { prefs: {} });
+    } catch (e) {
+      setPanelErrorKey('settings', e?.message || 'Unable to load settings.');
+      setSettings({ prefs: {} });
+    } finally {
+      setPanelLoadingKey('settings', false);
+    }
+  }
+
+  async function loadChatPanel() {
+    setPanelLoadingKey('chat', true);
+    setPanelErrorKey('chat', '');
+    try {
+      const res = await getChatHistory(studentId);
+      setChatHistory(safeArray(res?.messages));
+    } catch (e) {
+      setPanelErrorKey('chat', e?.message || 'Unable to load chat history.');
+      setChatHistory([]);
+    } finally {
+      setPanelLoadingKey('chat', false);
+    }
+  }
+
   useEffect(() => {
     let active = true;
-    async function load() {
+    async function loadAll() {
       setLoading(true);
-      try {
-        const [dashboard, hw, prog, cal, rew, testsRes, libraryRes, settingsRes, historyRes] = await Promise.all([
-          getDashboard(studentId),
-          getHomework(studentId),
-          getProgress(studentId),
-          getCalendar(studentId),
-          getRewards(studentId),
-          getTests(studentId, 'upcoming'),
-          getLibrary('', '', 1),
-          getSettings(studentId),
-          getChatHistory(studentId)
-        ]);
-        if (!active) return;
-        setData({
-          dashboard: dashboard || null,
-          homework: safeArray(hw?.homework),
-          progress: safeArray(prog?.subjectScores),
-          events: safeArray(cal?.events),
-          rewards: rew || { coins: 0, badges: [] },
-          tests: safeArray(testsRes?.tests),
-          library: safeArray(libraryRes?.resources),
-          settings: settingsRes || { prefs: {} },
-          chatHistory: safeArray(historyRes?.messages)
-        });
-      } catch (e) {
-        if (!active) return;
-      } finally {
-        if (active) setLoading(false);
-      }
+      await Promise.all([
+        loadDashboardPanel(),
+        loadHomeworkPanel(),
+        loadProgressPanel(),
+        loadCalendarPanel(),
+        loadRewardsPanel(),
+        loadTestsPanel(),
+        loadLibraryPanel(),
+        loadSettingsPanel(),
+        loadChatPanel()
+      ]);
+      if (active) setLoading(false);
     }
-    load();
+    loadAll();
     return () => {
       active = false;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [studentId]);
 
-  const greetingName = data.dashboard?.greetingName || 'Aarav';
-  const streakDays = data.dashboard?.streak?.days || 12;
-  const coins = Number(data.rewards?.coins) || 1250;
-  const badges = Array.isArray(data.rewards?.badges) ? data.rewards.badges.length : 12;
+  useEffect(() => {
+    const timer = setInterval(() => {
+      loadDashboardPanel();
+      loadHomeworkPanel();
+      loadTestsPanel();
+    }, 20000);
+    return () => clearInterval(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [studentId]);
 
-  const homework = data.homework.slice(0, 4);
-  const events = data.events.slice(0, 3);
-  const tests = data.tests.slice(0, 3);
-  const library = data.library.slice(0, 4);
-  const chatHistory = data.chatHistory.slice(-3);
-  const currentTheme = data.settings?.prefs?.theme || data.settings?.theme || 'Light';
-  const currentLanguage = data.settings?.prefs?.language || data.settings?.language || 'English';
-  const progressSummary = useMemo(() => buildProgressSummary(data.progress), [data.progress]);
-  const trend = useMemo(() => buildTrendPoints(data.progress), [data.progress]);
+  const greetingName = dashboard?.greetingName || 'Student';
+  const streakDays = Number(dashboard?.streak?.days || 0);
+  const coins = Number(rewards?.coins || 0);
+  const badges = Array.isArray(rewards?.badges) ? rewards.badges.length : 0;
+
+  const homeworkTop = homework.slice(0, 4);
+  const eventsTop = events.slice(0, 3);
+  const testsTop = tests.slice(0, 3);
+  const libraryTop = library.slice(0, 4);
+  const chatHistoryTop = chatHistory.slice(-3);
+  const announcementsTop = safeArray(dashboard?.announcements).slice(0, 4);
+  const currentTheme = settings?.prefs?.theme || settings?.theme || 'Unknown';
+  const currentLanguage = settings?.prefs?.language || settings?.language || 'Unknown';
+  const progressSummary = useMemo(() => buildProgressSummary(progress), [progress]);
+  const trend = useMemo(() => buildTrendPoints(progress), [progress]);
   const weeklyGoalPct = 75;
 
   async function onStartTest(testId) {
@@ -174,13 +327,31 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
       const started = await startTest(testId, studentId);
       const attemptId = started?.attemptId;
       if (attemptId) {
-        await submitTestAttempt(attemptId, studentId, { q1: 'A', q2: 'B' });
+        const questionList = Array.isArray(started?.questions) ? started.questions : [];
+        const generatedAnswers = {};
+        questionList.forEach((q) => {
+          if (q?.id !== undefined && q?.id !== null) generatedAnswers[q.id] = 0;
+        });
+        const submitRes = await submitTestAttempt(attemptId, studentId, generatedAnswers);
         const resultRes = await getTestAttempt(attemptId);
         const result = resultRes?.result || null;
-        if (result) setTestResult({ score: result.score ?? '-', feedback: result.feedback || 'Submitted' });
+        const score = result?.score ?? submitRes?.score ?? null;
+        if (score !== null) {
+          setTestResult({ score, feedback: result?.feedback || submitRes?.feedback || 'Submitted' });
+          // Record progress for this test attempt silently
+          const testItem = tests.find((t) => t.id === testId);
+          recordProgress({
+            studentId,
+            subject: testItem?.subject || testItem?.title || 'Test',
+            score: Number(score),
+            source: 'test'
+          }).catch(() => {});
+        }
       }
+      await loadTestsPanel();
+      await loadProgressPanel();
     } catch (e) {
-      // no-op for now
+      setPanelErrorKey('tests', e?.message || 'Test flow failed.');
     } finally {
       setStartingTestId('');
     }
@@ -193,9 +364,22 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
       const sub = await submitHomework(hwId, studentId, { summary: 'Completed in UI flow' }, null);
       const at = await getHomeworkAttempts(hwId, studentId);
       const count = Array.isArray(at?.attempts) ? at.attempts.length : 0;
-      setHomeworkInfo(`Submitted. Attempts: ${count}. Last grade: ${sub?.grade ?? '-'}`);
+      const grade = sub?.grade ?? null;
+      setHomeworkInfo(`Submitted. Attempts: ${count}. Last grade: ${grade ?? '-'}`);
+      // Record progress for homework submission silently
+      if (grade !== null) {
+        const hwItem = homework.find((h) => h.id === hwId);
+        recordProgress({
+          studentId,
+          subject: hwItem?.subject || 'Homework',
+          score: Number(grade),
+          source: 'homework'
+        }).catch(() => {});
+      }
+      await Promise.all([loadHomeworkPanel(), loadProgressPanel()]);
     } catch (e) {
       setHomeworkInfo('Submit failed');
+      setPanelErrorKey('homework', e?.message || 'Submit failed.');
     } finally {
       setStartingHomeworkId('');
     }
@@ -208,8 +392,49 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
       setSelectedResource(res?.resource || null);
     } catch (e) {
       setSelectedResource(null);
+      setPanelErrorKey('library', e?.message || 'Unable to open resource.');
     }
   }
+
+  async function onAddCalendarEvent(e) {
+    e.preventDefault();
+    if (!newEventTitle.trim() || !newEventDate) return;
+    setCalendarAdding(true);
+    setCalendarNote('');
+    setPanelErrorKey('calendar', '');
+    try {
+      await createCalendarEvent({
+        studentId,
+        title: newEventTitle.trim(),
+        start: new Date(newEventDate).toISOString(),
+        end: new Date(newEventDate).toISOString(),
+        type: 'study'
+      });
+      setNewEventTitle('');
+      setNewEventDate('');
+      setCalendarNote('Event added.');
+      await loadCalendarPanel();
+    } catch (e2) {
+      setPanelErrorKey('calendar', e2?.message || 'Unable to add event.');
+    } finally {
+      setCalendarAdding(false);
+    }
+  }
+
+  async function onEarnReward() {
+    setRewardsEarning(true);
+    setRewardsNote('');
+    try {
+      const res = await earnReward({ studentId, coins: 10, reason: 'Daily study check-in' });
+      setRewardsNote(`+10 coins earned! Total: ${res?.newBalance ?? '–'}`);
+      await loadRewardsPanel();
+    } catch (e) {
+      setRewardsNote(e?.message || 'Unable to earn reward.');
+    } finally {
+      setRewardsEarning(false);
+    }
+  }
+
 
   async function onSaveTheme(nextTheme) {
     setSettingsSaving(true);
@@ -217,16 +442,15 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
       const payload = {
         studentId,
         prefs: {
-          ...(data.settings?.prefs || {}),
+          ...(settings?.prefs || {}),
           theme: nextTheme,
           language: currentLanguage
         }
       };
       const saved = await saveSettings(payload);
-      setData((prev) => ({
-        ...prev,
-        settings: saved?.settings || prev.settings
-      }));
+      setSettings(saved?.settings || settings);
+    } catch (e) {
+      setPanelErrorKey('settings', e?.message || 'Unable to save settings.');
     } finally {
       setSettingsSaving(false);
     }
@@ -236,13 +460,14 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
     const msg = chatInput.trim();
     if (!msg) return;
     setChatLoading(true);
+    setPanelErrorKey('chat', '');
     try {
       const res = await sendChat(studentId, msg, 'Friendly', `conv-${studentId}`);
       const hist = await getChatHistory(studentId, res?.conversationId || `conv-${studentId}`);
-      setData((prev) => ({ ...prev, chatHistory: safeArray(hist?.messages) }));
+      setChatHistory(safeArray(hist?.messages));
       setChatInput('');
     } catch (e) {
-      // no-op for now
+      setPanelErrorKey('chat', e?.message || 'Unable to send chat message.');
     } finally {
       setChatLoading(false);
     }
@@ -289,18 +514,20 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
         <header className="eg-topbar cardish">
           <div className="eg-search">Search for topics, tests, books...</div>
           <div className="eg-top-actions">
-            <span className="pill">🔥 12</span>
+            <span className="pill">🔥 {streakDays}</span>
             <span className="pill">🏅 {badges}</span>
             <div className="eg-profile-chip">
               <div className="eg-profile-avatar">🧑</div>
               <div className="eg-profile-meta">
                 <strong>Hi, {greetingName}</strong>
-                <span>Class 8</span>
+                <span>Student</span>
               </div>
               <span className="eg-profile-caret">▾</span>
             </div>
           </div>
         </header>
+
+        {panelError.dashboard ? <p className="eg-loading">{panelError.dashboard}</p> : null}
 
         <section className="eg-main-grid">
           <div className="eg-left-stack">
@@ -318,11 +545,13 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
 
                 <div className="eg-plan-box">
                   <h3>Today's Plan</h3>
+                  {panelLoading.homework ? <p className="eg-loading">Loading homework...</p> : null}
+                  {panelError.homework ? <p className="eg-loading">{panelError.homework}</p> : null}
                   <ul>
-                    {homework.length === 0 ? <li>Math Homework - Due in 2 hrs</li> : null}
-                    {(homework.length ? homework : [{ id: 'a', title: 'Math Homework' }, { id: 'b', title: 'Science Revision' }, { id: 'c', title: 'English Reading' }]).slice(0, 3).map((h) => (
+                    {homeworkTop.slice(0, 3).map((h) => (
                       <li key={h.id}>{h.title || h.file_url || 'Homework Task'}</li>
                     ))}
+                    {!panelLoading.homework && !homeworkTop.length ? <li>No homework tasks assigned.</li> : null}
                   </ul>
                   <button>Start Learning</button>
                 </div>
@@ -340,6 +569,8 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
             </section>
 
             <section className="eg-subject-row">
+              {panelLoading.progress ? <p className="eg-loading">Loading progress...</p> : null}
+              {panelError.progress ? <p className="eg-loading">{panelError.progress}</p> : null}
               {progressSummary.map((s) => (
                 <article key={s.subject} className="cardish eg-subject-card">
                   <h4>{s.subject}</h4>
@@ -347,17 +578,21 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
                   <span>{s.score >= 75 ? 'Excellent' : 'Keep Practicing'}</span>
                 </article>
               ))}
+              {!panelLoading.progress && !progressSummary.length ? <p className="eg-loading">No progress metrics yet.</p> : null}
             </section>
 
             <section className="cardish eg-reco-card eg-grad-reco">
               <div>
                 <h3>AI Recommends for You</h3>
-                <p>Based on your performance, we think you'll like these topics</p>
+                <p>Based on your current progress and library data.</p>
               </div>
+              {panelLoading.library ? <p className="eg-loading">Loading recommendations...</p> : null}
+              {panelError.library ? <p className="eg-loading">{panelError.library}</p> : null}
               <div className="eg-tag-row">
-                {['Algebra Basics', 'Force & Motion', 'Story Writing', 'Lines & Angles'].map((t) => (
-                  <span key={t}>{t}</span>
+                {libraryTop.slice(0, 4).map((t) => (
+                  <span key={t.id || t.title}>{t.title || t.summary || 'Learning Resource'}</span>
                 ))}
+                {!panelLoading.library && !libraryTop.length ? <span>No recommendations yet.</span> : null}
               </div>
             </section>
           </div>
@@ -368,18 +603,19 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
               <button>Voice Mode</button>
             </div>
             <div className="eg-ai-topic-list">
-              {['Fractions', 'Algebra', 'Newton\'s Laws', 'Photosynthesis', 'Grammar'].map((t) => (
+              {['Fractions', 'Algebra', 'Science', 'Grammar'].map((t) => (
                 <div key={t}>{t}</div>
               ))}
             </div>
+            {panelLoading.chat ? <p className="eg-loading">Loading chat...</p> : null}
+            {panelError.chat ? <p className="eg-loading">{panelError.chat}</p> : null}
             <div className="eg-ai-chat">
-              {(chatHistory.length ? chatHistory : [
-                { id: 'seed-1', role: 'assistant', text: `Hi ${greetingName}! What would you like to learn today?` }
-              ]).map((m) => (
+              {chatHistoryTop.map((m) => (
                 <div key={m.id || m.ts} className={`ai-msg ${m.role === 'user' ? 'user' : 'bot'}`}>
                   {m.text || m.message}
                 </div>
               ))}
+              {!panelLoading.chat && !chatHistoryTop.length ? <div className="ai-msg bot">No chat history yet. Ask your first question.</div> : null}
             </div>
             <div className="eg-ai-input-row">
               <input className="eg-ai-input" value={chatInput} onChange={(e) => setChatInput(e.target.value)} placeholder="Ask anything..." />
@@ -409,8 +645,10 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
 
           <article className="cardish eg-mini-card eg-grad-soft">
             <h4>Homework</h4>
+            {panelLoading.homework ? <p className="eg-loading">Loading homework...</p> : null}
+            {panelError.homework ? <p className="eg-loading">{panelError.homework}</p> : null}
             <ul className="mini-list">
-              {(homework.length ? homework : [{ id: 'h1', title: 'Math Homework' }, { id: 'h2', title: 'Science Homework' }, { id: 'h3', title: 'English Homework' }]).slice(0, 3).map((h) => (
+              {homeworkTop.slice(0, 3).map((h) => (
                 <li key={h.id} className="eg-list-with-action">
                   <span>{h.title || h.file_url || 'Homework Task'}</span>
                   <button className="eg-inline-btn" onClick={() => onSubmitHomework(h.id)} disabled={startingHomeworkId === h.id}>
@@ -418,18 +656,31 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
                   </button>
                 </li>
               ))}
+              {!panelLoading.homework && !homeworkTop.length ? <li>No homework assigned.</li> : null}
             </ul>
             {homeworkInfo ? <p className="eg-inline-note">{homeworkInfo}</p> : null}
           </article>
 
           <article className="cardish eg-mini-card eg-grad-soft">
+            <h4>Announcements</h4>
+            {panelLoading.dashboard ? <p className="eg-loading">Loading announcements...</p> : null}
+            {panelError.dashboard ? <p className="eg-loading">{panelError.dashboard}</p> : null}
+            <ul className="mini-list bullets">
+              {announcementsTop.map((a) => (
+                <li key={a.id || `${a.title}-${a.createdAt}`}>
+                  <strong>{a.title || 'Announcement'}:</strong> {a.message || 'No details'}
+                </li>
+              ))}
+              {!panelLoading.dashboard && !announcementsTop.length ? <li>No announcements yet.</li> : null}
+            </ul>
+          </article>
+
+          <article className="cardish eg-mini-card eg-grad-soft">
             <h4>Mock Tests</h4>
+            {panelLoading.tests ? <p className="eg-loading">Loading tests...</p> : null}
+            {panelError.tests ? <p className="eg-loading">{panelError.tests}</p> : null}
             <ul className="mini-list">
-              {(tests.length ? tests : [
-                { id: 'test-1', title: 'Math Chapter Test' },
-                { id: 'test-2', title: 'Science Weekly Test' },
-                { id: 'test-3', title: 'English Grammar Test' }
-              ]).map((t) => (
+              {testsTop.map((t) => (
                 <li key={t.id} className="eg-list-with-action">
                   <span>{t.title || t.name || 'Mock Test'}</span>
                   <button className="eg-inline-btn" onClick={() => onStartTest(t.id)} disabled={startingTestId === t.id}>
@@ -437,13 +688,16 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
                   </button>
                 </li>
               ))}
+              {!panelLoading.tests && !testsTop.length ? <li>No tests available.</li> : null}
             </ul>
             {testResult ? <p className="eg-inline-note">Last score: {String(testResult.score)} | {testResult.feedback}</p> : null}
           </article>
 
           <article className="cardish eg-mini-card eg-progress-card eg-grad-progress">
             <h4>Progress Dashboard</h4>
-            <Sparkline values={trend} />
+            {panelLoading.progress ? <p className="eg-loading">Loading progress...</p> : null}
+            {panelError.progress ? <p className="eg-loading">{panelError.progress}</p> : null}
+            {trend.length > 1 ? <Sparkline values={trend} /> : <p className="eg-loading">Not enough points for trend chart.</p>}
             <div className="eg-bars">
               {progressSummary.map((s) => (
                 <div key={s.subject} className="bar-row">
@@ -457,33 +711,63 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
 
           <article className="cardish eg-mini-card eg-grad-soft">
             <h4>Extra Highlights</h4>
+            {panelLoading.library ? <p className="eg-loading">Loading library...</p> : null}
+            {panelError.library ? <p className="eg-loading">{panelError.library}</p> : null}
             <ul className="mini-list bullets">
-              {(library.length
-                ? library.map((r) => ({ id: r.id, label: `📚 ${r.title || r.summary || 'Learning resource'}` }))
-                : ['🎤 AI Voice Conversations', '📖 Story Based Learning', '⏰ Smart Reminders', '🧠 Personalized Study Plan', '🛡 Safe & Child Friendly']
-              ).map((x) => (
-                <li key={typeof x === 'string' ? x : x.id}>
-                  {typeof x === 'string' ? x : <button className="eg-link-btn" onClick={() => onOpenResource(x.id)}>{x.label}</button>}
+              {libraryTop.map((r) => (
+                <li key={r.id}>
+                  <button className="eg-link-btn" onClick={() => onOpenResource(r.id)}>📚 {r.title || r.summary || 'Learning resource'}</button>
                 </li>
               ))}
+              {!panelLoading.library && !libraryTop.length ? <li>No resources available.</li> : null}
             </ul>
             {selectedResource ? <p className="eg-inline-note">Opened: {selectedResource.title || 'Resource'}</p> : null}
           </article>
 
           <article className="cardish eg-mini-card eg-grad-soft">
             <h4>Calendar</h4>
+            {panelLoading.calendar ? <p className="eg-loading">Loading calendar...</p> : null}
+            {panelError.calendar ? <p className="eg-loading">{panelError.calendar}</p> : null}
             <ul className="mini-list">
-              {(events.length ? events : [{ id: 'e1', title: 'Math Test', starts_at: new Date() }, { id: 'e2', title: 'Science Homework Due', starts_at: new Date(Date.now() + 86400000) }]).map((e) => (
+              {eventsTop.map((e) => (
                 <li key={e.id}>{e.title || e.event_type || 'Study Session'} - {fmtDate(e.starts_at || e.start || e.created_at)}</li>
               ))}
+              {!panelLoading.calendar && !eventsTop.length ? <li>No events scheduled.</li> : null}
             </ul>
+            <form className="eg-inline-form" onSubmit={onAddCalendarEvent}>
+              <input
+                className="eg-inline-input"
+                value={newEventTitle}
+                onChange={(e) => setNewEventTitle(e.target.value)}
+                placeholder="Event title"
+                required
+              />
+              <input
+                className="eg-inline-input"
+                type="date"
+                value={newEventDate}
+                onChange={(e) => setNewEventDate(e.target.value)}
+                required
+              />
+              <button className="eg-inline-btn" type="submit" disabled={calendarAdding}>
+                {calendarAdding ? 'Adding...' : 'Add Event'}
+              </button>
+            </form>
+            {calendarNote ? <p className="eg-inline-note">{calendarNote}</p> : null}
           </article>
 
           <article className="cardish eg-mini-card eg-grad-soft">
             <h4>Rewards</h4>
+            {panelLoading.rewards ? <p className="eg-loading">Loading rewards...</p> : null}
+            {panelError.rewards ? <p className="eg-loading">{panelError.rewards}</p> : null}
             <p className="eg-reward-big">{coins} Coins</p>
             <p>{badges} badges earned</p>
-            <button className="eg-mini-btn">View Rewards</button>
+            <div className="eg-inline-actions">
+              <button className="eg-mini-btn" onClick={onEarnReward} disabled={rewardsEarning}>
+                {rewardsEarning ? 'Earning...' : 'Check-in (+10 coins)'}
+              </button>
+            </div>
+            {rewardsNote ? <p className="eg-inline-note">{rewardsNote}</p> : null}
           </article>
 
           <article className="cardish eg-mini-card eg-voice-card eg-grad-voice">
@@ -495,6 +779,8 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
 
           <article className="cardish eg-mini-card eg-grad-soft">
             <h4>Settings</h4>
+            {panelLoading.settings ? <p className="eg-loading">Loading settings...</p> : null}
+            {panelError.settings ? <p className="eg-loading">{panelError.settings}</p> : null}
             <ul className="mini-list">
               <li>⚙️ Account Settings</li>
               <li>🔒 Privacy & Security</li>
@@ -510,8 +796,8 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
 
           <article className="cardish eg-mini-card eg-grad-soft">
             <h4>Profile</h4>
-            <p>{greetingName} Sharma</p>
-            <p>Class 8 - Student</p>
+            <p>{greetingName}</p>
+            <p>Student</p>
             <button className="eg-mini-btn danger" onClick={onLogout}>Logout</button>
           </article>
         </section>

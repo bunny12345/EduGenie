@@ -1,12 +1,16 @@
 import { Controller, Get, Query, UseGuards, Req } from '@nestjs/common';
 import { SupabaseService } from '../supabase.service';
 import { AuthGuard } from '../auth/auth.guard';
+import { LocalFeedService } from '../shared/local-feed.service';
 
 @Controller('dashboard')
 export class DashboardController {
   private static cache = new Map<string, { expiresAt: number; value: any }>();
 
-  constructor(private readonly db: SupabaseService) {}
+  constructor(
+    private readonly db: SupabaseService,
+    private readonly localFeed: LocalFeedService
+  ) {}
 
   @Get()
   @UseGuards(AuthGuard)
@@ -23,7 +27,10 @@ export class DashboardController {
 
       const hw = await this.db.client.from('homework').select('*').eq('student_id', id).order('due_at', { ascending: true }).limit(8);
       const homeworkRows = (hw && (hw as any).data) || [];
-      const todayPlan = (Array.isArray(homeworkRows) ? homeworkRows : []).slice(0, 6).map((h: any) => ({
+      const mergedHomeworkRows = Array.isArray(homeworkRows) && homeworkRows.length
+        ? homeworkRows
+        : this.localFeed.listHomeworkForStudent(id);
+      const todayPlan = (Array.isArray(mergedHomeworkRows) ? mergedHomeworkRows : []).slice(0, 6).map((h: any) => ({
         type: 'homework',
         title: h.title || h.file_url || 'Homework task',
         dueAt: h.due_at || h.created_at || null,
@@ -58,18 +65,42 @@ export class DashboardController {
         reason: m.value || 'Recommended from your learning pattern'
       }));
 
-      const response = {
+      const ann = await this.db.client
+        .from('announcements')
+        .select('*')
+        .in('audience', ['students', 'all'])
+        .order('created_at', { ascending: false })
+        .limit(8);
+      const announcementRows = (ann && (ann as any).data) || [];
+      const announcements = (Array.isArray(announcementRows) ? announcementRows : []).map((a: any) => ({
+        id: a.id,
+        title: a.title || 'Announcement',
+        message: a.message || '',
+        audience: a.audience || 'students',
+        createdAt: a.created_at || null
+      }));
+      const mergedAnnouncements = announcements.length ? announcements : this.localFeed.listAnnouncements();
+
+      const dashboard = {
         greetingName: student?.name || null,
         todayPlan,
         subjects,
         streak: { days: 0 },
-        recommendations
+        recommendations,
+        announcements: mergedAnnouncements
       };
 
-      DashboardController.cache.set(cacheKey, { expiresAt: now + 30_000, value: response });
+      const response = {
+        success: true,
+        dashboard,
+        ...dashboard
+      };
+
+      DashboardController.cache.set(cacheKey, { expiresAt: now + 10_000, value: response });
       return response;
     } catch (e) {
-      return { greetingName: null, todayPlan: [], subjects: [], streak: { days: 0 }, recommendations: [] };
+      const dashboard = { greetingName: null, todayPlan: [], subjects: [], streak: { days: 0 }, recommendations: [], announcements: [] };
+      return { success: false, error: String((e as any)?.message || e || 'dashboard failed'), dashboard, ...dashboard };
     }
   }
 }

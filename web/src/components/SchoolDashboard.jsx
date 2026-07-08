@@ -28,6 +28,8 @@ function shortDate(value) {
 }
 
 export default function SchoolDashboard({ session, onLogout }) {
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
   const [teacherName, setTeacherName] = useState('');
   const [teacherEmail, setTeacherEmail] = useState('');
   const [teacherSubject, setTeacherSubject] = useState('Mathematics');
@@ -41,37 +43,99 @@ export default function SchoolDashboard({ session, onLogout }) {
   const [teachers, setTeachers] = useState([]);
   const [invites, setInvites] = useState([]);
   const [students, setStudents] = useState([]);
+  const [inviteSearch, setInviteSearch] = useState('');
+  const [inviteStatusFilter, setInviteStatusFilter] = useState('all');
+  const [invitePage, setInvitePage] = useState(1);
+  const [inviteTotalPages, setInviteTotalPages] = useState(1);
+  const [teacherSearch, setTeacherSearch] = useState('');
+  const [teacherPage, setTeacherPage] = useState(1);
+  const [teacherTotalPages, setTeacherTotalPages] = useState(1);
+  const [studentSearch, setStudentSearch] = useState('');
+  const [studentPage, setStudentPage] = useState(1);
+  const [studentTotalPages, setStudentTotalPages] = useState(1);
 
-  function applyInvites(nextInvites) {
+  const INVITES_PER_PAGE = 5;
+  const TEACHERS_PER_PAGE = 6;
+  const STUDENTS_PER_PAGE = 6;
+
+  function applyInvites(nextInvites, pagination) {
     const safeInvites = Array.isArray(nextInvites) ? nextInvites : [];
     setInvites(safeInvites);
-    const activeInvites = safeInvites.filter((i) => inviteStatusLabel(i) === 'active').length;
-    setDashboard((prev) => ({
-      ...prev,
-      summary: {
-        ...(prev?.summary || {}),
-        activeInvites
-      }
-    }));
+    setInviteTotalPages(Math.max(1, Number(pagination?.totalPages || 1)));
+  }
+
+  function applyTeachers(nextTeachers, pagination) {
+    const safeTeachers = Array.isArray(nextTeachers) ? nextTeachers : [];
+    setTeachers(safeTeachers);
+    setTeacherTotalPages(Math.max(1, Number(pagination?.totalPages || 1)));
+  }
+
+  function applyStudents(nextStudents, pagination) {
+    const safeStudents = Array.isArray(nextStudents) ? nextStudents : [];
+    setStudents(safeStudents);
+    setStudentTotalPages(Math.max(1, Number(pagination?.totalPages || 1)));
+  }
+
+  useEffect(() => {
+    if (invitePage > inviteTotalPages) {
+      setInvitePage(inviteTotalPages);
+    }
+  }, [invitePage, inviteTotalPages]);
+
+  useEffect(() => {
+    if (teacherPage > teacherTotalPages) {
+      setTeacherPage(teacherTotalPages);
+    }
+  }, [teacherPage, teacherTotalPages]);
+
+  useEffect(() => {
+    if (studentPage > studentTotalPages) {
+      setStudentPage(studentTotalPages);
+    }
+  }, [studentPage, studentTotalPages]);
+
+  async function loadInvites(params) {
+    const iRes = await schoolInvites(params || {
+      q: inviteSearch,
+      status: inviteStatusFilter,
+      page: invitePage,
+      limit: INVITES_PER_PAGE
+    });
+    applyInvites(Array.isArray(iRes?.invites) ? iRes.invites : [], iRes?.pagination || null);
+  }
+
+  async function loadTeachers(params) {
+    const tRes = await schoolTeachers(params || {
+      q: teacherSearch,
+      page: teacherPage,
+      limit: TEACHERS_PER_PAGE
+    });
+    applyTeachers(Array.isArray(tRes?.teachers) ? tRes.teachers : [], tRes?.pagination || null);
   }
 
   useEffect(() => {
     let active = true;
     async function load() {
+      setLoading(true);
+      setError('');
       try {
         const [dashRes, tRes, iRes, sRes] = await Promise.all([
           schoolDashboard(),
-          schoolTeachers(),
-          schoolInvites(),
-          schoolStudents()
+          schoolTeachers({ page: 1, limit: TEACHERS_PER_PAGE }),
+          schoolInvites({ page: 1, limit: INVITES_PER_PAGE }),
+          schoolStudents({ page: 1, limit: STUDENTS_PER_PAGE })
         ]);
         if (!active) return;
         setDashboard(dashRes || { summary: { teachers: 0, students: 0, activeInvites: 0 } });
-        setTeachers(Array.isArray(tRes?.teachers) ? tRes.teachers : []);
-        applyInvites(Array.isArray(iRes?.invites) ? iRes.invites : []);
-        setStudents(Array.isArray(sRes?.students) ? sRes.students : []);
+        applyTeachers(Array.isArray(tRes?.teachers) ? tRes.teachers : [], tRes?.pagination || null);
+        applyInvites(Array.isArray(iRes?.invites) ? iRes.invites : [], iRes?.pagination || null);
+        applyStudents(Array.isArray(sRes?.students) ? sRes.students : [], sRes?.pagination || null);
       } catch (e) {
         if (!active) return;
+        setError(e?.message || 'Failed to load school dashboard data');
+      } finally {
+        if (!active) return;
+        setLoading(false);
       }
     }
     load();
@@ -79,6 +143,73 @@ export default function SchoolDashboard({ session, onLogout }) {
       active = false;
     };
   }, []);
+
+  useEffect(() => {
+    let active = true;
+    async function refreshInvites() {
+      try {
+        const iRes = await schoolInvites({
+          q: inviteSearch,
+          status: inviteStatusFilter,
+          page: invitePage,
+          limit: INVITES_PER_PAGE
+        });
+        if (!active) return;
+        applyInvites(Array.isArray(iRes?.invites) ? iRes.invites : [], iRes?.pagination || null);
+      } catch (e) {
+        if (!active) return;
+        setError(e?.message || 'Failed to refresh invites');
+      }
+    }
+    refreshInvites();
+    return () => {
+      active = false;
+    };
+  }, [inviteSearch, inviteStatusFilter, invitePage]);
+
+  useEffect(() => {
+    let active = true;
+    async function refreshTeachers() {
+      try {
+        const tRes = await schoolTeachers({
+          q: teacherSearch,
+          page: teacherPage,
+          limit: TEACHERS_PER_PAGE
+        });
+        if (!active) return;
+        applyTeachers(Array.isArray(tRes?.teachers) ? tRes.teachers : [], tRes?.pagination || null);
+      } catch (e) {
+        if (!active) return;
+        setError(e?.message || 'Failed to refresh teachers');
+      }
+    }
+    refreshTeachers();
+    return () => {
+      active = false;
+    };
+  }, [teacherSearch, teacherPage]);
+
+  useEffect(() => {
+    let active = true;
+    async function refreshStudents() {
+      try {
+        const sRes = await schoolStudents({
+          q: studentSearch,
+          page: studentPage,
+          limit: STUDENTS_PER_PAGE
+        });
+        if (!active) return;
+        applyStudents(Array.isArray(sRes?.students) ? sRes.students : [], sRes?.pagination || null);
+      } catch (e) {
+        if (!active) return;
+        setError(e?.message || 'Failed to refresh students');
+      }
+    }
+    refreshStudents();
+    return () => {
+      active = false;
+    };
+  }, [studentSearch, studentPage]);
 
   async function onRegisterTeacher(e) {
     e.preventDefault();
@@ -112,6 +243,8 @@ export default function SchoolDashboard({ session, onLogout }) {
           teachers: Number(prev?.summary?.teachers || 0) + 1
         }
       }));
+      await loadTeachers({ q: teacherSearch, page: 1, limit: TEACHERS_PER_PAGE });
+      setTeacherPage(1);
       setTeacherName('');
       setTeacherEmail('');
       setTeacherLoginId('');
@@ -134,10 +267,8 @@ export default function SchoolDashboard({ session, onLogout }) {
         return;
       }
       setInviteLink(res?.invite?.link || '');
-      if (res?.invite) {
-        const next = [{ ...res.invite, status: 'active' }, ...invites];
-        applyInvites(next);
-      }
+      await loadInvites({ q: inviteSearch, status: inviteStatusFilter, page: 1, limit: INVITES_PER_PAGE });
+      setInvitePage(1);
       setNote('Teacher invite link generated. Share this link with teacher.');
     } catch (e2) {
       setNote('Unable to create invite link right now.');
@@ -156,8 +287,7 @@ export default function SchoolDashboard({ session, onLogout }) {
         setNote(res?.error || 'Could not revoke invite.');
         return;
       }
-      const next = invites.map((inv) => (inv.token === token ? { ...inv, revoked: true, status: 'revoked' } : inv));
-      applyInvites(next);
+      await loadInvites();
       setNote('Invite revoked. The old link can no longer be used.');
     } catch (e) {
       setNote('Unable to revoke invite right now.');
@@ -176,8 +306,8 @@ export default function SchoolDashboard({ session, onLogout }) {
         setNote(res?.error || 'Could not resend invite.');
         return;
       }
-      const next = [{ ...res.invite, status: 'active' }, ...invites.map((inv) => (inv.token === token ? { ...inv, revoked: true, status: 'revoked' } : inv))];
-      applyInvites(next);
+      await loadInvites({ q: inviteSearch, status: inviteStatusFilter, page: 1, limit: INVITES_PER_PAGE });
+      setInvitePage(1);
       setInviteLink(res.invite.link || '');
       setNote('New invite generated. Previous link was revoked.');
     } catch (e) {
@@ -197,6 +327,9 @@ export default function SchoolDashboard({ session, onLogout }) {
         </div>
         <button className="sd-logout" onClick={onLogout}>Logout</button>
       </header>
+
+      {loading ? <p className="sd-note">Loading school data...</p> : null}
+      {error ? <p className="sd-note">{error}</p> : null}
 
       <section className="sd-grid">
         <article className="sd-card">
@@ -244,18 +377,73 @@ export default function SchoolDashboard({ session, onLogout }) {
 
         <article className="sd-card">
           <h3>Teachers</h3>
+          <div className="invite-toolbar">
+            <input
+              className="invite-search"
+              value={teacherSearch}
+              onChange={(e) => {
+                setTeacherSearch(e.target.value);
+                setTeacherPage(1);
+              }}
+              placeholder="Search teachers by name/email/subject"
+            />
+          </div>
           <ul className="sd-list">
-            {(teachers.length ? teachers : []).slice(0, 8).map((t) => (
+            {(teachers.length ? teachers : []).map((t) => (
               <li key={t.id || t.loginId}>{t.name || 'Teacher'} - {t.subject || 'General'}</li>
             ))}
-            {!teachers.length ? <li>No teachers yet</li> : null}
+            {!teachers.length ? <li>No teachers match the current search.</li> : null}
           </ul>
+          <div className="invite-pager">
+            <button
+              type="button"
+              className="sd-inline-btn"
+              onClick={() => setTeacherPage((p) => Math.max(1, p - 1))}
+              disabled={teacherPage === 1}
+            >
+              Previous
+            </button>
+            <span>Page {teacherPage} of {teacherTotalPages}</span>
+            <button
+              type="button"
+              className="sd-inline-btn"
+              onClick={() => setTeacherPage((p) => Math.min(teacherTotalPages, p + 1))}
+              disabled={teacherPage >= teacherTotalPages}
+            >
+              Next
+            </button>
+          </div>
         </article>
 
         <article className="sd-card">
           <h3>Recent Teacher Invites</h3>
+          <div className="invite-toolbar">
+            <input
+              className="invite-search"
+              value={inviteSearch}
+              onChange={(e) => {
+                setInviteSearch(e.target.value);
+                setInvitePage(1);
+              }}
+              placeholder="Search by token or role"
+            />
+            <select
+              className="invite-filter"
+              value={inviteStatusFilter}
+              onChange={(e) => {
+                setInviteStatusFilter(e.target.value);
+                setInvitePage(1);
+              }}
+            >
+              <option value="all">All statuses</option>
+              <option value="active">Active</option>
+              <option value="used">Used</option>
+              <option value="revoked">Revoked</option>
+              <option value="expired">Expired</option>
+            </select>
+          </div>
           <ul className="sd-invite-list">
-            {(invites.length ? invites : []).slice(0, 8).map((i) => (
+            {(invites.length ? invites : []).map((i) => (
               <li key={i.token}>
                 <div className="sd-invite-row">
                   <div>
@@ -284,18 +472,67 @@ export default function SchoolDashboard({ session, onLogout }) {
                 </div>
               </li>
             ))}
-            {!invites.length ? <li>No invites yet</li> : null}
+            {!invites.length ? <li>No invites match the current filters.</li> : null}
           </ul>
+          <div className="invite-pager">
+            <button
+              type="button"
+              className="sd-inline-btn"
+              onClick={() => setInvitePage((p) => Math.max(1, p - 1))}
+              disabled={invitePage === 1}
+            >
+              Previous
+            </button>
+            <span>Page {invitePage} of {inviteTotalPages}</span>
+            <button
+              type="button"
+              className="sd-inline-btn"
+              onClick={() => setInvitePage((p) => Math.min(inviteTotalPages, p + 1))}
+              disabled={invitePage >= inviteTotalPages}
+            >
+              Next
+            </button>
+          </div>
         </article>
 
         <article className="sd-card">
           <h3>Students (School-wide)</h3>
+          <div className="invite-toolbar">
+            <input
+              className="invite-search"
+              value={studentSearch}
+              onChange={(e) => {
+                setStudentSearch(e.target.value);
+                setStudentPage(1);
+              }}
+              placeholder="Search students by name/class"
+            />
+          </div>
           <ul className="sd-list">
-            {(students.length ? students : []).slice(0, 8).map((s) => (
+            {(students.length ? students : []).map((s) => (
               <li key={s.id}>{s.name || 'Student'} - {s.className || 'Class'}</li>
             ))}
-            {!students.length ? <li>No students yet</li> : null}
+            {!students.length ? <li>No students match the current search.</li> : null}
           </ul>
+          <div className="invite-pager">
+            <button
+              type="button"
+              className="sd-inline-btn"
+              onClick={() => setStudentPage((p) => Math.max(1, p - 1))}
+              disabled={studentPage === 1}
+            >
+              Previous
+            </button>
+            <span>Page {studentPage} of {studentTotalPages}</span>
+            <button
+              type="button"
+              className="sd-inline-btn"
+              onClick={() => setStudentPage((p) => Math.min(studentTotalPages, p + 1))}
+              disabled={studentPage >= studentTotalPages}
+            >
+              Next
+            </button>
+          </div>
         </article>
       </section>
 
