@@ -8,10 +8,18 @@ export class CalendarController {
 
   @Get()
   @UseGuards(AuthGuard)
-  async list(@Req() req: any, @Query('studentId') studentId: string) {
+  async list(
+    @Req() req: any,
+    @Query('studentId') studentId: string,
+    @Query('rangeStart') rangeStart?: string,
+    @Query('rangeEnd') rangeEnd?: string
+  ) {
     const id = req.studentId || studentId;
     try {
-      const res = await this.db.client.from('events').select('*').eq('student_id', id).order('start', { ascending: true });
+      let q = this.db.client.from('events').select('*').eq('student_id', id);
+      if (rangeStart) q = q.gte('start', rangeStart);
+      if (rangeEnd) q = q.lte('start', rangeEnd);
+      const res = await q.order('start', { ascending: true });
       return { events: (res && (res as any).data) || [] };
     } catch (e) {
       return { events: [] };
@@ -22,7 +30,14 @@ export class CalendarController {
   @UseGuards(AuthGuard)
   async create(@Req() req: any, @Body() payload: any) {
     try {
-      const toInsert = { ...payload, student_id: payload.student_id || req.studentId };
+      const toInsert = {
+        student_id: payload.studentId || payload.student_id || req.studentId,
+        title: payload.title,
+        start: payload.start,
+        end: payload.end,
+        type: payload.type || 'event',
+        metadata: payload.metadata || null
+      };
       const res = await this.db.client.from('events').insert([toInsert]).select();
       return { success: true, event: (res && (res as any).data && (res as any).data[0]) || payload };
     } catch (e) {

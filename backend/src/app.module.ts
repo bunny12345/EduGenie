@@ -8,8 +8,12 @@ import { CalendarController } from './controllers/calendar.controller';
 import { RewardsController } from './controllers/rewards.controller';
 import { LibraryController } from './controllers/library.controller';
 import { SettingsController } from './controllers/settings.controller';
+import { TeacherController } from './controllers/teacher.controller';
+import { AuthController } from './controllers/auth.controller';
+import { SchoolController } from './controllers/school.controller';
 import { SupabaseService } from './supabase.service';
 import { AuthGuard } from './auth/auth.guard';
+import { StudentAuthService } from './auth/student-auth.service';
 
 @Module({
   imports: [ChatModule],
@@ -21,8 +25,11 @@ import { AuthGuard } from './auth/auth.guard';
     CalendarController,
     RewardsController,
     LibraryController,
-    SettingsController
+    SettingsController,
+    TeacherController,
+    AuthController,
+    SchoolController
   ],
-  providers: [SupabaseService, AuthGuard]
+  providers: [SupabaseService, AuthGuard, StudentAuthService]
 })
 export class AppModule {}

@@ -8,11 +8,19 @@ export class ChatController {
 
   @Post()
   @UseGuards(AuthGuard)
-  async chat(@Req() req: any, @Body() payload: { studentId?: string; message: string }) {
-    const { message } = payload;
+  async chat(@Req() req: any, @Body() payload: { studentId?: string; message: string; personality?: string; conversationId?: string }) {
+    const { message, personality, conversationId } = payload;
     const studentId = req.studentId || payload.studentId || 'anon';
-    const response = await this.chatService.handleMessage(studentId, message);
-    return { reply: response };
+    const response = await this.chatService.handleMessage(studentId, message, { personality, conversationId });
+    return response;
+  }
+
+  @Get('history')
+  @UseGuards(AuthGuard)
+  async history(@Req() req: any, @Query('studentId') studentId?: string, @Query('conversationId') conversationId?: string) {
+    const id = req.studentId || studentId || 'anon';
+    const messages = await this.chatService.getHistory(id, conversationId);
+    return { messages };
   }
 
   @Get('seed')

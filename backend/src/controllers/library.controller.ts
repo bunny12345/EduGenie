@@ -8,11 +8,30 @@ export class LibraryController {
 
   @Get()
   @UseGuards(AuthGuard)
-  async search(@Req() req: any, @Query('topic') topic: string, @Query('level') level: string) {
+  async search(
+    @Req() req: any,
+    @Query('topic') topic: string,
+    @Query('level') level: string,
+    @Query('page') page: string
+  ) {
     try {
-      const q = this.db.client.from('resources').select('*');
-      const res = await q;
-      return { resources: (res && (res as any).data) || [] };
+      const p = Math.max(parseInt(page || '1', 10), 1);
+      const pageSize = 20;
+      const from = (p - 1) * pageSize;
+      const to = from + pageSize - 1;
+
+      let q = this.db.client.from('resources').select('*');
+      if (topic) q = q.ilike('topic', `%${topic}%`);
+      if (level) q = q.eq('level', level);
+      const res = await q.range(from, to);
+      const resources = ((res && (res as any).data) || []).map((r: any) => ({
+        id: r.id,
+        title: r.title,
+        type: r.type,
+        url: r.url,
+        summary: r.summary || ''
+      }));
+      return { resources };
     } catch (e) {
       return { resources: [] };
     }
@@ -22,9 +41,10 @@ export class LibraryController {
   async get(@Param('id') id: string) {
     try {
       const res = await this.db.client.from('resources').select('*').eq('id', id).limit(1);
-      return (res && (res as any).data && (res as any).data[0]) || { id, title: 'Resource', type: 'article', url: '' };
+      const row = (res && (res as any).data && (res as any).data[0]) || { id, title: 'Resource', type: 'article', url: '', summary: '' };
+      return { resource: row };
     } catch (e) {
-      return { id, title: 'Resource', type: 'article', url: '' };
+      return { resource: { id, title: 'Resource', type: 'article', url: '', summary: '' } };
     }
   }
 }

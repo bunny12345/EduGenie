@@ -21,7 +21,7 @@ export default function Chat({ studentId = 'test' }) {
     setTyping(true);
     try {
       const res = await sendChat(studentId, txt);
-      const raw = res && (res.reply || res.answer || res.data) || null;
+      const raw = (res && (res.reply || res.answer || res.data)) || null;
       let assistantText = 'No reply';
       if (typeof raw === 'string') assistantText = raw;
       else if (raw && typeof raw.text === 'string') assistantText = raw.text;

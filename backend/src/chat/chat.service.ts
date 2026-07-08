@@ -23,7 +23,11 @@ export class ChatService {
     private readonly embeddings: EmbeddingsService
   ) {}
 
-  async handleMessage(studentId: string, message: string) {
+  async handleMessage(
+    studentId: string,
+    message: string,
+    opts?: { personality?: string; conversationId?: string }
+  ) {
     // compute embedding
     const emb = await this.embeddings.embed(message);
 
@@ -79,7 +83,8 @@ export class ChatService {
     if (!memoryPrompt) memoryPrompt = `Student ${studentId} memory: [none].`;
 
     const nameLine = studentName ? `StudentName: ${studentName}` : '';
-    const prompt = `${nameLine}\n${memoryPrompt}\nStudent asks: ${message}\nTeacher reply:`;
+    const personalityLine = opts?.personality ? `Personality: ${opts.personality}` : '';
+    const prompt = `${personalityLine}\n${nameLine}\n${memoryPrompt}\nStudent asks: ${message}\nTeacher reply:`;
     const reply = await this.llm.query(prompt);
 
     // store reply
@@ -87,7 +92,39 @@ export class ChatService {
       await this.db.client.from('messages').insert([{ student_id: studentId, message: reply, role: 'ai', embedding: await this.embeddings.embed(reply) }]);
     } catch (e) {}
 
-    return reply;
+    const followups = this.buildFollowups(message);
+    return {
+      reply,
+      followups,
+      conversationId: opts?.conversationId || `conv-${studentId}`
+    };
+  }
+
+  private buildFollowups(message: string): string[] {
+    const text = (message || '').toLowerCase();
+    if (text.includes('fraction')) return ['Can you show a pizza example?', 'Give me 3 practice questions', 'Explain like I am 10'];
+    if (text.includes('algebra')) return ['Start with one easy equation', 'How to isolate x?', 'Give a word problem'];
+    return ['Give me a quick summary', 'Ask me a quiz question', 'What should I learn next?'];
+  }
+
+  async getHistory(studentId: string, conversationId?: string) {
+    try {
+      const q = this.db.client.from('messages').select('*').eq('student_id', studentId).order('created_at', { ascending: true }).limit(200);
+      const res = await q;
+      const rows = (res && res.data) || (Array.isArray(res) ? res : []);
+      const filtered = Array.isArray(rows)
+        ? rows.filter((r: any) => (conversationId ? (r.conversation_id || `conv-${studentId}`) === conversationId : true))
+        : [];
+
+      return filtered.map((r: any) => ({
+        id: r.id,
+        role: r.role || 'user',
+        text: r.message || '',
+        ts: r.created_at || new Date().toISOString()
+      }));
+    } catch (e) {
+      return [];
+    }
   }
 
   async createTestStudent() {

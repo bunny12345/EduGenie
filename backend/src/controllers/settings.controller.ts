@@ -12,9 +12,10 @@ export class SettingsController {
     const id = req.studentId || studentId;
     try {
       const res = await this.db.client.from('settings').select('*').eq('student_id', id).limit(1);
-      return (res && (res as any).data && (res as any).data[0]) || { prefs: {} };
+      const row = (res && (res as any).data && (res as any).data[0]) || null;
+      return { studentId: id, prefs: row?.prefs || row || {} };
     } catch (e) {
-      return { prefs: {} };
+      return { studentId: id, prefs: {} };
     }
   }
 
@@ -22,13 +23,19 @@ export class SettingsController {
   @UseGuards(AuthGuard)
   async saveSettings(@Req() req: any, @Body() body: any) {
     try {
-      const payload = { ...body, student_id: body.student_id || req.studentId };
+      const payload = {
+        ...body,
+        student_id: body.studentId || body.student_id || req.studentId,
+        prefs: body.prefs || body.preferences || body.prefs || {}
+      };
       if (payload.id) {
         const upd = await this.db.client.from('settings').update(payload).eq('id', payload.id).select();
-        return { success: true, saved: (upd && (upd as any).data && (upd as any).data[0]) || payload };
+        const saved = (upd && (upd as any).data && (upd as any).data[0]) || payload;
+        return { success: true, settings: { studentId: saved.student_id, prefs: saved.prefs || {} } };
       }
       const ins = await this.db.client.from('settings').insert([payload]).select();
-      return { success: true, saved: (ins && (ins as any).data && (ins as any).data[0]) || payload };
+      const saved = (ins && (ins as any).data && (ins as any).data[0]) || payload;
+      return { success: true, settings: { studentId: saved.student_id, prefs: saved.prefs || {} } };
     } catch (e) {
       return { success: false, error: String(e) };
     }
