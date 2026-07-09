@@ -59,8 +59,8 @@ if ! printf '%s' "$teacher_body" | grep -q '"success":true'; then
   exit 4
 fi
 
-if ! printf '%s' "$student_body" | grep -q '"success":true'; then
-  echo "FAIL: student response missing success=true"
+if ! printf '%s' "$student_body" | grep -q '"dashboard"'; then
+  echo "FAIL: student response missing dashboard payload"
   echo "$student_body"
   exit 5
 fi
