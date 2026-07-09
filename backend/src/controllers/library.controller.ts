@@ -1,10 +1,14 @@
 import { Controller, Get, Param, Query, UseGuards, Req } from '@nestjs/common';
 import { SupabaseService } from '../supabase.service';
 import { AuthGuard } from '../auth/auth.guard';
+import { LocalFeedService } from '../shared/local-feed.service';
 
 @Controller('library')
 export class LibraryController {
-  constructor(private readonly db: SupabaseService) {}
+  constructor(
+    private readonly db: SupabaseService,
+    private readonly localFeed: LocalFeedService
+  ) {}
 
   @Get()
   @UseGuards(AuthGuard)
@@ -38,12 +42,27 @@ export class LibraryController {
   }
 
   @Get(':id')
-  async get(@Param('id') id: string) {
+  @UseGuards(AuthGuard)
+  async get(@Req() req: any, @Param('id') id: string) {
     try {
       const res = await this.db.client.from('resources').select('*').eq('id', id).limit(1);
       const row = (res && (res as any).data && (res as any).data[0]) || { id, title: 'Resource', type: 'article', url: '', summary: '' };
+      this.localFeed.logStudentActivity(req.studentId, {
+        type: 'library',
+        action: 'opened',
+        title: row.title || 'Resource',
+        details: 'Opened library resource',
+        meta: { resourceId: id, resourceType: row.type || 'article' }
+      });
       return { success: true, resource: row };
     } catch (e) {
+      this.localFeed.logStudentActivity(req.studentId, {
+        type: 'library',
+        action: 'opened',
+        title: 'Resource',
+        details: 'Opened library resource',
+        meta: { resourceId: id }
+      });
       return { success: false, error: String((e as any)?.message || e || 'library get failed'), resource: { id, title: 'Resource', type: 'article', url: '', summary: '' } };
     }
   }

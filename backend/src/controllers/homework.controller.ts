@@ -77,6 +77,12 @@ export class HomeworkController {
       };
       const res = await this.db.client.from('homework_attempts').insert([attempt]).select();
       const row = (res && (res as any).data && (res as any).data[0]) || attempt;
+      this.localFeed.logStudentActivity(body.studentId || req.studentId, {
+        type: 'homework',
+        action: 'submitted',
+        title: `Homework ${id}`,
+        details: 'Submitted homework attempt'
+      });
       return { success: true, attemptId: row.id || null, grade: row.score ?? null };
     } catch (e) {
       return { success: false, attemptId: null, grade: null, error: String(e) };

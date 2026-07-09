@@ -9,6 +9,7 @@ How to apply
 2. Paste the contents of `rls_policies.sql` and run it as an admin (or use psql with a service role key).
    - Example psql:
      psql "$DATABASE_URL" -f rls_policies.sql
+3. For hierarchy-table policy verification, run `verify_auth_hierarchy_rls.sql` after migration and review policy/visibility outputs.
 
 Notes & best practices
 - Test policies in a staging DB before applying to production.

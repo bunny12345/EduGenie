@@ -121,6 +121,8 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
   const [chatInput, setChatInput] = useState('');
   const [chatLoading, setChatLoading] = useState(false);
   const [testResult, setTestResult] = useState(null);
+  const [activeTest, setActiveTest] = useState(null);
+  const [submittingTest, setSubmittingTest] = useState(false);
   const [homeworkInfo, setHomeworkInfo] = useState('');
   const [selectedResource, setSelectedResource] = useState(null);
   const [settingsSaving, setSettingsSaving] = useState(false);
@@ -323,37 +325,76 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
   async function onStartTest(testId) {
     if (!testId) return;
     setStartingTestId(testId);
+    setPanelErrorKey('tests', '');
     try {
       const started = await startTest(testId, studentId);
       const attemptId = started?.attemptId;
-      if (attemptId) {
-        const questionList = Array.isArray(started?.questions) ? started.questions : [];
-        const generatedAnswers = {};
-        questionList.forEach((q) => {
-          if (q?.id !== undefined && q?.id !== null) generatedAnswers[q.id] = 0;
-        });
-        const submitRes = await submitTestAttempt(attemptId, studentId, generatedAnswers);
-        const resultRes = await getTestAttempt(attemptId);
-        const result = resultRes?.result || null;
-        const score = result?.score ?? submitRes?.score ?? null;
-        if (score !== null) {
-          setTestResult({ score, feedback: result?.feedback || submitRes?.feedback || 'Submitted' });
-          // Record progress for this test attempt silently
-          const testItem = tests.find((t) => t.id === testId);
-          recordProgress({
-            studentId,
-            subject: testItem?.subject || testItem?.title || 'Test',
-            score: Number(score),
-            source: 'test'
-          }).catch(() => {});
-        }
+      if (!attemptId) {
+        throw new Error('Could not start this test.');
       }
+
+      const questionList = Array.isArray(started?.questions) ? started.questions : [];
+      const initialAnswers = {};
+      questionList.forEach((q) => {
+        if (q?.id !== undefined && q?.id !== null) initialAnswers[q.id] = -1;
+      });
+
+      const testItem = tests.find((t) => t.id === testId);
+      setActiveTest({
+        testId,
+        title: testItem?.title || 'Mock Test',
+        subject: testItem?.subject || 'General',
+        attemptId,
+        questions: questionList,
+        answers: initialAnswers
+      });
+      setTestResult(null);
       await loadTestsPanel();
-      await loadProgressPanel();
     } catch (e) {
       setPanelErrorKey('tests', e?.message || 'Test flow failed.');
     } finally {
       setStartingTestId('');
+    }
+  }
+
+  function onSelectTestAnswer(questionId, optionIdx) {
+    if (!activeTest || !questionId) return;
+    setActiveTest((prev) => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        answers: {
+          ...(prev.answers || {}),
+          [questionId]: optionIdx
+        }
+      };
+    });
+  }
+
+  async function onSubmitActiveTest() {
+    if (!activeTest?.attemptId) return;
+    setSubmittingTest(true);
+    setPanelErrorKey('tests', '');
+    try {
+      const submitRes = await submitTestAttempt(activeTest.attemptId, studentId, activeTest.answers || {});
+      const resultRes = await getTestAttempt(activeTest.attemptId);
+      const result = resultRes?.result || null;
+      const score = result?.score ?? submitRes?.score ?? null;
+      if (score !== null) {
+        setTestResult({ score, feedback: result?.feedback || submitRes?.feedback || 'Submitted' });
+        recordProgress({
+          studentId,
+          subject: activeTest.subject || activeTest.title || 'Test',
+          score: Number(score),
+          source: 'test'
+        }).catch(() => {});
+      }
+      setActiveTest(null);
+      await Promise.all([loadTestsPanel(), loadProgressPanel()]);
+    } catch (e) {
+      setPanelErrorKey('tests', e?.message || 'Unable to submit test.');
+    } finally {
+      setSubmittingTest(false);
     }
   }
 
@@ -679,11 +720,45 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
             <h4>Mock Tests</h4>
             {panelLoading.tests ? <p className="eg-loading">Loading tests...</p> : null}
             {panelError.tests ? <p className="eg-loading">{panelError.tests}</p> : null}
+            {activeTest ? (
+              <div className="eg-inline-form">
+                <p className="eg-inline-note">Attempting: {activeTest.title}</p>
+                {(activeTest.questions || []).map((q, qIdx) => (
+                  <div key={q.id || `q-${qIdx}`}>
+                    <p><strong>Q{qIdx + 1}.</strong> {q.text || 'Question'}</p>
+                    <div className="eg-role-list">
+                      {(Array.isArray(q.options) ? q.options : []).map((opt, optIdx) => {
+                        const selected = Number(activeTest.answers?.[q.id]) === optIdx;
+                        return (
+                          <button
+                            type="button"
+                            key={`${q.id || qIdx}-o-${optIdx}`}
+                            className="eg-inline-btn"
+                            style={{ opacity: selected ? 1 : 0.7 }}
+                            onClick={() => onSelectTestAnswer(q.id, optIdx)}
+                          >
+                            {selected ? 'Selected: ' : ''}{String(opt)}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ))}
+                <div className="eg-inline-actions">
+                  <button className="eg-mini-btn" onClick={onSubmitActiveTest} disabled={submittingTest}>
+                    {submittingTest ? 'Submitting...' : 'Submit Test'}
+                  </button>
+                  <button className="eg-mini-btn" onClick={() => setActiveTest(null)} disabled={submittingTest}>
+                    Cancel Attempt
+                  </button>
+                </div>
+              </div>
+            ) : null}
             <ul className="mini-list">
               {testsTop.map((t) => (
                 <li key={t.id} className="eg-list-with-action">
                   <span>{t.title || t.name || 'Mock Test'}</span>
-                  <button className="eg-inline-btn" onClick={() => onStartTest(t.id)} disabled={startingTestId === t.id}>
+                  <button className="eg-inline-btn" onClick={() => onStartTest(t.id)} disabled={startingTestId === t.id || !!activeTest}>
                     {startingTestId === t.id ? '...' : 'Start'}
                   </button>
                 </li>

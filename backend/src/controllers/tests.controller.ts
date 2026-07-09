@@ -371,6 +371,13 @@ export class TestsController {
         text: q.text || q.question || 'Question',
         options: q.options || []
       }));
+      this.localFeed.logStudentActivity(body.studentId || req.studentId, {
+        type: 'test',
+        action: 'started',
+        title: `Test ${testId}`,
+        details: `Started test with ${normalizedQuestions.length} question(s)`,
+        meta: { testId, attemptId: attemptRow.id || 'attempt-1' }
+      });
       return { success: true, attemptId: attemptRow.id || 'attempt-1', questions: normalizedQuestions };
     } catch (e) {
       return { success: false, error: String((e as any)?.message || e || 'test start failed'), attemptId: null, questions: [] };
@@ -430,6 +437,13 @@ export class TestsController {
           : 'Needs improvement. Revise and retry.';
       await this.db.client.from('test_attempts').update({ finished_at: new Date().toISOString(), score, feedback }).eq('id', attemptId);
       this.localFeed.finishAttempt(attemptId, { score, feedback, finished_at: new Date().toISOString() });
+      this.localFeed.logStudentActivity(body.studentId || req.studentId || attempt.student_id, {
+        type: 'test',
+        action: 'submitted',
+        title: `Test ${attempt.test_id}`,
+        details: `Submitted test attempt with score ${score}%`,
+        meta: { testId: attempt.test_id, attemptId, score }
+      });
       return { success: true, score, feedback, perQuestionFeedback };
     } catch (e) {
       return { success: false, error: String(e), score: 0, feedback: 'Submission failed', perQuestionFeedback: [] };

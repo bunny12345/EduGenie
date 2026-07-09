@@ -6,6 +6,32 @@ const useProxy = ['1', 'true', 'yes', 'on'].includes(String(process.env.REACT_AP
 const API_BASE = useProxy ? '' : (process.env.REACT_APP_API_URL || (process.env.REACT_APP_USE_MOCK ? 'http://localhost:4000' : 'http://localhost:3000'));
 let runtimeDevToken = '';
 
+function parseJwtPayload(token) {
+  try {
+    const raw = String(token || '').replace(/^Bearer\s+/i, '').trim();
+    if (!raw) return null;
+    const parts = raw.split('.');
+    if (parts.length < 2) return null;
+    const base64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');
+    const padded = base64 + '='.repeat((4 - (base64.length % 4 || 4)) % 4);
+    return JSON.parse(atob(padded));
+  } catch (e) {
+    return null;
+  }
+}
+
+function isJwtExpired(token) {
+  const payload = parseJwtPayload(token);
+  const exp = Number(payload?.exp || 0);
+  if (!exp) return false;
+  return Date.now() >= exp * 1000;
+}
+
+function notifyExpiredAuth() {
+  if (typeof window === 'undefined') return;
+  window.dispatchEvent(new CustomEvent('edugenie.authExpired'));
+}
+
 function withQuery(path, params = {}) {
   const q = new URLSearchParams();
   Object.entries(params || {}).forEach(([k, v]) => {
@@ -74,15 +100,23 @@ export async function acceptInvite(payload) {
 }
 
 async function authHeaders() {
+  const runtimeToken = String(runtimeDevToken || '').trim();
+  if (runtimeToken && !isJwtExpired(runtimeToken)) {
+    return { Authorization: `Bearer ${runtimeToken}`, 'Content-Type': 'application/json' };
+  }
+  if (runtimeToken && isJwtExpired(runtimeToken)) notifyExpiredAuth();
+
   try {
     const { data } = await supabase.auth.getSession();
     const token = data?.session?.access_token;
-    if (token) return { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' };
+    if (token && !isJwtExpired(token)) return { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' };
+    if (token && isJwtExpired(token)) notifyExpiredAuth();
   } catch (e) {
     // ignore
   }
-  const devToken = runtimeDevToken || process.env.REACT_APP_DEV_TOKEN || '';
-  if (devToken) return { Authorization: `Bearer ${devToken}`, 'Content-Type': 'application/json' };
+  const devToken = String(process.env.REACT_APP_DEV_TOKEN || '').trim();
+  if (devToken && !isJwtExpired(devToken)) return { Authorization: `Bearer ${devToken}`, 'Content-Type': 'application/json' };
+  if (devToken && isJwtExpired(devToken)) notifyExpiredAuth();
   return { 'Content-Type': 'application/json' };
 }
 
@@ -95,6 +129,7 @@ async function getJson(url) {
 async function getJsonStrict(url, label) {
   const headers = await authHeaders();
   const res = await fetch(url, { headers });
+  if (res.status === 401 || res.status === 403) notifyExpiredAuth();
   if (!res.ok) throw new Error(`${label} failed: ${res.status}`);
   return res.json();
 }
@@ -396,14 +431,44 @@ export async function getTeacherDashboard() {
   return checkSuccess(data, 'getTeacherDashboard');
 }
 
-export async function getTeacherStudents(query) {
-  const q = String(query || '').trim();
-  const res = await fetch(withQuery('/teacher/students', q ? { q } : {}), {
+export async function getTeacherProfile() {
+  const res = await fetch(`${API_BASE}/teacher/profile`, {
+    headers: await authHeaders()
+  });
+  if (!res.ok) throw new Error(`getTeacherProfile failed: ${res.status}`);
+  return res.json();
+}
+
+export async function getTeacherStudents(queryOrParams) {
+  const params = typeof queryOrParams === 'string'
+    ? { q: String(queryOrParams || '').trim() }
+    : {
+        q: String(queryOrParams?.q || '').trim(),
+        className: String(queryOrParams?.className || '').trim()
+      };
+  const normalized = {};
+  if (params.q) normalized.q = params.q;
+  if (params.className && params.className.toLowerCase() !== 'all') normalized.className = params.className;
+
+  const res = await fetch(withQuery('/teacher/students', normalized), {
     headers: await authHeaders()
   });
   if (!res.ok) throw new Error(`getTeacherStudents failed: ${res.status}`);
   const data = await res.json();
   return checkSuccess(data, 'getTeacherStudents');
+}
+
+export async function bulkUpdateTeacherStudentsClass(payload) {
+  const headers = await authHeaders();
+  const url = `${API_BASE}/teacher/students/bulk/class`;
+  const res = await fetch(url, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify(payload || {})
+  });
+  if (!res.ok) throw new Error(`bulkUpdateTeacherStudentsClass failed: ${res.status}`);
+  const data = await res.json();
+  return checkSuccess(data, 'bulkUpdateTeacherStudentsClass');
 }
 
 export async function getTeacherStudentProgress(studentId) {
@@ -413,6 +478,50 @@ export async function getTeacherStudentProgress(studentId) {
   if (!res.ok) throw new Error(`getTeacherStudentProgress failed: ${res.status}`);
   const data = await res.json();
   return checkSuccess(data, 'getTeacherStudentProgress');
+}
+
+export async function getTeacherStudentDeliveryStatus(studentId) {
+  const res = await fetch(`${API_BASE}/teacher/students/${encodeURIComponent(studentId)}/delivery-status`, {
+    headers: await authHeaders()
+  });
+  if (!res.ok) throw new Error(`getTeacherStudentDeliveryStatus failed: ${res.status}`);
+  const data = await res.json();
+  return checkSuccess(data, 'getTeacherStudentDeliveryStatus');
+}
+
+export async function getTeacherStudentActivity(studentId) {
+  const res = await fetch(`${API_BASE}/teacher/students/${encodeURIComponent(studentId)}/activity`, {
+    headers: await authHeaders()
+  });
+  if (!res.ok) throw new Error(`getTeacherStudentActivity failed: ${res.status}`);
+  const data = await res.json();
+  return checkSuccess(data, 'getTeacherStudentActivity');
+}
+
+export async function getTeacherStudentHomework(studentId) {
+  const res = await fetch(`${API_BASE}/teacher/students/${encodeURIComponent(studentId)}/homework`, {
+    headers: await authHeaders()
+  });
+  if (!res.ok) throw new Error(`getTeacherStudentHomework failed: ${res.status}`);
+  return res.json();
+}
+
+export async function getTeacherStudentTestAttempts(studentId) {
+  const res = await fetch(`${API_BASE}/teacher/students/${encodeURIComponent(studentId)}/test-attempts`, {
+    headers: await authHeaders()
+  });
+  if (!res.ok) throw new Error(`getTeacherStudentTestAttempts failed: ${res.status}`);
+  return res.json();
+}
+
+export async function gradeTeacherHomework(hwId, payload) {
+  const headers = await authHeaders();
+  const res = await fetch(`${API_BASE}/teacher/homework/${encodeURIComponent(hwId)}/grade`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify(payload || {})
+  });
+  return res.json();
 }
 
 export async function registerTeacherStudent(payload) {
@@ -628,7 +737,9 @@ const api = {
   saveSettings,
   getTeacherDashboard,
   getTeacherStudents,
+  bulkUpdateTeacherStudentsClass,
   getTeacherStudentProgress,
+  getTeacherStudentDeliveryStatus,
   assignTeacherHomework,
   getTeacherAnnouncements,
   postTeacherAnnouncement,

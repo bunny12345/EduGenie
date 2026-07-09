@@ -14,10 +14,10 @@ import { SchoolController } from './controllers/school.controller';
 import { SupabaseService } from './supabase.service';
 import { AuthGuard } from './auth/auth.guard';
 import { StudentAuthService } from './auth/student-auth.service';
-import { LocalFeedService } from './shared/local-feed.service';
+import { SharedModule } from './shared/shared.module';
 
 @Module({
-  imports: [ChatModule],
+  imports: [ChatModule, SharedModule],
   controllers: [
     DashboardController,
     HomeworkController,
@@ -31,6 +31,6 @@ import { LocalFeedService } from './shared/local-feed.service';
     AuthController,
     SchoolController
   ],
-  providers: [SupabaseService, AuthGuard, StudentAuthService, LocalFeedService]
+  providers: [SupabaseService, AuthGuard, StudentAuthService]
 })
 export class AppModule {}

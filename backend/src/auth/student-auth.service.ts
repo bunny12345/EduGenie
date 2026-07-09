@@ -685,6 +685,7 @@ export class StudentAuthService {
       schoolId?: string;
       teacherId?: string;
       q?: string;
+      className?: string;
       page?: number;
       limit?: number;
     }
@@ -692,7 +693,8 @@ export class StudentAuthService {
     const schoolId = String(scope.schoolId || '').trim();
     const teacherId = String(scope.teacherId || '').trim();
     const queryText = String(scope.q || '').trim().toLowerCase();
-    const hasPaging = scope.page !== undefined || scope.limit !== undefined || !!queryText;
+    const classNameFilter = String(scope.className || '').trim().toLowerCase();
+    const hasPaging = scope.page !== undefined || scope.limit !== undefined || !!queryText || !!classNameFilter;
     const page = Math.max(1, Number(scope.page || 1));
     const limit = hasPaging
       ? Math.min(100, Math.max(1, Number(scope.limit || 10)))
@@ -708,7 +710,10 @@ export class StudentAuthService {
         q = q.or(`name.ilike.%${queryText}%,full_name.ilike.%${queryText}%,class_name.ilike.%${queryText}%,class.ilike.%${queryText}%,grade.ilike.%${queryText}%`);
       }
       const res = await q.order('created_at', { ascending: false }).range(from, to);
-      const rows = Array.isArray((res as any)?.data) ? (res as any).data : [];
+      const rowsRaw = Array.isArray((res as any)?.data) ? (res as any).data : [];
+      const rows = classNameFilter
+        ? rowsRaw.filter((r: any) => String(r?.class_name || r?.class || r?.grade || '').trim().toLowerCase() === classNameFilter)
+        : rowsRaw;
       const total = Number((res as any)?.count || rows.length);
       const totalPages = Math.max(1, Math.ceil(total / limit));
       return {
@@ -737,6 +742,10 @@ export class StudentAuthService {
           const text = `${s.name || ''} ${s.className || ''} ${s.loginId || ''}`.toLowerCase();
           return text.includes(queryText);
         })
+        .filter((s) => {
+          if (!classNameFilter) return true;
+          return String(s.className || '').trim().toLowerCase() === classNameFilter;
+        })
         .map((s) => ({
           id: s.studentId,
           schoolId: s.schoolId || null,
@@ -759,6 +768,30 @@ export class StudentAuthService {
         }
       };
     }
+  }
+
+  updateLocalStudentsClass(studentIds: string[], className: string, scope?: { schoolId?: string; teacherId?: string }) {
+    const ids = new Set((Array.isArray(studentIds) ? studentIds : []).map((id) => String(id || '').trim()).filter(Boolean));
+    const normalizedClassName = String(className || '').trim();
+    if (!ids.size || !normalizedClassName) return 0;
+
+    const schoolId = String(scope?.schoolId || '').trim();
+    const teacherId = String(scope?.teacherId || '').trim();
+    let updated = 0;
+
+    for (const [loginId, account] of StudentAuthService.localAccounts.entries()) {
+      if (!ids.has(String(account.studentId || '').trim())) continue;
+      if (teacherId && String(account.teacherId || '').trim() !== teacherId) continue;
+      if (!teacherId && schoolId && String(account.schoolId || '').trim() !== schoolId) continue;
+
+      StudentAuthService.localAccounts.set(loginId, {
+        ...account,
+        className: normalizedClassName
+      });
+      updated += 1;
+    }
+
+    return updated;
   }
 
   async listInvitesByScope(scope: {

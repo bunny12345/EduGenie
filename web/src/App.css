@@ -1039,22 +1039,251 @@ textarea {
 
 .td-shell {
   min-height: 100vh;
-  padding: 18px;
+  display: flex;
+  flex-direction: row;
   background: linear-gradient(180deg, #f5f8ff 0%, #f7f2ff 70%, #f4fbff 100%);
+  font-family: 'Poppins', 'Avenir Next', 'Segoe UI', sans-serif;
+}
+
+/* ── Sidebar ── */
+.td-sidebar {
+  width: 200px;
+  min-width: 200px;
+  background: #1b1e3c;
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  overflow: hidden;
+}
+
+.td-sidebar-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 22px 18px 16px;
+  border-bottom: 1px solid rgba(255,255,255,0.08);
+}
+
+.td-sidebar-logo {
+  font-size: 22px;
+  line-height: 1;
+}
+
+.td-sidebar-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: #fff;
+  letter-spacing: 0.03em;
+}
+
+.td-sidebar-nav {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 14px 10px;
+}
+
+.td-nav-btn {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  border: none;
+  background: transparent;
+  color: rgba(255,255,255,0.65);
+  border-radius: 10px;
+  padding: 10px 12px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.15s, color 0.15s;
+}
+
+.td-nav-btn:hover {
+  background: rgba(255,255,255,0.09);
+  color: #fff;
+}
+
+.td-nav-btn.active {
+  background: linear-gradient(120deg, #5764c9, #7c5be6);
+  color: #fff;
+  box-shadow: 0 2px 10px rgba(87,100,201,0.35);
+}
+
+.td-nav-icon {
+  font-size: 16px;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.td-nav-label {
+  font-size: 13px;
+}
+
+.td-sidebar-footer {
+  padding: 10px;
+  border-top: 1px solid rgba(255,255,255,0.08);
+}
+
+.td-nav-logout {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  border: none;
+  background: transparent;
+  color: rgba(255,255,255,0.55);
+  border-radius: 10px;
+  padding: 10px 12px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.td-nav-logout:hover {
+  background: rgba(255, 80, 80, 0.15);
+  color: #ff8080;
+}
+
+/* ── Teacher profile card in sidebar ── */
+.td-sidebar-profile {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  border-bottom: 1px solid rgba(255,255,255,0.08);
+  border-top: 1px solid rgba(255,255,255,0.06);
+}
+
+.td-profile-avatar {
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #5764c9, #7c5be6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  font-weight: 800;
+  color: #fff;
+  flex-shrink: 0;
+  overflow: hidden;
+}
+
+.td-profile-avatar-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.td-profile-info {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.td-profile-info strong {
+  font-size: 12px;
+  font-weight: 700;
+  color: #fff;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.td-profile-info span {
+  font-size: 10px;
+  color: rgba(255,255,255,0.55);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.td-profile-school {
+  font-size: 10px;
+  color: rgba(255,255,255,0.4);
+}
+
+/* ── Re-login / session-expired modal ── */
+.eg-relogin-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 17, 40, 0.72);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+  backdrop-filter: blur(4px);
+}
+
+.eg-relogin-modal {
+  background: #fff;
+  border-radius: 18px;
+  padding: 36px 32px;
+  max-width: 380px;
+  width: 90%;
+  text-align: center;
+  box-shadow: 0 24px 60px rgba(30, 30, 80, 0.18);
+}
+
+.eg-relogin-icon {
+  font-size: 40px;
+  margin: 0 0 10px;
+}
+
+.eg-relogin-modal h2 {
+  margin: 0 0 8px;
+  font-size: 1.3rem;
+  color: #1b1e3c;
+}
+
+.eg-relogin-modal p {
+  color: #6470a0;
+  font-size: 14px;
+  margin: 0;
+}
+
+.eg-relogin-btn {
+  border: none;
+  border-radius: 10px;
+  padding: 10px 22px;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  background: linear-gradient(120deg, #5764c9, #7c5be6);
+  color: #fff;
+  transition: opacity 0.15s;
+}
+
+.eg-relogin-btn:hover { opacity: 0.88; }
+
+.eg-relogin-btn.secondary {
+  background: #f0f2ff;
+  color: #5764c9;
+}
+
+/* ── Main content area ── */
+.td-main {
+  flex: 1;
+  min-width: 0;
+  padding: 18px;
   display: grid;
   gap: 12px;
-  font-family: 'Poppins', 'Avenir Next', 'Segoe UI', sans-serif;
+  align-content: start;
+  overflow-y: auto;
 }
 
 .td-topbar {
   background: #fff;
   border: 1px solid #e5e9fb;
   border-radius: 14px;
-  padding: 14px;
-  display: flex;
-  justify-content: space-between;
-  gap: 12px;
-  align-items: center;
+  padding: 14px 18px;
 }
 
 .td-topbar h1 {
@@ -1214,6 +1443,283 @@ textarea {
   align-items: center;
 }
 
+/* ── Analytics header row (title + export btn) ── */
+.td-analytics-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 6px;
+}
+
+.td-analytics-header p {
+  margin: 0;
+  font-size: 12px;
+  color: #67739f;
+}
+
+.td-export-btn {
+  border: 1.5px solid #c8cdf5;
+  border-radius: 8px;
+  background: #fff;
+  color: #5764c9;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 4px 10px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s;
+}
+
+.td-export-btn:hover {
+  background: #f0f1ff;
+}
+
+.td-section-subtitle {
+  margin: 12px 0 4px;
+  font-size: 11px;
+  font-weight: 700;
+  color: #8892c4;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+}
+
+/* ── Score bars (Progress Snapshot) ── */
+.td-score-bars {
+  display: grid;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.td-score-bar-row {
+  display: grid;
+  grid-template-columns: 100px 1fr 42px;
+  gap: 8px;
+  align-items: center;
+}
+
+.td-score-bar-label {
+  font-size: 12px;
+  color: #5a6390;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.td-score-bar-track {
+  background: #eef0fb;
+  border-radius: 20px;
+  height: 8px;
+  overflow: hidden;
+}
+
+.td-score-bar-fill {
+  height: 100%;
+  border-radius: 20px;
+  transition: width 0.4s ease;
+}
+
+.td-score-bar-value {
+  font-size: 12px;
+  font-weight: 700;
+  text-align: right;
+}
+
+/* ── Delivery chips ── */
+.td-delivery-chips {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.td-delivery-chip {
+  border: 1px solid #e5e9fb;
+  border-radius: 12px;
+  background: #f8f9ff;
+  padding: 10px 8px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+
+.td-delivery-chip.td-chip-warn {
+  background: #fffbeb;
+  border-color: #fde68a;
+}
+
+.td-delivery-chip.td-chip-reward {
+  background: #fdfaff;
+  border-color: #e9d5ff;
+}
+
+.td-chip-icon {
+  font-size: 18px;
+  line-height: 1;
+}
+
+.td-delivery-chip strong {
+  font-size: 18px;
+  font-weight: 800;
+  color: #2d3465;
+  line-height: 1.2;
+}
+
+.td-delivery-chip span:last-child {
+  font-size: 10px;
+  color: #7a85b8;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+/* ── Activity type filter chips ── */
+.td-activity-filter {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin: 6px 0 10px;
+}
+
+.td-filter-chip {
+  border: 1.5px solid #dde2f5;
+  border-radius: 20px;
+  background: #fff;
+  color: #6470a0;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 3px 10px;
+  cursor: pointer;
+  transition: background 0.12s, border-color 0.12s, color 0.12s;
+}
+
+.td-filter-chip.active {
+  background: linear-gradient(120deg, #5764c9, #7c5be6);
+  border-color: transparent;
+  color: #fff;
+}
+
+/* ── Activity list ── */
+.td-activity-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+
+.td-activity-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  border: 1px solid #edf0fb;
+  border-radius: 10px;
+  padding: 8px 10px;
+  background: #fafbff;
+}
+
+.td-activity-icon {
+  font-size: 18px;
+  line-height: 1;
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+.td-activity-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.td-activity-body strong {
+  display: block;
+  font-size: 12px;
+  color: #2d3465;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.td-activity-body span {
+  font-size: 11px;
+  color: #8892c4;
+  text-transform: capitalize;
+}
+
+.td-activity-time {
+  font-size: 10px;
+  color: #a0aacc;
+  white-space: nowrap;
+  flex-shrink: 0;
+  padding-top: 2px;
+}
+
+/* ── Homework / Test attempt table ── */
+.td-hw-table-wrap {
+  overflow-x: auto;
+  margin-top: 10px;
+  border-radius: 10px;
+  border: 1px solid #e5e9fb;
+}
+
+.td-hw-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.td-hw-table th {
+  background: #f4f6ff;
+  color: #6470a0;
+  font-weight: 700;
+  text-transform: uppercase;
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  padding: 8px 10px;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.td-hw-table td {
+  padding: 8px 10px;
+  border-top: 1px solid #f0f2fb;
+  color: #2d3465;
+  vertical-align: middle;
+}
+
+.td-hw-table tr:hover td {
+  background: #fafbff;
+}
+
+/* Status badges */
+.td-hw-badge {
+  display: inline-block;
+  padding: 2px 9px;
+  border-radius: 20px;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: capitalize;
+}
+
+.td-hw-pending   { background: #fef3c7; color: #92400e; }
+.td-hw-submitted { background: #dbeafe; color: #1e40af; }
+.td-hw-graded    { background: #dcfce7; color: #166534; }
+.td-hw-completed { background: #dcfce7; color: #166534; }
+.td-hw-in-progress { background: #ede9fe; color: #5b21b6; }
+.td-hw-started   { background: #ede9fe; color: #5b21b6; }
+
+.td-hw-done {
+  color: #22c55e;
+  font-size: 14px;
+}
+
+.td-grade-form {
+  border: 1.5px dashed #c8cdf5;
+  border-radius: 12px;
+  padding: 12px;
+  background: #fafbff;
+}
+
 .td-form {
   margin-top: 10px;
   display: grid;
@@ -1253,6 +1759,97 @@ textarea {
   font-size: 12px;
   font-family: 'Poppins', 'Avenir Next', 'Segoe UI', sans-serif;
   background: #fafbff;
+}
+
+/* Global class selector banner in Teacher section */
+.td-class-banner {
+  grid-column: 1 / -1;
+  background: linear-gradient(120deg, #1b1e3c 0%, #2f3478 100%);
+  border-radius: 14px;
+  padding: 14px 20px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+
+.td-class-banner-label {
+  color: rgba(255,255,255,0.7);
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  white-space: nowrap;
+}
+
+.td-class-banner-select {
+  border: 1.5px solid rgba(255,255,255,0.25);
+  border-radius: 9px;
+  background: rgba(255,255,255,0.1);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 600;
+  padding: 7px 12px;
+  min-width: 170px;
+  cursor: pointer;
+  outline: none;
+}
+
+.td-class-banner-select option {
+  background: #1b1e3c;
+  color: #fff;
+}
+
+.td-class-banner-badge {
+  background: linear-gradient(120deg, #5764c9, #7c5be6);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 4px 12px;
+  border-radius: 20px;
+  white-space: nowrap;
+}
+
+.td-class-banner-hint {
+  color: rgba(255,255,255,0.5);
+  font-size: 11px;
+  flex: 1;
+}
+
+/* Class-target toggle for Assign Homework */
+.td-target-toggle {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.td-toggle-btn {
+  flex: 1;
+  border: 1.5px solid #c8cdf5;
+  border-radius: 8px;
+  background: #fff;
+  color: #5764c9;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 7px 10px;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+
+.td-toggle-btn.active {
+  background: linear-gradient(120deg, #5764c9, #7c5be6);
+  border-color: transparent;
+  color: #fff;
+}
+
+.td-field-label {
+  display: block;
+  font-size: 11px;
+  font-weight: 600;
+  color: #6470a0;
+  margin-bottom: 4px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
 }
 
 .td-inline-btn {
@@ -1725,11 +2322,33 @@ textarea {
 
   .rg-shell,
   .td-shell {
-    padding: 10px;
+    padding: 0;
   }
 
-  .rg-card {
-    padding: 14px;
+  .td-sidebar {
+    width: 60px;
+    min-width: 60px;
+  }
+
+  .td-sidebar-title,
+  .td-nav-label,
+  .td-profile-info {
+    display: none;
+  }
+
+  .td-sidebar-brand {
+    justify-content: center;
+    padding: 16px 0;
+  }
+
+  .td-nav-btn,
+  .td-nav-logout {
+    justify-content: center;
+    padding: 12px 0;
+  }
+
+  .td-main {
+    padding: 10px;
   }
 
   .td-topbar {

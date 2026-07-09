@@ -32,6 +32,77 @@ export class TeacherController {
     }
   }
 
+  private async ensureStudentAccess(req: any, studentId: string) {
+    const scopedStudents = await this.studentAuth.listStudentsByScope({
+      teacherId: req?.user?.sub || undefined,
+      schoolId: req?.user?.schoolId || undefined
+    });
+    const scopedRows = Array.isArray(scopedStudents.students) ? scopedStudents.students : [];
+    const hasScopedRoster = scopedRows.length > 0;
+    const allowed = new Set(scopedRows.map((s: any) => s.id));
+
+    if (hasScopedRoster && !allowed.has(studentId)) {
+      throw new ForbiddenException('Student not in teacher scope');
+    }
+
+    if (!hasScopedRoster) {
+      const sampleIds = new Set(this.sampleStudents().map((student) => student.id));
+      if (!sampleIds.has(studentId)) {
+        throw new ForbiddenException('Student not in teacher scope');
+      }
+    }
+
+    return { scopedRows, hasScopedRoster };
+  }
+
+  @Get('profile')
+  async teacherProfile(@Req() req: any) {
+    this.ensureTeacher(req);
+    const teacherId = req?.user?.sub || null;
+    const schoolId = req?.user?.schoolId || null;
+
+    try {
+      const row = teacherId
+        ? (await this.db.client.from('teachers').select('*').eq('id', teacherId).single())
+        : null;
+      const teacher = (row as any)?.data || null;
+      const schoolRow = schoolId
+        ? (await this.db.client.from('schools').select('name,logo_url').eq('id', schoolId).single())
+        : null;
+      const school = (schoolRow as any)?.data || null;
+
+      return {
+        success: true,
+        profile: {
+          id: teacher?.id || teacherId || 'teacher-local',
+          name: teacher?.name || req?.user?.name || 'Teacher',
+          email: teacher?.email || req?.user?.email || null,
+          subject: teacher?.subject || req?.user?.subject || 'General',
+          schoolId: teacher?.school_id || schoolId || null,
+          schoolName: school?.name || null,
+          schoolLogo: school?.logo_url || null,
+          avatarUrl: teacher?.avatar_url || null,
+          joinedAt: teacher?.created_at || null
+        }
+      };
+    } catch (e) {
+      return {
+        success: true,
+        profile: {
+          id: teacherId || 'teacher-local',
+          name: req?.user?.name || 'Teacher',
+          email: req?.user?.email || null,
+          subject: req?.user?.subject || 'General',
+          schoolId: schoolId || null,
+          schoolName: null,
+          schoolLogo: null,
+          avatarUrl: null,
+          joinedAt: null
+        }
+      };
+    }
+  }
+
   @Get('dashboard')
   async dashboard(@Req() req: any) {
     this.ensureTeacher(req);
@@ -120,32 +191,106 @@ export class TeacherController {
   }
 
   @Get('students')
-  async students(@Req() req: any, @Query('q') q?: string) {
+  async students(@Req() req: any, @Query('q') q?: string, @Query('className') className?: string) {
     this.ensureTeacher(req);
     try {
       const scopeStudents = await this.studentAuth.listStudentsByScope({
         teacherId: req?.user?.sub || undefined,
-        schoolId: req?.user?.schoolId || undefined
+        schoolId: req?.user?.schoolId || undefined,
+        className: className || undefined
       });
       const rows = Array.isArray(scopeStudents.students) ? scopeStudents.students : [];
       const keyword = String(q || '').trim().toLowerCase();
+      const classFilter = String(className || '').trim().toLowerCase();
       const filtered = keyword
         ? rows.filter((r: any) => String(r.name || r.full_name || '').toLowerCase().includes(keyword))
         : rows;
+      const classFiltered = classFilter
+        ? filtered.filter((r: any) => String(r.className || r.class_name || r.grade || '').trim().toLowerCase() === classFilter)
+        : filtered;
 
-      const normalized = filtered.length
-        ? filtered.map((s: any) => ({
+      const normalized = classFiltered.length
+        ? classFiltered.map((s: any) => ({
             id: s.id,
             name: s.name || s.full_name || 'Student',
             className: s.className || s.class_name || s.grade || 'Class',
             email: s.email || null
           }))
-        : this.sampleStudents();
+        : (classFilter
+          ? this.sampleStudents().filter((s) => String(s.className || '').trim().toLowerCase() === classFilter)
+          : this.sampleStudents());
 
       return { success: true, students: normalized };
     } catch (e) {
-      return { success: true, students: this.sampleStudents() };
+      const classFilter = String(className || '').trim().toLowerCase();
+      const fallback = classFilter
+        ? this.sampleStudents().filter((s) => String(s.className || '').trim().toLowerCase() === classFilter)
+        : this.sampleStudents();
+      return { success: true, students: fallback };
     }
+  }
+
+  @Post('students/bulk/class')
+  async bulkUpdateStudentClass(@Req() req: any, @Body() body: any) {
+    this.ensureTeacher(req);
+    const className = String(body?.className || '').trim();
+    const studentIdsRaw = Array.isArray(body?.studentIds) ? body.studentIds : [];
+    const studentIds: string[] = Array.from(
+      new Set(studentIdsRaw.map((id: any) => String(id || '').trim()).filter(Boolean))
+    );
+
+    if (!className) {
+      return { success: false, updated: 0, studentIds: [], error: 'className is required' };
+    }
+    if (!studentIds.length) {
+      return { success: false, updated: 0, studentIds: [], error: 'studentIds is required' };
+    }
+
+    const scopedStudents = await this.studentAuth.listStudentsByScope({
+      teacherId: req?.user?.sub || undefined,
+      schoolId: req?.user?.schoolId || undefined
+    });
+    const scopedRows = Array.isArray(scopedStudents.students) ? scopedStudents.students : [];
+    const hasScopedRoster = scopedRows.length > 0;
+    const allowed = new Set(scopedRows.map((s: any) => String(s.id || '').trim()));
+    const effectiveStudentIds = hasScopedRoster
+      ? studentIds.filter((id) => allowed.has(id))
+      : studentIds;
+
+    if (!effectiveStudentIds.length) {
+      return { success: false, updated: 0, studentIds: [], error: 'No valid students in teacher scope' };
+    }
+
+    let dbUpdated = 0;
+    try {
+      const studentsRes = await this.db.client
+        .from('students')
+        .update({ class_name: className })
+        .in('id', effectiveStudentIds)
+        .select('id');
+      const studentRows = Array.isArray((studentsRes as any)?.data) ? (studentsRes as any).data : [];
+      dbUpdated = studentRows.length;
+
+      // Best effort update for account mirror table.
+      await this.db.client
+        .from('student_accounts')
+        .update({ class_name: className })
+        .in('student_id', effectiveStudentIds);
+    } catch (e) {
+      // Continue with local update fallback.
+    }
+
+    const localUpdated = this.studentAuth.updateLocalStudentsClass(effectiveStudentIds, className, {
+      teacherId: req?.user?.sub || undefined,
+      schoolId: req?.user?.schoolId || undefined
+    });
+
+    return {
+      success: true,
+      className,
+      updated: Math.max(dbUpdated, localUpdated),
+      studentIds: effectiveStudentIds
+    };
   }
 
   @Post('students/register')
@@ -235,14 +380,7 @@ export class TeacherController {
   @Get('students/:id/progress')
   async studentProgress(@Req() req: any, @Param('id') studentId: string) {
     this.ensureTeacher(req);
-    const scopedStudents = await this.studentAuth.listStudentsByScope({
-      teacherId: req?.user?.sub || undefined,
-      schoolId: req?.user?.schoolId || undefined
-    });
-    const allowed = new Set((scopedStudents.students || []).map((s: any) => s.id));
-    if (!allowed.has(studentId)) {
-      throw new ForbiddenException('Student not in teacher scope');
-    }
+    await this.ensureStudentAccess(req, studentId);
     try {
       const res = await this.db.client
         .from('progress_metrics')
@@ -310,29 +448,262 @@ export class TeacherController {
     }
   }
 
-  @Post('homework/assign')
+  @Get('students/:id/delivery-status')
+  async studentDeliveryStatus(@Req() req: any, @Param('id') studentId: string) {
+    this.ensureTeacher(req);
+    await this.ensureStudentAccess(req, studentId);
+
+    try {
+      const [homeworkRes, announcementsRes, testsRes, eventsRes, rewardsRes] = await Promise.all([
+        this.db.client.from('homework').select('*').eq('student_id', studentId).order('created_at', { ascending: false }).limit(100),
+        this.db.client.from('announcements').select('*').in('audience', ['students', 'all']).order('created_at', { ascending: false }).limit(100),
+        this.db.client.from('tests').select('*').order('created_at', { ascending: false }).limit(100),
+        this.db.client.from('events').select('*').eq('student_id', studentId).order('start', { ascending: true }).limit(100),
+        this.db.client.from('student_rewards').select('*').eq('student_id', studentId).limit(20)
+      ]);
+
+      const mergeById = (dbRows: any[], localRows: any[]) => {
+        const merged = new Map<string, any>();
+        [...(Array.isArray(dbRows) ? dbRows : []), ...(Array.isArray(localRows) ? localRows : [])].forEach((row: any, idx: number) => {
+          const id = String(row?.id || `${idx}`).trim();
+          if (!merged.has(id)) merged.set(id, row);
+        });
+        return Array.from(merged.values());
+      };
+
+      const homeworkRows = mergeById((homeworkRes as any)?.data || [], this.localFeed.listHomeworkForStudent(studentId));
+      const announcementRows = mergeById((announcementsRes as any)?.data || [], this.localFeed.listAnnouncements());
+      const testRows = mergeById((testsRes as any)?.data || [], this.localFeed.listTests());
+      const eventRows = mergeById((eventsRes as any)?.data || [], this.localFeed.listEventsForStudent(studentId));
+      const rewardRows = Array.isArray((rewardsRes as any)?.data) ? (rewardsRes as any).data : [];
+      const rewardFallback = this.localFeed.getRewards(studentId);
+      const rewardHead = rewardRows[0] || null;
+
+      return {
+        success: true,
+        studentId,
+        status: {
+          announcementsAvailable: announcementRows.length,
+          homeworkAssigned: homeworkRows.length,
+          homeworkPending: homeworkRows.filter((h: any) => String(h?.status || 'pending') !== 'completed').length,
+          testsAvailable: testRows.filter((t: any) => String(t?.status || 'upcoming') !== 'completed').length,
+          eventsScheduled: eventRows.length,
+          rewardCoins: Math.max(Number(rewardHead?.coins || 0), Number(rewardFallback.coins || 0)),
+          recentAnnouncementTitle: announcementRows[0]?.title || null,
+          recentHomeworkTitle: homeworkRows[0]?.title || null,
+          recentTestTitle: testRows[0]?.title || null,
+          nextEventTitle: eventRows[0]?.title || null
+        }
+      };
+    } catch (e) {
+      const homeworkRows = this.localFeed.listHomeworkForStudent(studentId);
+      const announcementRows = this.localFeed.listAnnouncements();
+      const testRows = this.localFeed.listTests();
+      const eventRows = this.localFeed.listEventsForStudent(studentId);
+      const rewardFallback = this.localFeed.getRewards(studentId);
+      return {
+        success: true,
+        studentId,
+        error: String((e as any)?.message || e || 'delivery status failed'),
+        status: {
+          announcementsAvailable: announcementRows.length,
+          homeworkAssigned: homeworkRows.length,
+          homeworkPending: homeworkRows.filter((h: any) => String(h?.status || 'pending') !== 'completed').length,
+          testsAvailable: testRows.filter((t: any) => String(t?.status || 'upcoming') !== 'completed').length,
+          eventsScheduled: eventRows.length,
+          rewardCoins: Number(rewardFallback.coins || 0),
+          recentAnnouncementTitle: announcementRows[0]?.title || null,
+          recentHomeworkTitle: homeworkRows[0]?.title || null,
+          recentTestTitle: testRows[0]?.title || null,
+          nextEventTitle: eventRows[0]?.title || null
+        }
+      };
+    }
+  }
+
+  @Get('students/:id/activity')
+  async studentActivity(@Req() req: any, @Param('id') studentId: string) {
+    this.ensureTeacher(req);
+    await this.ensureStudentAccess(req, studentId);
+
+    return {
+      success: true,
+      studentId,
+      activity: this.localFeed.listStudentActivity(studentId).slice(0, 20)
+    };
+  }
+
+  @Get('students/:id/homework')
+  async studentHomework(@Req() req: any, @Param('id') studentId: string) {
+    this.ensureTeacher(req);
+    await this.ensureStudentAccess(req, studentId);
+
+    try {
+      const [hwRes, attRes] = await Promise.all([
+        this.db.client.from('homework').select('*').eq('student_id', studentId).order('created_at', { ascending: false }).limit(50),
+        this.db.client.from('homework_attempts').select('*').eq('student_id', studentId).order('created_at', { ascending: false }).limit(100)
+      ]);
+
+      const hwRows: any[] = Array.isArray((hwRes as any)?.data) && (hwRes as any).data.length
+        ? (hwRes as any).data
+        : this.localFeed.listHomeworkForStudent(studentId);
+
+      const attempts: any[] = Array.isArray((attRes as any)?.data) ? (attRes as any).data : [];
+      const attemptsByHw = new Map<string, any[]>();
+      attempts.forEach((a: any) => {
+        const key = String(a.homework_id || '');
+        if (!attemptsByHw.has(key)) attemptsByHw.set(key, []);
+        attemptsByHw.get(key)!.push(a);
+      });
+
+      const homework = hwRows.map((h: any) => {
+        const hwAttempts = attemptsByHw.get(String(h.id || '')) || [];
+        const latest = hwAttempts[0] || null;
+        const status = h.status || (latest ? 'submitted' : 'pending');
+        return {
+          id: h.id,
+          title: h.title || 'Homework',
+          subject: h.subject || 'General',
+          dueAt: h.due_at || null,
+          status,
+          grade: latest?.score ?? h.grade ?? null,
+          submittedAt: latest?.created_at || null,
+          attemptCount: hwAttempts.length,
+          createdAt: h.created_at || null
+        };
+      });
+
+      return { success: true, studentId, homework };
+    } catch (e) {
+      const localHw = this.localFeed.listHomeworkForStudent(studentId);
+      return {
+        success: true,
+        studentId,
+        homework: localHw.map((h: any) => ({
+          id: h.id,
+          title: h.title || 'Homework',
+          subject: h.subject || 'General',
+          dueAt: h.due_at || null,
+          status: h.status || 'pending',
+          grade: null,
+          submittedAt: null,
+          attemptCount: 0,
+          createdAt: h.created_at || null
+        }))
+      };
+    }
+  }
+
+  @Get('students/:id/test-attempts')
+  async studentTestAttempts(@Req() req: any, @Param('id') studentId: string) {
+    this.ensureTeacher(req);
+    await this.ensureStudentAccess(req, studentId);
+
+    try {
+      const [attRes, testsRes] = await Promise.all([
+        this.db.client.from('test_attempts').select('*').eq('student_id', studentId).order('started_at', { ascending: false }).limit(50),
+        this.db.client.from('tests').select('id,title,subject,class_name,duration_minutes').limit(200)
+      ]);
+
+      const attempts: any[] = Array.isArray((attRes as any)?.data) ? (attRes as any).data : [];
+      const testsMap = new Map<string, any>();
+      (Array.isArray((testsRes as any)?.data) ? (testsRes as any).data : this.localFeed.listTests())
+        .forEach((t: any) => testsMap.set(String(t.id), t));
+
+      const localAttempts = this.localFeed.listStudentActivity(studentId)
+        .filter((a: any) => a.type === 'test')
+        .map((a: any, idx: number) => ({
+          id: a.id || `local-${idx}`,
+          test_id: a.meta?.testId || null,
+          started_at: a.createdAt || null,
+          submitted_at: a.meta?.submittedAt || null,
+          score: a.meta?.score ?? null,
+          status: a.action === 'submitted' ? 'completed' : 'started'
+        }));
+
+      const merged = attempts.length ? attempts : localAttempts;
+
+      const result = merged.map((a: any) => {
+        const test = testsMap.get(String(a.test_id || '')) || null;
+        return {
+          id: a.id,
+          testId: a.test_id || null,
+          testTitle: test?.title || a.test_title || 'Test',
+          subject: test?.subject || 'General',
+          startedAt: a.started_at || null,
+          submittedAt: a.submitted_at || a.completed_at || null,
+          score: a.score ?? null,
+          maxScore: a.max_score ?? null,
+          status: a.status || (a.submitted_at ? 'completed' : 'in-progress'),
+          durationMinutes: test?.duration_minutes || null
+        };
+      });
+
+      return { success: true, studentId, attempts: result };
+    } catch (e) {
+      return { success: true, studentId, attempts: [] };
+    }
+  }
+
+  @Post('homework/:hwId/grade')
+  async gradeHomework(@Req() req: any, @Param('hwId') hwId: string, @Body() body: any) {
+    this.ensureTeacher(req);
+    const status = body?.status || 'graded';
+    const grade = body?.grade ?? null;
+    const feedback = body?.feedback || null;
+
+    const validStatuses = ['pending', 'submitted', 'graded', 'completed'];
+    const safeStatus = validStatuses.includes(status) ? status : 'graded';
+
+    try {
+      const update: any = { status: safeStatus, updated_at: new Date().toISOString() };
+      if (grade !== null) update.grade = grade;
+      if (feedback) update.feedback = feedback;
+
+      await this.db.client.from('homework').update(update).eq('id', hwId);
+      return { success: true, homeworkId: hwId, status: safeStatus, grade, feedback };
+    } catch (e) {
+      return { success: true, homeworkId: hwId, status: safeStatus, grade, feedback };
+    }
+  }
   async assignHomework(@Req() req: any, @Body() body: any) {
     this.ensureTeacher(req);
     const subject = body?.subject || 'General';
     const title = body?.title || 'Homework';
     const dueAt = body?.dueAt || null;
+    const targetClass: string | null = body?.className || null;
     const studentIds = Array.isArray(body?.studentIds) ? body.studentIds : [];
-    if (!studentIds.length) {
-      return { success: false, created: 0, assignments: [], error: 'studentIds is required' };
-    }
 
-    const scopedStudents = await this.studentAuth.listStudentsByScope({
-      teacherId: req?.user?.sub || undefined,
-      schoolId: req?.user?.schoolId || undefined
-    });
-    const allowed = new Set((scopedStudents.students || []).map((s: any) => s.id));
-    const filteredStudentIds = studentIds.filter((id: string) => allowed.has(id));
-    const hasScopedRoster = Array.isArray(scopedStudents.students) && scopedStudents.students.length > 0;
-    const effectiveStudentIds = filteredStudentIds.length
-      ? filteredStudentIds
-      : (!hasScopedRoster ? studentIds : []);
-    if (!effectiveStudentIds.length) {
-      return { success: false, created: 0, assignments: [], error: 'No valid students in teacher scope' };
+    let effectiveStudentIds: string[];
+
+    if (targetClass) {
+      // Resolve all students in the given class
+      const classStudents = await this.studentAuth.listStudentsByScope({
+        teacherId: req?.user?.sub || undefined,
+        schoolId: req?.user?.schoolId || undefined,
+        className: targetClass
+      });
+      effectiveStudentIds = (classStudents.students || []).map((s: any) => s.id);
+      if (!effectiveStudentIds.length) {
+        return { success: false, created: 0, assignments: [], error: `No students found in class "${targetClass}"` };
+      }
+    } else {
+      if (!studentIds.length) {
+        return { success: false, created: 0, assignments: [], error: 'Provide either className or studentIds' };
+      }
+      const scopedStudents = await this.studentAuth.listStudentsByScope({
+        teacherId: req?.user?.sub || undefined,
+        schoolId: req?.user?.schoolId || undefined
+      });
+      const allowed = new Set((scopedStudents.students || []).map((s: any) => s.id));
+      const filteredStudentIds = studentIds.filter((id: string) => allowed.has(id));
+      const hasScopedRoster = Array.isArray(scopedStudents.students) && scopedStudents.students.length > 0;
+      effectiveStudentIds = filteredStudentIds.length
+        ? filteredStudentIds
+        : (!hasScopedRoster ? studentIds : []);
+      if (!effectiveStudentIds.length) {
+        return { success: false, created: 0, assignments: [], error: 'No valid students in teacher scope' };
+      }
     }
 
     const rows = effectiveStudentIds.map((studentId: string) => ({
@@ -399,10 +770,12 @@ export class TeacherController {
   @Post('announcements')
   async postAnnouncement(@Req() req: any, @Body() body: any) {
     this.ensureTeacher(req);
+    const targetClass: string | null = body?.className || null;
     const row = {
       title: body?.title || 'Announcement',
       message: body?.message || '',
-      audience: body?.audience || 'students',
+      audience: targetClass ? `class:${targetClass}` : (body?.audience || 'students'),
+      target_class: targetClass,
       created_by: req?.user?.sub || null,
       created_at: new Date().toISOString()
     };

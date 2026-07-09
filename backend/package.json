@@ -8,7 +8,8 @@
     "build": "tsc -p tsconfig.build.json",
     "start:dev": "ts-node-dev --respawn --transpile-only src/main.ts",
     "mock-llm": "node mock_llm/server.js",
-    "dev": "concurrently \"npm run mock-llm\" \"npm run start:dev\""
+    "dev": "concurrently \"npm run mock-llm\" \"npm run start:dev\"",
+    "smoke:rls-api": "bash scripts/rls_api_smoke.sh"
   },
   "keywords": [],
   "author": "",
@@ -25,8 +26,7 @@
     "@nestjs/platform-express": "^10.0.0",
     "dotenv": "^16.0.0",
     "reflect-metadata": "^0.1.13",
-    "rxjs": "^7.0.0",
-    "node-fetch": "^3.0.0"
+    "rxjs": "^7.0.0"
   },
   "devDependencies": {
     "ts-node-dev": "^2.0.0",

@@ -1,0 +1,76 @@
+name: RLS API Smoke Test
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'backend/**'
+      - '.github/workflows/rls-api-smoke.yml'
+  push:
+    branches:
+      - main
+    paths:
+      - 'backend/**'
+      - '.github/workflows/rls-api-smoke.yml'
+
+jobs:
+  smoke-rls-api:
+    name: Backend RLS API Smoke
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: 'backend/package-lock.json'
+
+      - name: Install backend dependencies
+        run: npm ci --prefix backend
+
+      - name: Start backend API on port 8000
+        env:
+          PORT: '8000'
+          SUPABASE_JWT_SECRET: ci-dev-secret
+        run: |
+          cd backend
+          npm run start:dev > /tmp/backend.log 2>&1 &
+          echo $! > /tmp/backend.pid
+
+          for i in $(seq 1 45); do
+            if lsof -nP -iTCP:8000 -sTCP:LISTEN >/dev/null 2>&1; then
+              echo "Backend is listening on :8000"
+              exit 0
+            fi
+            sleep 1
+          done
+
+          echo "Backend failed to start on :8000"
+          cat /tmp/backend.log || true
+          exit 1
+
+      - name: Run RLS API smoke assertions
+        env:
+          SUPABASE_JWT_SECRET: ci-dev-secret
+          BASE_URL: http://localhost:8000
+          STUDENT_ID: f83c44fc-d57f-48f9-9552-2ccfee4f4aed
+        run: |
+          cd backend
+          export TEACHER_TOKEN="$(node scripts/make_dev_token.js 4fae61b9-9221-436a-8003-d7fd0cc65378 teacher)"
+          export STUDENT_TOKEN="$(node scripts/make_dev_token.js f83c44fc-d57f-48f9-9552-2ccfee4f4aed student)"
+          npm run smoke:rls-api
+
+      - name: Show backend logs on failure
+        if: failure()
+        run: cat /tmp/backend.log || true
+
+      - name: Stop backend process
+        if: always()
+        run: |
+          if [ -f /tmp/backend.pid ]; then
+            kill "$(cat /tmp/backend.pid)" || true
+          fi

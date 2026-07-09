@@ -1,10 +1,14 @@
 import { Controller, Post, Body, Get, Query, Headers, UseGuards, Req } from '@nestjs/common';
 import { ChatService } from './chat.service';
 import { AuthGuard } from '../auth/auth.guard';
+import { LocalFeedService } from '../shared/local-feed.service';
 
 @Controller('chat')
 export class ChatController {
-  constructor(private readonly chatService: ChatService) {}
+  constructor(
+    private readonly chatService: ChatService,
+    private readonly localFeed: LocalFeedService
+  ) {}
 
   @Post()
   @UseGuards(AuthGuard)
@@ -12,6 +16,13 @@ export class ChatController {
     const { message, personality, conversationId } = payload;
     const studentId = req.studentId || payload.studentId || 'anon';
     const response = await this.chatService.handleMessage(studentId, message, { personality, conversationId });
+    this.localFeed.logStudentActivity(studentId, {
+      type: 'chat',
+      action: 'sent',
+      title: 'Chat message',
+      details: String(message || '').slice(0, 120),
+      meta: { conversationId: conversationId || null }
+    });
     return { success: true, ...response };
   }
 
