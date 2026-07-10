@@ -39,6 +39,12 @@ export class LocalFeedService {
     return this.homeworkAssignments.filter((h) => ids.has(String(h?.student_id || h?.studentId || '').trim()));
   }
 
+  listHomeworkByTeacher(teacherId: string) {
+    const id = String(teacherId || '').trim();
+    if (!id) return this.homeworkAssignments.slice(0, 200);
+    return this.homeworkAssignments.filter((h) => String(h?.created_by || '') === id);
+  }
+
   upsertTest(test: any) {
     if (!test) return;
     const id = String(test.id || '').trim() || `local-test-${Date.now()}`;

@@ -3,6 +3,7 @@ import {
   addTestQuestion,
   askTeacherAi,
   assignTeacherHomework,
+  getTeacherAssignedHomework,
   bulkUpdateTeacherStudentsClass,
   cloneTest,
   createTeacherStudentInvite,
@@ -134,9 +135,15 @@ export default function TeacherDashboard({ session, onLogout }) {
 
   const [studentInviteLink, setStudentInviteLink] = useState('');
 
-  const [assignTitle, setAssignTitle] = useState('Worksheet Practice');
+  const [assignTitle, setAssignTitle] = useState('');
   const [assignSubject, setAssignSubject] = useState(session?.subject || 'Mathematics');
+  const [assignNote, setAssignNote] = useState('');
+  const [assignStartAt, setAssignStartAt] = useState('');
   const [assignDueAt, setAssignDueAt] = useState('');
+  const [activeAssignments, setActiveAssignments] = useState([]); // confirmed assignments shown at bottom
+  const [homeworkHistory, setHomeworkHistory] = useState([]);     // all past assignments from backend
+  const [showHistoryDropdown, setShowHistoryDropdown] = useState(false);
+  const [historyFilterDate, setHistoryFilterDate] = useState('');
   const [teacherTargetClass, setTeacherTargetClass] = useState('all');
 
   const [teacherPrompt, setTeacherPrompt] = useState('Plan a 30-minute revision session for Algebra basics.');
@@ -635,15 +642,25 @@ export default function TeacherDashboard({ session, onLogout }) {
         loadInvitesPanel({ page: 1, limit: STUDENT_INVITES_PER_PAGE }),
         loadAnnouncementsPanel(),
         loadTestsPanel(),
-        getTeacherProfile().then((res) => { if (active && res?.profile) setTeacherProfile(res.profile); }).catch(() => {})
+        getTeacherProfile().then((res) => { if (active && res?.profile) setTeacherProfile(res.profile); }).catch(() => {}),
+        loadHomeworkHistory()
       ]);
       if (active) setLoading(false);
     }
     bootstrap();
-    return () => {
-      active = false;
-    };
+    return () => { active = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Prune active assignments whose end date has passed
+  useEffect(() => {
+    const interval = setInterval(() => {
+      const now = new Date();
+      setActiveAssignments((prev) =>
+        prev.filter((a) => !a.dueAt || new Date(a.dueAt) > now)
+      );
+    }, 60000);
+    return () => clearInterval(interval);
   }, []);
 
   useEffect(() => {
@@ -759,18 +776,47 @@ export default function TeacherDashboard({ session, onLogout }) {
       const res = await assignTeacherHomework({
         title: assignTitle,
         subject: assignSubject,
+        note: assignNote || null,
+        startAt: assignStartAt || null,
         dueAt: assignDueAt || null,
         className: teacherTargetClass
       });
       const created = Number(res?.created || 0);
-      setNote(created
-        ? `Homework assigned to ${created} student(s) in ${teacherTargetClass}.`
-        : (res?.error || 'No assignments created.'));
+      if (created) {
+        const newAssignment = {
+          id: res.assignments?.[0]?.id || Date.now(),
+          title: assignTitle,
+          subject: assignSubject,
+          note: assignNote,
+          startAt: assignStartAt || null,
+          dueAt: assignDueAt || null,
+          className: teacherTargetClass,
+          createdAt: new Date().toISOString()
+        };
+        setActiveAssignments((prev) => [newAssignment, ...prev]);
+        setNote(`✅ Homework assigned to ${created} student(s) in ${teacherTargetClass}.`);
+        // Clear form
+        setAssignTitle('');
+        setAssignNote('');
+        setAssignStartAt('');
+        setAssignDueAt('');
+      } else {
+        setNote(res?.error || 'No assignments created.');
+      }
       await loadSummaryPanel();
     } catch (e2) {
       setNote('Failed to assign homework.');
     } finally {
       setBusy('');
+    }
+  }
+
+  async function loadHomeworkHistory() {
+    try {
+      const res = await getTeacherAssignedHomework();
+      setHomeworkHistory(Array.isArray(res?.assignments) ? res.assignments : []);
+    } catch {
+      setHomeworkHistory([]);
     }
   }
 
@@ -1099,17 +1145,143 @@ export default function TeacherDashboard({ session, onLogout }) {
               </ul>
             </article>
 
-            <article className="td-card">
-              <h3>Assign Homework</h3>
-              <p>Send homework to every student in <strong>{teacherTargetClass === 'all' ? 'the selected class' : teacherTargetClass}</strong>.</p>
+            <article className="td-card td-card-wide">
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+                <h3 style={{ margin: 0 }}>📝 Assign Homework</h3>
+                <div style={{ position: 'relative' }}>
+                  <button
+                    className="td-btn-outline"
+                    onClick={() => {
+                      if (!showHistoryDropdown) loadHomeworkHistory();
+                      setShowHistoryDropdown((v) => !v);
+                    }}
+                  >
+                    📋 View History ▾
+                  </button>
+                  {showHistoryDropdown && (
+                    <div style={{
+                      position: 'absolute', right: 0, top: '110%', zIndex: 50,
+                      background: '#fff', border: '1px solid #ddd', borderRadius: '10px',
+                      boxShadow: '0 8px 24px rgba(0,0,0,0.12)', padding: '16px',
+                      minWidth: '380px', maxHeight: '400px', overflowY: 'auto'
+                    }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+                        <strong>Assigned Homework History</strong>
+                        <button onClick={() => setShowHistoryDropdown(false)} style={{ background: 'none', border: 'none', fontSize: '18px', cursor: 'pointer' }}>✕</button>
+                      </div>
+                      <div style={{ marginBottom: '10px' }}>
+                        <label style={{ fontSize: '13px', color: '#666' }}>Filter by date: </label>
+                        <input
+                          type="date"
+                          value={historyFilterDate}
+                          onChange={(e) => setHistoryFilterDate(e.target.value)}
+                          style={{ marginLeft: '6px', padding: '4px 8px', borderRadius: '6px', border: '1px solid #ccc', fontSize: '13px' }}
+                        />
+                        {historyFilterDate && (
+                          <button onClick={() => setHistoryFilterDate('')} style={{ marginLeft: '6px', background: 'none', border: 'none', color: '#999', cursor: 'pointer', fontSize: '13px' }}>Clear</button>
+                        )}
+                      </div>
+                      {homeworkHistory.length === 0 ? (
+                        <p style={{ color: '#999', fontSize: '13px' }}>No homework assigned yet.</p>
+                      ) : (
+                        homeworkHistory
+                          .filter((h) => {
+                            if (!historyFilterDate) return true;
+                            const d = h.dueAt || h.startAt || h.createdAt;
+                            return d && d.startsWith(historyFilterDate);
+                          })
+                          .map((h) => (
+                            <div key={h.id} style={{
+                              padding: '10px 12px', marginBottom: '8px', background: '#f8f8ff',
+                              borderRadius: '8px', borderLeft: '3px solid #5b47ff', fontSize: '13px'
+                            }}>
+                              <div style={{ fontWeight: 'bold', marginBottom: '2px' }}>{h.subject}: {h.title}</div>
+                              {h.note && <div style={{ color: '#555', marginBottom: '4px' }}>{h.note}</div>}
+                              <div style={{ color: '#888', fontSize: '12px' }}>
+                                {h.startAt && <span>Start: {new Date(h.startAt).toLocaleString()} · </span>}
+                                {h.dueAt && <span>Due: {new Date(h.dueAt).toLocaleString()}</span>}
+                                {!h.startAt && !h.dueAt && <span>Assigned: {h.createdAt ? new Date(h.createdAt).toLocaleDateString() : '–'}</span>}
+                              </div>
+                            </div>
+                          ))
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <p style={{ color: '#666', fontSize: '14px', marginBottom: '12px' }}>
+                Send homework to every student in <strong>{teacherTargetClass === 'all' ? 'the selected class' : teacherTargetClass}</strong>.
+              </p>
+
               <form className="td-form" onSubmit={onAssignHomework}>
-                <input value={assignTitle} onChange={(e) => setAssignTitle(e.target.value)} placeholder="Homework title" />
-                <input value={assignSubject} onChange={(e) => setAssignSubject(e.target.value)} placeholder="Subject" />
-                <input type="date" value={assignDueAt} onChange={(e) => setAssignDueAt(e.target.value)} />
+                <input
+                  value={assignTitle}
+                  onChange={(e) => setAssignTitle(e.target.value)}
+                  placeholder="Homework title (e.g. Chapter 5 – Photosynthesis)"
+                  required
+                />
+                <input
+                  value={assignSubject}
+                  onChange={(e) => setAssignSubject(e.target.value)}
+                  placeholder="Subject (e.g. Science, Mathematics, Social)"
+                />
+                <textarea
+                  rows={4}
+                  value={assignNote}
+                  onChange={(e) => setAssignNote(e.target.value)}
+                  placeholder="Homework instructions / notes for students (e.g. Read pages 45–52 and answer Q1–Q5...)"
+                  style={{ resize: 'vertical', fontFamily: 'inherit', fontSize: '14px', padding: '10px', borderRadius: '8px', border: '1px solid #ddd', width: '100%', boxSizing: 'border-box' }}
+                />
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '13px', color: '#666', marginBottom: '4px' }}>Start Date &amp; Time</label>
+                    <input
+                      type="datetime-local"
+                      value={assignStartAt}
+                      onChange={(e) => setAssignStartAt(e.target.value)}
+                      style={{ width: '100%' }}
+                    />
+                  </div>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '13px', color: '#666', marginBottom: '4px' }}>End / Due Date &amp; Time</label>
+                    <input
+                      type="datetime-local"
+                      value={assignDueAt}
+                      onChange={(e) => setAssignDueAt(e.target.value)}
+                      style={{ width: '100%' }}
+                    />
+                  </div>
+                </div>
                 <button type="submit" disabled={busy === 'assign'}>
-                  {busy === 'assign' ? 'Assigning...' : teacherTargetClass === 'all' ? 'Select a class first' : `Assign to ${teacherTargetClass}`}
+                  {busy === 'assign' ? 'Assigning...' : teacherTargetClass === 'all' ? 'Select a class first' : `✅ Assign to ${teacherTargetClass}`}
                 </button>
               </form>
+
+              {/* Active Acknowledgments — visible until due date passes */}
+              {activeAssignments.length > 0 && (
+                <div style={{ marginTop: '18px' }}>
+                  <h4 style={{ fontSize: '14px', color: '#555', marginBottom: '8px' }}>✅ Recently Assigned (visible until due date)</h4>
+                  <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
+                    {activeAssignments.map((a) => (
+                      <li key={a.id} style={{
+                        padding: '10px 14px', marginBottom: '8px', background: '#eef9f0',
+                        borderRadius: '8px', borderLeft: '4px solid #2ecc71', fontSize: '13px'
+                      }}>
+                        <div style={{ fontWeight: 'bold', marginBottom: '2px' }}>
+                          {a.subject}: {a.title}
+                        </div>
+                        {a.note && <div style={{ color: '#555', marginBottom: '4px' }}>{a.note}</div>}
+                        <div style={{ color: '#888', fontSize: '12px' }}>
+                          Class: {a.className}
+                          {a.startAt && <span> · Start: {new Date(a.startAt).toLocaleString()}</span>}
+                          {a.dueAt && <span> · Due: {new Date(a.dueAt).toLocaleString()}</span>}
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
             </article>
 
             <article className="td-card td-card-wide">

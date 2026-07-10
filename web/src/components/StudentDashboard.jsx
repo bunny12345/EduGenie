@@ -81,7 +81,12 @@ function Sparkline({ values }) {
   );
 }
 
+const DEFAULT_SUBJECTS = ['Science', 'Mathematics', 'Social'];
+
 export default function StudentDashboard({ studentId = 'test', onLogout }) {
+  // Navigation state
+  const [activeView, setActiveView] = useState('home'); // 'home' or subject name
+
   const [loading, setLoading] = useState(true);
   const [panelLoading, setPanelLoading] = useState({
     dashboard: false,
@@ -121,8 +126,6 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
   const [chatInput, setChatInput] = useState('');
   const [chatLoading, setChatLoading] = useState(false);
   const [testResult, setTestResult] = useState(null);
-  const [activeTest, setActiveTest] = useState(null);
-  const [submittingTest, setSubmittingTest] = useState(false);
   const [homeworkInfo, setHomeworkInfo] = useState('');
   const [selectedResource, setSelectedResource] = useState(null);
   const [settingsSaving, setSettingsSaving] = useState(false);
@@ -143,6 +146,55 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
 
   const setPanelErrorKey = (key, value) => {
     setPanelError((prev) => ({ ...prev, [key]: value }));
+  };
+
+  // Computed values for subject grouping
+  const homeworkBySubject = useMemo(() => {
+    const grouped = new Map();
+    homework.forEach((h) => {
+      const subj = h?.subject || 'General';
+      if (!grouped.has(subj)) grouped.set(subj, []);
+      grouped.get(subj).push(h);
+    });
+    return grouped;
+  }, [homework]);
+
+  const testsBySubject = useMemo(() => {
+    const grouped = new Map();
+    tests.forEach((t) => {
+      const subj = t?.subject || 'General';
+      if (!grouped.has(subj)) grouped.set(subj, []);
+      grouped.get(subj).push(t);
+    });
+    return grouped;
+  }, [tests]);
+
+  const progressBySubject = useMemo(() => {
+    const summary = buildProgressSummary(progress);
+    const grouped = new Map();
+    summary.forEach((p) => {
+      grouped.set(p.subject, p.score);
+    });
+    return grouped;
+  }, [progress]);
+
+  // Get unique subject list
+  const subjects = useMemo(() => {
+    const seen = new Set(DEFAULT_SUBJECTS);
+    homeworkBySubject.forEach((_, subj) => seen.add(subj));
+    testsBySubject.forEach((_, subj) => seen.add(subj));
+    progressBySubject.forEach((_, subj) => seen.add(subj));
+    return Array.from(seen).sort();
+  }, [homeworkBySubject, testsBySubject, progressBySubject]);
+
+  // Calculate notification count for each subject
+  const getSubjectNotifications = (subject) => {
+    let count = 0;
+    homeworkBySubject.get(subject)?.forEach((h) => {
+      if (h?.status !== 'submitted') count++;
+    });
+    testsBySubject.get(subject)?.forEach(() => count++);
+    return count;
   };
 
   async function loadDashboardPanel() {
@@ -325,76 +377,37 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
   async function onStartTest(testId) {
     if (!testId) return;
     setStartingTestId(testId);
-    setPanelErrorKey('tests', '');
     try {
       const started = await startTest(testId, studentId);
       const attemptId = started?.attemptId;
-      if (!attemptId) {
-        throw new Error('Could not start this test.');
+      if (attemptId) {
+        const questionList = Array.isArray(started?.questions) ? started.questions : [];
+        const generatedAnswers = {};
+        questionList.forEach((q) => {
+          if (q?.id !== undefined && q?.id !== null) generatedAnswers[q.id] = 0;
+        });
+        const submitRes = await submitTestAttempt(attemptId, studentId, generatedAnswers);
+        const resultRes = await getTestAttempt(attemptId);
+        const result = resultRes?.result || null;
+        const score = result?.score ?? submitRes?.score ?? null;
+        if (score !== null) {
+          setTestResult({ score, feedback: result?.feedback || submitRes?.feedback || 'Submitted' });
+          // Record progress for this test attempt silently
+          const testItem = tests.find((t) => t.id === testId);
+          recordProgress({
+            studentId,
+            subject: testItem?.subject || testItem?.title || 'Test',
+            score: Number(score),
+            source: 'test'
+          }).catch(() => {});
+        }
       }
-
-      const questionList = Array.isArray(started?.questions) ? started.questions : [];
-      const initialAnswers = {};
-      questionList.forEach((q) => {
-        if (q?.id !== undefined && q?.id !== null) initialAnswers[q.id] = -1;
-      });
-
-      const testItem = tests.find((t) => t.id === testId);
-      setActiveTest({
-        testId,
-        title: testItem?.title || 'Mock Test',
-        subject: testItem?.subject || 'General',
-        attemptId,
-        questions: questionList,
-        answers: initialAnswers
-      });
-      setTestResult(null);
       await loadTestsPanel();
+      await loadProgressPanel();
     } catch (e) {
       setPanelErrorKey('tests', e?.message || 'Test flow failed.');
     } finally {
       setStartingTestId('');
-    }
-  }
-
-  function onSelectTestAnswer(questionId, optionIdx) {
-    if (!activeTest || !questionId) return;
-    setActiveTest((prev) => {
-      if (!prev) return prev;
-      return {
-        ...prev,
-        answers: {
-          ...(prev.answers || {}),
-          [questionId]: optionIdx
-        }
-      };
-    });
-  }
-
-  async function onSubmitActiveTest() {
-    if (!activeTest?.attemptId) return;
-    setSubmittingTest(true);
-    setPanelErrorKey('tests', '');
-    try {
-      const submitRes = await submitTestAttempt(activeTest.attemptId, studentId, activeTest.answers || {});
-      const resultRes = await getTestAttempt(activeTest.attemptId);
-      const result = resultRes?.result || null;
-      const score = result?.score ?? submitRes?.score ?? null;
-      if (score !== null) {
-        setTestResult({ score, feedback: result?.feedback || submitRes?.feedback || 'Submitted' });
-        recordProgress({
-          studentId,
-          subject: activeTest.subject || activeTest.title || 'Test',
-          score: Number(score),
-          source: 'test'
-        }).catch(() => {});
-      }
-      setActiveTest(null);
-      await Promise.all([loadTestsPanel(), loadProgressPanel()]);
-    } catch (e) {
-      setPanelErrorKey('tests', e?.message || 'Unable to submit test.');
-    } finally {
-      setSubmittingTest(false);
     }
   }
 
@@ -568,13 +581,75 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
           </div>
         </header>
 
+        {/* Subject Navigation */}
+        <div style={{ display: 'flex', gap: '8px', padding: '12px 20px', backgroundColor: '#f5f5f5', borderBottom: '1px solid #e0e0e0', overflowX: 'auto', alignItems: 'center' }}>
+          <button 
+            onClick={() => setActiveView('home')}
+            style={{
+              padding: '8px 16px',
+              border: 'none',
+              borderRadius: '20px',
+              backgroundColor: activeView === 'home' ? '#5b47ff' : '#fff',
+              color: activeView === 'home' ? '#fff' : '#333',
+              cursor: 'pointer',
+              fontWeight: 'bold',
+              whiteSpace: 'nowrap'
+            }}
+          >
+            🏠 Home
+          </button>
+          {subjects.map((subject) => {
+            const notifyCount = getSubjectNotifications(subject);
+            return (
+              <button
+                key={subject}
+                onClick={() => setActiveView(subject)}
+                style={{
+                  padding: '8px 16px',
+                  border: 'none',
+                  borderRadius: '20px',
+                  backgroundColor: activeView === subject ? '#5b47ff' : '#fff',
+                  color: activeView === subject ? '#fff' : '#333',
+                  cursor: 'pointer',
+                  fontWeight: 'bold',
+                  whiteSpace: 'nowrap',
+                  position: 'relative'
+                }}
+              >
+                {subject}
+                {notifyCount > 0 && (
+                  <span style={{
+                    position: 'absolute',
+                    top: '-8px',
+                    right: '-8px',
+                    backgroundColor: '#ff6b6b',
+                    color: '#fff',
+                    borderRadius: '50%',
+                    width: '20px',
+                    height: '20px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    fontSize: '12px',
+                    fontWeight: 'bold'
+                  }}>
+                    {notifyCount}
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </div>
+
         {panelError.dashboard ? <p className="eg-loading">{panelError.dashboard}</p> : null}
 
-        <section className="eg-main-grid">
-          <div className="eg-left-stack">
-            <section className="cardish eg-hero-card eg-grad-hero">
-              <h1>Good Morning, {greetingName}! 👋</h1>
-              <p>Ready to learn something amazing today?</p>
+        {activeView === 'home' ? (
+          <>
+            <section className="eg-main-grid">
+              <div className="eg-left-stack">
+              <section className="cardish eg-hero-card eg-grad-hero">
+                <h1>Good Morning, {greetingName}! 👋</h1>
+                <p>Ready to learn something amazing today?</p>
               <div className="eg-hero-inner">
                 <div className="eg-bot-quote">
                   <div className="eg-bot">🤖</div>
@@ -589,10 +664,14 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
                   {panelLoading.homework ? <p className="eg-loading">Loading homework...</p> : null}
                   {panelError.homework ? <p className="eg-loading">{panelError.homework}</p> : null}
                   <ul>
-                    {homeworkTop.slice(0, 3).map((h) => (
-                      <li key={h.id}>{h.title || h.file_url || 'Homework Task'}</li>
+                    {/* Show only unique subject names — click to go to subject page */}
+                    {[...new Set(homework.map((h) => h.subject || 'General'))].slice(0, 4).map((subj) => (
+                      <li key={subj} style={{ cursor: 'pointer', color: '#5b47ff', fontWeight: '600' }}
+                        onClick={() => setActiveView(subj)}>
+                        📚 {subj}
+                      </li>
                     ))}
-                    {!panelLoading.homework && !homeworkTop.length ? <li>No homework tasks assigned.</li> : null}
+                    {!panelLoading.homework && !homework.length ? <li>No homework tasks assigned.</li> : null}
                   </ul>
                   <button>Start Learning</button>
                 </div>
@@ -685,21 +764,28 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
           </article>
 
           <article className="cardish eg-mini-card eg-grad-soft">
-            <h4>Homework</h4>
+            <h4>📝 Homework</h4>
             {panelLoading.homework ? <p className="eg-loading">Loading homework...</p> : null}
             {panelError.homework ? <p className="eg-loading">{panelError.homework}</p> : null}
             <ul className="mini-list">
-              {homeworkTop.slice(0, 3).map((h) => (
-                <li key={h.id} className="eg-list-with-action">
-                  <span>{h.title || h.file_url || 'Homework Task'}</span>
-                  <button className="eg-inline-btn" onClick={() => onSubmitHomework(h.id)} disabled={startingHomeworkId === h.id}>
-                    {startingHomeworkId === h.id ? '...' : 'Submit'}
-                  </button>
-                </li>
-              ))}
-              {!panelLoading.homework && !homeworkTop.length ? <li>No homework assigned.</li> : null}
+              {/* Home page: show subject name only — tap to go to subject page */}
+              {[...new Set(homework.map((h) => h.subject || 'General'))].slice(0, 5).map((subj) => {
+                const count = homework.filter((h) => (h.subject || 'General') === subj && h.status !== 'submitted').length;
+                return (
+                  <li key={subj} style={{ cursor: 'pointer', padding: '6px 0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
+                    onClick={() => setActiveView(subj)}>
+                    <span style={{ color: '#5b47ff', fontWeight: '600' }}>📚 {subj}</span>
+                    {count > 0 && (
+                      <span style={{ background: '#ff6b6b', color: '#fff', borderRadius: '12px', padding: '2px 8px', fontSize: '12px' }}>
+                        {count} pending
+                      </span>
+                    )}
+                  </li>
+                );
+              })}
+              {!panelLoading.homework && !homework.length ? <li>No homework assigned.</li> : null}
             </ul>
-            {homeworkInfo ? <p className="eg-inline-note">{homeworkInfo}</p> : null}
+            <p style={{ fontSize: '12px', color: '#999', marginTop: '6px' }}>Tap a subject to see full details →</p>
           </article>
 
           <article className="cardish eg-mini-card eg-grad-soft">
@@ -720,45 +806,11 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
             <h4>Mock Tests</h4>
             {panelLoading.tests ? <p className="eg-loading">Loading tests...</p> : null}
             {panelError.tests ? <p className="eg-loading">{panelError.tests}</p> : null}
-            {activeTest ? (
-              <div className="eg-inline-form">
-                <p className="eg-inline-note">Attempting: {activeTest.title}</p>
-                {(activeTest.questions || []).map((q, qIdx) => (
-                  <div key={q.id || `q-${qIdx}`}>
-                    <p><strong>Q{qIdx + 1}.</strong> {q.text || 'Question'}</p>
-                    <div className="eg-role-list">
-                      {(Array.isArray(q.options) ? q.options : []).map((opt, optIdx) => {
-                        const selected = Number(activeTest.answers?.[q.id]) === optIdx;
-                        return (
-                          <button
-                            type="button"
-                            key={`${q.id || qIdx}-o-${optIdx}`}
-                            className="eg-inline-btn"
-                            style={{ opacity: selected ? 1 : 0.7 }}
-                            onClick={() => onSelectTestAnswer(q.id, optIdx)}
-                          >
-                            {selected ? 'Selected: ' : ''}{String(opt)}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                ))}
-                <div className="eg-inline-actions">
-                  <button className="eg-mini-btn" onClick={onSubmitActiveTest} disabled={submittingTest}>
-                    {submittingTest ? 'Submitting...' : 'Submit Test'}
-                  </button>
-                  <button className="eg-mini-btn" onClick={() => setActiveTest(null)} disabled={submittingTest}>
-                    Cancel Attempt
-                  </button>
-                </div>
-              </div>
-            ) : null}
             <ul className="mini-list">
               {testsTop.map((t) => (
                 <li key={t.id} className="eg-list-with-action">
                   <span>{t.title || t.name || 'Mock Test'}</span>
-                  <button className="eg-inline-btn" onClick={() => onStartTest(t.id)} disabled={startingTestId === t.id || !!activeTest}>
+                  <button className="eg-inline-btn" onClick={() => onStartTest(t.id)} disabled={startingTestId === t.id}>
                     {startingTestId === t.id ? '...' : 'Start'}
                   </button>
                 </li>
@@ -876,6 +928,89 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
             <button className="eg-mini-btn danger" onClick={onLogout}>Logout</button>
           </article>
         </section>
+        </>
+        ) : (
+          <section className="eg-main-grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))' }}>
+            <h2 style={{ gridColumn: '1 / -1', marginBottom: '20px' }}>{activeView} - Homework & Tests</h2>
+
+            {/* Subject Homework — full details */}
+            <article className="cardish eg-mini-card eg-grad-soft" style={{ gridColumn: 'span 2' }}>
+              <h4>📝 {activeView} Homework</h4>
+              {panelLoading.homework ? <p className="eg-loading">Loading homework...</p> : null}
+              {panelError.homework ? <p className="eg-loading">{panelError.homework}</p> : null}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                {(homeworkBySubject.get(activeView) || []).map((h) => (
+                  <div key={h.id} style={{
+                    background: '#f8f8ff', borderRadius: '10px', padding: '14px',
+                    borderLeft: '4px solid #5b47ff'
+                  }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontWeight: 'bold', fontSize: '15px', marginBottom: '4px' }}>
+                          {h.title || 'Homework Task'}
+                        </div>
+                        {h.note && (
+                          <div style={{ color: '#444', fontSize: '14px', marginBottom: '8px', lineHeight: '1.5' }}>
+                            {h.note}
+                          </div>
+                        )}
+                        <div style={{ fontSize: '12px', color: '#888' }}>
+                          {h.startAt && <span>📅 Start: {new Date(h.startAt).toLocaleString()} &nbsp;</span>}
+                          {h.dueAt && <span>⏰ Due: {new Date(h.dueAt).toLocaleString()}</span>}
+                          {!h.startAt && !h.dueAt && h.createdAt && (
+                            <span>Assigned: {new Date(h.createdAt).toLocaleDateString()}</span>
+                          )}
+                        </div>
+                      </div>
+                      <button
+                        className="eg-inline-btn"
+                        onClick={() => onSubmitHomework(h.id)}
+                        disabled={startingHomeworkId === h.id || h.status === 'submitted'}
+                        style={{ marginLeft: '12px', flexShrink: 0 }}
+                      >
+                        {h.status === 'submitted' ? '✅ Submitted' : startingHomeworkId === h.id ? '...' : 'Submit'}
+                      </button>
+                    </div>
+                  </div>
+                ))}
+                {!panelLoading.homework && !(homeworkBySubject.get(activeView) || []).length ? (
+                  <p style={{ color: '#999' }}>No homework assigned for this subject.</p>
+                ) : null}
+              </div>
+              {homeworkInfo ? <p className="eg-inline-note">{homeworkInfo}</p> : null}
+            </article>
+
+            {/* Subject Tests */}
+            <article className="cardish eg-mini-card eg-grad-soft">
+              <h4>🧪 {activeView} Mock Tests</h4>
+              {panelLoading.tests ? <p className="eg-loading">Loading tests...</p> : null}
+              {panelError.tests ? <p className="eg-loading">{panelError.tests}</p> : null}
+              <ul className="mini-list">
+                {(testsBySubject.get(activeView) || []).map((t) => (
+                  <li key={t.id} className="eg-list-with-action">
+                    <span>{t.title || t.name || 'Mock Test'}</span>
+                    <button className="eg-inline-btn" onClick={() => onStartTest(t.id)} disabled={startingTestId === t.id}>
+                      {startingTestId === t.id ? '...' : 'Start'}
+                    </button>
+                  </li>
+                ))}
+                {!panelLoading.tests && !(testsBySubject.get(activeView) || []).length ? <li>No tests available for this subject.</li> : null}
+              </ul>
+              {testResult ? <p className="eg-inline-note">Last score: {String(testResult.score)} | {testResult.feedback}</p> : null}
+            </article>
+
+            {/* Subject Progress */}
+            {progressBySubject.has(activeView) && (
+              <article className="cardish eg-mini-card eg-progress-card eg-grad-progress">
+                <h4>📊 {activeView} Progress</h4>
+                <div style={{ fontSize: '48px', fontWeight: 'bold', color: '#5b47ff', marginBottom: '10px' }}>
+                  {progressBySubject.get(activeView)}%
+                </div>
+                <small>Average Score in {activeView}</small>
+              </article>
+            )}
+          </section>
+        )}
 
         {loading ? <p className="eg-loading">Loading dashboard data...</p> : null}
       </div>

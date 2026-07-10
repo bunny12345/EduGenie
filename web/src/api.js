@@ -671,6 +671,15 @@ export async function assignTeacherHomework(payload) {
   return res.json();
 }
 
+export async function getTeacherAssignedHomework() {
+  const res = await fetch(`${API_BASE}/teacher/homework`, {
+    headers: await authHeaders()
+  });
+  if (!res.ok) throw new Error(`getTeacherAssignedHomework failed: ${res.status}`);
+  const data = await res.json();
+  return checkSuccess(data, 'getTeacherAssignedHomework');
+}
+
 export async function getTeacherAnnouncements() {
   const res = await fetch(withQuery('/teacher/announcements'), {
     headers: await authHeaders()
@@ -741,6 +750,7 @@ const api = {
   getTeacherStudentProgress,
   getTeacherStudentDeliveryStatus,
   assignTeacherHomework,
+  getTeacherAssignedHomework,
   getTeacherAnnouncements,
   postTeacherAnnouncement,
   askTeacherAi,

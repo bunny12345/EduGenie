@@ -54,9 +54,105 @@ export default function SchoolDashboard({ session, onLogout }) {
   const [studentPage, setStudentPage] = useState(1);
   const [studentTotalPages, setStudentTotalPages] = useState(1);
 
+  // New: Section-specific loading and refresh states
+  const [refreshing, setRefreshing] = useState('');
+  const [exportFormat, setExportFormat] = useState(null);
+
   const INVITES_PER_PAGE = 5;
   const TEACHERS_PER_PAGE = 6;
   const STUDENTS_PER_PAGE = 6;
+
+  // Export data functions
+  function exportTeachers(format) {
+    const timestamp = new Date().toISOString().slice(0, 10);
+    const filename = `teachers-${session?.schoolId || 'school'}-${timestamp}`;
+
+    if (format === 'csv') {
+      const rows = [
+        ['Name', 'Email', 'Subject', 'Login ID', 'Created At'],
+        ...teachers.map((t) => [
+          t?.name || '',
+          t?.email || '',
+          t?.subject || 'General',
+          t?.loginId || '',
+          shortDate(t?.createdAt)
+        ])
+      ];
+      const csv = rows.map((r) => r.map((v) => `"${String(v || '').replace(/"/g, '""')}"`).join(',')).join('\n');
+      const blob = new Blob([csv], { type: 'text/csv' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `${filename}.csv`;
+      link.click();
+      URL.revokeObjectURL(url);
+    }
+    setExportFormat(null);
+  }
+
+  function exportStudents(format) {
+    const timestamp = new Date().toISOString().slice(0, 10);
+    const filename = `students-${session?.schoolId || 'school'}-${timestamp}`;
+
+    if (format === 'csv') {
+      const rows = [
+        ['Name', 'Class', 'Email', 'Status'],
+        ...students.map((s) => [
+          s?.name || '',
+          s?.className || '',
+          s?.email || '',
+          s?.status || 'enrolled'
+        ])
+      ];
+      const csv = rows.map((r) => r.map((v) => `"${String(v || '').replace(/"/g, '""')}"`).join(',')).join('\n');
+      const blob = new Blob([csv], { type: 'text/csv' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `${filename}.csv`;
+      link.click();
+      URL.revokeObjectURL(url);
+    }
+    setExportFormat(null);
+  }
+
+  // Refresh specific sections
+  async function refreshTeachersSection() {
+    setRefreshing('teachers');
+    await loadTeachers({ q: teacherSearch, page: teacherPage, limit: TEACHERS_PER_PAGE });
+    setRefreshing('');
+  }
+
+  async function refreshInvitesSection() {
+    setRefreshing('invites');
+    await loadInvites({ q: inviteSearch, status: inviteStatusFilter, page: invitePage, limit: INVITES_PER_PAGE });
+    setRefreshing('');
+  }
+
+  async function refreshStudentsSection() {
+    setRefreshing('students');
+    try {
+      const sRes = await schoolStudents({
+        q: studentSearch,
+        page: studentPage,
+        limit: STUDENTS_PER_PAGE
+      });
+      applyStudents(Array.isArray(sRes?.students) ? sRes.students : [], sRes?.pagination || null);
+    } catch (e) {
+      setError(e?.message || 'Failed to refresh students');
+    }
+    setRefreshing('');
+  }
+
+  async function refreshAllSections() {
+    setRefreshing('all');
+    await Promise.all([
+      refreshTeachersSection(),
+      refreshInvitesSection(),
+      refreshStudentsSection()
+    ]);
+    setRefreshing('');
+  }
 
   function applyInvites(nextInvites, pagination) {
     const safeInvites = Array.isArray(nextInvites) ? nextInvites : [];
@@ -325,7 +421,51 @@ export default function SchoolDashboard({ session, onLogout }) {
           <h1>{session?.schoolName || 'School'} Admin Workspace</h1>
           <p>Register school teachers manually or send them onboarding links.</p>
         </div>
-        <button className="sd-logout" onClick={onLogout}>Logout</button>
+        <div style={{ display: 'flex', gap: '8px' }}>
+          <button 
+            className="sd-inline-btn"
+            onClick={refreshAllSections}
+            disabled={refreshing === 'all'}
+            title="Refresh all sections"
+          >
+            {refreshing === 'all' ? '⟳ ...' : '⟳ Refresh'} 
+          </button>
+          <div style={{ position: 'relative' }}>
+            <button 
+              className="sd-inline-btn"
+              onClick={() => setExportFormat(exportFormat ? null : true)}
+              title="Export data"
+            >
+              ⬇ Export
+            </button>
+            {exportFormat && (
+              <div style={{ 
+                position: 'absolute', 
+                right: 0, 
+                top: '100%', 
+                backgroundColor: '#fff', 
+                border: '1px solid #ccc',
+                borderRadius: '4px',
+                zIndex: 10,
+                minWidth: '140px'
+              }}>
+                <button 
+                  onClick={() => exportTeachers('csv')}
+                  style={{ display: 'block', width: '100%', textAlign: 'left', padding: '8px 12px', border: 'none', background: 'none' }}
+                >
+                  👨‍🏫 Teachers CSV
+                </button>
+                <button 
+                  onClick={() => exportStudents('csv')}
+                  style={{ display: 'block', width: '100%', textAlign: 'left', padding: '8px 12px', border: 'none', background: 'none' }}
+                >
+                  👥 Students CSV
+                </button>
+              </div>
+            )}
+          </div>
+          <button className="sd-logout" onClick={onLogout}>Logout</button>
+        </div>
       </header>
 
       {loading ? <p className="sd-note">Loading school data...</p> : null}
@@ -377,6 +517,14 @@ export default function SchoolDashboard({ session, onLogout }) {
 
         <article className="sd-card">
           <h3>Teachers</h3>
+          <button 
+            className="sd-inline-btn" 
+            onClick={refreshTeachersSection}
+            disabled={refreshing === 'teachers'}
+            style={{ float: 'right', fontSize: '12px' }}
+          >
+            {refreshing === 'teachers' ? '...' : '↻'}
+          </button>
           <div className="invite-toolbar">
             <input
               className="invite-search"
@@ -417,6 +565,14 @@ export default function SchoolDashboard({ session, onLogout }) {
 
         <article className="sd-card">
           <h3>Recent Teacher Invites</h3>
+          <button 
+            className="sd-inline-btn" 
+            onClick={refreshInvitesSection}
+            disabled={refreshing === 'invites'}
+            style={{ float: 'right', fontSize: '12px' }}
+          >
+            {refreshing === 'invites' ? '...' : '↻'}
+          </button>
           <div className="invite-toolbar">
             <input
               className="invite-search"
@@ -497,6 +653,14 @@ export default function SchoolDashboard({ session, onLogout }) {
 
         <article className="sd-card">
           <h3>Students (School-wide)</h3>
+          <button 
+            className="sd-inline-btn" 
+            onClick={refreshStudentsSection}
+            disabled={refreshing === 'students'}
+            style={{ float: 'right', fontSize: '12px' }}
+          >
+            {refreshing === 'students' ? '...' : '↻'}
+          </button>
           <div className="invite-toolbar">
             <input
               className="invite-search"

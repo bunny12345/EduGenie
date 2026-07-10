@@ -564,6 +564,8 @@ export class TeacherController {
           id: h.id,
           title: h.title || 'Homework',
           subject: h.subject || 'General',
+          note: h.note || null,
+          startAt: h.start_at || null,
           dueAt: h.due_at || null,
           status,
           grade: latest?.score ?? h.grade ?? null,
@@ -583,6 +585,8 @@ export class TeacherController {
           id: h.id,
           title: h.title || 'Homework',
           subject: h.subject || 'General',
+          note: h.note || null,
+          startAt: h.start_at || null,
           dueAt: h.due_at || null,
           status: h.status || 'pending',
           grade: null,
@@ -666,6 +670,50 @@ export class TeacherController {
       return { success: true, homeworkId: hwId, status: safeStatus, grade, feedback };
     }
   }
+
+  @Get('homework')
+  async listTeacherHomework(@Req() req: any) {
+    this.ensureTeacher(req);
+    const teacherId = req?.user?.sub || null;
+    try {
+      const res = await this.db.client
+        .from('homework')
+        .select('*')
+        .eq('created_by', teacherId)
+        .order('created_at', { ascending: false })
+        .limit(200);
+      const rows = Array.isArray((res as any)?.data) ? (res as any).data : [];
+      const assignments = rows.map((h: any) => ({
+        id: h.id,
+        title: h.title,
+        subject: h.subject,
+        note: h.note || null,
+        startAt: h.start_at || null,
+        dueAt: h.due_at || null,
+        className: h.class_name || null,
+        createdAt: h.created_at || null,
+      }));
+      return { success: true, assignments };
+    } catch (e) {
+      // Fall back to local feed — filter by created_by
+      const allHw = this.localFeed.listHomeworkByTeacher(teacherId);
+      return {
+        success: true,
+        assignments: allHw.map((h: any) => ({
+          id: h.id,
+          title: h.title,
+          subject: h.subject,
+          note: h.note || null,
+          startAt: h.start_at || null,
+          dueAt: h.due_at || null,
+          className: h.class_name || null,
+          createdAt: h.created_at || null,
+        }))
+      };
+    }
+  }
+
+  @Post('homework/assign')
   async assignHomework(@Req() req: any, @Body() body: any) {
     this.ensureTeacher(req);
     const subject = body?.subject || 'General';
@@ -706,11 +754,18 @@ export class TeacherController {
       }
     }
 
+    const note = body?.note || null;
+    const startAt = body?.startAt || null;
+    const className = body?.className || targetClass || null;
+
     const rows = effectiveStudentIds.map((studentId: string) => ({
       student_id: studentId,
       subject,
       title,
+      note,
+      start_at: startAt,
       due_at: dueAt,
+      class_name: className,
       status: 'pending',
       tasks: body?.tasks || null,
       created_by: req?.user?.sub || null
@@ -728,11 +783,15 @@ export class TeacherController {
           studentId: h.student_id,
           subject: h.subject,
           title: h.title,
-          dueAt: h.due_at || null
+          note: h.note || null,
+          startAt: h.start_at || null,
+          dueAt: h.due_at || null,
+          className: h.class_name || null,
+          createdAt: h.created_at || new Date().toISOString()
         }))
       };
     } catch (e) {
-      const inserted = rows.map((r: any, idx: number) => ({ ...r, id: `local-hw-${Date.now()}-${idx}` }));
+      const inserted = rows.map((r: any, idx: number) => ({ ...r, id: `local-hw-${Date.now()}-${idx}`, created_at: new Date().toISOString() }));
       this.localFeed.addHomework(inserted);
       return {
         success: true,
@@ -742,7 +801,11 @@ export class TeacherController {
           studentId: h.student_id,
           subject: h.subject,
           title: h.title,
-          dueAt: h.due_at || null
+          note: h.note || null,
+          startAt: h.start_at || null,
+          dueAt: h.due_at || null,
+          className: h.class_name || null,
+          createdAt: h.created_at || new Date().toISOString()
         }))
       };
     }
