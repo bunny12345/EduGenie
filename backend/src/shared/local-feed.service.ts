@@ -1,7 +1,12 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, OnModuleInit } from '@nestjs/common';
+import * as fs from 'fs';
+import * as path from 'path';
+
+const DATA_DIR = path.join(process.cwd(), 'local-data');
+const FEED_FILE = path.join(DATA_DIR, 'local-feed.json');
 
 @Injectable()
-export class LocalFeedService {
+export class LocalFeedService implements OnModuleInit {
   private announcements: any[] = [];
   private homeworkAssignments: any[] = [];
   private tests: any[] = [];
@@ -10,6 +15,26 @@ export class LocalFeedService {
   private events: any[] = [];
   private rewardsByStudent = new Map<string, { coins: number; badges: any[]; recentRewards: any[] }>();
   private activityByStudent = new Map<string, any[]>();
+
+  onModuleInit() {
+    try {
+      if (fs.existsSync(FEED_FILE)) {
+        const saved = JSON.parse(fs.readFileSync(FEED_FILE, 'utf8'));
+        if (Array.isArray(saved?.homework)) {
+          this.homeworkAssignments = saved.homework;
+          // eslint-disable-next-line no-console
+          console.log(`[local-feed] Loaded ${this.homeworkAssignments.length} persisted homework assignments`);
+        }
+      }
+    } catch (_e) { /* corrupt/missing file – start fresh */ }
+  }
+
+  private persistFeed() {
+    try {
+      if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
+      fs.writeFileSync(FEED_FILE, JSON.stringify({ homework: this.homeworkAssignments }), 'utf8');
+    } catch (_e) { /* non-fatal */ }
+  }
 
   addAnnouncements(items: any[]) {
     const next = Array.isArray(items) ? items : [];
@@ -25,6 +50,7 @@ export class LocalFeedService {
     const next = Array.isArray(items) ? items : [];
     if (!next.length) return;
     this.homeworkAssignments = [...next, ...this.homeworkAssignments].slice(0, 2000);
+    this.persistFeed();
   }
 
   listHomeworkForStudent(studentId: string) {
@@ -42,7 +68,11 @@ export class LocalFeedService {
   listHomeworkByTeacher(teacherId: string) {
     const id = String(teacherId || '').trim();
     if (!id) return this.homeworkAssignments.slice(0, 200);
-    return this.homeworkAssignments.filter((h) => String(h?.created_by || '') === id);
+    return this.homeworkAssignments.filter((h) => {
+      const createdBy = String(h?.created_by || '').trim();
+      const metaTeacherId = String(h?.tasks?.meta?.teacherId || '').trim();
+      return createdBy === id || metaTeacherId === id;
+    });
   }
 
   upsertTest(test: any) {

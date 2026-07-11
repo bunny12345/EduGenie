@@ -206,6 +206,31 @@ export async function getHomework(studentId) {
   return getJsonChecked(url, 'getHomework');
 }
 
+export async function uploadHomeworkImage(file) {
+  const headers = await authHeaders();
+  const res = await fetch(`${API_BASE}/homework/upload`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({
+      fileName: file?.name || 'upload.png',
+      mimeType: file?.type || 'image/png',
+      data: await fileToDataUrl(file)
+    })
+  });
+  if (!res.ok) throw new Error(`uploadHomeworkImage failed: ${res.status}`);
+  return res.json();
+}
+
+function fileToDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    if (!file) return reject(new Error('No file selected'));
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ''));
+    reader.onerror = () => reject(reader.error || new Error('Unable to read file'));
+    reader.readAsDataURL(file);
+  });
+}
+
 export async function submitHomework(homeworkId, studentId, answers, attachmentUrl) {
   const headers = await authHeaders();
   const url = `${API_BASE}/homework/${encodeURIComponent(homeworkId)}/submit`;
@@ -671,6 +696,16 @@ export async function assignTeacherHomework(payload) {
   return res.json();
 }
 
+export async function resyncTeacherHomework(assignments) {
+  const headers = await authHeaders();
+  const res = await fetch(`${API_BASE}/teacher/homework/resync`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({ assignments })
+  });
+  return res.json();
+}
+
 export async function getTeacherAssignedHomework() {
   const res = await fetch(`${API_BASE}/teacher/homework`, {
     headers: await authHeaders()
@@ -678,6 +713,15 @@ export async function getTeacherAssignedHomework() {
   if (!res.ok) throw new Error(`getTeacherAssignedHomework failed: ${res.status}`);
   const data = await res.json();
   return checkSuccess(data, 'getTeacherAssignedHomework');
+}
+
+export async function getTeacherHomeworkAttempts(hwId) {
+  const res = await fetch(`${API_BASE}/teacher/homework/${encodeURIComponent(hwId)}/attempts`, {
+    headers: await authHeaders()
+  });
+  if (!res.ok) throw new Error(`getTeacherHomeworkAttempts failed: ${res.status}`);
+  const data = await res.json();
+  return checkSuccess(data, 'getTeacherHomeworkAttempts');
 }
 
 export async function getTeacherAnnouncements() {
@@ -751,6 +795,7 @@ const api = {
   getTeacherStudentDeliveryStatus,
   assignTeacherHomework,
   getTeacherAssignedHomework,
+  getTeacherHomeworkAttempts,
   getTeacherAnnouncements,
   postTeacherAnnouncement,
   askTeacherAi,

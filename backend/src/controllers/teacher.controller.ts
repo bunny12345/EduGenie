@@ -55,10 +55,26 @@ export class TeacherController {
     return { scopedRows, hasScopedRoster };
   }
 
+  private actorId(req: any) {
+    return req?.user?.sub || req?.user?.user_id || req?.user?.id || null;
+  }
+
+  private readHomeworkMeta(row: any) {
+    const tasks = row?.tasks && typeof row.tasks === 'object' ? row.tasks : null;
+    const meta = tasks && typeof tasks.meta === 'object' ? tasks.meta : null;
+    return {
+      note: row?.note ?? meta?.note ?? null,
+      startAt: row?.start_at ?? meta?.startAt ?? null,
+      dueAt: row?.due_at ?? meta?.dueAt ?? null,
+      className: row?.class_name ?? meta?.className ?? null,
+      attachmentUrl: row?.attachment_url ?? meta?.attachmentUrl ?? null,
+    };
+  }
+
   @Get('profile')
   async teacherProfile(@Req() req: any) {
     this.ensureTeacher(req);
-    const teacherId = req?.user?.sub || null;
+    const teacherId = this.actorId(req);
     const schoolId = req?.user?.schoolId || null;
 
     try {
@@ -108,7 +124,7 @@ export class TeacherController {
     this.ensureTeacher(req);
     try {
       const scopedStudentsRes = await this.studentAuth.listStudentsByScope({
-        teacherId: req?.user?.sub || undefined,
+        teacherId: this.actorId(req) || undefined,
         schoolId: req?.user?.schoolId || undefined
       });
       const students = Array.isArray(scopedStudentsRes.students) ? scopedStudentsRes.students : [];
@@ -560,17 +576,34 @@ export class TeacherController {
         const hwAttempts = attemptsByHw.get(String(h.id || '')) || [];
         const latest = hwAttempts[0] || null;
         const status = h.status || (latest ? 'submitted' : 'pending');
+        const dueDateRaw = this.readHomeworkMeta(h).dueAt || h.due_at || h.created_at || null;
+        const dueDate = dueDateRaw ? new Date(dueDateRaw) : null;
+        const daysSinceDue = dueDate && !Number.isNaN(dueDate.getTime())
+          ? Math.floor((new Date().getTime() - dueDate.getTime()) / (24 * 60 * 60 * 1000))
+          : null;
+        const overdue = !!(daysSinceDue !== null && daysSinceDue >= 0 && !latest);
+        const meta = this.readHomeworkMeta(h);
         return {
           id: h.id,
           title: h.title || 'Homework',
           subject: h.subject || 'General',
-          note: h.note || null,
-          startAt: h.start_at || null,
-          dueAt: h.due_at || null,
+          note: meta.note,
+          startAt: meta.startAt,
+          dueAt: meta.dueAt,
+          attachmentUrl: meta.attachmentUrl,
           status,
           grade: latest?.score ?? h.grade ?? null,
           submittedAt: latest?.created_at || null,
+          latestAttachmentUrl: latest?.attachment_url || null,
           attemptCount: hwAttempts.length,
+          overdue,
+          daysSinceDue,
+          dueStatus: status === 'submitted' || status === 'graded' ? 'submitted' : (overdue ? 'overdue' : 'pending'),
+          remark: status === 'submitted' || status === 'graded'
+            ? 'Submitted'
+            : (overdue
+              ? `Not submitted — overdue by ${daysSinceDue} day${daysSinceDue === 1 ? '' : 's'}`
+              : 'Pending'),
           createdAt: h.created_at || null
         };
       });
@@ -582,19 +615,58 @@ export class TeacherController {
         success: true,
         studentId,
         homework: localHw.map((h: any) => ({
+          ...(() => {
+            const meta = this.readHomeworkMeta(h);
+            return {
+              note: meta.note,
+              startAt: meta.startAt,
+              dueAt: meta.dueAt,
+              attachmentUrl: meta.attachmentUrl,
+            };
+          })(),
           id: h.id,
           title: h.title || 'Homework',
           subject: h.subject || 'General',
-          note: h.note || null,
-          startAt: h.start_at || null,
-          dueAt: h.due_at || null,
           status: h.status || 'pending',
           grade: null,
           submittedAt: null,
+          latestAttachmentUrl: null,
           attemptCount: 0,
+          overdue: false,
+          daysSinceDue: null,
+          dueStatus: h.status === 'submitted' ? 'submitted' : 'pending',
+          remark: h.status === 'submitted' ? 'Submitted' : 'Pending',
           createdAt: h.created_at || null
         }))
       };
+    }
+  }
+
+  @Get('homework/:hwId/attempts')
+  async teacherHomeworkAttempts(@Req() req: any, @Param('hwId') hwId: string) {
+    this.ensureTeacher(req);
+    try {
+      const res = await this.db.client
+        .from('homework_attempts')
+        .select('*')
+        .eq('homework_id', hwId)
+        .order('created_at', { ascending: false })
+        .limit(100);
+      const attempts = Array.isArray((res as any)?.data) ? (res as any).data : [];
+      return {
+        success: true,
+        homeworkId: hwId,
+        attempts: attempts.map((a: any) => ({
+          id: a.id,
+          studentId: a.student_id,
+          submittedAt: a.created_at || null,
+          attachmentUrl: a.attachment_url || null,
+          score: a.score ?? null,
+          answers: a.answers || null,
+        }))
+      };
+    } catch (e) {
+      return { success: true, homeworkId: hwId, attempts: [] };
     }
   }
 
@@ -674,23 +746,67 @@ export class TeacherController {
   @Get('homework')
   async listTeacherHomework(@Req() req: any) {
     this.ensureTeacher(req);
-    const teacherId = req?.user?.sub || null;
+    const teacherId = this.actorId(req);
     try {
-      const res = await this.db.client
-        .from('homework')
-        .select('*')
-        .eq('created_by', teacherId)
-        .order('created_at', { ascending: false })
-        .limit(200);
-      const rows = Array.isArray((res as any)?.data) ? (res as any).data : [];
+      const [scopedStudentsRes, byTeacherRes] = await Promise.all([
+        this.studentAuth.listStudentsByScope({
+          teacherId: this.actorId(req) || undefined,
+          schoolId: req?.user?.schoolId || undefined
+        }),
+        this.db.client
+          .from('homework')
+          .select('*')
+          .eq('created_by', teacherId)
+          .order('created_at', { ascending: false })
+          .limit(300)
+      ]);
+
+      const byTeacher = Array.isArray((byTeacherRes as any)?.data) ? (byTeacherRes as any).data : [];
+      let rows = byTeacher;
+
+      // Compatibility fallback: if created_by was not persisted, pull by teacher-scoped students.
+      if (!rows.length) {
+        const scopedStudents = Array.isArray((scopedStudentsRes as any)?.students)
+          ? (scopedStudentsRes as any).students
+          : [];
+        const studentIds = scopedStudents.map((s: any) => s?.id).filter(Boolean);
+        if (studentIds.length) {
+          const byStudentsRes = await this.db.client
+            .from('homework')
+            .select('*')
+            .in('student_id', studentIds)
+            .order('created_at', { ascending: false })
+            .limit(500);
+          const byStudents = Array.isArray((byStudentsRes as any)?.data) ? (byStudentsRes as any).data : [];
+          // Deduplicate class-wide assignment rows (one row per student) for cleaner history.
+          const seen = new Set<string>();
+          rows = byStudents.filter((h: any) => {
+            const meta = this.readHomeworkMeta(h);
+            const key = [
+              h?.title || '',
+              h?.subject || '',
+              meta?.note || '',
+              meta?.startAt || '',
+              meta?.dueAt || '',
+              meta?.className || '',
+              String(h?.created_by || '')
+            ].join('|');
+            if (seen.has(key)) return false;
+            seen.add(key);
+            return true;
+          });
+        }
+      }
+
       const assignments = rows.map((h: any) => ({
         id: h.id,
         title: h.title,
         subject: h.subject,
-        note: h.note || null,
-        startAt: h.start_at || null,
-        dueAt: h.due_at || null,
-        className: h.class_name || null,
+        note: this.readHomeworkMeta(h).note,
+        startAt: this.readHomeworkMeta(h).startAt,
+        dueAt: this.readHomeworkMeta(h).dueAt,
+        className: this.readHomeworkMeta(h).className,
+        attachmentUrl: this.readHomeworkMeta(h).attachmentUrl,
         createdAt: h.created_at || null,
       }));
       return { success: true, assignments };
@@ -703,14 +819,115 @@ export class TeacherController {
           id: h.id,
           title: h.title,
           subject: h.subject,
-          note: h.note || null,
-          startAt: h.start_at || null,
-          dueAt: h.due_at || null,
-          className: h.class_name || null,
+          note: this.readHomeworkMeta(h).note,
+          startAt: this.readHomeworkMeta(h).startAt,
+          dueAt: this.readHomeworkMeta(h).dueAt,
+          className: this.readHomeworkMeta(h).className,
+          attachmentUrl: this.readHomeworkMeta(h).attachmentUrl,
           createdAt: h.created_at || null,
         }))
       };
     }
+  }
+
+  /**
+   * Resync historical assignments from teacher localStorage back into the backend.
+   * Called when the teacher portal detects localStorage items not yet in the backend
+   * (e.g. after a server restart wiped the in-memory store).
+   * Accepts an array of { title, subject, note, className, startAt, dueAt, attachmentUrl, createdAt }
+   * and re-registers each one for all students currently in that class.
+   * Items whose (title|subject|className|dueAt) combination already exists in localFeed are skipped.
+   */
+  @Post('homework/resync')
+  async resyncHomework(@Req() req: any, @Body() body: any) {
+    this.ensureTeacher(req);
+    const items: any[] = Array.isArray(body?.assignments) ? body.assignments : [];
+    if (!items.length) return { success: true, synced: 0, skipped: 0 };
+
+    const teacherId = this.actorId(req);
+    const existingLocal = this.localFeed.listHomeworkByTeacher(teacherId);
+    // Build a dedup key set for what's already in the feed
+    const existingKeys = new Set(
+      existingLocal.map((h: any) => [
+        String(h.title || '').toLowerCase(),
+        String(h.subject || '').toLowerCase(),
+        String(h.class_name || h?.tasks?.meta?.className || '').toLowerCase(),
+        String(h.due_at || '').slice(0, 16)
+      ].join('|'))
+    );
+
+    let synced = 0;
+    let skipped = 0;
+
+    for (const item of items) {
+      const normalizedClassName = item?.className || item?.class_name || null;
+      const normalizedDueAt = item?.dueAt || item?.due_at || null;
+      const normalizedStartAt = item?.startAt || item?.start_at || null;
+      const normalizedAttachmentUrl = item?.attachmentUrl || item?.attachment_url || null;
+      const key = [
+        String(item.title || '').toLowerCase(),
+        String(item.subject || '').toLowerCase(),
+        String(normalizedClassName || '').toLowerCase(),
+        String(normalizedDueAt || '').slice(0, 16)
+      ].join('|');
+
+      if (existingKeys.has(key)) {
+        skipped++;
+        continue;
+      }
+
+      // Resolve students for this class
+      const className = normalizedClassName;
+      let effectiveStudentIds: string[] = [];
+      if (className) {
+        try {
+          const classStudents = await this.studentAuth.listStudentsByScope({
+            teacherId: teacherId || undefined,
+            schoolId: req?.user?.schoolId || undefined,
+            className
+          });
+          effectiveStudentIds = (classStudents.students || []).map((s: any) => s.id).filter(Boolean);
+        } catch {
+          effectiveStudentIds = [];
+        }
+      }
+
+      if (!effectiveStudentIds.length) {
+        skipped++;
+        continue;
+      }
+
+      const sharedMeta = {
+        note: item.note || null,
+        startAt: normalizedStartAt,
+        dueAt: normalizedDueAt,
+        className,
+        attachmentUrl: normalizedAttachmentUrl,
+        teacherId,
+      };
+
+      const rows = effectiveStudentIds.map((studentId: string) => ({
+        id: item.id ? `${item.id}-${studentId}` : `resync-${Date.now()}-${studentId}`,
+        student_id: studentId,
+        subject: item.subject || 'General',
+        title: item.title || 'Homework',
+        note: item.note || null,
+        start_at: normalizedStartAt,
+        due_at: normalizedDueAt,
+        class_name: className,
+        attachment_url: normalizedAttachmentUrl,
+        status: 'pending',
+        created_by: teacherId,
+        created_at: item.createdAt || item.created_at || new Date().toISOString(),
+        tasks: { meta: sharedMeta }
+      }));
+
+      this.localFeed.addHomework(rows);
+      existingKeys.add(key); // prevent duplicates within the same batch
+      synced += rows.length;
+    }
+
+    return { success: true, synced, skipped };
   }
 
   @Post('homework/assign')
@@ -719,6 +936,24 @@ export class TeacherController {
     const subject = body?.subject || 'General';
     const title = body?.title || 'Homework';
     const dueAt = body?.dueAt || null;
+    const now = new Date();
+    const parsedStartAt = body?.startAt ? new Date(body.startAt) : null;
+    const parsedDueAt = dueAt ? new Date(dueAt) : null;
+    if (parsedStartAt && Number.isNaN(parsedStartAt.getTime())) {
+      return { success: false, error: 'Invalid startAt date' };
+    }
+    if (parsedDueAt && Number.isNaN(parsedDueAt.getTime())) {
+      return { success: false, error: 'Invalid dueAt date' };
+    }
+    if (parsedStartAt && parsedStartAt < now) {
+      return { success: false, error: 'startAt cannot be in the past' };
+    }
+    if (parsedDueAt && parsedDueAt < now) {
+      return { success: false, error: 'dueAt cannot be in the past' };
+    }
+    if (parsedStartAt && parsedDueAt && parsedDueAt < parsedStartAt) {
+      return { success: false, error: 'dueAt must be after startAt' };
+    }
     const targetClass: string | null = body?.className || null;
     const studentIds = Array.isArray(body?.studentIds) ? body.studentIds : [];
 
@@ -757,6 +992,15 @@ export class TeacherController {
     const note = body?.note || null;
     const startAt = body?.startAt || null;
     const className = body?.className || targetClass || null;
+    const attachmentUrl = body?.attachmentUrl || null;
+    const sharedMeta = {
+      note,
+      startAt,
+      dueAt,
+      className,
+      attachmentUrl,
+      teacherId: this.actorId(req),
+    };
 
     const rows = effectiveStudentIds.map((studentId: string) => ({
       student_id: studentId,
@@ -766,14 +1010,61 @@ export class TeacherController {
       start_at: startAt,
       due_at: dueAt,
       class_name: className,
+      attachment_url: attachmentUrl,
       status: 'pending',
-      tasks: body?.tasks || null,
-      created_by: req?.user?.sub || null
+      tasks: {
+        ...(body?.tasks && typeof body.tasks === 'object' ? body.tasks : {}),
+        meta: {
+          ...((body?.tasks && typeof body.tasks === 'object' && body.tasks.meta && typeof body.tasks.meta === 'object')
+            ? body.tasks.meta
+            : {}),
+          ...sharedMeta,
+        },
+      },
+      created_by: this.actorId(req)
     }));
 
     try {
-      const res = await this.db.client.from('homework').insert(rows).select();
-      const inserted = Array.isArray((res as any)?.data) ? (res as any).data : rows;
+      let inserted: any[] = [];
+
+      // 1) Full payload (new schema)
+      try {
+        const firstInsert = await this.db.client.from('homework').insert(rows).select();
+        inserted = Array.isArray((firstInsert as any)?.data) ? (firstInsert as any).data : [];
+      } catch {
+        inserted = [];
+      }
+
+      // 2) Compatibility retry without optional columns that may not exist yet
+      if (!inserted.length) {
+        try {
+          const fallbackRows = rows.map((r: any) => {
+            const { note: _note, start_at: _startAt, class_name: _className, attachment_url: _attachmentUrl, ...base } = r;
+            return base;
+          });
+          const retryInsert = await this.db.client.from('homework').insert(fallbackRows).select();
+          inserted = Array.isArray((retryInsert as any)?.data) ? (retryInsert as any).data : [];
+        } catch {
+          inserted = [];
+        }
+      }
+
+      // 3) Final compatibility retry for schemas without created_by
+      if (!inserted.length) {
+        try {
+          const minimalRows = rows.map((r: any) => {
+            const { created_by: _createdBy, note: _note, start_at: _startAt, class_name: _className, attachment_url: _attachmentUrl, ...base } = r;
+            return base;
+          });
+          const finalRetry = await this.db.client.from('homework').insert(minimalRows).select();
+          inserted = Array.isArray((finalRetry as any)?.data) ? (finalRetry as any).data : [];
+        } catch {
+          inserted = [];
+        }
+      }
+
+      if (!inserted.length) throw new Error('DB insert failed for all schema variants');
+
       this.localFeed.addHomework(inserted);
       return {
         success: true,
@@ -783,10 +1074,11 @@ export class TeacherController {
           studentId: h.student_id,
           subject: h.subject,
           title: h.title,
-          note: h.note || null,
-          startAt: h.start_at || null,
-          dueAt: h.due_at || null,
-          className: h.class_name || null,
+          note: this.readHomeworkMeta(h).note,
+          startAt: this.readHomeworkMeta(h).startAt,
+          dueAt: this.readHomeworkMeta(h).dueAt,
+          className: this.readHomeworkMeta(h).className,
+          attachmentUrl: this.readHomeworkMeta(h).attachmentUrl,
           createdAt: h.created_at || new Date().toISOString()
         }))
       };

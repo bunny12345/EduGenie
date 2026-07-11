@@ -19,6 +19,7 @@ import {
   sendChat,
   startTest,
   submitHomework,
+  uploadHomeworkImage,
   submitTestAttempt
 } from '../api';
 
@@ -57,6 +58,25 @@ function buildProgressSummary(rows) {
 
 function buildTrendPoints(rows) {
   return rows.map(getScore).filter((n) => n !== null).slice(-7);
+}
+
+function parseDate(value) {
+  if (!value) return null;
+  const d = new Date(value);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
+function getHomeworkState(h) {
+  const due = parseDate(h?.dueAt || h?.due_at || h?.createdAt || h?.created_at);
+  const submitted = String(h?.status || '').toLowerCase() === 'submitted' || String(h?.status || '').toLowerCase() === 'graded';
+  if (submitted) return { submitted: true, overdue: false, expired: false, hide: false, label: 'Submitted', color: '#16a34a', bg: '#dcfce7' };
+  if (!due) return { submitted: false, overdue: false, expired: false, hide: false, label: 'Pending', color: '#6b7280', bg: '#f3f4f6' };
+  const daysSinceDue = Math.floor((Date.now() - due.getTime()) / (24 * 60 * 60 * 1000));
+  const overdue = daysSinceDue >= 0;
+  const expired = daysSinceDue > 3;
+  if (expired) return { submitted: false, overdue: true, expired: true, hide: true, label: `Expired ${daysSinceDue}d overdue`, color: '#b91c1c', bg: '#fee2e2' };
+  if (overdue) return { submitted: false, overdue: true, expired: false, hide: false, label: `Overdue ${daysSinceDue}d`, color: '#b45309', bg: '#ffedd5' };
+  return { submitted: false, overdue: false, expired: false, hide: false, label: 'Pending', color: '#6b7280', bg: '#f3f4f6' };
 }
 
 function Sparkline({ values }) {
@@ -123,6 +143,8 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
 
   const [startingTestId, setStartingTestId] = useState('');
   const [startingHomeworkId, setStartingHomeworkId] = useState('');
+  const [homeworkAttachmentUrl, setHomeworkAttachmentUrl] = useState({});
+  const [homeworkUploadingById, setHomeworkUploadingById] = useState({});
   const [chatInput, setChatInput] = useState('');
   const [chatLoading, setChatLoading] = useState(false);
   const [testResult, setTestResult] = useState(null);
@@ -191,7 +213,8 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
   const getSubjectNotifications = (subject) => {
     let count = 0;
     homeworkBySubject.get(subject)?.forEach((h) => {
-      if (h?.status !== 'submitted') count++;
+      const state = getHomeworkState(h);
+      if (!state.submitted) count++;
     });
     testsBySubject.get(subject)?.forEach(() => count++);
     return count;
@@ -362,7 +385,6 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
   const coins = Number(rewards?.coins || 0);
   const badges = Array.isArray(rewards?.badges) ? rewards.badges.length : 0;
 
-  const homeworkTop = homework.slice(0, 4);
   const eventsTop = events.slice(0, 3);
   const testsTop = tests.slice(0, 3);
   const libraryTop = library.slice(0, 4);
@@ -415,7 +437,12 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
     if (!hwId) return;
     setStartingHomeworkId(hwId);
     try {
-      const sub = await submitHomework(hwId, studentId, { summary: 'Completed in UI flow' }, null);
+      const sub = await submitHomework(
+        hwId,
+        studentId,
+        { summary: 'Completed in UI flow' },
+        homeworkAttachmentUrl[hwId] || null
+      );
       const at = await getHomeworkAttempts(hwId, studentId);
       const count = Array.isArray(at?.attempts) ? at.attempts.length : 0;
       const grade = sub?.grade ?? null;
@@ -431,11 +458,28 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
         }).catch(() => {});
       }
       await Promise.all([loadHomeworkPanel(), loadProgressPanel()]);
+      setHomeworkAttachmentUrl((prev) => ({ ...prev, [hwId]: '' }));
     } catch (e) {
       setHomeworkInfo('Submit failed');
       setPanelErrorKey('homework', e?.message || 'Submit failed.');
     } finally {
       setStartingHomeworkId('');
+    }
+  }
+
+  async function onStudentHomeworkFileSelected(hwId, file) {
+    if (!file) return;
+    setHomeworkUploadingById((prev) => ({ ...prev, [hwId]: true }));
+    setHomeworkInfo('Uploading homework image...');
+    try {
+      const res = await uploadHomeworkImage(file);
+      if (!res?.url) throw new Error('Upload failed');
+      setHomeworkAttachmentUrl((prev) => ({ ...prev, [hwId]: res.url }));
+      setHomeworkInfo('Homework image uploaded.');
+    } catch (e) {
+      setHomeworkInfo(e?.message || 'Homework image upload failed');
+    } finally {
+      setHomeworkUploadingById((prev) => ({ ...prev, [hwId]: false }));
     }
   }
 
@@ -938,22 +982,67 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
               <h4>📝 {activeView} Homework</h4>
               {panelLoading.homework ? <p className="eg-loading">Loading homework...</p> : null}
               {panelError.homework ? <p className="eg-loading">{panelError.homework}</p> : null}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                {(homeworkBySubject.get(activeView) || []).map((h) => (
+              {(() => {
+                const visibleHomework = (homeworkBySubject.get(activeView) || []).filter((h) => !getHomeworkState(h).hide);
+                const submittedCount = visibleHomework.filter((h) => getHomeworkState(h).submitted).length;
+                const notSubmittedCount = visibleHomework.filter((h) => !getHomeworkState(h).submitted).length;
+                const overdueCount = visibleHomework.filter((h) => getHomeworkState(h).overdue && !getHomeworkState(h).submitted).length;
+                return (
+                  <>
+                    <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', marginBottom: '12px' }}>
+                      <span style={{ background: '#dcfce7', color: '#166534', padding: '6px 10px', borderRadius: '999px', fontSize: '12px', fontWeight: 700 }}>
+                        Submitted: {submittedCount}
+                      </span>
+                      <span style={{ background: '#fee2e2', color: '#991b1b', padding: '6px 10px', borderRadius: '999px', fontSize: '12px', fontWeight: 700 }}>
+                        Not submitted: {notSubmittedCount}
+                      </span>
+                      <span style={{ background: '#ffedd5', color: '#9a3412', padding: '6px 10px', borderRadius: '999px', fontSize: '12px', fontWeight: 700 }}>
+                        Overdue: {overdueCount}
+                      </span>
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                      {visibleHomework.map((h) => {
+                        const state = getHomeworkState(h);
+                        return (
                   <div key={h.id} style={{
-                    background: '#f8f8ff', borderRadius: '10px', padding: '14px',
-                    borderLeft: '4px solid #5b47ff'
+                    background: state.overdue && !state.submitted ? '#fff1f2' : '#f8f8ff', borderRadius: '10px', padding: '14px',
+                    borderLeft: `4px solid ${state.color}`
                   }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                       <div style={{ flex: 1 }}>
-                        <div style={{ fontWeight: 'bold', fontSize: '15px', marginBottom: '4px' }}>
-                          {h.title || 'Homework Task'}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px', flexWrap: 'wrap' }}>
+                          <div style={{ fontWeight: 'bold', fontSize: '15px' }}>{h.title || 'Homework Task'}</div>
+                          <span style={{ background: state.bg, color: state.color, borderRadius: '999px', padding: '3px 8px', fontSize: '11px', fontWeight: 700 }}>
+                            {state.label}
+                          </span>
                         </div>
                         {h.note && (
                           <div style={{ color: '#444', fontSize: '14px', marginBottom: '8px', lineHeight: '1.5' }}>
                             {h.note}
                           </div>
                         )}
+                        {h.attachmentUrl ? (
+                          <div style={{ marginBottom: '8px' }}>
+                            <a href={h.attachmentUrl} target="_blank" rel="noreferrer" style={{ fontSize: '12px' }}>
+                              Open homework image
+                            </a>
+                          </div>
+                        ) : null}
+                        <div style={{ marginBottom: '8px', display: 'grid', gap: '8px' }}>
+                          <input
+                            type="file"
+                            accept="image/*"
+                            onChange={(e) => onStudentHomeworkFileSelected(h.id, e.target.files?.[0] || null)}
+                            disabled={h.status === 'submitted' || homeworkUploadingById[h.id]}
+                          />
+                          <input
+                            value={homeworkAttachmentUrl[h.id] || ''}
+                            readOnly
+                            placeholder="Uploaded solved image URL will appear here"
+                            style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #ddd', fontSize: '12px' }}
+                            disabled={h.status === 'submitted'}
+                          />
+                        </div>
                         <div style={{ fontSize: '12px', color: '#888' }}>
                           {h.startAt && <span>📅 Start: {new Date(h.startAt).toLocaleString()} &nbsp;</span>}
                           {h.dueAt && <span>⏰ Due: {new Date(h.dueAt).toLocaleString()}</span>}
@@ -961,22 +1050,31 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
                             <span>Assigned: {new Date(h.createdAt).toLocaleDateString()}</span>
                           )}
                         </div>
+                        {!state.submitted && state.overdue ? (
+                          <div style={{ marginTop: '8px', color: '#b91c1c', fontSize: '12px', fontWeight: 600 }}>
+                            ⚠ Not submitted yet — {state.expired ? 'hidden after 3 overdue days' : 'submit before it disappears'}
+                          </div>
+                        ) : null}
                       </div>
                       <button
                         className="eg-inline-btn"
                         onClick={() => onSubmitHomework(h.id)}
-                        disabled={startingHomeworkId === h.id || h.status === 'submitted'}
+                        disabled={startingHomeworkId === h.id || h.status === 'submitted' || state.expired}
                         style={{ marginLeft: '12px', flexShrink: 0 }}
                       >
-                        {h.status === 'submitted' ? '✅ Submitted' : startingHomeworkId === h.id ? '...' : 'Submit'}
+                        {state.expired ? 'Expired' : (h.status === 'submitted' ? '✅ Submitted' : startingHomeworkId === h.id ? '...' : 'Submit')}
                       </button>
                     </div>
                   </div>
-                ))}
-                {!panelLoading.homework && !(homeworkBySubject.get(activeView) || []).length ? (
+                        );
+                      })}
+                    </div>
+                  </>
+                );
+              })()}
+              {!panelLoading.homework && !(homeworkBySubject.get(activeView) || []).some((h) => !getHomeworkState(h).hide) ? (
                   <p style={{ color: '#999' }}>No homework assigned for this subject.</p>
                 ) : null}
-              </div>
               {homeworkInfo ? <p className="eg-inline-note">{homeworkInfo}</p> : null}
             </article>
 

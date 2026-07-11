@@ -1,7 +1,13 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, OnModuleInit } from '@nestjs/common';
 import { randomBytes, randomUUID, createHash } from 'crypto';
 import * as jwt from 'jsonwebtoken';
 import { SupabaseService } from '../supabase.service';
+import * as fs from 'fs';
+import * as path from 'path';
+
+const ACCOUNTS_DIR = path.join(process.cwd(), 'local-data');
+const STUDENT_ACCOUNTS_FILE = path.join(ACCOUNTS_DIR, 'student-accounts.json');
+const TEACHER_ACCOUNTS_FILE = path.join(ACCOUNTS_DIR, 'teacher-accounts.json');
 
 type StudentAccount = {
   studentId: string;
@@ -49,13 +55,53 @@ type InviteRecord = {
 };
 
 @Injectable()
-export class StudentAuthService {
+export class StudentAuthService implements OnModuleInit {
   private static localAccounts = new Map<string, StudentAccount>();
   private static teacherAccounts = new Map<string, TeacherAccount>();
   private static schoolAccounts = new Map<string, SchoolAccount>();
   private static invites = new Map<string, InviteRecord>();
 
   constructor(private readonly db: SupabaseService) {}
+
+  onModuleInit() {
+    // Restore persisted local accounts so logins work after server restart
+    try {
+      if (fs.existsSync(STUDENT_ACCOUNTS_FILE)) {
+        const list: StudentAccount[] = JSON.parse(fs.readFileSync(STUDENT_ACCOUNTS_FILE, 'utf8'));
+        if (Array.isArray(list)) {
+          list.forEach((a) => StudentAuthService.localAccounts.set(a.loginId.toLowerCase(), a));
+          // eslint-disable-next-line no-console
+          console.log(`[auth] Loaded ${list.length} persisted student accounts`);
+        }
+      }
+    } catch (_e) { /* corrupt/missing file */ }
+    try {
+      if (fs.existsSync(TEACHER_ACCOUNTS_FILE)) {
+        const list: TeacherAccount[] = JSON.parse(fs.readFileSync(TEACHER_ACCOUNTS_FILE, 'utf8'));
+        if (Array.isArray(list)) {
+          list.forEach((a) => StudentAuthService.teacherAccounts.set(a.loginId.toLowerCase(), a));
+          // eslint-disable-next-line no-console
+          console.log(`[auth] Loaded ${list.length} persisted teacher accounts`);
+        }
+      }
+    } catch (_e) { /* corrupt/missing file */ }
+  }
+
+  private persistStudentAccounts() {
+    try {
+      if (!fs.existsSync(ACCOUNTS_DIR)) fs.mkdirSync(ACCOUNTS_DIR, { recursive: true });
+      const list = Array.from(StudentAuthService.localAccounts.values());
+      fs.writeFileSync(STUDENT_ACCOUNTS_FILE, JSON.stringify(list, null, 2), 'utf8');
+    } catch (_e) { /* non-fatal */ }
+  }
+
+  private persistTeacherAccounts() {
+    try {
+      if (!fs.existsSync(ACCOUNTS_DIR)) fs.mkdirSync(ACCOUNTS_DIR, { recursive: true });
+      const list = Array.from(StudentAuthService.teacherAccounts.values());
+      fs.writeFileSync(TEACHER_ACCOUNTS_FILE, JSON.stringify(list, null, 2), 'utf8');
+    } catch (_e) { /* non-fatal */ }
+  }
 
   private hashPassword(password: string, salt: string) {
     return createHash('sha256').update(`${salt}:${password}`).digest('hex');
@@ -74,6 +120,7 @@ export class StudentAuthService {
 
   private remember(account: StudentAccount) {
     StudentAuthService.localAccounts.set(account.loginId.toLowerCase(), account);
+    this.persistStudentAccounts();
   }
 
   private findLocal(loginId: string) {
@@ -82,6 +129,7 @@ export class StudentAuthService {
 
   private rememberTeacher(account: TeacherAccount) {
     StudentAuthService.teacherAccounts.set(account.loginId.toLowerCase(), account);
+    this.persistTeacherAccounts();
   }
 
   private findTeacher(loginId: string) {
@@ -714,24 +762,50 @@ export class StudentAuthService {
       const rows = classNameFilter
         ? rowsRaw.filter((r: any) => String(r?.class_name || r?.class || r?.grade || '').trim().toLowerCase() === classNameFilter)
         : rowsRaw;
-      const total = Number((res as any)?.count || rows.length);
+
+      // Always merge in local-memory accounts so students registered locally
+      // (but whose DB insert may have failed) are still included.
+      const dbIds = new Set(rows.map((r: any) => String(r.id || '')));
+      const localStudents = Array.from(StudentAuthService.localAccounts.values())
+        .filter((s) => !dbIds.has(s.studentId)) // avoid duplicates already in DB rows
+        .filter((s) => (teacherId ? s.teacherId === teacherId : true))
+        .filter((s) => (schoolId ? s.schoolId === schoolId : true))
+        .filter((s) => {
+          if (!queryText) return true;
+          const text = `${s.name || ''} ${s.className || ''} ${s.loginId || ''}`.toLowerCase();
+          return text.includes(queryText);
+        })
+        .filter((s) => {
+          if (!classNameFilter) return true;
+          return String(s.className || '').trim().toLowerCase() === classNameFilter;
+        })
+        .map((s) => ({
+          id: s.studentId,
+          schoolId: s.schoolId || null,
+          teacherId: s.teacherId || null,
+          name: s.name || 'Student',
+          className: s.className || 'Class',
+          email: null,
+          createdAt: null
+        }));
+
+      const dbStudents = rows.map((r: any) => ({
+        id: r.id,
+        schoolId: r.school_id || null,
+        teacherId: r.teacher_id || null,
+        name: r.name || r.full_name || 'Student',
+        className: r.class_name || r.class || r.grade || 'Class',
+        email: r.email || null,
+        createdAt: r.created_at || null
+      }));
+
+      const allStudents = [...dbStudents, ...localStudents];
+      const total = allStudents.length;
       const totalPages = Math.max(1, Math.ceil(total / limit));
+      const paged = allStudents.slice(from, from + limit);
       return {
-        students: rows.map((r: any) => ({
-          id: r.id,
-          schoolId: r.school_id || null,
-          teacherId: r.teacher_id || null,
-          name: r.name || r.full_name || 'Student',
-          className: r.class_name || r.class || r.grade || 'Class',
-          email: r.email || null,
-          createdAt: r.created_at || null
-        })),
-        pagination: {
-          page,
-          limit,
-          total,
-          totalPages
-        }
+        students: paged,
+        pagination: { page, limit, total, totalPages }
       };
     } catch (e) {
       const locals = Array.from(StudentAuthService.localAccounts.values())

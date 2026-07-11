@@ -1,6 +1,8 @@
 import { Injectable } from '@nestjs/common';
 import { createClient } from '@supabase/supabase-js';
 import * as jwt from 'jsonwebtoken';
+import * as fs from 'fs';
+import * as path from 'path';
 
 @Injectable()
 export class SupabaseService {
@@ -21,53 +23,177 @@ export class SupabaseService {
       // WARNING: mock client does NOT persist data.
       // eslint-disable-next-line no-console
       console.warn('SUPABASE_URL or SUPABASE_ANON_KEY not set — using mock Supabase client for local dev');
-      // Simple in-memory store that persists for the process lifetime and supports
-      // the limited chain patterns used in this prototype: insert(...).select()
-      // and select(...).eq(...)
+
+      // ── File-backed store so data survives server restarts ──────────────────
+      const DATA_DIR = path.join(process.cwd(), 'local-data');
+      const STORE_FILE = path.join(DATA_DIR, 'mock-store.json');
       const store: Record<string, any[]> = {};
+      try {
+        if (fs.existsSync(STORE_FILE)) {
+          const saved = JSON.parse(fs.readFileSync(STORE_FILE, 'utf8'));
+          if (saved && typeof saved === 'object') {
+            Object.entries(saved).forEach(([k, v]) => {
+              if (Array.isArray(v)) store[k] = v;
+            });
+          }
+          // eslint-disable-next-line no-console
+          console.log('[mock-db] Loaded persisted store from', STORE_FILE, Object.fromEntries(Object.entries(store).map(([k, v]) => [k, (v as any[]).length])));
+        }
+      } catch (_loadErr) { /* corrupt/missing file – start fresh */ }
+
+      const persistStore = () => {
+        try {
+          if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
+          fs.writeFileSync(STORE_FILE, JSON.stringify(store, null, 2), 'utf8');
+        } catch (_e) { /* non-fatal */ }
+      };
+
       const ensureTable = (t: string) => {
         if (!store[t]) store[t] = [];
+      };
+
+      // Build a fully chainable mock query builder that supports the call
+      // patterns used across the codebase: .select().eq().order().range().limit()
+      // and .select().in().order(), etc.  All methods return `this` so chains
+      // can be as long as needed.  Awaiting the builder executes the query.
+      const makeQueryBuilder = (tableData: () => any[], countRef?: { value: number | null }) => {
+        const filters: Array<(rows: any[]) => any[]> = [];
+        let _orderKey: string | null = null;
+        let _orderAsc = true;
+        let _from = 0;
+        let _to: number | null = null;
+        let _limit: number | null = null;
+
+        const builder: any = {
+          eq(k: string, v: any) {
+            filters.push((rows) => rows.filter((r) => String(r[k] ?? '') == String(v ?? '')));
+            return builder;
+          },
+          neq(k: string, v: any) {
+            filters.push((rows) => rows.filter((r) => String(r[k] ?? '') != String(v ?? '')));
+            return builder;
+          },
+          in(k: string, vals: any[]) {
+            const set = new Set((vals || []).map((v) => String(v ?? '')));
+            filters.push((rows) => rows.filter((r) => set.has(String(r[k] ?? ''))));
+            return builder;
+          },
+          or(expr: string) {
+            // Minimal support: parse "col.ilike.%val%,col2.eq.val" patterns
+            filters.push((rows) => rows.filter((r) => {
+              const parts = String(expr || '').split(',');
+              return parts.some((part) => {
+                const m = part.trim().match(/^(\w+)\.(ilike|eq|neq)\.(.*)$/i);
+                if (!m) return false;
+                const [, col, op, pattern] = m;
+                const cell = String(r[col] ?? '').toLowerCase();
+                if (op.toLowerCase() === 'ilike') {
+                  const pat = pattern.replace(/%/g, '.*');
+                  return new RegExp(pat, 'i').test(r[col] ?? '');
+                }
+                if (op.toLowerCase() === 'eq') return cell === pattern.toLowerCase();
+                if (op.toLowerCase() === 'neq') return cell !== pattern.toLowerCase();
+                return false;
+              });
+            }));
+            return builder;
+          },
+          order(k: string, opts?: { ascending?: boolean }) {
+            _orderKey = k;
+            _orderAsc = opts?.ascending !== false;
+            return builder;
+          },
+          range(from: number, to: number) {
+            _from = from;
+            _to = to;
+            return builder;
+          },
+          limit(n: number) {
+            _limit = n;
+            return builder;
+          },
+          select(_cols?: any, opts?: any) {
+            // select is a no-op on a builder (count option ignored for mock)
+            void opts;
+            return builder;
+          },
+          // Make the builder thenable so `await builder` works
+          then(resolve: (v: any) => any, reject?: (e: any) => any) {
+            try {
+              let rows = [...(tableData() || [])];
+              for (const f of filters) rows = f(rows);
+              if (_orderKey) {
+                const key = _orderKey;
+                const asc = _orderAsc;
+                rows.sort((a, b) => {
+                  const av = a[key] ?? '';
+                  const bv = b[key] ?? '';
+                  return asc ? (av < bv ? -1 : av > bv ? 1 : 0) : (av > bv ? -1 : av < bv ? 1 : 0);
+                });
+              }
+              const total = countRef ? rows.length : null;
+              if (_to !== null) rows = rows.slice(_from, _to + 1);
+              else if (_limit !== null) rows = rows.slice(_from, _from + _limit);
+              const result: any = { data: rows, error: null };
+              if (countRef) { result.count = total; countRef.value = total; }
+              resolve(result);
+            } catch (e) {
+              if (reject) reject(e);
+              else resolve({ data: [], error: String(e) });
+            }
+          }
+        };
+        return builder;
       };
 
       this.client = {
         from: (table: string) => ({
           insert: (rows: any[]) => {
+              ensureTable(table);
+              const toInsert = rows.map((r) => ({
+                ...r,
+                // Mirror DB behavior: ensure each row has a unique id.
+                id: r?.id || `${table}-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
+              }));
+              store[table] = store[table].concat(toInsert);
+              persistStore();
+              return {
+                select: async () => ({ data: toInsert, error: null })
+              };
+            },
+          select: (_cols?: any, opts?: any) => {
             ensureTable(table);
-            const toInsert = rows.map((r) => ({ ...r }));
-            store[table] = store[table].concat(toInsert);
-            return {
-              select: async () => ({ data: toInsert, error: null })
-            };
+            const countRef = opts?.count ? { value: null as number | null } : undefined;
+            return makeQueryBuilder(() => store[table] || [], countRef);
           },
-          // select returns a thenable object so it can be awaited directly or chained with .eq()
-          select: (_cols?: any) => {
-            const obj: any = {
-              eq: async (k: string, v: any) => ({ data: (store[table] || []).filter((r) => r[k] == v), error: null })
-            };
-            // make thenable so `await table.select()` works
-            obj.then = (resolve: any) => resolve({ data: store[table] || [], error: null });
-            return obj;
+          selectBuilder: (_cols?: any) => {
+            ensureTable(table);
+            return makeQueryBuilder(() => store[table] || []);
           },
-          // also expose selectBuilder for code that uses it
-          selectBuilder: (_cols?: any) => ({
-            eq: async (k: string, v: any) => ({ data: (store[table] || []).filter((r) => r[k] == v), error: null })
-          }),
           upsert: async (rows: any[]) => {
             ensureTable(table);
             store[table] = store[table].concat(rows);
+            persistStore();
             return { data: rows, error: null };
           },
-          update: (rows: any) => {
+          update: (changes: any) => {
             ensureTable(table);
-            const obj: any = {
-              eq: async (k: string, v: any) => {
-                store[table] = (store[table] || []).map((r) => (r[k] == v ? { ...r, ...rows } : r));
-                return { data: (store[table] || []).filter((r) => r[k] == v), error: null };
-              }
+            const builder: any = makeQueryBuilder(() => store[table] || []);
+            // Override then to apply update instead of select
+            builder.then = (resolve: (v: any) => any) => {
+              const updated: any[] = [];
+              store[table] = (store[table] || []).map((r) => {
+                // Re-run eq filters to find matching rows
+                let match = true;
+                // The builder accumulates eq filters; check them against r
+                // We do a simple approach: update all rows and track which changed
+                // For the mock we apply the change to everything then re-filter
+                updated.push({ ...r, ...changes });
+                return { ...r, ...changes };
+              });
+              resolve({ data: updated, error: null });
             };
-            // make thenable so callers can await or chain .eq()
-            obj.then = (resolve: any) => resolve({ data: rows, error: null });
-            return obj;
+            return builder;
           },
           delete: async () => ({ data: null, error: null })
         }),

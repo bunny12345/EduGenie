@@ -4,6 +4,9 @@ import {
   askTeacherAi,
   assignTeacherHomework,
   getTeacherAssignedHomework,
+  getTeacherHomeworkAttempts,
+  uploadHomeworkImage,
+  resyncTeacherHomework,
   bulkUpdateTeacherStudentsClass,
   cloneTest,
   createTeacherStudentInvite,
@@ -68,6 +71,37 @@ function shortDateTime(value) {
   const dt = new Date(value);
   if (Number.isNaN(dt.getTime())) return 'Just now';
   return dt.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+}
+
+function parseSafeDate(value) {
+  if (!value) return null;
+  const dt = new Date(value);
+  if (Number.isNaN(dt.getTime())) return null;
+  return dt;
+}
+
+function assignmentStableKey(item) {
+  return [
+    item?.subject || '',
+    item?.title || '',
+    item?.className || '',
+    item?.startAt || '',
+    item?.dueAt || '',
+    item?.createdAt || ''
+  ].join('|');
+}
+
+function toLocalDateTimeInputValue(date = new Date()) {
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
+function firstTwoParagraphs(text) {
+  const raw = String(text || '').trim();
+  if (!raw) return '';
+  const parts = raw.split(/\n\s*\n/).map((p) => p.trim()).filter(Boolean);
+  if (parts.length <= 2) return raw;
+  return `${parts.slice(0, 2).join('\n\n')}...`;
 }
 
 export default function TeacherDashboard({ session, onLogout }) {
@@ -138,6 +172,8 @@ export default function TeacherDashboard({ session, onLogout }) {
   const [assignTitle, setAssignTitle] = useState('');
   const [assignSubject, setAssignSubject] = useState(session?.subject || 'Mathematics');
   const [assignNote, setAssignNote] = useState('');
+  const [assignAttachmentUrl, setAssignAttachmentUrl] = useState('');
+  const [assignAttachmentUploading, setAssignAttachmentUploading] = useState(false);
   const [assignStartAt, setAssignStartAt] = useState('');
   const [assignDueAt, setAssignDueAt] = useState('');
   const [activeAssignments, setActiveAssignments] = useState([]); // confirmed assignments shown at bottom
@@ -145,9 +181,16 @@ export default function TeacherDashboard({ session, onLogout }) {
   const [showHistoryDropdown, setShowHistoryDropdown] = useState(false);
   const [historyFilterDate, setHistoryFilterDate] = useState('');
   const [teacherTargetClass, setTeacherTargetClass] = useState('all');
+  const [hwAttemptsByHwId, setHwAttemptsByHwId] = useState({});
+  const [expandedHistoryNotes, setExpandedHistoryNotes] = useState({});
 
   const [teacherPrompt, setTeacherPrompt] = useState('Plan a 30-minute revision session for Algebra basics.');
   const [teacherAi, setTeacherAi] = useState(null);
+  const [historyStorageKey] = useState(() => {
+    const tId = String(session?.teacherId || session?.id || 'teacher-local');
+    return `teacher-homework-history-${tId}`;
+  });
+  const [historyReady, setHistoryReady] = useState(false);
 
   const [busy, setBusy] = useState('');
   const [note, setNote] = useState('');
@@ -313,10 +356,22 @@ export default function TeacherDashboard({ session, onLogout }) {
     setPanelErrorKey('homework', '');
     try {
       const res = await getTeacherStudentHomework(studentId);
-      setSelectedHomework(Array.isArray(res?.homework) ? res.homework : []);
+      const list = Array.isArray(res?.homework) ? res.homework : [];
+      setSelectedHomework(list);
+      const attemptsMap = {};
+      await Promise.all(list.map(async (h) => {
+        try {
+          const attRes = await getTeacherHomeworkAttempts(h.id);
+          attemptsMap[h.id] = Array.isArray(attRes?.attempts) ? attRes.attempts : [];
+        } catch {
+          attemptsMap[h.id] = [];
+        }
+      }));
+      setHwAttemptsByHwId(attemptsMap);
     } catch (e) {
       setPanelErrorKey('homework', e?.message || 'Unable to load homework.');
       setSelectedHomework([]);
+      setHwAttemptsByHwId({});
     } finally {
       setPanelLoadingKey('homework', false);
     }
@@ -652,16 +707,42 @@ export default function TeacherDashboard({ session, onLogout }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(historyStorageKey);
+      const cached = raw ? JSON.parse(raw) : [];
+      const list = Array.isArray(cached) ? cached : [];
+      if (list.length) {
+        const now = new Date();
+        setHomeworkHistory(list);
+        setActiveAssignments(
+          list.filter((a) => {
+            const due = parseSafeDate(a?.dueAt);
+            return !due || due > now;
+          }).slice(0, 40)
+        );
+      }
+    } catch {
+      // Ignore malformed local cache and continue with API source.
+    } finally {
+      setHistoryReady(true);
+    }
+  }, [historyStorageKey]);
+
   // Prune active assignments whose end date has passed
   useEffect(() => {
+    if (!historyReady) return;
     const interval = setInterval(() => {
       const now = new Date();
       setActiveAssignments((prev) =>
-        prev.filter((a) => !a.dueAt || new Date(a.dueAt) > now)
+        prev.filter((a) => {
+          const due = parseSafeDate(a?.dueAt);
+          return !due || due > now;
+        })
       );
     }, 60000);
     return () => clearInterval(interval);
-  }, []);
+  }, [historyReady]);
 
   useEffect(() => {
     if (studentInvitePage > studentInviteTotalPages) {
@@ -762,11 +843,34 @@ export default function TeacherDashboard({ session, onLogout }) {
     return Array.from(uniq).sort((a, b) => a.localeCompare(b));
   }, [students]);
 
+  const selectedHomeworkSummary = useMemo(() => {
+    const submitted = (selectedHomework || []).filter((h) => String(h?.dueStatus || h?.status || '').toLowerCase() === 'submitted' || String(h?.status || '').toLowerCase() === 'graded').length;
+    const notSubmitted = (selectedHomework || []).filter((h) => String(h?.dueStatus || h?.status || '').toLowerCase() !== 'submitted' && String(h?.status || '').toLowerCase() !== 'graded').length;
+    const overdue = (selectedHomework || []).filter((h) => String(h?.dueStatus || '').toLowerCase() === 'overdue').length;
+    return { submitted, notSubmitted, overdue };
+  }, [selectedHomework]);
+
   async function onAssignHomework(e) {
     e.preventDefault();
     if (!assignTitle.trim()) return;
     if (!teacherTargetClass || teacherTargetClass === 'all') {
       setNote('Please select a class at the top of the page before assigning homework.');
+      return;
+    }
+
+    const now = new Date();
+    const startDate = parseSafeDate(assignStartAt);
+    const dueDate = parseSafeDate(assignDueAt);
+    if (startDate && startDate < now) {
+      setNote('Start date/time cannot be in the past.');
+      return;
+    }
+    if (dueDate && dueDate < now) {
+      setNote('Due date/time cannot be in the past.');
+      return;
+    }
+    if (startDate && dueDate && dueDate < startDate) {
+      setNote('Due date/time must be after start date/time.');
       return;
     }
 
@@ -777,6 +881,7 @@ export default function TeacherDashboard({ session, onLogout }) {
         title: assignTitle,
         subject: assignSubject,
         note: assignNote || null,
+        attachmentUrl: assignAttachmentUrl || null,
         startAt: assignStartAt || null,
         dueAt: assignDueAt || null,
         className: teacherTargetClass
@@ -788,18 +893,40 @@ export default function TeacherDashboard({ session, onLogout }) {
           title: assignTitle,
           subject: assignSubject,
           note: assignNote,
+          attachmentUrl: assignAttachmentUrl || null,
           startAt: assignStartAt || null,
           dueAt: assignDueAt || null,
           className: teacherTargetClass,
           createdAt: new Date().toISOString()
         };
         setActiveAssignments((prev) => [newAssignment, ...prev]);
-        setNote(`✅ Homework assigned to ${created} student(s) in ${teacherTargetClass}.`);
+        setHomeworkHistory((prev) => {
+          const merged = [newAssignment, ...prev];
+          const dedup = [];
+          const seen = new Set();
+          merged.forEach((item) => {
+            const key = assignmentStableKey(item);
+            if (!seen.has(key)) {
+              seen.add(key);
+              dedup.push(item);
+            }
+          });
+          try {
+            localStorage.setItem(historyStorageKey, JSON.stringify(dedup.slice(0, 200)));
+          } catch {
+            // Ignore storage errors.
+          }
+          return dedup;
+        });
+        setNote(`✅ Assigned "${assignTitle}" | Due: ${assignDueAt ? new Date(assignDueAt).toLocaleString() : 'Not set'} | Class: ${teacherTargetClass} | Students: ${created}`);
         // Clear form
         setAssignTitle('');
         setAssignNote('');
+        setAssignAttachmentUrl('');
         setAssignStartAt('');
         setAssignDueAt('');
+        // Refresh from backend in background; keep optimistic card visible.
+        loadHomeworkHistory();
       } else {
         setNote(res?.error || 'No assignments created.');
       }
@@ -811,12 +938,92 @@ export default function TeacherDashboard({ session, onLogout }) {
     }
   }
 
+  async function onTeacherHomeworkFileSelected(file) {
+    if (!file) return;
+    setAssignAttachmentUploading(true);
+    setNote('Uploading homework image...');
+    try {
+      const res = await uploadHomeworkImage(file);
+      if (!res?.url) throw new Error('Upload failed');
+      setAssignAttachmentUrl(res.url);
+      setNote('Homework image uploaded.');
+    } catch (e) {
+      setNote(e?.message || 'Homework image upload failed.');
+    } finally {
+      setAssignAttachmentUploading(false);
+    }
+  }
+
   async function loadHomeworkHistory() {
     try {
       const res = await getTeacherAssignedHomework();
-      setHomeworkHistory(Array.isArray(res?.assignments) ? res.assignments : []);
+      const apiList = Array.isArray(res?.assignments) ? res.assignments : [];
+      const cachedRaw = localStorage.getItem(historyStorageKey);
+      const cachedList = cachedRaw ? JSON.parse(cachedRaw) : [];
+      const merged = [...apiList, ...(Array.isArray(cachedList) ? cachedList : [])];
+      const dedup = [];
+      const seen = new Set();
+      merged.forEach((item) => {
+        const key = assignmentStableKey(item);
+        if (!seen.has(key)) {
+          seen.add(key);
+          dedup.push(item);
+        }
+      });
+
+      // ── Auto-resync: push cached items that aren't in the backend back in ──
+      // This recovers homework after a server restart wiped in-memory data.
+      const apiKeys = new Set(apiList.map(assignmentStableKey));
+      const cachedNormalized = (Array.isArray(cachedList) ? cachedList : []).map((item) => ({
+        ...item,
+        className: item?.className || item?.class_name || '',
+        startAt: item?.startAt || item?.start_at || null,
+        dueAt: item?.dueAt || item?.due_at || null,
+        attachmentUrl: item?.attachmentUrl || item?.attachment_url || null,
+        createdAt: item?.createdAt || item?.created_at || null
+      }));
+      const needsResync = cachedNormalized.filter(
+        (item) => item?.className && !apiKeys.has(assignmentStableKey(item))
+      );
+      if (needsResync.length) {
+        // Fire-and-forget; don't block the UI update
+        resyncTeacherHomework(needsResync).catch(() => {});
+      }
+
+      setHomeworkHistory(dedup);
+      try {
+        localStorage.setItem(historyStorageKey, JSON.stringify(dedup.slice(0, 300)));
+      } catch {
+        // Ignore storage errors.
+      }
+      const now = new Date();
+      setActiveAssignments(
+        dedup
+          .filter((a) => {
+            const due = parseSafeDate(a?.dueAt);
+            return !due || due > now;
+          })
+          .sort((a, b) => new Date(b?.createdAt || 0).getTime() - new Date(a?.createdAt || 0).getTime())
+          .slice(0, 40)
+      );
     } catch {
-      setHomeworkHistory([]);
+      // Keep local view if API fails.
+      try {
+        const cachedRaw = localStorage.getItem(historyStorageKey);
+        const cachedList = cachedRaw ? JSON.parse(cachedRaw) : [];
+        const list = Array.isArray(cachedList) ? cachedList : [];
+        setHomeworkHistory(list);
+        const now = new Date();
+        setActiveAssignments(
+          list.filter((a) => {
+            const due = parseSafeDate(a?.dueAt);
+            return !due || due > now;
+          }).slice(0, 40)
+        );
+      } catch {
+        setHomeworkHistory([]);
+        setActiveAssignments([]);
+      }
     }
   }
 
@@ -1147,8 +1354,20 @@ export default function TeacherDashboard({ session, onLogout }) {
 
             <article className="td-card td-card-wide">
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
-                <h3 style={{ margin: 0 }}>📝 Assign Homework</h3>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <h3 style={{ margin: 0 }}>📝 Assign Homework</h3>
+                  <span style={{ fontSize: '12px', color: '#666', background: '#f3f4f6', border: '1px solid #e5e7eb', borderRadius: '999px', padding: '2px 8px' }}>
+                    Active: {activeAssignments.length} | History: {homeworkHistory.length}
+                  </span>
+                </div>
                 <div style={{ position: 'relative' }}>
+                  <button
+                    className="td-btn-outline"
+                    onClick={() => loadHomeworkHistory()}
+                    style={{ marginRight: '6px' }}
+                  >
+                    ↻ Refresh
+                  </button>
                   <button
                     className="td-btn-outline"
                     onClick={() => {
@@ -1186,9 +1405,19 @@ export default function TeacherDashboard({ session, onLogout }) {
                       ) : (
                         homeworkHistory
                           .filter((h) => {
+                            const relevantDate = parseSafeDate(h.dueAt) || parseSafeDate(h.startAt) || parseSafeDate(h.createdAt);
+                            if (!relevantDate) return false;
                             if (!historyFilterDate) return true;
-                            const d = h.dueAt || h.startAt || h.createdAt;
-                            return d && d.startsWith(historyFilterDate);
+                            return relevantDate.toISOString().slice(0, 10) === historyFilterDate;
+                          })
+                          .filter((h) => {
+                            // Default view: only last 30 days. Older history requires date selection.
+                            if (historyFilterDate) return true;
+                            const d = parseSafeDate(h.dueAt) || parseSafeDate(h.startAt) || parseSafeDate(h.createdAt);
+                            if (!d) return false;
+                            const threshold = new Date();
+                            threshold.setDate(threshold.getDate() - 30);
+                            return d >= threshold;
                           })
                           .map((h) => (
                             <div key={h.id} style={{
@@ -1196,10 +1425,30 @@ export default function TeacherDashboard({ session, onLogout }) {
                               borderRadius: '8px', borderLeft: '3px solid #5b47ff', fontSize: '13px'
                             }}>
                               <div style={{ fontWeight: 'bold', marginBottom: '2px' }}>{h.subject}: {h.title}</div>
-                              {h.note && <div style={{ color: '#555', marginBottom: '4px' }}>{h.note}</div>}
+                              {h.note && (
+                                <div style={{ color: '#555', marginBottom: '4px', whiteSpace: 'pre-wrap' }}>
+                                  {expandedHistoryNotes[h.id] ? h.note : firstTwoParagraphs(h.note)}
+                                  {String(h.note).trim() !== firstTwoParagraphs(h.note) ? (
+                                    <button
+                                      type="button"
+                                      onClick={() => setExpandedHistoryNotes((prev) => ({ ...prev, [h.id]: !prev[h.id] }))}
+                                      style={{
+                                        marginLeft: '8px',
+                                        background: 'none',
+                                        border: 'none',
+                                        color: '#4f46e5',
+                                        cursor: 'pointer',
+                                        fontSize: '12px'
+                                      }}
+                                    >
+                                      {expandedHistoryNotes[h.id] ? 'Show less' : 'Show full'}
+                                    </button>
+                                  ) : null}
+                                </div>
+                              )}
                               <div style={{ color: '#888', fontSize: '12px' }}>
-                                {h.startAt && <span>Start: {new Date(h.startAt).toLocaleString()} · </span>}
-                                {h.dueAt && <span>Due: {new Date(h.dueAt).toLocaleString()}</span>}
+                                {parseSafeDate(h.startAt) && <span>Start: {parseSafeDate(h.startAt).toLocaleString()} · </span>}
+                                {parseSafeDate(h.dueAt) && <span>Due: {parseSafeDate(h.dueAt).toLocaleString()}</span>}
                                 {!h.startAt && !h.dueAt && <span>Assigned: {h.createdAt ? new Date(h.createdAt).toLocaleDateString() : '–'}</span>}
                               </div>
                             </div>
@@ -1233,6 +1482,22 @@ export default function TeacherDashboard({ session, onLogout }) {
                   placeholder="Homework instructions / notes for students (e.g. Read pages 45–52 and answer Q1–Q5...)"
                   style={{ resize: 'vertical', fontFamily: 'inherit', fontSize: '14px', padding: '10px', borderRadius: '8px', border: '1px solid #ddd', width: '100%', boxSizing: 'border-box' }}
                 />
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={(e) => onTeacherHomeworkFileSelected(e.target.files?.[0] || null)}
+                  disabled={assignAttachmentUploading}
+                />
+                <input
+                  value={assignAttachmentUrl}
+                  readOnly
+                  placeholder="Uploaded image URL will appear here"
+                />
+                {assignAttachmentUrl ? (
+                  <div style={{ border: '1px dashed #ddd', borderRadius: '8px', padding: '8px' }}>
+                    <img src={assignAttachmentUrl} alt="Homework preview" style={{ maxWidth: '100%', maxHeight: '180px', objectFit: 'contain' }} />
+                  </div>
+                ) : null}
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
                   <div>
                     <label style={{ display: 'block', fontSize: '13px', color: '#666', marginBottom: '4px' }}>Start Date &amp; Time</label>
@@ -1240,6 +1505,7 @@ export default function TeacherDashboard({ session, onLogout }) {
                       type="datetime-local"
                       value={assignStartAt}
                       onChange={(e) => setAssignStartAt(e.target.value)}
+                      min={toLocalDateTimeInputValue()}
                       style={{ width: '100%' }}
                     />
                   </div>
@@ -1249,6 +1515,7 @@ export default function TeacherDashboard({ session, onLogout }) {
                       type="datetime-local"
                       value={assignDueAt}
                       onChange={(e) => setAssignDueAt(e.target.value)}
+                      min={toLocalDateTimeInputValue()}
                       style={{ width: '100%' }}
                     />
                   </div>
@@ -1274,8 +1541,9 @@ export default function TeacherDashboard({ session, onLogout }) {
                         {a.note && <div style={{ color: '#555', marginBottom: '4px' }}>{a.note}</div>}
                         <div style={{ color: '#888', fontSize: '12px' }}>
                           Class: {a.className}
-                          {a.startAt && <span> · Start: {new Date(a.startAt).toLocaleString()}</span>}
-                          {a.dueAt && <span> · Due: {new Date(a.dueAt).toLocaleString()}</span>}
+                          {parseSafeDate(a.startAt) && <span> · Start: {parseSafeDate(a.startAt).toLocaleString()}</span>}
+                          {parseSafeDate(a.dueAt) && <span> · Due: {parseSafeDate(a.dueAt).toLocaleString()}</span>}
+                          {!a.dueAt && <span> · Due: Not set</span>}
                         </div>
                       </li>
                     ))}
@@ -1670,6 +1938,19 @@ export default function TeacherDashboard({ session, onLogout }) {
                   </button>
                 )}
               </div>
+              {selectedHomework.length > 0 ? (
+                <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', marginBottom: '12px' }}>
+                  <span style={{ background: '#dcfce7', color: '#166534', padding: '6px 10px', borderRadius: '999px', fontSize: '12px', fontWeight: 700 }}>
+                    Submitted: {selectedHomeworkSummary.submitted}
+                  </span>
+                  <span style={{ background: '#fee2e2', color: '#991b1b', padding: '6px 10px', borderRadius: '999px', fontSize: '12px', fontWeight: 700 }}>
+                    Not submitted: {selectedHomeworkSummary.notSubmitted}
+                  </span>
+                  <span style={{ background: '#ffedd5', color: '#9a3412', padding: '6px 10px', borderRadius: '999px', fontSize: '12px', fontWeight: 700 }}>
+                    Overdue: {selectedHomeworkSummary.overdue}
+                  </span>
+                </div>
+              ) : null}
               {panelLoading.homework ? <p className="td-empty">Loading homework...</p> : null}
               {panelError.homework ? <p className="td-empty">{panelError.homework}</p> : null}
               {selectedHomework.length > 0 ? (
@@ -1688,16 +1969,33 @@ export default function TeacherDashboard({ session, onLogout }) {
                     </thead>
                     <tbody>
                       {selectedHomework.map((hw) => (
-                        <tr key={hw.id}>
+                        <tr key={hw.id} style={String(hw?.dueStatus || '').toLowerCase() === 'overdue' && String(hw?.status || '').toLowerCase() !== 'submitted' ? { background: '#fff1f2' } : undefined}>
                           <td><strong>{hw.title}</strong></td>
                           <td>{hw.subject}</td>
                           <td>{shortDate(hw.dueAt)}</td>
                           <td>
-                            <span className={`td-hw-badge td-hw-${hw.status}`}>{hw.status}</span>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                              <span className={`td-hw-badge td-hw-${String(hw.dueStatus || hw.status || '').toLowerCase()}`}>{hw.dueStatus || hw.status}</span>
+                              {hw.remark ? (
+                                <span style={{ fontSize: '11px', color: String(hw.dueStatus || hw.status || '').toLowerCase() === 'overdue' ? '#b91c1c' : '#6b7280' }}>
+                                  {hw.remark}
+                                </span>
+                              ) : null}
+                            </div>
                           </td>
                           <td>{hw.grade !== null && hw.grade !== undefined ? `${hw.grade}/100` : '—'}</td>
                           <td>{hw.attemptCount || 0}</td>
                           <td>
+                            {hw.attachmentUrl ? (
+                              <a href={hw.attachmentUrl} target="_blank" rel="noreferrer" className="td-inline-btn" style={{ marginRight: 8 }}>
+                                Question Image
+                              </a>
+                            ) : null}
+                            {(hwAttemptsByHwId[hw.id] || [])[0]?.attachmentUrl ? (
+                              <a href={(hwAttemptsByHwId[hw.id] || [])[0].attachmentUrl} target="_blank" rel="noreferrer" className="td-inline-btn" style={{ marginRight: 8 }}>
+                                Student Image
+                              </a>
+                            ) : null}
                             {hw.status === 'submitted' || hw.status === 'pending' ? (
                               <button
                                 type="button"
