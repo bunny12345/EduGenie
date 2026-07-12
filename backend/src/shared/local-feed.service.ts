@@ -16,14 +16,27 @@ export class LocalFeedService implements OnModuleInit {
   private rewardsByStudent = new Map<string, { coins: number; badges: any[]; recentRewards: any[] }>();
   private activityByStudent = new Map<string, any[]>();
 
+  private deduplicateHomework(items: any[]): any[] {
+    const seen = new Set<string>();
+    return items.filter((h) => {
+      const key = String(h?.id || '');
+      if (!key || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  }
+
   onModuleInit() {
     try {
       if (fs.existsSync(FEED_FILE)) {
         const saved = JSON.parse(fs.readFileSync(FEED_FILE, 'utf8'));
         if (Array.isArray(saved?.homework)) {
-          this.homeworkAssignments = saved.homework;
+          // Deduplicate on load to clean up any duplicates that crept in
+          this.homeworkAssignments = this.deduplicateHomework(saved.homework);
           // eslint-disable-next-line no-console
-          console.log(`[local-feed] Loaded ${this.homeworkAssignments.length} persisted homework assignments`);
+          console.log(`[local-feed] Loaded ${this.homeworkAssignments.length} persisted homework assignments (deduped from ${saved.homework.length})`);
+          // Re-persist if we cleaned up duplicates
+          if (this.homeworkAssignments.length < saved.homework.length) this.persistFeed();
         }
       }
     } catch (_e) { /* corrupt/missing file – start fresh */ }
@@ -49,8 +62,22 @@ export class LocalFeedService implements OnModuleInit {
   addHomework(items: any[]) {
     const next = Array.isArray(items) ? items : [];
     if (!next.length) return;
-    this.homeworkAssignments = [...next, ...this.homeworkAssignments].slice(0, 2000);
+    // Deduplicate: new items win (they're prepended), existing items with same id are dropped
+    const combined = [...next, ...this.homeworkAssignments];
+    this.homeworkAssignments = this.deduplicateHomework(combined).slice(0, 2000);
     this.persistFeed();
+  }
+
+  updateHomework(id: string, patch: any) {
+    const targetId = String(id || '').trim();
+    if (!targetId) return null;
+    const index = this.homeworkAssignments.findIndex((h) => String(h?.id || '').trim() === targetId);
+    if (index < 0) return null;
+    const current = this.homeworkAssignments[index] || {};
+    const next = { ...current, ...(patch || {}) };
+    this.homeworkAssignments[index] = next;
+    this.persistFeed();
+    return next;
   }
 
   listHomeworkForStudent(studentId: string) {

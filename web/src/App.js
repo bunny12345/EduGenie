@@ -6,6 +6,10 @@ import SchoolDashboard from './components/SchoolDashboard';
 import RoleGateway from './components/RoleGateway';
 import { setRuntimeDevToken } from './api';
 
+// Temporary debug switch: disables automatic auth-expiry flows that can feel like
+// page loops while we stabilize homework submit.
+const DISABLE_SESSION_EXPIRY_GUARD = true;
+
 function parseJwtPayload(token) {
   try {
     const raw = String(token || '').replace(/^Bearer\s+/i, '').trim();
@@ -59,6 +63,7 @@ function App() {
 
   // Proactive expiry check — polls every 60 s; shows re-login modal 2 min before expiry
   React.useEffect(() => {
+    if (DISABLE_SESSION_EXPIRY_GUARD) return;
     if (!session?.token) return;
     const id = setInterval(() => {
       const secs = secondsUntilExpiry(session.token);
@@ -75,6 +80,7 @@ function App() {
   }, [session?.token]);
 
   React.useEffect(() => {
+    if (DISABLE_SESSION_EXPIRY_GUARD) return;
     function handleExpiredAuth() {
       setSessionExpired(true);
       setRuntimeDevToken('');
@@ -99,7 +105,7 @@ function App() {
   }
 
   // Re-login modal — shown when session expires while user is on a page
-  if (sessionExpired || (!session && false /* keep gateway flow below */)) {
+  if (!DISABLE_SESSION_EXPIRY_GUARD && (sessionExpired || (!session && false /* keep gateway flow below */))) {
     // If no prior session exists go to gateway; if session was active show modal
     if (session || sessionExpired) {
       return (

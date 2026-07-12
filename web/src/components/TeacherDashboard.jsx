@@ -91,6 +91,14 @@ function assignmentStableKey(item) {
   ].join('|');
 }
 
+function asUrlList(value, fallbackSingle) {
+  const fromList = Array.isArray(value) ? value : [];
+  const list = fromList.filter((u) => typeof u === 'string' && u.trim());
+  if (list.length) return list;
+  if (typeof fallbackSingle === 'string' && fallbackSingle.trim()) return [fallbackSingle.trim()];
+  return [];
+}
+
 function toLocalDateTimeInputValue(date = new Date()) {
   const pad = (n) => String(n).padStart(2, '0');
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
@@ -172,8 +180,11 @@ export default function TeacherDashboard({ session, onLogout }) {
   const [assignTitle, setAssignTitle] = useState('');
   const [assignSubject, setAssignSubject] = useState(session?.subject || 'Mathematics');
   const [assignNote, setAssignNote] = useState('');
-  const [assignAttachmentUrl, setAssignAttachmentUrl] = useState('');
+  const [assignAttachmentUrls, setAssignAttachmentUrls] = useState([]);
   const [assignAttachmentUploading, setAssignAttachmentUploading] = useState(false);
+  const [assignPreviewUrls, setAssignPreviewUrls] = useState([]); // local object URLs for instant preview
+  const [assignDropActive, setAssignDropActive] = useState(false);
+  const [lightboxUrl, setLightboxUrl] = useState(''); // image to show full-screen
   const [assignStartAt, setAssignStartAt] = useState('');
   const [assignDueAt, setAssignDueAt] = useState('');
   const [activeAssignments, setActiveAssignments] = useState([]); // confirmed assignments shown at bottom
@@ -362,7 +373,9 @@ export default function TeacherDashboard({ session, onLogout }) {
       await Promise.all(list.map(async (h) => {
         try {
           const attRes = await getTeacherHomeworkAttempts(h.id);
-          attemptsMap[h.id] = Array.isArray(attRes?.attempts) ? attRes.attempts : [];
+          const rawAttempts = Array.isArray(attRes?.attempts) ? attRes.attempts : [];
+          const filteredAttempts = rawAttempts.filter((a) => String(a?.studentId || a?.student_id || '') === String(studentId));
+          attemptsMap[h.id] = filteredAttempts.length ? filteredAttempts : rawAttempts;
         } catch {
           attemptsMap[h.id] = [];
         }
@@ -853,6 +866,14 @@ export default function TeacherDashboard({ session, onLogout }) {
   async function onAssignHomework(e) {
     e.preventDefault();
     if (!assignTitle.trim()) return;
+    if (assignAttachmentUploading) {
+      setNote('Please wait for image upload to finish before assigning homework.');
+      return;
+    }
+    const serverAttachmentUrls = asUrlList(assignAttachmentUrls);
+    const localOnlyUrls = asUrlList(assignPreviewUrls).filter((u) => !serverAttachmentUrls.includes(u));
+    const allAttachmentUrls = [...serverAttachmentUrls];
+    const hasLocalOnlyPreview = localOnlyUrls.length > 0;
     if (!teacherTargetClass || teacherTargetClass === 'all') {
       setNote('Please select a class at the top of the page before assigning homework.');
       return;
@@ -881,7 +902,9 @@ export default function TeacherDashboard({ session, onLogout }) {
         title: assignTitle,
         subject: assignSubject,
         note: assignNote || null,
-        attachmentUrl: assignAttachmentUrl || null,
+        attachmentUrls: allAttachmentUrls,
+        // Keep legacy single-url field for compatibility.
+        attachmentUrl: allAttachmentUrls[0] || null,
         startAt: assignStartAt || null,
         dueAt: assignDueAt || null,
         className: teacherTargetClass
@@ -893,7 +916,8 @@ export default function TeacherDashboard({ session, onLogout }) {
           title: assignTitle,
           subject: assignSubject,
           note: assignNote,
-          attachmentUrl: assignAttachmentUrl || null,
+          attachmentUrls: allAttachmentUrls,
+          attachmentUrl: allAttachmentUrls[0] || null,
           startAt: assignStartAt || null,
           dueAt: assignDueAt || null,
           className: teacherTargetClass,
@@ -918,11 +942,12 @@ export default function TeacherDashboard({ session, onLogout }) {
           }
           return dedup;
         });
-        setNote(`✅ Assigned "${assignTitle}" | Due: ${assignDueAt ? new Date(assignDueAt).toLocaleString() : 'Not set'} | Class: ${teacherTargetClass} | Students: ${created}`);
+        setNote(`${hasLocalOnlyPreview ? '⚠ Some images were local-only and were not saved. ' : ''}✅ Assigned "${assignTitle}" | Due: ${assignDueAt ? new Date(assignDueAt).toLocaleString() : 'Not set'} | Class: ${teacherTargetClass} | Students: ${created}`);
         // Clear form
         setAssignTitle('');
         setAssignNote('');
-        setAssignAttachmentUrl('');
+        setAssignAttachmentUrls([]);
+        setAssignPreviewUrls([]);
         setAssignStartAt('');
         setAssignDueAt('');
         // Refresh from backend in background; keep optimistic card visible.
@@ -932,26 +957,68 @@ export default function TeacherDashboard({ session, onLogout }) {
       }
       await loadSummaryPanel();
     } catch (e2) {
-      setNote('Failed to assign homework.');
+      setNote(e2?.message || 'Failed to assign homework.');
     } finally {
       setBusy('');
     }
   }
 
-  async function onTeacherHomeworkFileSelected(file) {
-    if (!file) return;
+  async function onTeacherHomeworkFilesSelected(files) {
+    const picked = Array.isArray(files) ? files.filter(Boolean) : [];
+    if (!picked.length) return;
+
+    const localPreviews = picked.map((file) => URL.createObjectURL(file));
+    setAssignPreviewUrls((prev) => [...prev, ...localPreviews]);
     setAssignAttachmentUploading(true);
-    setNote('Uploading homework image...');
-    try {
-      const res = await uploadHomeworkImage(file);
-      if (!res?.url) throw new Error('Upload failed');
-      setAssignAttachmentUrl(res.url);
-      setNote('Homework image uploaded.');
-    } catch (e) {
-      setNote(e?.message || 'Homework image upload failed.');
-    } finally {
-      setAssignAttachmentUploading(false);
+    setNote(`Uploading ${picked.length} image${picked.length === 1 ? '' : 's'}...`);
+
+    const uploaded = [];
+    const uploadedPreviewUrls = [];
+    for (let i = 0; i < picked.length; i += 1) {
+      const file = picked[i];
+      const previewUrl = localPreviews[i];
+      try {
+        const res = await uploadHomeworkImage(file);
+        if (res?.url) {
+          uploaded.push(res.url);
+          if (previewUrl) uploadedPreviewUrls.push(previewUrl);
+        }
+      } catch {
+        // Keep local preview if one upload fails.
+      }
     }
+
+    if (uploaded.length) {
+      setAssignAttachmentUrls((prev) => {
+        const merged = [...prev, ...uploaded];
+        return Array.from(new Set(merged));
+      });
+      setAssignPreviewUrls((prev) => prev.filter((u) => !uploadedPreviewUrls.includes(u)));
+      setNote(uploaded.length === picked.length
+        ? `Uploaded ${uploaded.length} image${uploaded.length === 1 ? '' : 's'}.`
+        : `Uploaded ${uploaded.length}/${picked.length} image${picked.length === 1 ? '' : 's'}.`);
+    } else {
+      setNote('Image upload failed. Local previews kept, you can still assign or remove them.');
+    }
+
+    setAssignAttachmentUploading(false);
+  }
+
+  function onRemoveTeacherAttachment(url) {
+    setAssignAttachmentUrls((prev) => prev.filter((u) => u !== url));
+    setAssignPreviewUrls((prev) => prev.filter((u) => u !== url));
+  }
+
+  function onRemoveAllTeacherAttachments() {
+    setAssignAttachmentUrls([]);
+    setAssignPreviewUrls([]);
+  }
+
+  function onTeacherDrop(event) {
+    event.preventDefault();
+    setAssignDropActive(false);
+    const files = Array.from(event.dataTransfer?.files || []).filter((file) => String(file?.type || '').startsWith('image/'));
+    if (files.length) onTeacherHomeworkFilesSelected(files);
   }
 
   async function loadHomeworkHistory() {
@@ -979,7 +1046,8 @@ export default function TeacherDashboard({ session, onLogout }) {
         className: item?.className || item?.class_name || '',
         startAt: item?.startAt || item?.start_at || null,
         dueAt: item?.dueAt || item?.due_at || null,
-        attachmentUrl: item?.attachmentUrl || item?.attachment_url || null,
+        attachmentUrls: asUrlList(item?.attachmentUrls || item?.attachment_urls, item?.attachmentUrl || item?.attachment_url),
+        attachmentUrl: (asUrlList(item?.attachmentUrls || item?.attachment_urls, item?.attachmentUrl || item?.attachment_url)[0] || null),
         createdAt: item?.createdAt || item?.created_at || null
       }));
       const needsResync = cachedNormalized.filter(
@@ -1482,20 +1550,61 @@ export default function TeacherDashboard({ session, onLogout }) {
                   placeholder="Homework instructions / notes for students (e.g. Read pages 45–52 and answer Q1–Q5...)"
                   style={{ resize: 'vertical', fontFamily: 'inherit', fontSize: '14px', padding: '10px', borderRadius: '8px', border: '1px solid #ddd', width: '100%', boxSizing: 'border-box' }}
                 />
-                <input
-                  type="file"
-                  accept="image/*"
-                  onChange={(e) => onTeacherHomeworkFileSelected(e.target.files?.[0] || null)}
-                  disabled={assignAttachmentUploading}
-                />
-                <input
-                  value={assignAttachmentUrl}
-                  readOnly
-                  placeholder="Uploaded image URL will appear here"
-                />
-                {assignAttachmentUrl ? (
-                  <div style={{ border: '1px dashed #ddd', borderRadius: '8px', padding: '8px' }}>
-                    <img src={assignAttachmentUrl} alt="Homework preview" style={{ maxWidth: '100%', maxHeight: '180px', objectFit: 'contain' }} />
+                <div
+                  onDragOver={(e) => { e.preventDefault(); setAssignDropActive(true); }}
+                  onDragLeave={() => setAssignDropActive(false)}
+                  onDrop={onTeacherDrop}
+                  style={{
+                    border: `2px dashed ${assignDropActive ? '#4f46e5' : '#d7def5'}`,
+                    background: assignDropActive ? '#eef2ff' : '#fafbff',
+                    borderRadius: '10px',
+                    padding: '12px'
+                  }}
+                >
+                  <input
+                    type="file"
+                    accept="image/*"
+                    multiple
+                    onChange={(e) => onTeacherHomeworkFilesSelected(Array.from(e.target.files || []))}
+                    disabled={assignAttachmentUploading}
+                  />
+                  <div style={{ fontSize: '12px', color: '#666', marginTop: '6px' }}>
+                    Drag and drop multiple images here, or use Choose Files.
+                  </div>
+                </div>
+                {assignAttachmentUploading && <p style={{ fontSize: '12px', color: '#888', margin: '4px 0' }}>⏳ Uploading...</p>}
+                {([...assignAttachmentUrls, ...assignPreviewUrls]).length ? (
+                  <div style={{ border: '1px dashed #ddd', borderRadius: '8px', padding: '8px', position: 'relative' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                      <span style={{ fontSize: '12px', color: '#666' }}>{[...assignAttachmentUrls, ...assignPreviewUrls].length} image(s) selected</span>
+                      <button type="button" className="td-inline-btn danger" onClick={onRemoveAllTeacherAttachments}>Remove all</button>
+                    </div>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                      {[...assignAttachmentUrls, ...assignPreviewUrls].map((url) => (
+                        <div key={url} style={{ position: 'relative' }}>
+                          <img
+                            src={url}
+                            alt="Homework preview"
+                            onClick={() => setLightboxUrl(url)}
+                            style={{ width: 72, height: 72, objectFit: 'cover', borderRadius: '6px', cursor: 'zoom-in', display: 'block', border: '1px solid #ddd' }}
+                          />
+                          <button
+                            type="button"
+                            onClick={() => onRemoveTeacherAttachment(url)}
+                            title="Remove image"
+                            style={{ position: 'absolute', top: -6, right: -6, width: 18, height: 18, borderRadius: '50%', border: 'none', background: '#ef4444', color: '#fff', fontSize: '12px', lineHeight: '18px', cursor: 'pointer', padding: 0 }}
+                          >
+                            x
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                    {assignAttachmentUploading && (
+                      <div style={{ position: 'absolute', inset: 0, background: 'rgba(255,255,255,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '8px', fontSize: '13px', color: '#555' }}>
+                        ⏳ Uploading to server...
+                      </div>
+                    )}
+                    <p style={{ fontSize: '11px', color: '#999', margin: '6px 0 0', textAlign: 'center' }}>Click image to expand • click x to remove</p>
                   </div>
                 ) : null}
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
@@ -1520,9 +1629,33 @@ export default function TeacherDashboard({ session, onLogout }) {
                     />
                   </div>
                 </div>
-                <button type="submit" disabled={busy === 'assign'}>
-                  {busy === 'assign' ? 'Assigning...' : teacherTargetClass === 'all' ? 'Select a class first' : `✅ Assign to ${teacherTargetClass}`}
+                <button type="submit" disabled={busy === 'assign' || assignAttachmentUploading}>
+                  {busy === 'assign'
+                    ? 'Assigning...'
+                    : assignAttachmentUploading
+                      ? 'Uploading image...'
+                      : (assignPreviewUrls.length > 0 && assignAttachmentUrls.length === 0)
+                        ? `✅ Assign to ${teacherTargetClass} (local image)`
+                        : teacherTargetClass === 'all'
+                          ? 'Select a class first'
+                          : `✅ Assign to ${teacherTargetClass}`}
                 </button>
+                {note ? (
+                  <div
+                    style={{
+                      marginTop: '8px',
+                      padding: '10px 12px',
+                      borderRadius: '8px',
+                      fontSize: '13px',
+                      fontWeight: 600,
+                      background: note.startsWith('✅') ? '#ecfdf3' : (note.startsWith('⚠') ? '#fff7ed' : '#fef2f2'),
+                      color: note.startsWith('✅') ? '#166534' : (note.startsWith('⚠') ? '#9a3412' : '#991b1b'),
+                      border: note.startsWith('✅') ? '1px solid #bbf7d0' : (note.startsWith('⚠') ? '1px solid #fed7aa' : '1px solid #fecaca')
+                    }}
+                  >
+                    {note}
+                  </div>
+                ) : null}
               </form>
 
               {/* Active Acknowledgments — visible until due date passes */}
@@ -1539,6 +1672,21 @@ export default function TeacherDashboard({ session, onLogout }) {
                           {a.subject}: {a.title}
                         </div>
                         {a.note && <div style={{ color: '#555', marginBottom: '4px' }}>{a.note}</div>}
+                        {asUrlList(a?.attachmentUrls || a?.attachment_urls, a?.attachmentUrl || a?.attachment_url).length ? (
+                          <div style={{ marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                            {asUrlList(a?.attachmentUrls || a?.attachment_urls, a?.attachmentUrl || a?.attachment_url).map((url) => (
+                              <img
+                                key={url}
+                                src={url}
+                                alt="Assigned attachment"
+                                onClick={() => setLightboxUrl(url)}
+                                title="Click to expand"
+                                style={{ width: 24, height: 24, objectFit: 'cover', borderRadius: 4, cursor: 'zoom-in', border: '1px solid #c8d6d0' }}
+                              />
+                            ))}
+                            <span style={{ fontSize: '11px', color: '#666' }}>Attachment(s)</span>
+                          </div>
+                        ) : null}
                         <div style={{ color: '#888', fontSize: '12px' }}>
                           Class: {a.className}
                           {parseSafeDate(a.startAt) && <span> · Start: {parseSafeDate(a.startAt).toLocaleString()}</span>}
@@ -1986,15 +2134,27 @@ export default function TeacherDashboard({ session, onLogout }) {
                           <td>{hw.grade !== null && hw.grade !== undefined ? `${hw.grade}/100` : '—'}</td>
                           <td>{hw.attemptCount || 0}</td>
                           <td>
-                            {hw.attachmentUrl ? (
-                              <a href={hw.attachmentUrl} target="_blank" rel="noreferrer" className="td-inline-btn" style={{ marginRight: 8 }}>
-                                Question Image
-                              </a>
-                            ) : null}
-                            {(hwAttemptsByHwId[hw.id] || [])[0]?.attachmentUrl ? (
-                              <a href={(hwAttemptsByHwId[hw.id] || [])[0].attachmentUrl} target="_blank" rel="noreferrer" className="td-inline-btn" style={{ marginRight: 8 }}>
-                                Student Image
-                              </a>
+                            {(() => {
+                              const latestUrls = asUrlList(hw?.latestAttachmentUrls || hw?.latest_attachment_urls, hw?.latestAttachmentUrl || hw?.latest_attachment_url);
+                              const fallbackUrls = asUrlList((hwAttemptsByHwId[hw.id] || [])[0]?.attachmentUrls, (hwAttemptsByHwId[hw.id] || [])[0]?.attachmentUrl);
+                              const submittedUrls = latestUrls.length ? latestUrls : fallbackUrls;
+                              return submittedUrls.length ? submittedUrls.map((url) => (
+                                <img
+                                  key={url}
+                                  src={url}
+                                  alt="Student submission"
+                                  onClick={() => setLightboxUrl(url)}
+                                  title="Student submission — click to expand"
+                                  style={{ width: 32, height: 32, objectFit: 'cover', borderRadius: 4, cursor: 'zoom-in', border: '2px solid #22c55e', marginRight: 8, verticalAlign: 'middle' }}
+                                />
+                              )) : (
+                                <span style={{ fontSize: '11px', color: '#9ca3af', marginRight: 8 }}>No student upload yet</span>
+                              );
+                            })()}
+                            {hw.feedback ? (
+                              <span style={{ fontSize: '11px', color: '#4b5563', marginRight: 8 }} title={hw.feedback}>
+                                Comment saved
+                              </span>
                             ) : null}
                             {hw.status === 'submitted' || hw.status === 'pending' ? (
                               <button
@@ -2199,6 +2359,30 @@ export default function TeacherDashboard({ session, onLogout }) {
           </section>
         )}
       </div>
+
+      {/* Lightbox — full-screen image viewer */}
+      {lightboxUrl ? (
+        <div
+          onClick={() => setLightboxUrl('')}
+          style={{
+            position: 'fixed', inset: 0, zIndex: 9999,
+            background: 'rgba(0,0,0,0.85)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            cursor: 'zoom-out'
+          }}
+        >
+          <img
+            src={lightboxUrl}
+            alt="Full view"
+            onClick={(e) => e.stopPropagation()}
+            style={{ maxWidth: '92vw', maxHeight: '92vh', objectFit: 'contain', borderRadius: '8px', boxShadow: '0 8px 40px rgba(0,0,0,0.6)' }}
+          />
+          <button
+            onClick={() => setLightboxUrl('')}
+            style={{ position: 'absolute', top: 18, right: 24, background: 'rgba(255,255,255,0.15)', border: 'none', color: '#fff', fontSize: 28, cursor: 'pointer', borderRadius: '50%', width: 44, height: 44, lineHeight: '44px', textAlign: 'center' }}
+          >✕</button>
+        </div>
+      ) : null}
     </div>
   );
 }

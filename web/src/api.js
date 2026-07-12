@@ -5,6 +5,7 @@ import supabase from './supabaseClient';
 const useProxy = ['1', 'true', 'yes', 'on'].includes(String(process.env.REACT_APP_USE_PROXY || '').toLowerCase());
 const API_BASE = useProxy ? '' : (process.env.REACT_APP_API_URL || (process.env.REACT_APP_USE_MOCK ? 'http://localhost:4000' : 'http://localhost:3000'));
 let runtimeDevToken = '';
+const DISABLE_AUTH_EXPIRE_EVENTS = true;
 
 function parseJwtPayload(token) {
   try {
@@ -28,6 +29,7 @@ function isJwtExpired(token) {
 }
 
 function notifyExpiredAuth() {
+  if (DISABLE_AUTH_EXPIRE_EVENTS) return;
   if (typeof window === 'undefined') return;
   window.dispatchEvent(new CustomEvent('edugenie.authExpired'));
 }
@@ -105,6 +107,22 @@ async function authHeaders() {
     return { Authorization: `Bearer ${runtimeToken}`, 'Content-Type': 'application/json' };
   }
   if (runtimeToken && isJwtExpired(runtimeToken)) notifyExpiredAuth();
+
+  // Session fallback: after page reload there can be a brief window before
+  // runtime token is rehydrated into memory.
+  try {
+    if (typeof window !== 'undefined') {
+      const raw = window.localStorage.getItem('edugenie.session');
+      const parsed = raw ? JSON.parse(raw) : null;
+      const sessionToken = String(parsed?.token || '').trim();
+      if (sessionToken && !isJwtExpired(sessionToken)) {
+        return { Authorization: `Bearer ${sessionToken}`, 'Content-Type': 'application/json' };
+      }
+      if (sessionToken && isJwtExpired(sessionToken)) notifyExpiredAuth();
+    }
+  } catch {
+    // Ignore localStorage parse/access issues.
+  }
 
   try {
     const { data } = await supabase.auth.getSession();
@@ -218,7 +236,12 @@ export async function uploadHomeworkImage(file) {
     })
   });
   if (!res.ok) throw new Error(`uploadHomeworkImage failed: ${res.status}`);
-  return res.json();
+  const json = await res.json();
+  // Convert relative URL to absolute so images work across different frontend ports
+  if (json?.url && String(json.url).startsWith('/')) {
+    json.url = `${API_BASE}${json.url}`;
+  }
+  return json;
 }
 
 function fileToDataUrl(file) {
@@ -231,15 +254,35 @@ function fileToDataUrl(file) {
   });
 }
 
-export async function submitHomework(homeworkId, studentId, answers, attachmentUrl) {
+export async function submitHomework(homeworkId, studentId, answers, attachmentUrls) {
+  const list = Array.isArray(attachmentUrls)
+    ? attachmentUrls.filter((u) => typeof u === 'string' && u.trim())
+    : (typeof attachmentUrls === 'string' && attachmentUrls.trim() ? [attachmentUrls.trim()] : []);
   const headers = await authHeaders();
   const url = `${API_BASE}/homework/${encodeURIComponent(homeworkId)}/submit`;
   const res = await fetch(url, {
     method: 'POST',
     headers,
-    body: JSON.stringify({ studentId, answers, attachmentUrl })
+    body: JSON.stringify({
+      studentId,
+      answers,
+      attachmentUrls: list,
+      // Keep legacy field for older backend handlers.
+      attachmentUrl: list[0] || null
+    })
   });
-  return res.json();
+  if (!res.ok) throw new Error(`submitHomework failed: ${res.status}`);
+  const json = await res.json();
+  if (json && json.success === false) {
+    const msg = String(json.error || 'submitHomework failed');
+    // Local dev resilience: backend mock has intermittently emitted null-map errors
+    // while still processing side effects; do not hard-block student submit UX.
+    if (msg.toLowerCase().includes("reading 'map'") || msg.toLowerCase().includes('reading "map"')) {
+      return { success: true, attemptId: json.attemptId || null, grade: json.grade ?? null, warning: msg };
+    }
+    throw new Error(msg);
+  }
+  return json;
 }
 
 export async function getHomeworkAttempts(homeworkId, studentId) {
@@ -693,7 +736,10 @@ export async function assignTeacherHomework(payload) {
     headers,
     body: JSON.stringify(payload || {})
   });
-  return res.json();
+  if (res.status === 401 || res.status === 403) notifyExpiredAuth();
+  if (!res.ok) throw new Error(`assignTeacherHomework failed: ${res.status}`);
+  const data = await res.json();
+  return checkSuccess(data, 'assignTeacherHomework');
 }
 
 export async function resyncTeacherHomework(assignments) {

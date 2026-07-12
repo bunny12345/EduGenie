@@ -65,6 +65,11 @@ export class SupabaseService {
         let _limit: number | null = null;
 
         const builder: any = {
+          _apply(rows: any[]) {
+            let next = [...(rows || [])];
+            for (const f of filters) next = f(next);
+            return next;
+          },
           eq(k: string, v: any) {
             filters.push((rows) => rows.filter((r) => String(r[k] ?? '') == String(v ?? '')));
             return builder;
@@ -120,8 +125,7 @@ export class SupabaseService {
           // Make the builder thenable so `await builder` works
           then(resolve: (v: any) => any, reject?: (e: any) => any) {
             try {
-              let rows = [...(tableData() || [])];
-              for (const f of filters) rows = f(rows);
+              let rows = builder._apply(tableData() || []);
               if (_orderKey) {
                 const key = _orderKey;
                 const asc = _orderAsc;
@@ -150,7 +154,10 @@ export class SupabaseService {
         from: (table: string) => ({
           insert: (rows: any[]) => {
               ensureTable(table);
-              const toInsert = rows.map((r) => ({
+              const safeRows = Array.isArray(rows)
+                ? rows.filter((r) => r && typeof r === 'object')
+                : (rows && typeof rows === 'object' ? [rows] : []);
+              const toInsert = safeRows.map((r) => ({
                 ...r,
                 // Mirror DB behavior: ensure each row has a unique id.
                 id: r?.id || `${table}-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
@@ -181,16 +188,19 @@ export class SupabaseService {
             const builder: any = makeQueryBuilder(() => store[table] || []);
             // Override then to apply update instead of select
             builder.then = (resolve: (v: any) => any) => {
+              const current = store[table] || [];
+              const applied = builder._apply(current);
+              const safeApplied = Array.isArray(applied) ? applied : [];
+              const matched = new Set(safeApplied.map((r: any) => String(r?.id ?? JSON.stringify(r))));
               const updated: any[] = [];
-              store[table] = (store[table] || []).map((r) => {
-                // Re-run eq filters to find matching rows
-                let match = true;
-                // The builder accumulates eq filters; check them against r
-                // We do a simple approach: update all rows and track which changed
-                // For the mock we apply the change to everything then re-filter
-                updated.push({ ...r, ...changes });
-                return { ...r, ...changes };
+              store[table] = current.map((r: any) => {
+                const key = String(r?.id ?? JSON.stringify(r));
+                if (!matched.has(key)) return r;
+                const next = { ...r, ...changes };
+                updated.push(next);
+                return next;
               });
+              persistStore();
               resolve({ data: updated, error: null });
             };
             return builder;

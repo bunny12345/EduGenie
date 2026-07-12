@@ -6,7 +6,6 @@ import {
   getChatHistory,
   getDashboard,
   getHomework,
-  getHomeworkAttempts,
   getLibrary,
   getLibraryResource,
   getProgress,
@@ -40,8 +39,9 @@ function getScore(row) {
 }
 
 function buildProgressSummary(rows) {
+  const safeRows = Array.isArray(rows) ? rows : [];
   const bySubject = new Map();
-  rows.forEach((r) => {
+  safeRows.forEach((r) => {
     const s = r?.subject || r?.metric_key || 'General';
     const sc = getScore(r);
     if (sc === null) return;
@@ -57,7 +57,7 @@ function buildProgressSummary(rows) {
 }
 
 function buildTrendPoints(rows) {
-  return rows.map(getScore).filter((n) => n !== null).slice(-7);
+  return (Array.isArray(rows) ? rows : []).map(getScore).filter((n) => n !== null).slice(-7);
 }
 
 function parseDate(value) {
@@ -66,31 +66,69 @@ function parseDate(value) {
   return Number.isNaN(d.getTime()) ? null : d;
 }
 
+function toDateInputValue(value) {
+  const d = parseDate(value);
+  if (!d) return '';
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+function asUrlList(value, fallbackSingle) {
+  const fromList = Array.isArray(value) ? value : [];
+  const list = fromList
+    .filter((u) => typeof u === 'string' && u.trim())
+    .map((u) => String(u).trim())
+    .filter((u) => !u.startsWith('blob:'));
+  if (list.length) return list;
+  if (typeof fallbackSingle === 'string' && fallbackSingle.trim() && !fallbackSingle.trim().startsWith('blob:')) return [fallbackSingle.trim()];
+  return [];
+}
+
 function getHomeworkState(h) {
   const due = parseDate(h?.dueAt || h?.due_at || h?.createdAt || h?.created_at);
   const submitted = String(h?.status || '').toLowerCase() === 'submitted' || String(h?.status || '').toLowerCase() === 'graded';
-  if (submitted) return { submitted: true, overdue: false, expired: false, hide: false, label: 'Submitted', color: '#16a34a', bg: '#dcfce7' };
+  if (submitted) {
+    const submittedAt = parseDate(h?.lastAttemptAt || h?.submittedAt || h?.updatedAt || h?.updated_at || h?.createdAt || h?.created_at);
+    const daysSinceSubmitted = submittedAt ? Math.floor((Date.now() - submittedAt.getTime()) / (24 * 60 * 60 * 1000)) : 0;
+    const archived = daysSinceSubmitted >= 2;
+    return {
+      submitted: true,
+      overdue: false,
+      expired: false,
+      hide: archived,
+      archived,
+      history: archived,
+      label: archived ? `Archived after ${daysSinceSubmitted}d` : 'Submitted',
+      color: '#16a34a',
+      bg: '#dcfce7'
+    };
+  }
   if (!due) return { submitted: false, overdue: false, expired: false, hide: false, label: 'Pending', color: '#6b7280', bg: '#f3f4f6' };
   const daysSinceDue = Math.floor((Date.now() - due.getTime()) / (24 * 60 * 60 * 1000));
   const overdue = daysSinceDue >= 0;
   const expired = daysSinceDue > 3;
-  if (expired) return { submitted: false, overdue: true, expired: true, hide: true, label: `Expired ${daysSinceDue}d overdue`, color: '#b91c1c', bg: '#fee2e2' };
+  if (expired) return { submitted: false, overdue: true, expired: true, hide: true, history: true, label: `Expired ${daysSinceDue}d overdue`, color: '#b91c1c', bg: '#fee2e2' };
   if (overdue) return { submitted: false, overdue: true, expired: false, hide: false, label: `Overdue ${daysSinceDue}d`, color: '#b45309', bg: '#ffedd5' };
   return { submitted: false, overdue: false, expired: false, hide: false, label: 'Pending', color: '#6b7280', bg: '#f3f4f6' };
 }
 
 function Sparkline({ values }) {
+  const safeValues = safeArray(values);
+  if (!safeValues.length) return null;
   const width = 180;
   const height = 64;
-  const min = Math.min(...values);
-  const max = Math.max(...values);
+  const min = Math.min(...safeValues);
+  const max = Math.max(...safeValues);
   const span = Math.max(max - min, 1);
-  const pts = values.map((v, i) => {
-    const x = (i / Math.max(values.length - 1, 1)) * (width - 10) + 5;
+  const pts = safeValues.map((v, i) => {
+    const x = (i / Math.max(safeValues.length - 1, 1)) * (width - 10) + 5;
     const y = height - 6 - ((v - min) / span) * (height - 16);
     return `${x},${y}`;
   });
-  const last = pts[pts.length - 1].split(',');
+  const lastPoint = pts[pts.length - 1] || '0,0';
+  const last = String(lastPoint).split(',');
 
   return (
     <svg className="eg-spark" viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none" aria-hidden="true">
@@ -143,8 +181,15 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
 
   const [startingTestId, setStartingTestId] = useState('');
   const [startingHomeworkId, setStartingHomeworkId] = useState('');
-  const [homeworkAttachmentUrl, setHomeworkAttachmentUrl] = useState({});
+  const [lastSubmitHomeworkId, setLastSubmitHomeworkId] = useState('');
+  const [homeworkAttachmentUrls, setHomeworkAttachmentUrls] = useState({});
   const [homeworkUploadingById, setHomeworkUploadingById] = useState({});
+  const [homeworkPreviewById, setHomeworkPreviewById] = useState({}); // local object URLs for instant preview
+  const [homeworkDropActiveById, setHomeworkDropActiveById] = useState({});
+  const [lightboxUrl, setLightboxUrl] = useState(''); // full-screen image viewer
+  const [showHomeworkHistory, setShowHomeworkHistory] = useState(false);
+  const [historyFromDate, setHistoryFromDate] = useState('');
+  const [historyToDate, setHistoryToDate] = useState('');
   const [chatInput, setChatInput] = useState('');
   const [chatLoading, setChatLoading] = useState(false);
   const [testResult, setTestResult] = useState(null);
@@ -433,20 +478,68 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
     }
   }
 
-  async function onSubmitHomework(hwId) {
-    if (!hwId) return;
+  async function onSubmitHomework(hwId, flags = {}) {
+    const submitted = !!flags?.submitted;
+    const expired = !!flags?.expired;
+    if (submitted) {
+      setLastSubmitHomeworkId(String(hwId || ''));
+      setHomeworkInfo('This homework is already submitted.');
+      return;
+    }
+    if (expired) {
+      setLastSubmitHomeworkId(String(hwId || ''));
+      setHomeworkInfo('This homework is expired and can no longer be submitted.');
+      return;
+    }
+    if (!hwId) {
+      setLastSubmitHomeworkId(String(hwId || ''));
+      setHomeworkInfo('Submit failed: homework id is missing for this row. Please refresh and try again.');
+      return;
+    }
+    if (homeworkUploadingById[hwId]) {
+      setLastSubmitHomeworkId(String(hwId || ''));
+      setHomeworkInfo('Please wait for image upload to finish before submitting.');
+      return;
+    }
+    const uploadedUrls = (Array.isArray(homeworkAttachmentUrls[hwId]) ? homeworkAttachmentUrls[hwId] : [])
+      .filter((u) => typeof u === 'string' && u.trim() && !String(u).startsWith('blob:'));
+    const localPreviewOnlyCount = (Array.isArray(homeworkPreviewById[hwId]) ? homeworkPreviewById[hwId] : []).length;
+    if (localPreviewOnlyCount > 0) {
+      setLastSubmitHomeworkId(String(hwId || ''));
+      setHomeworkInfo('Some selected images are still local-only. Wait for upload to finish or re-upload before submitting.');
+      return;
+    }
+    setLastSubmitHomeworkId(String(hwId || ''));
+    setHomeworkInfo('Submitting homework...');
     setStartingHomeworkId(hwId);
     try {
       const sub = await submitHomework(
         hwId,
         studentId,
         { summary: 'Completed in UI flow' },
-        homeworkAttachmentUrl[hwId] || null
+        uploadedUrls
       );
-      const at = await getHomeworkAttempts(hwId, studentId);
-      const count = Array.isArray(at?.attempts) ? at.attempts.length : 0;
       const grade = sub?.grade ?? null;
-      setHomeworkInfo(`Submitted. Attempts: ${count}. Last grade: ${grade ?? '-'}`);
+      const submittedAtIso = new Date().toISOString();
+      setHomework((prev) => safeArray(prev).map((item) => {
+        const id = String(item?.id || item?.homeworkId || item?.homework_id || '');
+        if (id !== String(hwId)) return item;
+        const existingCount = Number(item?.attemptCount || 0);
+        return {
+          ...item,
+          status: 'submitted',
+          dueStatus: 'submitted',
+          submitted: true,
+          remark: 'Submitted',
+          attemptCount: Number.isFinite(existingCount) ? existingCount + 1 : 1,
+          lastAttemptAt: submittedAtIso,
+          submittedAt: submittedAtIso,
+          latestAttachmentUrls: uploadedUrls,
+          latestAttachmentUrl: uploadedUrls[0] || null,
+          grade: grade ?? item?.grade ?? null
+        };
+      }));
+      setHomeworkInfo(`Submitted successfully. Last grade: ${grade ?? '-'}`);
       // Record progress for homework submission silently
       if (grade !== null) {
         const hwItem = homework.find((h) => h.id === hwId);
@@ -457,30 +550,88 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
           source: 'homework'
         }).catch(() => {});
       }
-      await Promise.all([loadHomeworkPanel(), loadProgressPanel()]);
-      setHomeworkAttachmentUrl((prev) => ({ ...prev, [hwId]: '' }));
+      setHomeworkAttachmentUrls((prev) => ({ ...prev, [hwId]: uploadedUrls }));
+      setHomeworkPreviewById((prev) => ({ ...prev, [hwId]: [] }));
+      // Refresh in background; keep optimistic UI if one endpoint has bad/null payloads.
+      loadHomeworkPanel().catch(() => {});
+      loadProgressPanel().catch(() => {});
     } catch (e) {
-      setHomeworkInfo('Submit failed');
-      setPanelErrorKey('homework', e?.message || 'Submit failed.');
+      const msg = e?.message || 'Submit failed.';
+      setHomeworkInfo(`Submit failed: ${msg}`);
+      setPanelErrorKey('homework', msg);
     } finally {
       setStartingHomeworkId('');
     }
   }
 
-  async function onStudentHomeworkFileSelected(hwId, file) {
-    if (!file) return;
+  async function onStudentHomeworkFileSelected(hwId, files) {
+    const picked = Array.isArray(files) ? files.filter(Boolean) : [];
+    if (!picked.length) return;
+
+    const localUrls = picked.map((file) => URL.createObjectURL(file));
+    setHomeworkPreviewById((prev) => {
+      const current = Array.isArray(prev[hwId]) ? prev[hwId] : [];
+      return { ...prev, [hwId]: [...current, ...localUrls] };
+    });
     setHomeworkUploadingById((prev) => ({ ...prev, [hwId]: true }));
-    setHomeworkInfo('Uploading homework image...');
-    try {
-      const res = await uploadHomeworkImage(file);
-      if (!res?.url) throw new Error('Upload failed');
-      setHomeworkAttachmentUrl((prev) => ({ ...prev, [hwId]: res.url }));
-      setHomeworkInfo('Homework image uploaded.');
-    } catch (e) {
-      setHomeworkInfo(e?.message || 'Homework image upload failed');
-    } finally {
-      setHomeworkUploadingById((prev) => ({ ...prev, [hwId]: false }));
+    setHomeworkInfo(`Uploading ${picked.length} image${picked.length === 1 ? '' : 's'}...`);
+
+    const uploaded = [];
+    const uploadedPreviewUrls = [];
+    for (let i = 0; i < picked.length; i += 1) {
+      const file = picked[i];
+      const previewUrl = localUrls[i];
+      try {
+        const res = await uploadHomeworkImage(file);
+        if (res?.url) {
+          uploaded.push(res.url);
+          if (previewUrl) uploadedPreviewUrls.push(previewUrl);
+        }
+      } catch {
+        // Keep local preview fallback
+      }
     }
+
+    if (uploaded.length) {
+      setHomeworkAttachmentUrls((prev) => {
+        const current = Array.isArray(prev[hwId]) ? prev[hwId] : [];
+        return { ...prev, [hwId]: Array.from(new Set([...current, ...uploaded])) };
+      });
+      setHomeworkPreviewById((prev) => {
+        const current = Array.isArray(prev[hwId]) ? prev[hwId] : [];
+        return { ...prev, [hwId]: current.filter((u) => !uploadedPreviewUrls.includes(u)) };
+      });
+      setHomeworkInfo(uploaded.length === picked.length
+        ? `Uploaded ${uploaded.length} image${uploaded.length === 1 ? '' : 's'}.`
+        : `Uploaded ${uploaded.length}/${picked.length} image${picked.length === 1 ? '' : 's'}.`);
+    } else {
+      setHomeworkInfo('Image upload failed. Local preview is temporary; please re-upload before submit so it appears after relogin.');
+    }
+
+    setHomeworkUploadingById((prev) => ({ ...prev, [hwId]: false }));
+  }
+
+  function onRemoveStudentAttachment(hwId, url) {
+    setHomeworkAttachmentUrls((prev) => {
+      const current = Array.isArray(prev[hwId]) ? prev[hwId] : [];
+      return { ...prev, [hwId]: current.filter((u) => u !== url) };
+    });
+    setHomeworkPreviewById((prev) => {
+      const current = Array.isArray(prev[hwId]) ? prev[hwId] : [];
+      return { ...prev, [hwId]: current.filter((u) => u !== url) };
+    });
+  }
+
+  function onRemoveAllStudentAttachments(hwId) {
+    setHomeworkAttachmentUrls((prev) => ({ ...prev, [hwId]: [] }));
+    setHomeworkPreviewById((prev) => ({ ...prev, [hwId]: [] }));
+  }
+
+  function onStudentDrop(hwId, event) {
+    event.preventDefault();
+    setHomeworkDropActiveById((prev) => ({ ...prev, [hwId]: false }));
+    const files = Array.from(event.dataTransfer?.files || []).filter((file) => String(file?.type || '').startsWith('image/'));
+    if (files.length) onStudentHomeworkFileSelected(hwId, files);
   }
 
   async function onOpenResource(id) {
@@ -642,7 +793,7 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
           >
             🏠 Home
           </button>
-          {subjects.map((subject) => {
+          {safeArray(subjects).map((subject) => {
             const notifyCount = getSubjectNotifications(subject);
             return (
               <button
@@ -709,7 +860,7 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
                   {panelError.homework ? <p className="eg-loading">{panelError.homework}</p> : null}
                   <ul>
                     {/* Show only unique subject names — click to go to subject page */}
-                    {[...new Set(homework.map((h) => h.subject || 'General'))].slice(0, 4).map((subj) => (
+                    {[...new Set((Array.isArray(homework) ? homework : []).map((h) => h?.subject || 'General'))].slice(0, 4).map((subj) => (
                       <li key={subj} style={{ cursor: 'pointer', color: '#5b47ff', fontWeight: '600' }}
                         onClick={() => setActiveView(subj)}>
                         📚 {subj}
@@ -735,7 +886,7 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
             <section className="eg-subject-row">
               {panelLoading.progress ? <p className="eg-loading">Loading progress...</p> : null}
               {panelError.progress ? <p className="eg-loading">{panelError.progress}</p> : null}
-              {progressSummary.map((s) => (
+              {safeArray(progressSummary).map((s) => (
                 <article key={s.subject} className="cardish eg-subject-card">
                   <h4>{s.subject}</h4>
                   <strong>{s.score}%</strong>
@@ -753,7 +904,7 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
               {panelLoading.library ? <p className="eg-loading">Loading recommendations...</p> : null}
               {panelError.library ? <p className="eg-loading">{panelError.library}</p> : null}
               <div className="eg-tag-row">
-                {libraryTop.slice(0, 4).map((t) => (
+                {safeArray(libraryTop).slice(0, 4).map((t) => (
                   <span key={t.id || t.title}>{t.title || t.summary || 'Learning Resource'}</span>
                 ))}
                 {!panelLoading.library && !libraryTop.length ? <span>No recommendations yet.</span> : null}
@@ -774,7 +925,7 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
             {panelLoading.chat ? <p className="eg-loading">Loading chat...</p> : null}
             {panelError.chat ? <p className="eg-loading">{panelError.chat}</p> : null}
             <div className="eg-ai-chat">
-              {chatHistoryTop.map((m) => (
+              {safeArray(chatHistoryTop).map((m) => (
                 <div key={m.id || m.ts} className={`ai-msg ${m.role === 'user' ? 'user' : 'bot'}`}>
                   {m.text || m.message}
                 </div>
@@ -813,7 +964,7 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
             {panelError.homework ? <p className="eg-loading">{panelError.homework}</p> : null}
             <ul className="mini-list">
               {/* Home page: show subject name only — tap to go to subject page */}
-              {[...new Set(homework.map((h) => h.subject || 'General'))].slice(0, 5).map((subj) => {
+              {[...new Set((Array.isArray(homework) ? homework : []).map((h) => h?.subject || 'General'))].slice(0, 5).map((subj) => {
                 const count = homework.filter((h) => (h.subject || 'General') === subj && h.status !== 'submitted').length;
                 return (
                   <li key={subj} style={{ cursor: 'pointer', padding: '6px 0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
@@ -837,7 +988,7 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
             {panelLoading.dashboard ? <p className="eg-loading">Loading announcements...</p> : null}
             {panelError.dashboard ? <p className="eg-loading">{panelError.dashboard}</p> : null}
             <ul className="mini-list bullets">
-              {announcementsTop.map((a) => (
+              {safeArray(announcementsTop).map((a) => (
                 <li key={a.id || `${a.title}-${a.createdAt}`}>
                   <strong>{a.title || 'Announcement'}:</strong> {a.message || 'No details'}
                 </li>
@@ -851,7 +1002,7 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
             {panelLoading.tests ? <p className="eg-loading">Loading tests...</p> : null}
             {panelError.tests ? <p className="eg-loading">{panelError.tests}</p> : null}
             <ul className="mini-list">
-              {testsTop.map((t) => (
+              {safeArray(testsTop).map((t) => (
                 <li key={t.id} className="eg-list-with-action">
                   <span>{t.title || t.name || 'Mock Test'}</span>
                   <button className="eg-inline-btn" onClick={() => onStartTest(t.id)} disabled={startingTestId === t.id}>
@@ -870,7 +1021,7 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
             {panelError.progress ? <p className="eg-loading">{panelError.progress}</p> : null}
             {trend.length > 1 ? <Sparkline values={trend} /> : <p className="eg-loading">Not enough points for trend chart.</p>}
             <div className="eg-bars">
-              {progressSummary.map((s) => (
+              {safeArray(progressSummary).map((s) => (
                 <div key={s.subject} className="bar-row">
                   <span>{s.subject}</span>
                   <div><i style={{ width: `${Math.max(10, Math.min(100, s.score))}%` }} /></div>
@@ -885,7 +1036,7 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
             {panelLoading.library ? <p className="eg-loading">Loading library...</p> : null}
             {panelError.library ? <p className="eg-loading">{panelError.library}</p> : null}
             <ul className="mini-list bullets">
-              {libraryTop.map((r) => (
+              {safeArray(libraryTop).map((r) => (
                 <li key={r.id}>
                   <button className="eg-link-btn" onClick={() => onOpenResource(r.id)}>📚 {r.title || r.summary || 'Learning resource'}</button>
                 </li>
@@ -900,7 +1051,7 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
             {panelLoading.calendar ? <p className="eg-loading">Loading calendar...</p> : null}
             {panelError.calendar ? <p className="eg-loading">{panelError.calendar}</p> : null}
             <ul className="mini-list">
-              {eventsTop.map((e) => (
+              {safeArray(eventsTop).map((e) => (
                 <li key={e.id}>{e.title || e.event_type || 'Study Session'} - {fmtDate(e.starts_at || e.start || e.created_at)}</li>
               ))}
               {!panelLoading.calendar && !eventsTop.length ? <li>No events scheduled.</li> : null}
@@ -983,7 +1134,18 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
               {panelLoading.homework ? <p className="eg-loading">Loading homework...</p> : null}
               {panelError.homework ? <p className="eg-loading">{panelError.homework}</p> : null}
               {(() => {
-                const visibleHomework = (homeworkBySubject.get(activeView) || []).filter((h) => !getHomeworkState(h).hide);
+                const allHomework = homeworkBySubject.get(activeView) || [];
+                const visibleHomework = allHomework.filter((h) => !getHomeworkState(h).hide);
+                const historyHomework = allHomework.filter((h) => getHomeworkState(h).history);
+                const filteredHistory = historyHomework.filter((h) => {
+                  const marker = parseDate(h?.lastAttemptAt || h?.dueAt || h?.updatedAt || h?.createdAt);
+                  const markerValue = toDateInputValue(marker);
+                  if (!historyFromDate && !historyToDate) return true;
+                  if (!markerValue) return false;
+                  if (historyFromDate && markerValue < historyFromDate) return false;
+                  if (historyToDate && markerValue > historyToDate) return false;
+                  return true;
+                });
                 const submittedCount = visibleHomework.filter((h) => getHomeworkState(h).submitted).length;
                 const notSubmittedCount = visibleHomework.filter((h) => !getHomeworkState(h).submitted).length;
                 const overdueCount = visibleHomework.filter((h) => getHomeworkState(h).overdue && !getHomeworkState(h).submitted).length;
@@ -1001,10 +1163,11 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
                       </span>
                     </div>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                      {visibleHomework.map((h) => {
+                      {safeArray(visibleHomework).map((h) => {
                         const state = getHomeworkState(h);
+                        const homeworkId = String(h?.id || h?.homeworkId || h?.homework_id || '');
                         return (
-                  <div key={h.id} style={{
+                  <div key={homeworkId || h.title} style={{
                     background: state.overdue && !state.submitted ? '#fff1f2' : '#f8f8ff', borderRadius: '10px', padding: '14px',
                     borderLeft: `4px solid ${state.color}`
                   }}>
@@ -1021,28 +1184,122 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
                             {h.note}
                           </div>
                         )}
-                        {h.attachmentUrl ? (
-                          <div style={{ marginBottom: '8px' }}>
-                            <a href={h.attachmentUrl} target="_blank" rel="noreferrer" style={{ fontSize: '12px' }}>
-                              Open homework image
-                            </a>
+                        {!state.submitted && asUrlList(h?.attachmentUrls || h?.attachment_urls, h?.attachmentUrl || h?.attachment_url).length ? (
+                          <div style={{ marginBottom: '10px' }}>
+                            <p style={{ fontSize: '11px', color: '#888', margin: '0 0 4px' }}>📎 Teacher attachment:</p>
+                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                              {asUrlList(h?.attachmentUrls || h?.attachment_urls, h?.attachmentUrl || h?.attachment_url).map((url) => (
+                                <img
+                                  key={url}
+                                  src={url}
+                                  alt="Homework"
+                                  onClick={() => setLightboxUrl(url)}
+                                  title="Click to view full size"
+                                  style={{ width: 64, height: 64, objectFit: 'cover', borderRadius: 6, cursor: 'zoom-in', border: '1px solid #ddd' }}
+                                />
+                              ))}
+                            </div>
+                            <p style={{ fontSize: '10px', color: '#aaa', margin: '2px 0 0' }}>Tap to expand</p>
+                          </div>
+                        ) : null}
+                        {state.submitted && asUrlList(h?.latestAttachmentUrls || h?.latest_attachment_urls, h?.latestAttachmentUrl || h?.latest_attachment_url).length ? (
+                          <div style={{ marginBottom: '10px' }}>
+                            <p style={{ fontSize: '11px', color: '#166534', margin: '0 0 4px' }}>✅ Submitted images:</p>
+                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                              {asUrlList(h?.latestAttachmentUrls || h?.latest_attachment_urls, h?.latestAttachmentUrl || h?.latest_attachment_url).map((url) => (
+                                <img
+                                  key={url}
+                                  src={url}
+                                  alt="Submitted homework"
+                                  onClick={() => setLightboxUrl(url)}
+                                  title="Click to view full size"
+                                  style={{ width: 64, height: 64, objectFit: 'cover', borderRadius: 6, cursor: 'zoom-in', border: '2px solid #16a34a' }}
+                                />
+                              ))}
+                            </div>
                           </div>
                         ) : null}
                         <div style={{ marginBottom: '8px', display: 'grid', gap: '8px' }}>
-                          <input
-                            type="file"
-                            accept="image/*"
-                            onChange={(e) => onStudentHomeworkFileSelected(h.id, e.target.files?.[0] || null)}
-                            disabled={h.status === 'submitted' || homeworkUploadingById[h.id]}
-                          />
-                          <input
-                            value={homeworkAttachmentUrl[h.id] || ''}
-                            readOnly
-                            placeholder="Uploaded solved image URL will appear here"
-                            style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #ddd', fontSize: '12px' }}
-                            disabled={h.status === 'submitted'}
-                          />
+                          {h.status !== 'submitted' ? (
+                            <>
+                              <div
+                                onDragOver={(e) => { e.preventDefault(); setHomeworkDropActiveById((prev) => ({ ...prev, [homeworkId]: true })); }}
+                                onDragLeave={() => setHomeworkDropActiveById((prev) => ({ ...prev, [homeworkId]: false }))}
+                                onDrop={(e) => onStudentDrop(homeworkId, e)}
+                                style={{
+                                  border: `2px dashed ${homeworkDropActiveById[homeworkId] ? '#7c3aed' : '#ddd'}`,
+                                  background: homeworkDropActiveById[homeworkId] ? '#f5f3ff' : '#fafafa',
+                                  borderRadius: '10px',
+                                  padding: '10px'
+                                }}
+                              >
+                                <input
+                                  type="file"
+                                  accept="image/*"
+                                  multiple
+                                  onChange={(e) => onStudentHomeworkFileSelected(homeworkId, Array.from(e.target.files || []))}
+                                  disabled={homeworkUploadingById[homeworkId]}
+                                />
+                                <div style={{ fontSize: '12px', color: '#666', marginTop: '6px' }}>
+                                  Drag and drop multiple images here, or use Choose Files.
+                                </div>
+                              </div>
+                              {/* Instant thumbnail preview — shows immediately on file select */}
+                              {([...(Array.isArray(homeworkAttachmentUrls[homeworkId]) ? homeworkAttachmentUrls[homeworkId] : []), ...(Array.isArray(homeworkPreviewById[homeworkId]) ? homeworkPreviewById[homeworkId] : [])]).length ? (
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                                  <div style={{ width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                    <span style={{ fontSize: '12px', color: '#666' }}>
+                                      {[...(Array.isArray(homeworkAttachmentUrls[homeworkId]) ? homeworkAttachmentUrls[homeworkId] : []), ...(Array.isArray(homeworkPreviewById[homeworkId]) ? homeworkPreviewById[homeworkId] : [])].length} image(s) selected
+                                    </span>
+                                    <button type="button" className="eg-inline-btn" onClick={() => onRemoveAllStudentAttachments(homeworkId)}>Remove all</button>
+                                  </div>
+                                  {[...(Array.isArray(homeworkAttachmentUrls[homeworkId]) ? homeworkAttachmentUrls[homeworkId] : []), ...(Array.isArray(homeworkPreviewById[homeworkId]) ? homeworkPreviewById[homeworkId] : [])].map((url) => (
+                                    <div key={url} style={{ position: 'relative', display: 'inline-block' }}>
+                                      <img
+                                        src={url}
+                                        alt="Your answer"
+                                        onClick={() => setLightboxUrl(url)}
+                                        title="Click to view full size"
+                                        style={{ width: 64, height: 64, objectFit: 'cover', borderRadius: 6, cursor: 'zoom-in', border: '2px solid #7c3aed' }}
+                                      />
+                                      <button
+                                        type="button"
+                                        onClick={() => onRemoveStudentAttachment(homeworkId, url)}
+                                        title="Remove image"
+                                        style={{ position: 'absolute', top: -6, right: -6, width: 18, height: 18, borderRadius: '50%', border: 'none', background: '#ef4444', color: '#fff', fontSize: '12px', lineHeight: '18px', cursor: 'pointer', padding: 0 }}
+                                      >
+                                        x
+                                      </button>
+                                      {homeworkUploadingById[homeworkId] && (
+                                        <div style={{ position: 'absolute', inset: 0, background: 'rgba(255,255,255,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 6, fontSize: 10 }}>
+                                          ⏳
+                                        </div>
+                                      )}
+                                    </div>
+                                  ))}
+                                  <div style={{ fontSize: '11px', color: '#666' }}>
+                                    {homeworkUploadingById[homeworkId] ? 'Uploading...' : '✅ Ready to submit'}
+                                    <br />
+                                    <span style={{ color: '#aaa' }}>Tap image to expand • click x to remove</span>
+                                  </div>
+                                </div>
+                              ) : null}
+                            </>
+                          ) : null}
                         </div>
+                        {(h.grade !== null && h.grade !== undefined) || h.feedback ? (
+                          <div style={{ marginBottom: '8px', background: '#eef6ff', border: '1px solid #cfe0ff', borderRadius: '8px', padding: '10px' }}>
+                            <div style={{ fontSize: '12px', fontWeight: 700, color: '#1d4ed8', marginBottom: '4px' }}>Teacher feedback</div>
+                            {h.grade !== null && h.grade !== undefined ? (
+                              <div style={{ fontSize: '12px', color: '#1f2937', marginBottom: h.feedback ? '4px' : 0 }}>
+                                Grade: {h.grade}/100
+                              </div>
+                            ) : null}
+                            {h.feedback ? (
+                              <div style={{ fontSize: '12px', color: '#374151', lineHeight: '1.45' }}>{h.feedback}</div>
+                            ) : null}
+                          </div>
+                        ) : null}
                         <div style={{ fontSize: '12px', color: '#888' }}>
                           {h.startAt && <span>📅 Start: {new Date(h.startAt).toLocaleString()} &nbsp;</span>}
                           {h.dueAt && <span>⏰ Due: {new Date(h.dueAt).toLocaleString()}</span>}
@@ -1056,18 +1313,89 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
                           </div>
                         ) : null}
                       </div>
-                      <button
-                        className="eg-inline-btn"
-                        onClick={() => onSubmitHomework(h.id)}
-                        disabled={startingHomeworkId === h.id || h.status === 'submitted' || state.expired}
-                        style={{ marginLeft: '12px', flexShrink: 0 }}
-                      >
-                        {state.expired ? 'Expired' : (h.status === 'submitted' ? '✅ Submitted' : startingHomeworkId === h.id ? '...' : 'Submit')}
-                      </button>
+                      <div style={{ marginLeft: '12px', flexShrink: 0, display: 'grid', gap: '6px', justifyItems: 'end' }}>
+                        <button
+                          type="button"
+                          className="eg-inline-btn"
+                          onClick={() => onSubmitHomework(homeworkId, { submitted: state.submitted, expired: state.expired })}
+                          disabled={startingHomeworkId === homeworkId || !!homeworkUploadingById[homeworkId]}
+                          style={{ position: 'relative', zIndex: 2, pointerEvents: 'auto', cursor: 'pointer' }}
+                        >
+                          {startingHomeworkId === homeworkId
+                            ? '...'
+                            : homeworkUploadingById[homeworkId]
+                              ? 'Uploading...'
+                              : (state.expired ? 'Expired' : (state.submitted ? '✅ Submitted' : 'Submit'))}
+                        </button>
+                        {lastSubmitHomeworkId === homeworkId && homeworkInfo ? (
+                          <span style={{ fontSize: '11px', color: '#6b7280', maxWidth: '220px', textAlign: 'right', lineHeight: 1.35 }}>{homeworkInfo}</span>
+                        ) : null}
+                      </div>
                     </div>
                   </div>
                         );
                       })}
+                    </div>
+                    <div style={{ marginTop: '16px', borderTop: '1px solid #e5e7eb', paddingTop: '14px' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
+                        <div style={{ fontWeight: 700, color: '#334155' }}>View history</div>
+                        <button
+                          type="button"
+                          className="eg-inline-btn"
+                          onClick={() => setShowHomeworkHistory((prev) => !prev)}
+                        >
+                          {showHomeworkHistory ? 'Hide history' : 'Open history'}
+                        </button>
+                      </div>
+                      {showHomeworkHistory ? (
+                        <div style={{ marginTop: '10px', display: 'grid', gap: '10px' }}>
+                          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
+                            <label style={{ fontSize: '12px', color: '#475569' }}>
+                              From:
+                              <input type="date" value={historyFromDate} onChange={(e) => setHistoryFromDate(e.target.value)} style={{ marginLeft: '6px' }} />
+                            </label>
+                            <label style={{ fontSize: '12px', color: '#475569' }}>
+                              To:
+                              <input type="date" value={historyToDate} onChange={(e) => setHistoryToDate(e.target.value)} style={{ marginLeft: '6px' }} />
+                            </label>
+                            <button
+                              type="button"
+                              className="eg-inline-btn"
+                              onClick={() => { setHistoryFromDate(''); setHistoryToDate(''); }}
+                            >
+                              Clear dates
+                            </button>
+                          </div>
+                          <div style={{ display: 'grid', gap: '8px' }}>
+                            {safeArray(filteredHistory).map((h) => {
+                              const state = getHomeworkState(h);
+                              return (
+                                <div key={`hist-${h.id}`} style={{ border: '1px solid #d1d5db', borderRadius: '8px', padding: '10px', background: '#f8fafc' }}>
+                                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: '10px', flexWrap: 'wrap' }}>
+                                    <div style={{ fontWeight: 600, color: '#111827' }}>{h.title || 'Homework Task'}</div>
+                                    <span style={{ fontSize: '11px', fontWeight: 700, borderRadius: '999px', padding: '3px 8px', color: state.color, background: state.bg }}>
+                                      {state.label}
+                                    </span>
+                                  </div>
+                                  <div style={{ marginTop: '4px', fontSize: '12px', color: '#4b5563' }}>
+                                    {h.lastAttemptAt ? `Submitted: ${new Date(h.lastAttemptAt).toLocaleString()}` : ''}
+                                    {h.dueAt ? `  |  Due: ${new Date(h.dueAt).toLocaleString()}` : ''}
+                                  </div>
+                                  {(h.grade !== null && h.grade !== undefined) || h.feedback ? (
+                                    <div style={{ marginTop: '6px', fontSize: '12px', color: '#1f2937' }}>
+                                      {h.grade !== null && h.grade !== undefined ? `Grade: ${h.grade}/100` : ''}
+                                      {h.feedback ? ` | Feedback: ${h.feedback}` : ''}
+                                    </div>
+                                  ) : null}
+                                </div>
+                              );
+                            })}
+                            {!filteredHistory.length ? (
+                              <div style={{ fontSize: '12px', color: '#64748b' }}>No history records for selected date range.</div>
+                            ) : null}
+                          </div>
+                        </div>
+                      ) : null}
                     </div>
                   </>
                 );
@@ -1112,6 +1440,30 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
 
         {loading ? <p className="eg-loading">Loading dashboard data...</p> : null}
       </div>
+
+      {/* Lightbox — full-screen image viewer */}
+      {lightboxUrl ? (
+        <div
+          onClick={() => setLightboxUrl('')}
+          style={{
+            position: 'fixed', inset: 0, zIndex: 9999,
+            background: 'rgba(0,0,0,0.85)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            cursor: 'zoom-out'
+          }}
+        >
+          <img
+            src={lightboxUrl}
+            alt="Full view"
+            onClick={(e) => e.stopPropagation()}
+            style={{ maxWidth: '92vw', maxHeight: '92vh', objectFit: 'contain', borderRadius: '8px', boxShadow: '0 8px 40px rgba(0,0,0,0.6)' }}
+          />
+          <button
+            onClick={() => setLightboxUrl('')}
+            style={{ position: 'absolute', top: 18, right: 24, background: 'rgba(255,255,255,0.15)', border: 'none', color: '#fff', fontSize: 28, cursor: 'pointer', borderRadius: '50%', width: 44, height: 44, lineHeight: '44px', textAlign: 'center' }}
+          >✕</button>
+        </div>
+      ) : null}
     </div>
   );
 }

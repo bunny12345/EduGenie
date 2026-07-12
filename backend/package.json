@@ -8,7 +8,8 @@
     "build": "tsc -p tsconfig.build.json",
     "start:dev": "ts-node-dev --respawn --transpile-only src/main.ts",
     "mock-llm": "node mock_llm/server.js",
-    "dev": "concurrently \"npm run mock-llm\" \"npm run start:dev\"",
+    "dev": "npm run start:dev",
+    "dev:full": "concurrently \"npm run mock-llm\" \"npm run start:dev\"",
     "smoke:rls-api": "bash scripts/rls_api_smoke.sh"
   },
   "keywords": [],

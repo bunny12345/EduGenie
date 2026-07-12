@@ -62,12 +62,21 @@ export class TeacherController {
   private readHomeworkMeta(row: any) {
     const tasks = row?.tasks && typeof row.tasks === 'object' ? row.tasks : null;
     const meta = tasks && typeof tasks.meta === 'object' ? tasks.meta : null;
+    const listRaw = row?.attachment_urls ?? meta?.attachmentUrls;
+    const list = Array.isArray(listRaw)
+      ? listRaw.filter((u: any) => typeof u === 'string' && String(u).trim())
+      : [];
+    const single = row?.attachment_url ?? meta?.attachmentUrl ?? null;
+    const attachmentUrls = list.length
+      ? list
+      : (single ? [single] : []);
     return {
       note: row?.note ?? meta?.note ?? null,
       startAt: row?.start_at ?? meta?.startAt ?? null,
       dueAt: row?.due_at ?? meta?.dueAt ?? null,
       className: row?.class_name ?? meta?.className ?? null,
-      attachmentUrl: row?.attachment_url ?? meta?.attachmentUrl ?? null,
+      attachmentUrls,
+      attachmentUrl: attachmentUrls[0] ?? null,
     };
   }
 
@@ -575,13 +584,19 @@ export class TeacherController {
       const homework = hwRows.map((h: any) => {
         const hwAttempts = attemptsByHw.get(String(h.id || '')) || [];
         const latest = hwAttempts[0] || null;
-        const status = h.status || (latest ? 'submitted' : 'pending');
+        const savedLatestUrls = Array.isArray(h?.latest_attachment_urls || h?.latestAttachmentUrls)
+          ? (h.latest_attachment_urls || h.latestAttachmentUrls).filter((u: any) => typeof u === 'string' && String(u).trim())
+          : (typeof h?.latest_attachment_url === 'string' && String(h.latest_attachment_url).trim()
+            ? [String(h.latest_attachment_url).trim()]
+            : (typeof h?.latestAttachmentUrl === 'string' && String(h.latestAttachmentUrl).trim() ? [String(h.latestAttachmentUrl).trim()] : []));
+        const hasSavedSubmission = !!latest || String(h?.status || '').toLowerCase() === 'submitted' || String(h?.status || '').toLowerCase() === 'graded' || savedLatestUrls.length > 0;
+        const status = hasSavedSubmission ? (String(h.status || '').trim() || 'submitted') : 'pending';
         const dueDateRaw = this.readHomeworkMeta(h).dueAt || h.due_at || h.created_at || null;
         const dueDate = dueDateRaw ? new Date(dueDateRaw) : null;
         const daysSinceDue = dueDate && !Number.isNaN(dueDate.getTime())
           ? Math.floor((new Date().getTime() - dueDate.getTime()) / (24 * 60 * 60 * 1000))
           : null;
-        const overdue = !!(daysSinceDue !== null && daysSinceDue >= 0 && !latest);
+        const overdue = !!(daysSinceDue !== null && daysSinceDue >= 0 && !hasSavedSubmission);
         const meta = this.readHomeworkMeta(h);
         return {
           id: h.id,
@@ -590,11 +605,16 @@ export class TeacherController {
           note: meta.note,
           startAt: meta.startAt,
           dueAt: meta.dueAt,
+          attachmentUrls: meta.attachmentUrls,
           attachmentUrl: meta.attachmentUrl,
           status,
           grade: latest?.score ?? h.grade ?? null,
+          feedback: h.feedback ?? null,
           submittedAt: latest?.created_at || null,
-          latestAttachmentUrl: latest?.attachment_url || null,
+          latestAttachmentUrls: Array.isArray(latest?.attachment_urls) && latest.attachment_urls.length
+            ? latest.attachment_urls
+            : (latest?.attachment_url ? [latest.attachment_url] : savedLatestUrls),
+          latestAttachmentUrl: latest?.attachment_url || savedLatestUrls[0] || null,
           attemptCount: hwAttempts.length,
           overdue,
           daysSinceDue,
@@ -621,6 +641,7 @@ export class TeacherController {
               note: meta.note,
               startAt: meta.startAt,
               dueAt: meta.dueAt,
+              attachmentUrls: meta.attachmentUrls,
               attachmentUrl: meta.attachmentUrl,
             };
           })(),
@@ -629,6 +650,7 @@ export class TeacherController {
           subject: h.subject || 'General',
           status: h.status || 'pending',
           grade: null,
+          feedback: h.feedback ?? null,
           submittedAt: null,
           latestAttachmentUrl: null,
           attemptCount: 0,
@@ -660,7 +682,8 @@ export class TeacherController {
           id: a.id,
           studentId: a.student_id,
           submittedAt: a.created_at || null,
-          attachmentUrl: a.attachment_url || null,
+          attachmentUrls: Array.isArray(a.attachment_urls) && a.attachment_urls.length ? a.attachment_urls : (a.attachment_url ? [a.attachment_url] : []),
+          attachmentUrl: a.attachment_url || (Array.isArray(a.attachment_urls) && a.attachment_urls.length ? a.attachment_urls[0] : null),
           score: a.score ?? null,
           answers: a.answers || null,
         }))
@@ -726,7 +749,9 @@ export class TeacherController {
     this.ensureTeacher(req);
     const status = body?.status || 'graded';
     const grade = body?.grade ?? null;
-    const feedback = body?.feedback || null;
+    const fallbackFeedback = 'Corrected by teacher successfully';
+    const feedbackInput = typeof body?.feedback === 'string' ? body.feedback.trim() : '';
+    const feedback = feedbackInput || (grade !== null ? fallbackFeedback : null);
 
     const validStatuses = ['pending', 'submitted', 'graded', 'completed'];
     const safeStatus = validStatuses.includes(status) ? status : 'graded';
@@ -806,6 +831,7 @@ export class TeacherController {
         startAt: this.readHomeworkMeta(h).startAt,
         dueAt: this.readHomeworkMeta(h).dueAt,
         className: this.readHomeworkMeta(h).className,
+        attachmentUrls: this.readHomeworkMeta(h).attachmentUrls,
         attachmentUrl: this.readHomeworkMeta(h).attachmentUrl,
         createdAt: h.created_at || null,
       }));
@@ -823,6 +849,7 @@ export class TeacherController {
           startAt: this.readHomeworkMeta(h).startAt,
           dueAt: this.readHomeworkMeta(h).dueAt,
           className: this.readHomeworkMeta(h).className,
+          attachmentUrls: this.readHomeworkMeta(h).attachmentUrls,
           attachmentUrl: this.readHomeworkMeta(h).attachmentUrl,
           createdAt: h.created_at || null,
         }))
@@ -863,7 +890,10 @@ export class TeacherController {
       const normalizedClassName = item?.className || item?.class_name || null;
       const normalizedDueAt = item?.dueAt || item?.due_at || null;
       const normalizedStartAt = item?.startAt || item?.start_at || null;
-      const normalizedAttachmentUrl = item?.attachmentUrl || item?.attachment_url || null;
+      const normalizedAttachmentUrls = Array.isArray(item?.attachmentUrls || item?.attachment_urls)
+        ? (item?.attachmentUrls || item?.attachment_urls).filter((u: any) => typeof u === 'string' && String(u).trim()).map((u: string) => String(u).trim())
+        : [];
+      const normalizedAttachmentUrl = normalizedAttachmentUrls[0] || item?.attachmentUrl || item?.attachment_url || null;
       const key = [
         String(item.title || '').toLowerCase(),
         String(item.subject || '').toLowerCase(),
@@ -902,6 +932,7 @@ export class TeacherController {
         startAt: normalizedStartAt,
         dueAt: normalizedDueAt,
         className,
+        attachmentUrls: normalizedAttachmentUrls.length ? normalizedAttachmentUrls : (normalizedAttachmentUrl ? [normalizedAttachmentUrl] : []),
         attachmentUrl: normalizedAttachmentUrl,
         teacherId,
       };
@@ -915,6 +946,7 @@ export class TeacherController {
         start_at: normalizedStartAt,
         due_at: normalizedDueAt,
         class_name: className,
+        attachment_urls: normalizedAttachmentUrls.length ? normalizedAttachmentUrls : (normalizedAttachmentUrl ? [normalizedAttachmentUrl] : []),
         attachment_url: normalizedAttachmentUrl,
         status: 'pending',
         created_by: teacherId,
@@ -992,12 +1024,19 @@ export class TeacherController {
     const note = body?.note || null;
     const startAt = body?.startAt || null;
     const className = body?.className || targetClass || null;
-    const attachmentUrl = body?.attachmentUrl || null;
+    const attachmentUrlsRaw = Array.isArray(body?.attachmentUrls)
+      ? body.attachmentUrls
+      : (body?.attachmentUrl ? [body.attachmentUrl] : []);
+    const attachmentUrls = attachmentUrlsRaw
+      .filter((u: any) => typeof u === 'string' && String(u).trim())
+      .map((u: string) => String(u).trim());
+    const attachmentUrl = attachmentUrls[0] || null;
     const sharedMeta = {
       note,
       startAt,
       dueAt,
       className,
+      attachmentUrls,
       attachmentUrl,
       teacherId: this.actorId(req),
     };
@@ -1010,6 +1049,7 @@ export class TeacherController {
       start_at: startAt,
       due_at: dueAt,
       class_name: className,
+      attachment_urls: attachmentUrls,
       attachment_url: attachmentUrl,
       status: 'pending',
       tasks: {
@@ -1078,6 +1118,7 @@ export class TeacherController {
           startAt: this.readHomeworkMeta(h).startAt,
           dueAt: this.readHomeworkMeta(h).dueAt,
           className: this.readHomeworkMeta(h).className,
+          attachmentUrls: this.readHomeworkMeta(h).attachmentUrls,
           attachmentUrl: this.readHomeworkMeta(h).attachmentUrl,
           createdAt: h.created_at || new Date().toISOString()
         }))
@@ -1097,6 +1138,8 @@ export class TeacherController {
           startAt: h.start_at || null,
           dueAt: h.due_at || null,
           className: h.class_name || null,
+          attachmentUrls: Array.isArray(h.attachment_urls) ? h.attachment_urls : (h.attachment_url ? [h.attachment_url] : []),
+          attachmentUrl: h.attachment_url || null,
           createdAt: h.created_at || new Date().toISOString()
         }))
       };
