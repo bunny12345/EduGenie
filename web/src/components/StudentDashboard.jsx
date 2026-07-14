@@ -192,10 +192,12 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
   const [homeworkDropActiveById, setHomeworkDropActiveById] = useState({});
   const [editingResubmitById, setEditingResubmitById] = useState({});
   const [expandedTeacherInfoById, setExpandedTeacherInfoById] = useState({});
-  const [expandedStudentAnswerById, setExpandedStudentAnswerById] = useState({});
+  const [expandedSubmissionDetailsById, setExpandedSubmissionDetailsById] = useState({});
+  const [homeworkStatusFilter, setHomeworkStatusFilter] = useState('all');
   const [lightboxUrl, setLightboxUrl] = useState(''); // full-screen image viewer
   const [showHomeworkHistory, setShowHomeworkHistory] = useState(false);
   const [historyFromDate, setHistoryFromDate] = useState('');
+  const [historyCalMonth, setHistoryCalMonth] = useState(() => { const n = new Date(); return { year: n.getFullYear(), month: n.getMonth() }; });
   const [historyToDate, setHistoryToDate] = useState('');
   const [chatInput, setChatInput] = useState('');
   const [chatLoading, setChatLoading] = useState(false);
@@ -262,6 +264,10 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
     });
     return grouped;
   }, [progress]);
+
+  useEffect(() => {
+    setHomeworkStatusFilter('all');
+  }, [activeView]);
 
   // Get unique subject list
   const subjects = useMemo(() => {
@@ -603,7 +609,7 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
       setHomeworkAttachmentUrls((prev) => ({ ...prev, [hwId]: persistedUrls }));
       setHomeworkPreviewById((prev) => ({ ...prev, [hwId]: [] }));
       setEditingResubmitById((prev) => ({ ...prev, [hwId]: false }));
-      setExpandedStudentAnswerById((prev) => ({ ...prev, [hwId]: false }));
+      setExpandedSubmissionDetailsById((prev) => ({ ...prev, [hwId]: false }));
       // Refresh in background; keep optimistic UI if one endpoint has bad/null payloads.
       loadHomeworkPanel().catch(() => {});
       loadProgressPanel().catch(() => {});
@@ -1177,45 +1183,257 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
         </section>
         </>
         ) : (
-          <section className="eg-main-grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))' }}>
+          <section
+            className="eg-main-grid"
+            style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))' }}
+            onClick={(e) => {
+              if (e.target === e.currentTarget && homeworkStatusFilter !== 'all') {
+                setHomeworkStatusFilter('all');
+              }
+            }}
+          >
             <h2 style={{ gridColumn: '1 / -1', marginBottom: '20px' }}>{activeView} - Homework & Tests</h2>
 
             {/* Subject Homework — full details */}
-            <article className="cardish eg-mini-card eg-grad-soft" style={{ gridColumn: 'span 2' }}>
-              <h4>📝 {activeView} Homework</h4>
+            <article
+              className="cardish eg-mini-card eg-grad-soft"
+              style={{
+                gridColumn: 'span 2',
+                maxHeight: '78vh',
+                overflowY: 'auto',
+                overflowX: 'hidden',
+                WebkitOverflowScrolling: 'touch'
+              }}
+            >
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', flexWrap: 'wrap', marginBottom: '6px' }}>
+                <h4 style={{ margin: 0 }}>📝 {activeView} Homework</h4>
+                <button
+                  type="button"
+                  className="eg-inline-btn"
+                  onClick={() => setShowHomeworkHistory((prev) => !prev)}
+                  style={{ marginLeft: 'auto', whiteSpace: 'nowrap' }}
+                >
+                  {showHomeworkHistory ? 'Hide history' : 'Open history'}
+                </button>
+              </div>
               {panelLoading.homework ? <p className="eg-loading">Loading homework...</p> : null}
               {panelError.homework ? <p className="eg-loading">{panelError.homework}</p> : null}
               {(() => {
                 const allHomework = homeworkBySubject.get(activeView) || [];
                 const visibleHomework = allHomework.filter((h) => !getHomeworkState(h).hide);
-                const historyHomework = allHomework.filter((h) => getHomeworkState(h).history);
-                const filteredHistory = historyHomework.filter((h) => {
-                  const marker = parseDate(h?.lastAttemptAt || h?.dueAt || h?.updatedAt || h?.createdAt);
-                  const markerValue = toDateInputValue(marker);
-                  if (!historyFromDate && !historyToDate) return true;
-                  if (!markerValue) return false;
-                  if (historyFromDate && markerValue < historyFromDate) return false;
-                  if (historyToDate && markerValue > historyToDate) return false;
-                  return true;
-                });
+                const filteredHistory = historyFromDate
+                  ? allHomework.filter((h) => {
+                      const startDate = parseDate(h?.startAt || h?.createdAt || h?.created_at);
+                      const startDateValue = toDateInputValue(startDate);
+                      return startDateValue === historyFromDate;
+                    })
+                  : [];
                 const submittedCount = visibleHomework.filter((h) => getHomeworkState(h).submitted).length;
                 const notSubmittedCount = visibleHomework.filter((h) => !getHomeworkState(h).submitted).length;
                 const overdueCount = visibleHomework.filter((h) => getHomeworkState(h).overdue && !getHomeworkState(h).submitted).length;
+                const filteredVisibleHomework = visibleHomework.filter((h) => {
+                  const state = getHomeworkState(h);
+                  if (homeworkStatusFilter === 'submitted') return state.submitted;
+                  if (homeworkStatusFilter === 'not-submitted') return !state.submitted;
+                  if (homeworkStatusFilter === 'overdue') return state.overdue && !state.submitted;
+                  return true;
+                });
                 return (
                   <>
                     <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', marginBottom: '12px' }}>
-                      <span style={{ background: '#dcfce7', color: '#166534', padding: '6px 10px', borderRadius: '999px', fontSize: '12px', fontWeight: 700 }}>
+                      <button
+                        type="button"
+                        onClick={() => setHomeworkStatusFilter((prev) => (prev === 'submitted' ? 'all' : 'submitted'))}
+                        style={{ background: homeworkStatusFilter === 'submitted' ? '#16a34a' : '#dcfce7', color: homeworkStatusFilter === 'submitted' ? '#fff' : '#166534', padding: '6px 10px', borderRadius: '999px', fontSize: '12px', fontWeight: 700, border: 'none', cursor: 'pointer' }}
+                      >
                         Submitted: {submittedCount}
-                      </span>
-                      <span style={{ background: '#fee2e2', color: '#991b1b', padding: '6px 10px', borderRadius: '999px', fontSize: '12px', fontWeight: 700 }}>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setHomeworkStatusFilter((prev) => (prev === 'not-submitted' ? 'all' : 'not-submitted'))}
+                        style={{ background: homeworkStatusFilter === 'not-submitted' ? '#dc2626' : '#fee2e2', color: homeworkStatusFilter === 'not-submitted' ? '#fff' : '#991b1b', padding: '6px 10px', borderRadius: '999px', fontSize: '12px', fontWeight: 700, border: 'none', cursor: 'pointer' }}
+                      >
                         Not submitted: {notSubmittedCount}
-                      </span>
-                      <span style={{ background: '#ffedd5', color: '#9a3412', padding: '6px 10px', borderRadius: '999px', fontSize: '12px', fontWeight: 700 }}>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setHomeworkStatusFilter((prev) => (prev === 'overdue' ? 'all' : 'overdue'))}
+                        style={{ background: homeworkStatusFilter === 'overdue' ? '#c2410c' : '#ffedd5', color: homeworkStatusFilter === 'overdue' ? '#fff' : '#9a3412', padding: '6px 10px', borderRadius: '999px', fontSize: '12px', fontWeight: 700, border: 'none', cursor: 'pointer' }}
+                      >
                         Overdue: {overdueCount}
-                      </span>
+                      </button>
                     </div>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                      {safeArray(visibleHomework).map((h) => {
+                      {showHomeworkHistory ? (
+                        <div style={{ marginBottom: '4px', border: '1px solid #e5e7eb', borderRadius: '10px', background: '#fafafa', padding: '12px' }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px', flexWrap: 'wrap', marginBottom: '10px' }}>
+                            <div style={{ fontWeight: 700, color: '#334155' }}>📅 View history by date</div>
+                            <button type="button" className="eg-inline-btn" onClick={() => { setShowHomeworkHistory(false); setHistoryFromDate(''); }}>
+                              Close
+                            </button>
+                          </div>
+                          {/* ── Custom colored mini-calendar ── */}
+                          {(() => {
+                            // Build a date->status map from ALL homework for this subject
+                            const dateStatusMap = {};
+                            safeArray(allHomework).forEach((hw) => {
+                              const d = toDateInputValue(parseDate(hw?.startAt || hw?.createdAt || hw?.created_at));
+                              if (!d) return;
+                              const submitted = getHomeworkState(hw).submitted;
+                              if (!dateStatusMap[d]) dateStatusMap[d] = { all: 0, submitted: 0 };
+                              dateStatusMap[d].all += 1;
+                              if (submitted) dateStatusMap[d].submitted += 1;
+                            });
+
+                            const { year, month } = historyCalMonth;
+                            const firstDay = new Date(year, month, 1);
+                            // ISO week: Mon=0 … Sun=6
+                            const startOffset = (firstDay.getDay() + 6) % 7;
+                            const daysInMonth = new Date(year, month + 1, 0).getDate();
+                            const monthLabel = firstDay.toLocaleString(undefined, { month: 'long', year: 'numeric' });
+                            const DAY_LABELS = ['M','T','W','T','F','S','S'];
+                            const cells = [];
+                            for (let i = 0; i < startOffset; i++) cells.push(null);
+                            for (let d = 1; d <= daysInMonth; d++) cells.push(d);
+
+                            return (
+                              <div style={{ userSelect: 'none', minWidth: 230 }}>
+                                {/* Month navigation */}
+                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+                                  <button type="button" onClick={() => setHistoryCalMonth(({ year: y, month: m }) => { const d = new Date(y, m - 1, 1); return { year: d.getFullYear(), month: d.getMonth() }; })} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '16px', color: '#475569', padding: '2px 6px' }}>‹</button>
+                                  <span style={{ fontSize: '13px', fontWeight: 700, color: '#334155' }}>{monthLabel}</span>
+                                  <button type="button" onClick={() => setHistoryCalMonth(({ year: y, month: m }) => { const d = new Date(y, m + 1, 1); return { year: d.getFullYear(), month: d.getMonth() }; })} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '16px', color: '#475569', padding: '2px 6px' }}>›</button>
+                                </div>
+                                {/* Day-of-week headers */}
+                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '2px', marginBottom: '2px' }}>
+                                  {DAY_LABELS.map((l, i) => (
+                                    <div key={i} style={{ textAlign: 'center', fontSize: '10px', fontWeight: 700, color: '#94a3b8', padding: '2px 0' }}>{l}</div>
+                                  ))}
+                                </div>
+                                {/* Day cells */}
+                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '2px' }}>
+                                  {cells.map((day, idx) => {
+                                    if (!day) return <div key={`e-${idx}`} />;
+                                    const iso = `${year}-${String(month + 1).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
+                                    const info = dateStatusMap[iso];
+                                    const isSelected = historyFromDate === iso;
+                                    let bg = 'transparent';
+                                    let color = '#374151';
+                                    let fontWeight = 400;
+                                    if (info) {
+                                      if (info.submitted === info.all) { bg = isSelected ? '#15803d' : '#dcfce7'; color = isSelected ? '#fff' : '#15803d'; fontWeight = 700; }
+                                      else { bg = isSelected ? '#b91c1c' : '#fee2e2'; color = isSelected ? '#fff' : '#b91c1c'; fontWeight = 700; }
+                                    } else if (isSelected) {
+                                      bg = '#3b82f6'; color = '#fff'; fontWeight = 700;
+                                    }
+                                    return (
+                                      <button
+                                        key={iso}
+                                        type="button"
+                                        title={info ? `${info.submitted}/${info.all} submitted` : 'No homework'}
+                                        onClick={() => setHistoryFromDate(isSelected ? '' : iso)}
+                                        style={{ background: bg, color, fontWeight, border: isSelected ? `2px solid ${color === '#fff' ? 'rgba(0,0,0,0.2)' : color}` : '1px solid transparent', borderRadius: '6px', padding: '4px 2px', fontSize: '12px', cursor: 'pointer', textAlign: 'center', lineHeight: 1.3 }}
+                                      >
+                                        {day}
+                                      </button>
+                                    );
+                                  })}
+                                </div>
+                                {/* Legend */}
+                                <div style={{ display: 'flex', gap: '12px', marginTop: '8px', flexWrap: 'wrap' }}>
+                                  <span style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '11px', color: '#15803d' }}><span style={{ width: 10, height: 10, borderRadius: 3, background: '#dcfce7', border: '1px solid #15803d', display: 'inline-block' }} />All submitted</span>
+                                  <span style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '11px', color: '#b91c1c' }}><span style={{ width: 10, height: 10, borderRadius: 3, background: '#fee2e2', border: '1px solid #b91c1c', display: 'inline-block' }} />Not submitted</span>
+                                  <span style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '11px', color: '#374151' }}><span style={{ width: 10, height: 10, borderRadius: 3, background: '#f3f4f6', border: '1px solid #d1d5db', display: 'inline-block' }} />No homework</span>
+                                </div>
+                                {historyFromDate ? (
+                                  <div style={{ marginTop: '8px', display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                                    <span style={{ fontSize: '12px', color: '#475569' }}>Selected: <strong>{new Date(historyFromDate + 'T00:00:00').toLocaleDateString()}</strong></span>
+                                    <button type="button" className="eg-inline-btn" onClick={() => setHistoryFromDate('')}>Clear</button>
+                                  </div>
+                                ) : null}
+                              </div>
+                            );
+                          })()}
+                          <div style={{ marginTop: '12px', display: 'grid', gap: '10px' }}>
+                            {!historyFromDate ? (
+                              <div style={{ fontSize: '12px', color: '#94a3b8', textAlign: 'center', padding: '12px 0' }}>Pick a date above to see homework assigned on that day.</div>
+                            ) : filteredHistory.length === 0 ? (
+                              <div style={{ fontSize: '12px', color: '#64748b' }}>No homework assigned on {new Date(historyFromDate + 'T00:00:00').toLocaleDateString()}.</div>
+                            ) : safeArray(filteredHistory).map((h) => {
+                              const hState = getHomeworkState(h);
+                              const isSubmitted = hState.submitted;
+                              const cardBorder = isSubmitted ? '2px solid #16a34a' : '2px solid #dc2626';
+                              const cardBg = isSubmitted ? '#f0fdf4' : '#fff1f2';
+                              const statusLabel = isSubmitted ? '✅ Submitted' : '❌ Not submitted';
+                              const statusColor = isSubmitted ? '#16a34a' : '#dc2626';
+                              const teacherImages = asUrlList(h?.attachmentUrls || h?.attachment_urls, h?.attachmentUrl || h?.attachment_url);
+                              const studentImages = asUrlList(h?.latestAttachmentUrls || h?.latest_attachment_urls, h?.latestAttachmentUrl || h?.latest_attachment_url);
+                              const studentText = String(h?.latestAnswerText || h?.latest_answer_text || '').trim();
+                              return (
+                                <div key={`hist-${h.id}`} style={{ border: cardBorder, borderRadius: '10px', padding: '12px', background: cardBg }}>
+                                  {/* Header */}
+                                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '8px', flexWrap: 'wrap', marginBottom: '6px' }}>
+                                    <div style={{ fontWeight: 700, fontSize: '14px', color: '#111827' }}>{h.title || 'Homework Task'}</div>
+                                    <span style={{ fontSize: '12px', fontWeight: 700, color: statusColor, background: isSubmitted ? '#dcfce7' : '#fee2e2', borderRadius: '999px', padding: '3px 10px', whiteSpace: 'nowrap' }}>
+                                      {statusLabel}
+                                    </span>
+                                  </div>
+                                  {/* Dates */}
+                                  <div style={{ fontSize: '11px', color: '#6b7280', marginBottom: '8px' }}>
+                                    {h.startAt ? <span>📅 Start: {new Date(h.startAt).toLocaleString()} &nbsp;</span> : null}
+                                    {h.dueAt ? <span>⏰ Due: {new Date(h.dueAt).toLocaleString()}</span> : null}
+                                    {h.lastAttemptAt ? <span> &nbsp;· Last submitted: {new Date(h.lastAttemptAt).toLocaleString()}</span> : null}
+                                  </div>
+                                  {/* Teacher instructions */}
+                                  {h.note ? (
+                                    <div style={{ fontSize: '13px', color: '#374151', marginBottom: '8px', lineHeight: 1.5, background: '#fff', border: '1px solid #e5e7eb', borderRadius: '6px', padding: '8px' }}>
+                                      <div style={{ fontSize: '11px', color: '#6b7280', fontWeight: 600, marginBottom: '4px' }}>📋 Teacher instructions</div>
+                                      {h.note}
+                                    </div>
+                                  ) : null}
+                                  {/* Teacher images */}
+                                  {teacherImages.length ? (
+                                    <div style={{ marginBottom: '8px' }}>
+                                      <div style={{ fontSize: '11px', color: '#6b7280', fontWeight: 600, marginBottom: '4px' }}>📎 Teacher attachments</div>
+                                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                                        {teacherImages.map((url) => (
+                                          <img key={url} src={url} alt="Teacher attachment" onClick={() => setLightboxUrl(url)} title="Click to expand" style={{ width: 56, height: 56, objectFit: 'cover', borderRadius: 6, cursor: 'zoom-in', border: '1px solid #d1d5db' }} />
+                                        ))}
+                                      </div>
+                                    </div>
+                                  ) : null}
+                                  {/* Student submission */}
+                                  {(studentImages.length || studentText) ? (
+                                    <div style={{ borderTop: `1px solid ${isSubmitted ? '#bbf7d0' : '#fecaca'}`, paddingTop: '8px', marginTop: '4px' }}>
+                                      <div style={{ fontSize: '11px', fontWeight: 600, color: statusColor, marginBottom: '6px' }}>🎒 Student submission</div>
+                                      {studentImages.length ? (
+                                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: studentText ? '8px' : 0 }}>
+                                          {studentImages.map((url) => (
+                                            <img key={url} src={url} alt="Submitted" onClick={() => setLightboxUrl(url)} title="Click to expand" style={{ width: 56, height: 56, objectFit: 'cover', borderRadius: 6, cursor: 'zoom-in', border: '2px solid #16a34a' }} />
+                                          ))}
+                                        </div>
+                                      ) : null}
+                                      {studentText ? (
+                                        <div style={{ fontSize: '12px', color: '#334155', background: '#fff', border: '1px solid #d1d5db', borderRadius: '6px', padding: '6px 8px', whiteSpace: 'pre-wrap', lineHeight: 1.5 }}>
+                                          {studentText}
+                                        </div>
+                                      ) : null}
+                                    </div>
+                                  ) : null}
+                                  {/* Grade / feedback */}
+                                  {((h.grade !== null && h.grade !== undefined) || h.feedback) ? (
+                                    <div style={{ marginTop: '8px', fontSize: '12px', color: '#1d4ed8', background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: '6px', padding: '6px 8px' }}>
+                                      {h.grade !== null && h.grade !== undefined ? <span>Grade: {h.grade}/100</span> : null}
+                                      {h.feedback ? <span>{h.grade !== null && h.grade !== undefined ? ' · ' : ''}Feedback: {h.feedback}</span> : null}
+                                    </div>
+                                  ) : null}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      ) : null}
+                      {safeArray(filteredVisibleHomework).map((h) => {
                         const state = getHomeworkState(h);
                         const homeworkId = String(h?.id || h?.homeworkId || h?.homework_id || '');
                         const isLatestAssigned = homeworkId && homeworkId === latestAssignedHomeworkId;
@@ -1256,7 +1474,7 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
                             {state.label}
                           </span>
                           <span style={{ fontSize: '11px', color: '#64748b', fontWeight: 600 }}>
-                            {expandedTeacherInfoById[homeworkId] ? 'Hide homework instructions' : 'Show homework instructions'}
+                            {expandedTeacherInfoById[homeworkId] ? 'Hide homework instructions' : '...'}
                           </span>
                         </div>
                         {expandedTeacherInfoById[homeworkId] && h.note && (
@@ -1282,41 +1500,46 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
                             <p style={{ fontSize: '10px', color: '#aaa', margin: '2px 0 0' }}>Tap to expand</p>
                           </div>
                         ) : null}
-                        {state.submitted && asUrlList(h?.latestAttachmentUrls || h?.latest_attachment_urls, h?.latestAttachmentUrl || h?.latest_attachment_url).length ? (
-                          <div style={{ marginBottom: '10px' }}>
-                            <p style={{ fontSize: '11px', color: '#166534', margin: '0 0 4px' }}>✅ Submitted images:</p>
-                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
-                              {asUrlList(h?.latestAttachmentUrls || h?.latest_attachment_urls, h?.latestAttachmentUrl || h?.latest_attachment_url).map((url) => (
-                                <img
-                                  key={url}
-                                  src={url}
-                                  alt="Submitted homework"
-                                  onClick={() => setLightboxUrl(url)}
-                                  title="Click to view full size"
-                                  style={{ width: 64, height: 64, objectFit: 'cover', borderRadius: 6, cursor: 'zoom-in', border: '2px solid #16a34a' }}
-                                />
-                              ))}
-                            </div>
-                          </div>
-                        ) : null}
                         {state.submitted ? (
                           (() => {
+                            const submittedImages = asUrlList(h?.latestAttachmentUrls || h?.latest_attachment_urls, h?.latestAttachmentUrl || h?.latest_attachment_url);
                             const submittedText = String(h?.latestAnswerText || h?.latest_answer_text || '').trim();
-                            if (!submittedText) return null;
-                            const expanded = !!expandedStudentAnswerById[homeworkId];
+                            if (!submittedImages.length && !submittedText) return null;
+                            const expanded = !!expandedSubmissionDetailsById[homeworkId];
                             return (
                               <div style={{ marginBottom: '10px', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 8, padding: '8px 10px' }}>
                                 <button
                                   type="button"
                                   className="eg-inline-btn"
-                                  onClick={() => setExpandedStudentAnswerById((prev) => ({ ...prev, [homeworkId]: !prev[homeworkId] }))}
+                                  onClick={() => setExpandedSubmissionDetailsById((prev) => ({ ...prev, [homeworkId]: !prev[homeworkId] }))}
                                   style={{ marginBottom: expanded ? 6 : 0 }}
                                 >
-                                  {expanded ? 'Hide your submitted answer' : 'Show your submitted answer'}
+                                  {expanded ? 'Hide your submission homework' : 'Show your submission homework'}
                                 </button>
                                 {expanded ? (
-                                  <div style={{ fontSize: '12px', color: '#334155', whiteSpace: 'pre-wrap', lineHeight: 1.5 }}>
-                                    {submittedText}
+                                  <div style={{ display: 'grid', gap: '8px', maxHeight: '220px', overflowY: 'auto', overflowX: 'hidden', paddingRight: '4px' }}>
+                                    {submittedImages.length ? (
+                                      <div>
+                                        <p style={{ fontSize: '11px', color: '#166534', margin: '0 0 6px' }}>✅ Submitted images:</p>
+                                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                                          {submittedImages.map((url) => (
+                                            <img
+                                              key={url}
+                                              src={url}
+                                              alt="Submitted homework"
+                                              onClick={() => setLightboxUrl(url)}
+                                              title="Click to view full size"
+                                              style={{ width: 64, height: 64, objectFit: 'cover', borderRadius: 6, cursor: 'zoom-in', border: '2px solid #16a34a' }}
+                                            />
+                                          ))}
+                                        </div>
+                                      </div>
+                                    ) : null}
+                                    {submittedText ? (
+                                      <div style={{ fontSize: '12px', color: '#334155', whiteSpace: 'pre-wrap', lineHeight: 1.5 }}>
+                                        {submittedText}
+                                      </div>
+                                    ) : null}
                                   </div>
                                 ) : null}
                               </div>
@@ -1493,66 +1716,16 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
                   </div>
                         );
                       })}
-                    </div>
-                    <div style={{ marginTop: '16px', borderTop: '1px solid #e5e7eb', paddingTop: '14px' }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
-                        <div style={{ fontWeight: 700, color: '#334155' }}>View history</div>
-                        <button
-                          type="button"
-                          className="eg-inline-btn"
-                          onClick={() => setShowHomeworkHistory((prev) => !prev)}
-                        >
-                          {showHomeworkHistory ? 'Hide history' : 'Open history'}
-                        </button>
-                      </div>
-                      {showHomeworkHistory ? (
-                        <div style={{ marginTop: '10px', display: 'grid', gap: '10px' }}>
-                          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
-                            <label style={{ fontSize: '12px', color: '#475569' }}>
-                              From:
-                              <input type="date" value={historyFromDate} onChange={(e) => setHistoryFromDate(e.target.value)} style={{ marginLeft: '6px' }} />
-                            </label>
-                            <label style={{ fontSize: '12px', color: '#475569' }}>
-                              To:
-                              <input type="date" value={historyToDate} onChange={(e) => setHistoryToDate(e.target.value)} style={{ marginLeft: '6px' }} />
-                            </label>
-                            <button
-                              type="button"
-                              className="eg-inline-btn"
-                              onClick={() => { setHistoryFromDate(''); setHistoryToDate(''); }}
-                            >
-                              Clear dates
-                            </button>
-                          </div>
-                          <div style={{ display: 'grid', gap: '8px' }}>
-                            {safeArray(filteredHistory).map((h) => {
-                              const state = getHomeworkState(h);
-                              return (
-                                <div key={`hist-${h.id}`} style={{ border: '1px solid #d1d5db', borderRadius: '8px', padding: '10px', background: '#f8fafc' }}>
-                                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: '10px', flexWrap: 'wrap' }}>
-                                    <div style={{ fontWeight: 600, color: '#111827' }}>{h.title || 'Homework Task'}</div>
-                                    <span style={{ fontSize: '11px', fontWeight: 700, borderRadius: '999px', padding: '3px 8px', color: state.color, background: state.bg }}>
-                                      {state.label}
-                                    </span>
-                                  </div>
-                                  <div style={{ marginTop: '4px', fontSize: '12px', color: '#4b5563' }}>
-                                    {h.lastAttemptAt ? `Submitted: ${new Date(h.lastAttemptAt).toLocaleString()}` : ''}
-                                    {h.dueAt ? `  |  Due: ${new Date(h.dueAt).toLocaleString()}` : ''}
-                                  </div>
-                                  {(h.grade !== null && h.grade !== undefined) || h.feedback ? (
-                                    <div style={{ marginTop: '6px', fontSize: '12px', color: '#1f2937' }}>
-                                      {h.grade !== null && h.grade !== undefined ? `Grade: ${h.grade}/100` : ''}
-                                      {h.feedback ? ` | Feedback: ${h.feedback}` : ''}
-                                    </div>
-                                  ) : null}
-                                </div>
-                              );
-                            })}
-                            {!filteredHistory.length ? (
-                              <div style={{ fontSize: '12px', color: '#64748b' }}>No history records for selected date range.</div>
-                            ) : null}
-                          </div>
-                        </div>
+                      {!filteredVisibleHomework.length ? (
+                        <p style={{ color: '#64748b', fontSize: '12px', margin: 0 }}>
+                          {homeworkStatusFilter === 'submitted'
+                            ? 'No submitted homework in this panel.'
+                            : homeworkStatusFilter === 'not-submitted'
+                              ? 'No not-submitted homework in this panel.'
+                              : homeworkStatusFilter === 'overdue'
+                                ? 'No overdue homework in this panel.'
+                                : 'No homework in this panel.'}
+                        </p>
                       ) : null}
                     </div>
                   </>
@@ -1565,7 +1738,15 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
             </article>
 
             {/* Subject Tests */}
-            <article className="cardish eg-mini-card eg-grad-soft">
+            <article
+              className="cardish eg-mini-card eg-grad-soft"
+              style={{
+                maxHeight: '78vh',
+                overflowY: 'auto',
+                overflowX: 'hidden',
+                WebkitOverflowScrolling: 'touch'
+              }}
+            >
               <h4>🧪 {activeView} Mock Tests</h4>
               {panelLoading.tests ? <p className="eg-loading">Loading tests...</p> : null}
               {panelError.tests ? <p className="eg-loading">{panelError.tests}</p> : null}

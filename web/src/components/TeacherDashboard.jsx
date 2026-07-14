@@ -154,6 +154,7 @@ export default function TeacherDashboard({ session, onLogout }) {
   const [selectedActivity, setSelectedActivity] = useState(emptyActivity);
   const [activityTypeFilter, setActivityTypeFilter] = useState('all');
   const [selectedHomework, setSelectedHomework] = useState([]);
+  const [homeworkStatusFilter, setHomeworkStatusFilter] = useState('all');
   const [selectedTestAttempts, setSelectedTestAttempts] = useState([]);
   const [gradingHwId, setGradingHwId] = useState(null);
   const [gradeValue, setGradeValue] = useState('');
@@ -202,7 +203,7 @@ export default function TeacherDashboard({ session, onLogout }) {
   const [historyFilterDate, setHistoryFilterDate] = useState('');
   const [teacherTargetClass, setTeacherTargetClass] = useState('all');
   const [hwAttemptsByHwId, setHwAttemptsByHwId] = useState({});
-  const [expandedHwAnswerById, setExpandedHwAnswerById] = useState({});
+  const [expandedHwSubmissionById, setExpandedHwSubmissionById] = useState({});
   const [expandedHistoryNotes, setExpandedHistoryNotes] = useState({});
 
   const [teacherPrompt, setTeacherPrompt] = useState('Plan a 30-minute revision session for Algebra basics.');
@@ -872,6 +873,23 @@ export default function TeacherDashboard({ session, onLogout }) {
     const overdue = (selectedHomework || []).filter((h) => String(h?.dueStatus || '').toLowerCase() === 'overdue').length;
     return { submitted, notSubmitted, overdue };
   }, [selectedHomework]);
+
+  const filteredSelectedHomework = useMemo(() => {
+    return (selectedHomework || []).filter((h) => {
+      const dueStatus = String(h?.dueStatus || '').toLowerCase();
+      const status = String(h?.status || '').toLowerCase();
+      const isSubmitted = dueStatus === 'submitted' || status === 'submitted' || status === 'graded';
+      const isOverdue = dueStatus === 'overdue';
+      if (homeworkStatusFilter === 'submitted') return isSubmitted;
+      if (homeworkStatusFilter === 'not-submitted') return !isSubmitted;
+      if (homeworkStatusFilter === 'overdue') return isOverdue;
+      return true;
+    });
+  }, [selectedHomework, homeworkStatusFilter]);
+
+  useEffect(() => {
+    setHomeworkStatusFilter('all');
+  }, [selectedStudentId]);
 
   async function onAssignHomework(e) {
     e.preventDefault();
@@ -2143,7 +2161,14 @@ export default function TeacherDashboard({ session, onLogout }) {
 
         {/* ══════════ STUDENTS SECTION ══════════ */}
         {activeSection === 'students' && (
-          <section className="td-grid">
+          <section
+            className="td-grid"
+            onClick={(e) => {
+              if (e.target === e.currentTarget && homeworkStatusFilter !== 'all') {
+                setHomeworkStatusFilter('all');
+              }
+            }}
+          >
             <article className="td-card">
               <h3>Students</h3>
               <p>Filter by class, select students, and run bulk actions.</p>
@@ -2381,22 +2406,35 @@ export default function TeacherDashboard({ session, onLogout }) {
               </div>
               {selectedHomework.length > 0 ? (
                 <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', marginBottom: '12px' }}>
-                  <span style={{ background: '#dcfce7', color: '#166534', padding: '6px 10px', borderRadius: '999px', fontSize: '12px', fontWeight: 700 }}>
+                  <button
+                    type="button"
+                    onClick={() => setHomeworkStatusFilter((prev) => (prev === 'submitted' ? 'all' : 'submitted'))}
+                    style={{ background: homeworkStatusFilter === 'submitted' ? '#16a34a' : '#dcfce7', color: homeworkStatusFilter === 'submitted' ? '#fff' : '#166534', padding: '6px 10px', borderRadius: '999px', fontSize: '12px', fontWeight: 700, border: 'none', cursor: 'pointer' }}
+                  >
                     Submitted: {selectedHomeworkSummary.submitted}
-                  </span>
-                  <span style={{ background: '#fee2e2', color: '#991b1b', padding: '6px 10px', borderRadius: '999px', fontSize: '12px', fontWeight: 700 }}>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setHomeworkStatusFilter((prev) => (prev === 'not-submitted' ? 'all' : 'not-submitted'))}
+                    style={{ background: homeworkStatusFilter === 'not-submitted' ? '#dc2626' : '#fee2e2', color: homeworkStatusFilter === 'not-submitted' ? '#fff' : '#991b1b', padding: '6px 10px', borderRadius: '999px', fontSize: '12px', fontWeight: 700, border: 'none', cursor: 'pointer' }}
+                  >
                     Not submitted: {selectedHomeworkSummary.notSubmitted}
-                  </span>
-                  <span style={{ background: '#ffedd5', color: '#9a3412', padding: '6px 10px', borderRadius: '999px', fontSize: '12px', fontWeight: 700 }}>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setHomeworkStatusFilter((prev) => (prev === 'overdue' ? 'all' : 'overdue'))}
+                    style={{ background: homeworkStatusFilter === 'overdue' ? '#c2410c' : '#ffedd5', color: homeworkStatusFilter === 'overdue' ? '#fff' : '#9a3412', padding: '6px 10px', borderRadius: '999px', fontSize: '12px', fontWeight: 700, border: 'none', cursor: 'pointer' }}
+                  >
                     Overdue: {selectedHomeworkSummary.overdue}
-                  </span>
+                  </button>
                 </div>
               ) : null}
               {panelLoading.homework ? <p className="td-empty">Loading homework...</p> : null}
               {panelError.homework ? <p className="td-empty">{panelError.homework}</p> : null}
               {selectedHomework.length > 0 ? (
-                <div className="td-hw-table-wrap">
-                  <table className="td-hw-table">
+                filteredSelectedHomework.length > 0 ? (
+                  <div className="td-hw-table-wrap">
+                    <table className="td-hw-table">
                     <thead>
                       <tr>
                         <th>Title</th>
@@ -2409,7 +2447,7 @@ export default function TeacherDashboard({ session, onLogout }) {
                       </tr>
                     </thead>
                     <tbody>
-                      {selectedHomework.map((hw) => (
+                      {filteredSelectedHomework.map((hw) => (
                         <tr key={hw.id} style={String(hw?.dueStatus || '').toLowerCase() === 'overdue' && String(hw?.status || '').toLowerCase() !== 'submitted' ? { background: '#fff1f2' } : undefined}>
                           <td><strong>{hw.title}</strong></td>
                           <td>{hw.subject}</td>
@@ -2431,40 +2469,47 @@ export default function TeacherDashboard({ session, onLogout }) {
                               const latestUrls = asUrlList(hw?.latestAttachmentUrls || hw?.latest_attachment_urls, hw?.latestAttachmentUrl || hw?.latest_attachment_url);
                               const fallbackUrls = asUrlList((hwAttemptsByHwId[hw.id] || [])[0]?.attachmentUrls, (hwAttemptsByHwId[hw.id] || [])[0]?.attachmentUrl);
                               const submittedUrls = latestUrls.length ? latestUrls : fallbackUrls;
-                              return submittedUrls.length ? submittedUrls.map((url) => (
-                                <img
-                                  key={url}
-                                  src={url}
-                                  alt="Student submission"
-                                  onClick={() => setLightboxUrl(url)}
-                                  title="Student submission — click to expand"
-                                  style={{ width: 32, height: 32, objectFit: 'cover', borderRadius: 4, cursor: 'zoom-in', border: '2px solid #22c55e', marginRight: 8, verticalAlign: 'middle' }}
-                                />
-                              )) : (
-                                <span style={{ fontSize: '11px', color: '#9ca3af', marginRight: 8 }}>No student upload yet</span>
-                              );
-                            })()}
-                            {(() => {
                               const latestAnswer = (() => {
                                 const fromAttempt = String((hwAttemptsByHwId[hw.id] || [])[0]?.answers?.text || '').trim();
                                 if (fromAttempt) return fromAttempt;
                                 const fromHw = String(hw?.latestAnswerText || hw?.latest_answer_text || '').trim();
                                 return fromHw;
                               })();
-                              if (!latestAnswer) return null;
-                              const expanded = !!expandedHwAnswerById[hw.id];
+                              const hasSubmissionDetails = submittedUrls.length > 0 || !!latestAnswer;
+                              if (!hasSubmissionDetails) {
+                                return <span style={{ fontSize: '11px', color: '#9ca3af', marginRight: 8 }}>No student submission yet</span>;
+                              }
+                              const expanded = !!expandedHwSubmissionById[hw.id];
                               return (
                                 <div style={{ marginTop: 6, marginBottom: 6 }}>
                                   <button
                                     type="button"
                                     className="td-inline-btn"
-                                    onClick={() => setExpandedHwAnswerById((prev) => ({ ...prev, [hw.id]: !prev[hw.id] }))}
+                                    onClick={() => setExpandedHwSubmissionById((prev) => ({ ...prev, [hw.id]: !prev[hw.id] }))}
                                   >
-                                    {expanded ? 'Hide student text' : 'Show student text'}
+                                    {expanded ? 'Hide student submission' : 'Show student submission'}
                                   </button>
                                   {expanded ? (
-                                    <div style={{ marginTop: 6, fontSize: '11px', color: '#334155', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 6, padding: '6px 8px', whiteSpace: 'pre-wrap', maxWidth: 240 }}>
-                                      {latestAnswer}
+                                    <div style={{ marginTop: 6, display: 'grid', gap: 8, maxWidth: 260 }}>
+                                      {submittedUrls.length ? (
+                                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                                          {submittedUrls.map((url) => (
+                                            <img
+                                              key={url}
+                                              src={url}
+                                              alt="Student submission"
+                                              onClick={() => setLightboxUrl(url)}
+                                              title="Student submission — click to expand"
+                                              style={{ width: 32, height: 32, objectFit: 'cover', borderRadius: 4, cursor: 'zoom-in', border: '2px solid #22c55e' }}
+                                            />
+                                          ))}
+                                        </div>
+                                      ) : null}
+                                      {latestAnswer ? (
+                                        <div style={{ fontSize: '11px', color: '#334155', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 6, padding: '6px 8px', whiteSpace: 'pre-wrap' }}>
+                                          {latestAnswer}
+                                        </div>
+                                      ) : null}
                                     </div>
                                   ) : null}
                                 </div>
@@ -2490,8 +2535,19 @@ export default function TeacherDashboard({ session, onLogout }) {
                         </tr>
                       ))}
                     </tbody>
-                  </table>
-                </div>
+                    </table>
+                  </div>
+                ) : (
+                  <p className="td-empty">
+                    {homeworkStatusFilter === 'submitted'
+                      ? 'No submitted homework in this panel.'
+                      : homeworkStatusFilter === 'not-submitted'
+                        ? 'No not-submitted homework in this panel.'
+                        : homeworkStatusFilter === 'overdue'
+                          ? 'No overdue homework in this panel.'
+                          : 'No homework in this panel.'}
+                  </p>
+                )
               ) : (!panelLoading.homework ? <p className="td-empty">No homework assigned yet.</p> : null)}
 
               {gradingHwId ? (

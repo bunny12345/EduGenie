@@ -584,6 +584,14 @@ export class TeacherController {
       const homework = hwRows.map((h: any) => {
         const hwAttempts = attemptsByHw.get(String(h.id || '')) || [];
         const latest = hwAttempts[0] || null;
+        const latestAnswerText = (() => {
+          const fromAttempt = typeof latest?.answers?.text === 'string' ? latest.answers.text.trim() : '';
+          if (fromAttempt) return fromAttempt;
+          const fromRow = typeof h?.latest_answer_text === 'string' ? h.latest_answer_text.trim() : '';
+          if (fromRow) return fromRow;
+          const fromCamelRow = typeof h?.latestAnswerText === 'string' ? h.latestAnswerText.trim() : '';
+          return fromCamelRow || null;
+        })();
         const savedLatestUrls = Array.isArray(h?.latest_attachment_urls || h?.latestAttachmentUrls)
           ? (h.latest_attachment_urls || h.latestAttachmentUrls).filter((u: any) => typeof u === 'string' && String(u).trim())
           : (typeof h?.latest_attachment_url === 'string' && String(h.latest_attachment_url).trim()
@@ -615,6 +623,8 @@ export class TeacherController {
             ? latest.attachment_urls
             : (latest?.attachment_url ? [latest.attachment_url] : savedLatestUrls),
           latestAttachmentUrl: latest?.attachment_url || savedLatestUrls[0] || null,
+          latestAnswerText,
+          latest_answer_text: latestAnswerText,
           attemptCount: hwAttempts.length,
           overdue,
           daysSinceDue,
@@ -653,6 +663,8 @@ export class TeacherController {
           feedback: h.feedback ?? null,
           submittedAt: null,
           latestAttachmentUrl: null,
+          latestAnswerText: null,
+          latest_answer_text: null,
           attemptCount: 0,
           overdue: false,
           daysSinceDue: null,
