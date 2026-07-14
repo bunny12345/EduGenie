@@ -969,6 +969,7 @@ export class TeacherController {
     const title = body?.title || 'Homework';
     const dueAt = body?.dueAt || null;
     const now = new Date();
+    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     const parsedStartAt = body?.startAt ? new Date(body.startAt) : null;
     const parsedDueAt = dueAt ? new Date(dueAt) : null;
     if (parsedStartAt && Number.isNaN(parsedStartAt.getTime())) {
@@ -977,11 +978,11 @@ export class TeacherController {
     if (parsedDueAt && Number.isNaN(parsedDueAt.getTime())) {
       return { success: false, error: 'Invalid dueAt date' };
     }
-    if (parsedStartAt && parsedStartAt < now) {
-      return { success: false, error: 'startAt cannot be in the past' };
+    if (parsedStartAt && parsedStartAt < startOfToday) {
+      return { success: false, error: 'startAt cannot be in a past day' };
     }
-    if (parsedDueAt && parsedDueAt < now) {
-      return { success: false, error: 'dueAt cannot be in the past' };
+    if (parsedDueAt && parsedDueAt < startOfToday) {
+      return { success: false, error: 'dueAt cannot be in a past day' };
     }
     if (parsedStartAt && parsedDueAt && parsedDueAt < parsedStartAt) {
       return { success: false, error: 'dueAt must be after startAt' };
@@ -1143,6 +1144,214 @@ export class TeacherController {
           createdAt: h.created_at || new Date().toISOString()
         }))
       };
+    }
+  }
+
+  @Post('homework/:id/update')
+  async updateHomework(@Param('id') hwId: string, @Req() req: any, @Body() body: any) {
+    this.ensureTeacher(req);
+    const teacherId = this.actorId(req);
+
+    // Validate dates
+    const now = new Date();
+    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const parsedStartAt = body?.startAt ? new Date(body.startAt) : null;
+    const parsedDueAt = body?.dueAt ? new Date(body.dueAt) : null;
+
+    if (parsedStartAt && Number.isNaN(parsedStartAt.getTime())) {
+      return { success: false, error: 'Invalid startAt date' };
+    }
+    if (parsedDueAt && Number.isNaN(parsedDueAt.getTime())) {
+      return { success: false, error: 'Invalid dueAt date' };
+    }
+    if (parsedStartAt && parsedStartAt < startOfToday) {
+      return { success: false, error: 'startAt cannot be in a past day' };
+    }
+    if (parsedDueAt && parsedDueAt < startOfToday) {
+      return { success: false, error: 'dueAt cannot be in a past day' };
+    }
+    if (parsedStartAt && parsedDueAt && parsedDueAt < parsedStartAt) {
+      return { success: false, error: 'dueAt must be after startAt' };
+    }
+
+    const attachmentUrlsRaw = Array.isArray(body?.attachmentUrls)
+      ? body.attachmentUrls
+      : (body?.attachmentUrl ? [body.attachmentUrl] : []);
+    const attachmentUrls = attachmentUrlsRaw
+      .filter((u: any) => typeof u === 'string' && String(u).trim())
+      .map((u: string) => String(u).trim());
+    const attachmentUrl = attachmentUrls[0] || null;
+
+    const title = body?.title || null;
+    const subject = body?.subject || null;
+    const note = body?.note ?? null;
+    const startAt = body?.startAt || null;
+    const dueAt = body?.dueAt || null;
+
+    const updatePayload: any = {
+      title: title || undefined,
+      subject: subject || undefined,
+      note,
+      start_at: startAt,
+      due_at: dueAt,
+      class_name: body?.className || undefined,
+      attachment_urls: attachmentUrls,
+      attachment_url: attachmentUrl,
+    };
+    Object.keys(updatePayload).forEach((key) => updatePayload[key] === undefined && delete updatePayload[key]);
+
+    const applyPatchToLocal = (seedRow: any) => {
+      const beforeMeta = this.readHomeworkMeta(seedRow);
+      const seedCreatedBy = String(seedRow?.created_by || '').trim();
+      const seedTitle = String(seedRow?.title || '').trim();
+      const seedSubject = String(seedRow?.subject || '').trim();
+      const seedClassName = String(beforeMeta?.className || '').trim();
+      const seedStartAt = String(beforeMeta?.startAt || '').trim();
+      const seedDueAt = String(beforeMeta?.dueAt || '').trim();
+
+      const localRows = this.localFeed.listHomeworkByTeacher(teacherId);
+      let localUpdatedCount = 0;
+      localRows.forEach((row: any) => {
+        const rowMeta = this.readHomeworkMeta(row);
+        const sameGroup = String(row?.created_by || '').trim() === seedCreatedBy
+          && String(row?.title || '').trim() === seedTitle
+          && String(row?.subject || '').trim() === seedSubject
+          && String(rowMeta?.className || '').trim() === seedClassName
+          && String(rowMeta?.startAt || '').trim() === seedStartAt
+          && String(rowMeta?.dueAt || '').trim() === seedDueAt;
+        if (sameGroup) {
+          this.localFeed.updateHomework(String(row?.id || ''), {
+            ...updatePayload,
+            tasks: {
+              ...(row?.tasks && typeof row.tasks === 'object' ? row.tasks : {}),
+              meta: {
+                ...((row?.tasks && typeof row.tasks === 'object' && row.tasks.meta && typeof row.tasks.meta === 'object')
+                  ? row.tasks.meta
+                  : {}),
+                title: title || row?.title || null,
+                subject: subject || row?.subject || null,
+                note,
+                startAt,
+                dueAt,
+                className: updatePayload.class_name ?? rowMeta?.className ?? null,
+                attachmentUrls,
+                attachmentUrl,
+                teacherId,
+              },
+            },
+          });
+          localUpdatedCount += 1;
+        }
+      });
+      return localUpdatedCount;
+    };
+
+    try {
+      // Find seed row first to infer the class-wide assignment group.
+      const seedRes = await this.db.client
+        .from('homework')
+        .select('*')
+        .eq('id', hwId)
+        .maybeSingle();
+      const seedRow = (seedRes as any)?.data || null;
+
+      if (!seedRow) {
+        const localSeed = this.localFeed.listHomeworkByTeacher(teacherId).find((h: any) => String(h?.id || '') === String(hwId));
+        if (localSeed) {
+          const localUpdated = applyPatchToLocal(localSeed);
+          return { success: true, updated: localUpdated || 1 };
+        }
+        return { success: false, error: 'Homework not found' };
+      }
+
+      const seedMeta = this.readHomeworkMeta(seedRow);
+      const seedCreatedBy = String(seedRow?.created_by || teacherId || '').trim();
+      const seedTitle = String(seedRow?.title || '').trim();
+      const seedSubject = String(seedRow?.subject || '').trim();
+      const seedClassName = String(seedMeta?.className || '').trim();
+      const seedStartAt = String(seedMeta?.startAt || '').trim();
+      const seedDueAt = String(seedMeta?.dueAt || '').trim();
+
+      // Try to update the entire assignment group (one row per student) by matching pre-edit signature.
+      const allForTeacherRes = await this.db.client
+        .from('homework')
+        .select('id,title,subject,note,start_at,due_at,class_name,created_by,tasks')
+        .eq('created_by', seedCreatedBy)
+        .limit(2000);
+      const allForTeacher = Array.isArray((allForTeacherRes as any)?.data) ? (allForTeacherRes as any).data : [];
+
+      const matchedIds = allForTeacher
+        .filter((row: any) => {
+          const rowMeta = this.readHomeworkMeta(row);
+          return String(row?.title || '').trim() === seedTitle
+            && String(row?.subject || '').trim() === seedSubject
+            && String(rowMeta?.className || '').trim() === seedClassName
+            && String(rowMeta?.startAt || '').trim() === seedStartAt
+            && String(rowMeta?.dueAt || '').trim() === seedDueAt;
+        })
+        .map((row: any) => String(row?.id || '').trim())
+        .filter(Boolean);
+
+      const targetIds = matchedIds.length ? matchedIds : [String(hwId)];
+
+      const dbPayload = {
+        ...updatePayload,
+        tasks: {
+          ...((seedRow?.tasks && typeof seedRow.tasks === 'object') ? seedRow.tasks : {}),
+          meta: {
+            ...((seedRow?.tasks && typeof seedRow.tasks === 'object' && seedRow.tasks.meta && typeof seedRow.tasks.meta === 'object')
+              ? seedRow.tasks.meta
+              : {}),
+            title: title || seedRow?.title || null,
+            subject: subject || seedRow?.subject || null,
+            note,
+            startAt,
+            dueAt,
+            className: updatePayload.class_name ?? seedMeta?.className ?? null,
+            attachmentUrls,
+            attachmentUrl,
+            teacherId,
+          },
+        },
+      };
+
+      const updatedRows: any[] = [];
+      for (const id of targetIds) {
+        const res = await this.db.client
+          .from('homework')
+          .update(dbPayload)
+          .eq('id', id)
+          .select('*');
+        const rows = Array.isArray((res as any)?.data) ? (res as any).data : [];
+        if (rows.length) updatedRows.push(rows[0]);
+      }
+
+      applyPatchToLocal(seedRow);
+
+      const sample = updatedRows[0] || { ...seedRow, ...dbPayload };
+      return {
+        success: true,
+        updated: targetIds.length,
+        homework: {
+          id: sample?.id || hwId,
+          title: sample?.title || title || seedTitle,
+          subject: sample?.subject || subject || seedSubject,
+          note: this.readHomeworkMeta(sample).note,
+          startAt: this.readHomeworkMeta(sample).startAt,
+          dueAt: this.readHomeworkMeta(sample).dueAt,
+          className: this.readHomeworkMeta(sample).className,
+          attachmentUrls: this.readHomeworkMeta(sample).attachmentUrls,
+          attachmentUrl: this.readHomeworkMeta(sample).attachmentUrl,
+          createdAt: sample?.created_at || seedRow?.created_at || null,
+        },
+      };
+    } catch (_e) {
+      const localSeed = this.localFeed.listHomeworkByTeacher(teacherId).find((h: any) => String(h?.id || '') === String(hwId));
+      if (localSeed) {
+        const localUpdated = applyPatchToLocal(localSeed);
+        return { success: true, updated: localUpdated || 1 };
+      }
+      return { success: false, error: 'Failed to update homework' };
     }
   }
 

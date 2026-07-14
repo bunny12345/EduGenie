@@ -105,7 +105,9 @@ export class HomeworkController {
         const dueDateRaw = h.due_at || h.created_at || null;
         const dueDate = dueDateRaw ? new Date(dueDateRaw) : null;
         const hwAttempts = attemptsByHw.get(String(h.id || '')) || [];
-        const submitted = hwAttempts.length > 0 || String(h.status || '').toLowerCase() === 'submitted' || String(h.status || '').toLowerCase() === 'graded';
+        const rawStatus = String(h.status || '').toLowerCase();
+        const submitted = hwAttempts.length > 0 || rawStatus === 'submitted' || rawStatus === 'graded' || rawStatus === 'resubmitted';
+        const effectiveSubmittedStatus = (hwAttempts.length > 1 || rawStatus === 'resubmitted') ? 'resubmitted' : 'submitted';
         const savedLatestUrls = this.sanitizeAttachmentUrls(h.latest_attachment_urls ?? h?.latestAttachmentUrls, h.latest_attachment_url ?? h?.latestAttachmentUrl ?? null);
         const daysSinceDue = dueDate && !Number.isNaN(dueDate.getTime())
           ? Math.floor((now.getTime() - dueDate.getTime()) / (24 * 60 * 60 * 1000))
@@ -123,7 +125,7 @@ export class HomeworkController {
         title: h.title || h.file_url || 'Homework',
         subject: h.subject || 'General',
         dueAt: h.due_at || h.created_at || null,
-        status: submitted ? 'submitted' : (h.status || 'pending'),
+        status: submitted ? effectiveSubmittedStatus : (h.status || 'pending'),
         grade: h.grade ?? null,
         feedback: h.feedback ?? null,
         progress: h.progress ?? (submitted ? 100 : 0),
@@ -133,13 +135,20 @@ export class HomeworkController {
         daysSinceDue,
         attemptCount: hwAttempts.length,
         lastAttemptAt: hwAttempts[0]?.created_at || null,
+        submittedAt: hwAttempts[0]?.created_at || h.submitted_at || null,
         latestAttachmentUrls: this.sanitizeAttachmentUrls(hwAttempts[0]?.attachment_urls, hwAttempts[0]?.attachment_url).length
           ? this.sanitizeAttachmentUrls(hwAttempts[0]?.attachment_urls, hwAttempts[0]?.attachment_url)
           : savedLatestUrls,
         latestAttachmentUrl: this.sanitizeAttachmentUrls(hwAttempts[0]?.attachment_urls, hwAttempts[0]?.attachment_url)[0] || savedLatestUrls[0] || null,
-        dueStatus: submitted ? 'submitted' : (expired ? 'expired' : (overdue ? 'overdue' : 'pending')),
+        latestAnswerText: (() => {
+          const fromAttempt = typeof hwAttempts[0]?.answers?.text === 'string' ? hwAttempts[0].answers.text.trim() : '';
+          if (fromAttempt) return fromAttempt;
+          const fromRow = typeof h?.latest_answer_text === 'string' ? h.latest_answer_text.trim() : '';
+          return fromRow || null;
+        })(),
+        dueStatus: submitted ? (effectiveSubmittedStatus === 'resubmitted' ? 'resubmitted' : 'submitted') : (expired ? 'expired' : (overdue ? 'overdue' : 'pending')),
         remark: submitted
-          ? 'Submitted'
+          ? (effectiveSubmittedStatus === 'resubmitted' ? 'Resubmitted' : 'Submitted')
           : (expired
             ? `Overdue by ${daysSinceDue} day${daysSinceDue === 1 ? '' : 's'} — hidden from student portal`
             : (overdue ? `Overdue by ${daysSinceDue} day${daysSinceDue === 1 ? '' : 's'}` : 'Pending'))
@@ -160,7 +169,9 @@ export class HomeworkController {
         const dueDateRaw = h.due_at || h.created_at || null;
         const dueDate = dueDateRaw ? new Date(dueDateRaw) : null;
         const hwAttempts = homeworkById.get(String(h.id || '')) || [];
-        const submitted = hwAttempts.length > 0 || String(h.status || '').toLowerCase() === 'submitted' || String(h.status || '').toLowerCase() === 'graded';
+        const rawStatus = String(h.status || '').toLowerCase();
+        const submitted = hwAttempts.length > 0 || rawStatus === 'submitted' || rawStatus === 'graded' || rawStatus === 'resubmitted';
+        const effectiveSubmittedStatus = (hwAttempts.length > 1 || rawStatus === 'resubmitted') ? 'resubmitted' : 'submitted';
         const savedLatestUrls = this.sanitizeAttachmentUrls(h.latest_attachment_urls ?? h?.latestAttachmentUrls, h.latest_attachment_url ?? h?.latestAttachmentUrl ?? null);
         const daysSinceDue = dueDate && !Number.isNaN(dueDate.getTime())
           ? Math.floor((now.getTime() - dueDate.getTime()) / (24 * 60 * 60 * 1000))
@@ -178,7 +189,7 @@ export class HomeworkController {
         title: h.title || 'Homework',
         subject: h.subject || 'General',
         dueAt: h.due_at || h.created_at || null,
-        status: submitted ? 'submitted' : (h.status || 'pending'),
+        status: submitted ? effectiveSubmittedStatus : (h.status || 'pending'),
         grade: h.grade ?? null,
         feedback: h.feedback ?? null,
         progress: h.progress ?? (submitted ? 100 : 0),
@@ -188,13 +199,20 @@ export class HomeworkController {
         daysSinceDue,
         attemptCount: hwAttempts.length,
         lastAttemptAt: hwAttempts[0]?.created_at || null,
+        submittedAt: hwAttempts[0]?.created_at || h.submitted_at || null,
         latestAttachmentUrls: this.sanitizeAttachmentUrls(hwAttempts[0]?.attachment_urls, hwAttempts[0]?.attachment_url).length
           ? this.sanitizeAttachmentUrls(hwAttempts[0]?.attachment_urls, hwAttempts[0]?.attachment_url)
           : savedLatestUrls,
         latestAttachmentUrl: this.sanitizeAttachmentUrls(hwAttempts[0]?.attachment_urls, hwAttempts[0]?.attachment_url)[0] || savedLatestUrls[0] || null,
-        dueStatus: submitted ? 'submitted' : (expired ? 'expired' : (overdue ? 'overdue' : 'pending')),
+        latestAnswerText: (() => {
+          const fromAttempt = typeof hwAttempts[0]?.answers?.text === 'string' ? hwAttempts[0].answers.text.trim() : '';
+          if (fromAttempt) return fromAttempt;
+          const fromRow = typeof h?.latest_answer_text === 'string' ? h.latest_answer_text.trim() : '';
+          return fromRow || null;
+        })(),
+        dueStatus: submitted ? (effectiveSubmittedStatus === 'resubmitted' ? 'resubmitted' : 'submitted') : (expired ? 'expired' : (overdue ? 'overdue' : 'pending')),
         remark: submitted
-          ? 'Submitted'
+          ? (effectiveSubmittedStatus === 'resubmitted' ? 'Resubmitted' : 'Submitted')
           : (expired
             ? `Overdue by ${daysSinceDue} day${daysSinceDue === 1 ? '' : 's'} — hidden from student portal`
             : (overdue ? `Overdue by ${daysSinceDue} day${daysSinceDue === 1 ? '' : 's'}` : 'Pending'))
@@ -242,14 +260,92 @@ export class HomeworkController {
   async submit(@Req() req: any, @Param('id') id: string, @Body() body: any) {
     try {
       const actorStudentId = req.studentId || body.studentId;
-      const stableAttachmentUrls = this.sanitizeAttachmentUrls(body.attachmentUrls, body.attachmentUrl);
+      if (!actorStudentId) {
+        return { success: false, error: 'Missing student identity for submit' };
+      }
+
+      const RESUBMIT_WINDOW_MS = 60 * 60 * 1000;
+
+      let latestHomeworkId = '';
+      try {
+        const latestRes = await this.db.client
+          .from('homework')
+          .select('id,created_at,start_at,due_at')
+          .eq('student_id', actorStudentId)
+          .order('created_at', { ascending: false })
+          .limit(200);
+        const rows = Array.isArray((latestRes as any)?.data) ? (latestRes as any).data : [];
+        const sorted = rows
+          .slice()
+          .sort((a: any, b: any) => {
+            const aTs = new Date(a?.start_at || a?.created_at || a?.due_at || 0).getTime();
+            const bTs = new Date(b?.start_at || b?.created_at || b?.due_at || 0).getTime();
+            return bTs - aTs;
+          });
+        latestHomeworkId = String(sorted[0]?.id || '').trim();
+      } catch {
+        const localRows = this.localFeed.listHomeworkForStudent(actorStudentId);
+        const sorted = localRows
+          .slice()
+          .sort((a: any, b: any) => {
+            const aTs = new Date(a?.start_at || a?.created_at || a?.due_at || 0).getTime();
+            const bTs = new Date(b?.start_at || b?.created_at || b?.due_at || 0).getTime();
+            return bTs - aTs;
+          });
+        latestHomeworkId = String(sorted[0]?.id || '').trim();
+      }
+
+      let priorAttempts: any[] = [];
+      try {
+        const priorRes = await this.db.client
+          .from('homework_attempts')
+          .select('*')
+          .eq('homework_id', id)
+          .eq('student_id', actorStudentId)
+          .order('created_at', { ascending: false })
+          .limit(10);
+        priorAttempts = Array.isArray((priorRes as any)?.data) ? (priorRes as any).data : [];
+      } catch {
+        priorAttempts = [];
+      }
+
+      const isResubmission = priorAttempts.length > 0;
+      if (isResubmission) {
+        if (!latestHomeworkId || String(latestHomeworkId) !== String(id)) {
+          return { success: false, error: 'Resubmission is allowed only for your latest assigned homework.' };
+        }
+        const lastAttemptAt = new Date(priorAttempts[0]?.created_at || 0).getTime();
+        if (!Number.isFinite(lastAttemptAt) || Number.isNaN(lastAttemptAt)) {
+          return { success: false, error: 'Cannot verify last submission time for resubmission.' };
+        }
+        if ((Date.now() - lastAttemptAt) > RESUBMIT_WINDOW_MS) {
+          return { success: false, error: 'Resubmission window closed. You can edit and resubmit only within 1 hour.' };
+        }
+      }
+
+      let currentHomeworkAttachmentUrls: string[] = [];
+      try {
+        const currentRes = await this.db.client.from('homework').select('latest_attachment_urls,latest_attachment_url,attachment_urls,attachment_url').eq('id', id).maybeSingle();
+        const currentRow = (currentRes as any)?.data || null;
+        currentHomeworkAttachmentUrls = this.sanitizeAttachmentUrls(
+          currentRow?.latest_attachment_urls ?? currentRow?.attachment_urls,
+          currentRow?.latest_attachment_url ?? currentRow?.attachment_url ?? null
+        );
+      } catch {
+        currentHomeworkAttachmentUrls = [];
+      }
+
+      const providedAttachmentUrls = this.sanitizeAttachmentUrls(body.attachmentUrls, body.attachmentUrl);
+      const stableAttachmentUrls = providedAttachmentUrls.length ? providedAttachmentUrls : currentHomeworkAttachmentUrls;
+      const nowIso = new Date().toISOString();
+      const latestAnswerText = typeof body?.answers?.text === 'string' ? body.answers.text.trim() : '';
       const attempt = {
         homework_id: id,
         student_id: actorStudentId,
         answers: body.answers || null,
         attachment_urls: stableAttachmentUrls,
         attachment_url: stableAttachmentUrls[0] || null,
-        created_at: new Date().toISOString()
+        created_at: nowIso
       };
       let row: any = attempt;
       try {
@@ -258,31 +354,35 @@ export class HomeworkController {
       } catch {
         row = { ...attempt, id: `local-attempt-${Date.now()}` };
       }
+
+      const nextStatus = isResubmission ? 'resubmitted' : 'submitted';
       try {
         await this.db.client.from('homework').update({
-          status: 'submitted',
+          status: nextStatus,
           latest_attachment_urls: stableAttachmentUrls,
           latest_attachment_url: stableAttachmentUrls[0] || null,
-          submitted_at: new Date().toISOString(),
-          updated_at: new Date().toISOString()
+          latest_answer_text: latestAnswerText || null,
+          submitted_at: nowIso,
+          updated_at: nowIso
         }).eq('id', id);
       } catch {
         // Non-fatal in local/mock flows.
       }
       this.localFeed.updateHomework(id, {
-        status: 'submitted',
+        status: nextStatus,
         latest_attachment_urls: stableAttachmentUrls,
         latest_attachment_url: stableAttachmentUrls[0] || null,
-        submitted_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
+        latest_answer_text: latestAnswerText || null,
+        submitted_at: nowIso,
+        updated_at: nowIso
       });
       this.localFeed.logStudentActivity(actorStudentId, {
         type: 'homework',
-        action: 'submitted',
+        action: isResubmission ? 'resubmitted' : 'submitted',
         title: `Homework ${id}`,
-        details: 'Submitted homework attempt'
+        details: isResubmission ? 'Resubmitted homework attempt' : 'Submitted homework attempt'
       });
-      return { success: true, attemptId: row.id || null, grade: row.score ?? null };
+      return { success: true, attemptId: row.id || null, grade: row.score ?? null, status: nextStatus, resubmitted: isResubmission };
     } catch (e) {
       return { success: true, attemptId: `local-attempt-${Date.now()}`, grade: null, warning: String(e) };
     }

@@ -742,6 +742,20 @@ export async function assignTeacherHomework(payload) {
   return checkSuccess(data, 'assignTeacherHomework');
 }
 
+export async function updateTeacherHomework(homeworkId, payload) {
+  const headers = await authHeaders();
+  const url = `${API_BASE}/teacher/homework/${encodeURIComponent(homeworkId)}/update`;
+  const res = await fetch(url, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify(payload || {})
+  });
+  if (res.status === 401 || res.status === 403) notifyExpiredAuth();
+  if (!res.ok) throw new Error(`updateTeacherHomework failed: ${res.status}`);
+  const data = await res.json();
+  return checkSuccess(data, 'updateTeacherHomework');
+}
+
 export async function resyncTeacherHomework(assignments) {
   const headers = await authHeaders();
   const res = await fetch(`${API_BASE}/teacher/homework/resync`, {
@@ -840,6 +854,7 @@ const api = {
   getTeacherStudentProgress,
   getTeacherStudentDeliveryStatus,
   assignTeacherHomework,
+  updateTeacherHomework,
   getTeacherAssignedHomework,
   getTeacherHomeworkAttempts,
   getTeacherAnnouncements,

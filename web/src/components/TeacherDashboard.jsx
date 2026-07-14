@@ -3,6 +3,7 @@ import {
   addTestQuestion,
   askTeacherAi,
   assignTeacherHomework,
+  updateTeacherHomework,
   getTeacherAssignedHomework,
   getTeacherHomeworkAttempts,
   uploadHomeworkImage,
@@ -189,10 +190,19 @@ export default function TeacherDashboard({ session, onLogout }) {
   const [assignDueAt, setAssignDueAt] = useState('');
   const [activeAssignments, setActiveAssignments] = useState([]); // confirmed assignments shown at bottom
   const [homeworkHistory, setHomeworkHistory] = useState([]);     // all past assignments from backend
+  const [editingHwId, setEditingHwId] = useState(null);
+  const [editingHwTitle, setEditingHwTitle] = useState('');
+  const [editingHwNote, setEditingHwNote] = useState('');
+  const [editingHwSubject, setEditingHwSubject] = useState('');
+  const [editingHwStartAt, setEditingHwStartAt] = useState('');
+  const [editingHwDueAt, setEditingHwDueAt] = useState('');
+  const [editingHwAttachmentUrls, setEditingHwAttachmentUrls] = useState([]);
+  const [editingHwUploading, setEditingHwUploading] = useState(false);
   const [showHistoryDropdown, setShowHistoryDropdown] = useState(false);
   const [historyFilterDate, setHistoryFilterDate] = useState('');
   const [teacherTargetClass, setTeacherTargetClass] = useState('all');
   const [hwAttemptsByHwId, setHwAttemptsByHwId] = useState({});
+  const [expandedHwAnswerById, setExpandedHwAnswerById] = useState({});
   const [expandedHistoryNotes, setExpandedHistoryNotes] = useState({});
 
   const [teacherPrompt, setTeacherPrompt] = useState('Plan a 30-minute revision session for Algebra basics.');
@@ -880,14 +890,15 @@ export default function TeacherDashboard({ session, onLogout }) {
     }
 
     const now = new Date();
+    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     const startDate = parseSafeDate(assignStartAt);
     const dueDate = parseSafeDate(assignDueAt);
-    if (startDate && startDate < now) {
-      setNote('Start date/time cannot be in the past.');
+    if (startDate && startDate < startOfToday) {
+      setNote('Start date cannot be in a past day.');
       return;
     }
-    if (dueDate && dueDate < now) {
-      setNote('Due date/time cannot be in the past.');
+    if (dueDate && dueDate < startOfToday) {
+      setNote('Due date cannot be in a past day.');
       return;
     }
     if (startDate && dueDate && dueDate < startDate) {
@@ -1012,6 +1023,147 @@ export default function TeacherDashboard({ session, onLogout }) {
   function onRemoveAllTeacherAttachments() {
     setAssignAttachmentUrls([]);
     setAssignPreviewUrls([]);
+  }
+
+  function onStartEditHomework(homework) {
+    if (!homework?.id) return;
+    setEditingHwId(homework.id);
+    setEditingHwTitle(homework.title || '');
+    setEditingHwNote(homework.note || '');
+    setEditingHwSubject(homework.subject || 'Mathematics');
+    setEditingHwStartAt(homework.startAt || '');
+    setEditingHwDueAt(homework.dueAt || '');
+    setEditingHwAttachmentUrls(asUrlList(homework?.attachmentUrls || homework?.attachment_urls, homework?.attachmentUrl || homework?.attachment_url));
+    setNote(`Editing "${homework.title || 'Homework'}". Update and save to resend to all students.`);
+  }
+
+  async function onEditHomeworkFilesSelected(files) {
+    const picked = Array.isArray(files) ? files.filter(Boolean) : [];
+    if (!picked.length) return;
+
+    setEditingHwUploading(true);
+    setNote(`Uploading ${picked.length} image${picked.length === 1 ? '' : 's'}...`);
+
+    const uploaded = [];
+    for (let i = 0; i < picked.length; i += 1) {
+      try {
+        const res = await uploadHomeworkImage(picked[i]);
+        if (res?.url) uploaded.push(res.url);
+      } catch {
+        // Best-effort upload; continue with remaining files.
+      }
+    }
+
+    if (uploaded.length) {
+      setEditingHwAttachmentUrls((prev) => Array.from(new Set([...prev, ...uploaded])));
+      setNote(uploaded.length === picked.length
+        ? `Uploaded ${uploaded.length} image${uploaded.length === 1 ? '' : 's'} for edited homework.`
+        : `Uploaded ${uploaded.length}/${picked.length} image${picked.length === 1 ? '' : 's'} for edited homework.`);
+    } else {
+      setNote('Image upload failed. Please try again.');
+    }
+
+    setEditingHwUploading(false);
+  }
+
+  async function onSaveHomeworkEdit(e) {
+    e.preventDefault();
+    if (!editingHwId) return;
+    if (!editingHwTitle.trim()) {
+      setNote('Title is required.');
+      return;
+    }
+    if (editingHwUploading) {
+      setNote('Please wait for image upload to finish before saving.');
+      return;
+    }
+    setBusy('editHw');
+    setNote('');
+    try {
+      const res = await updateTeacherHomework(editingHwId, {
+        title: editingHwTitle.trim(),
+        subject: editingHwSubject,
+        note: editingHwNote || null,
+        startAt: editingHwStartAt || null,
+        dueAt: editingHwDueAt || null,
+        attachmentUrls: editingHwAttachmentUrls
+      });
+      const updatedHomework = res?.homework || {
+        id: editingHwId,
+        title: editingHwTitle.trim(),
+        subject: editingHwSubject,
+        note: editingHwNote || null,
+        startAt: editingHwStartAt || null,
+        dueAt: editingHwDueAt || null,
+        attachmentUrls: editingHwAttachmentUrls,
+        attachmentUrl: editingHwAttachmentUrls[0] || null,
+      };
+      // Update in activeAssignments if it's there
+      setActiveAssignments((prev) =>
+        prev.map((a) =>
+          a.id === editingHwId
+            ? {
+                ...a,
+                title: updatedHomework.title,
+                subject: updatedHomework.subject,
+                note: updatedHomework.note,
+                startAt: updatedHomework.startAt,
+                dueAt: updatedHomework.dueAt,
+                className: updatedHomework.className || a.className,
+                attachmentUrls: asUrlList(updatedHomework.attachmentUrls, updatedHomework.attachmentUrl),
+                attachmentUrl: updatedHomework.attachmentUrl || asUrlList(updatedHomework.attachmentUrls, updatedHomework.attachmentUrl)[0] || null
+              }
+            : a
+        )
+      );
+      setHomeworkHistory((prev) => {
+        const next = prev.map((a) =>
+          a.id === editingHwId
+            ? {
+                ...a,
+                title: updatedHomework.title,
+                subject: updatedHomework.subject,
+                note: updatedHomework.note,
+                startAt: updatedHomework.startAt,
+                dueAt: updatedHomework.dueAt,
+                className: updatedHomework.className || a.className,
+                attachmentUrls: asUrlList(updatedHomework.attachmentUrls, updatedHomework.attachmentUrl),
+                attachmentUrl: updatedHomework.attachmentUrl || asUrlList(updatedHomework.attachmentUrls, updatedHomework.attachmentUrl)[0] || null
+              }
+            : a
+        );
+        try {
+          localStorage.setItem(historyStorageKey, JSON.stringify(next.slice(0, 300)));
+        } catch {
+          // Ignore storage errors.
+        }
+        return next;
+      });
+      setNote(`✅ Homework updated and resent to all students.`);
+      setEditingHwId(null);
+      setEditingHwTitle('');
+      setEditingHwNote('');
+      setEditingHwSubject('');
+      setEditingHwStartAt('');
+      setEditingHwDueAt('');
+      setEditingHwAttachmentUrls([]);
+      await loadHomeworkHistory();
+    } catch (e2) {
+      setNote(e2?.message || 'Failed to update homework.');
+    } finally {
+      setBusy('');
+    }
+  }
+
+  function onCancelEditHomework() {
+    setEditingHwId(null);
+    setEditingHwTitle('');
+    setEditingHwNote('');
+    setEditingHwSubject('');
+    setEditingHwStartAt('');
+    setEditingHwDueAt('');
+    setEditingHwAttachmentUrls([]);
+    setNote('Edit cancelled.');
   }
 
   function onTeacherDrop(event) {
@@ -1613,7 +1765,18 @@ export default function TeacherDashboard({ session, onLogout }) {
                     <input
                       type="datetime-local"
                       value={assignStartAt}
-                      onChange={(e) => setAssignStartAt(e.target.value)}
+                      onChange={(e) => {
+                        setAssignStartAt(e.target.value);
+                        // Auto-set due date to next day when start date is selected
+                        if (e.target.value) {
+                          const startDate = new Date(e.target.value);
+                          if (!Number.isNaN(startDate.getTime())) {
+                            const nextDay = new Date(startDate);
+                            nextDay.setDate(nextDay.getDate() + 1);
+                            setAssignDueAt(toLocalDateTimeInputValue(nextDay));
+                          }
+                        }
+                      }}
                       min={toLocalDateTimeInputValue()}
                       style={{ width: '100%' }}
                     />
@@ -1658,18 +1821,148 @@ export default function TeacherDashboard({ session, onLogout }) {
                 ) : null}
               </form>
 
+              {/* Edit Homework Form */}
+              {editingHwId && (
+                <div style={{ marginTop: '20px', padding: '16px', background: '#f0f4ff', borderRadius: '8px', border: '2px solid #4f46e5' }}>
+                  <h4 style={{ margin: '0 0 12px', fontSize: '14px', color: '#1e40af' }}>Edit Homework</h4>
+                  <form onSubmit={onSaveHomeworkEdit} style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                    <div>
+                      <label style={{ display: 'block', fontSize: '13px', color: '#666', marginBottom: '4px' }}>Title</label>
+                      <input
+                        type="text"
+                        value={editingHwTitle}
+                        onChange={(e) => setEditingHwTitle(e.target.value)}
+                        style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #ddd', fontSize: '13px' }}
+                        required
+                      />
+                    </div>
+                    <div>
+                      <label style={{ display: 'block', fontSize: '13px', color: '#666', marginBottom: '4px' }}>Subject</label>
+                      <input
+                        type="text"
+                        value={editingHwSubject}
+                        onChange={(e) => setEditingHwSubject(e.target.value)}
+                        style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #ddd', fontSize: '13px' }}
+                      />
+                    </div>
+                    <div>
+                      <label style={{ display: 'block', fontSize: '13px', color: '#666', marginBottom: '4px' }}>Instructions / Note</label>
+                      <textarea
+                        value={editingHwNote}
+                        onChange={(e) => setEditingHwNote(e.target.value)}
+                        style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #ddd', fontSize: '13px', minHeight: '60px', fontFamily: 'inherit' }}
+                      />
+                    </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                      <div>
+                        <label style={{ display: 'block', fontSize: '13px', color: '#666', marginBottom: '4px' }}>Start Date &amp; Time</label>
+                        <input
+                          type="datetime-local"
+                          value={editingHwStartAt}
+                          onChange={(e) => setEditingHwStartAt(e.target.value)}
+                          style={{ width: '100%', fontSize: '13px', padding: '6px' }}
+                        />
+                      </div>
+                      <div>
+                        <label style={{ display: 'block', fontSize: '13px', color: '#666', marginBottom: '4px' }}>Due Date &amp; Time</label>
+                        <input
+                          type="datetime-local"
+                          value={editingHwDueAt}
+                          onChange={(e) => setEditingHwDueAt(e.target.value)}
+                          style={{ width: '100%', fontSize: '13px', padding: '6px' }}
+                        />
+                      </div>
+                    </div>
+                    <div>
+                      <label style={{ display: 'block', fontSize: '13px', color: '#666', marginBottom: '4px' }}>Add / Replace Images</label>
+                      <input
+                        type="file"
+                        accept="image/*"
+                        multiple
+                        onChange={(e) => onEditHomeworkFilesSelected(Array.from(e.target.files || []))}
+                        disabled={editingHwUploading || busy === 'editHw'}
+                        style={{ width: '100%', fontSize: '13px' }}
+                      />
+                      {editingHwUploading && (
+                        <div style={{ marginTop: '6px', fontSize: '12px', color: '#666' }}>Uploading image(s)...</div>
+                      )}
+                    </div>
+                    {editingHwAttachmentUrls.length > 0 && (
+                      <div>
+                        <label style={{ display: 'block', fontSize: '13px', color: '#666', marginBottom: '4px' }}>Images ({editingHwAttachmentUrls.length})</label>
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                          {editingHwAttachmentUrls.map((url) => (
+                            <div key={url} style={{ position: 'relative' }}>
+                              <img
+                                src={url}
+                                alt="Homework attachment"
+                                onClick={() => setLightboxUrl(url)}
+                                style={{ width: 60, height: 60, objectFit: 'cover', borderRadius: '4px', cursor: 'zoom-in', border: '1px solid #ddd' }}
+                              />
+                              <button
+                                type="button"
+                                onClick={() => setEditingHwAttachmentUrls((prev) => prev.filter((u) => u !== url))}
+                                style={{ position: 'absolute', top: -6, right: -6, width: 16, height: 16, borderRadius: '50%', border: 'none', background: '#ef4444', color: '#fff', fontSize: '11px', cursor: 'pointer', padding: 0 }}
+                              >
+                                x
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+                      <button
+                        type="button"
+                        onClick={onCancelEditHomework}
+                        style={{ padding: '8px 16px', background: '#f3f4f6', color: '#374151', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '13px' }}
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="submit"
+                        disabled={busy === 'editHw' || editingHwUploading}
+                        style={{ padding: '8px 16px', background: '#4f46e5', color: 'white', border: 'none', borderRadius: '6px', cursor: busy === 'editHw' ? 'wait' : 'pointer', fontSize: '13px' }}
+                      >
+                        {busy === 'editHw' ? 'Saving...' : 'Update & Resend to All Students'}
+                      </button>
+                    </div>
+                  </form>
+                </div>
+              )}
+
               {/* Active Acknowledgments — visible until due date passes */}
               {activeAssignments.length > 0 && (
                 <div style={{ marginTop: '18px' }}>
                   <h4 style={{ fontSize: '14px', color: '#555', marginBottom: '8px' }}>✅ Recently Assigned (visible until due date)</h4>
                   <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
-                    {activeAssignments.map((a) => (
+                    {activeAssignments.map((a, idx) => (
                       <li key={a.id} style={{
                         padding: '10px 14px', marginBottom: '8px', background: '#eef9f0',
                         borderRadius: '8px', borderLeft: '4px solid #2ecc71', fontSize: '13px'
                       }}>
-                        <div style={{ fontWeight: 'bold', marginBottom: '2px' }}>
-                          {a.subject}: {a.title}
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '6px' }}>
+                          <div style={{ fontWeight: 'bold' }}>
+                            {a.subject}: {a.title}
+                          </div>
+                          {idx < 2 && (
+                            <button
+                              type="button"
+                              onClick={() => onStartEditHomework(a)}
+                              style={{
+                                padding: '4px 8px',
+                                fontSize: '11px',
+                                background: '#3498db',
+                                color: 'white',
+                                border: 'none',
+                                borderRadius: '4px',
+                                cursor: 'pointer',
+                                whiteSpace: 'nowrap'
+                              }}
+                            >
+                              Edit
+                            </button>
+                          )}
                         </div>
                         {a.note && <div style={{ color: '#555', marginBottom: '4px' }}>{a.note}</div>}
                         {asUrlList(a?.attachmentUrls || a?.attachment_urls, a?.attachmentUrl || a?.attachment_url).length ? (
@@ -2149,6 +2442,32 @@ export default function TeacherDashboard({ session, onLogout }) {
                                 />
                               )) : (
                                 <span style={{ fontSize: '11px', color: '#9ca3af', marginRight: 8 }}>No student upload yet</span>
+                              );
+                            })()}
+                            {(() => {
+                              const latestAnswer = (() => {
+                                const fromAttempt = String((hwAttemptsByHwId[hw.id] || [])[0]?.answers?.text || '').trim();
+                                if (fromAttempt) return fromAttempt;
+                                const fromHw = String(hw?.latestAnswerText || hw?.latest_answer_text || '').trim();
+                                return fromHw;
+                              })();
+                              if (!latestAnswer) return null;
+                              const expanded = !!expandedHwAnswerById[hw.id];
+                              return (
+                                <div style={{ marginTop: 6, marginBottom: 6 }}>
+                                  <button
+                                    type="button"
+                                    className="td-inline-btn"
+                                    onClick={() => setExpandedHwAnswerById((prev) => ({ ...prev, [hw.id]: !prev[hw.id] }))}
+                                  >
+                                    {expanded ? 'Hide student text' : 'Show student text'}
+                                  </button>
+                                  {expanded ? (
+                                    <div style={{ marginTop: 6, fontSize: '11px', color: '#334155', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 6, padding: '6px 8px', whiteSpace: 'pre-wrap', maxWidth: 240 }}>
+                                      {latestAnswer}
+                                    </div>
+                                  ) : null}
+                                </div>
                               );
                             })()}
                             {hw.feedback ? (

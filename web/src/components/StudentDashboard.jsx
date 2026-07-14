@@ -88,30 +88,33 @@ function asUrlList(value, fallbackSingle) {
 
 function getHomeworkState(h) {
   const due = parseDate(h?.dueAt || h?.due_at || h?.createdAt || h?.created_at);
-  const submitted = String(h?.status || '').toLowerCase() === 'submitted' || String(h?.status || '').toLowerCase() === 'graded';
+  const rawStatus = String(h?.status || '').toLowerCase();
+  const resubmitted = rawStatus === 'resubmitted' || String(h?.dueStatus || '').toLowerCase() === 'resubmitted' || String(h?.remark || '').toLowerCase() === 'resubmitted';
+  const submitted = rawStatus === 'submitted' || rawStatus === 'graded' || rawStatus === 'resubmitted';
   if (submitted) {
     const submittedAt = parseDate(h?.lastAttemptAt || h?.submittedAt || h?.updatedAt || h?.updated_at || h?.createdAt || h?.created_at);
     const daysSinceSubmitted = submittedAt ? Math.floor((Date.now() - submittedAt.getTime()) / (24 * 60 * 60 * 1000)) : 0;
     const archived = daysSinceSubmitted >= 2;
     return {
       submitted: true,
+      resubmitted,
       overdue: false,
       expired: false,
       hide: archived,
       archived,
       history: archived,
-      label: archived ? `Archived after ${daysSinceSubmitted}d` : 'Submitted',
-      color: '#16a34a',
-      bg: '#dcfce7'
+      label: archived ? `Archived after ${daysSinceSubmitted}d` : (resubmitted ? 'Resubmitted' : 'Submitted'),
+      color: resubmitted ? '#2563eb' : '#16a34a',
+      bg: resubmitted ? '#dbeafe' : '#dcfce7'
     };
   }
-  if (!due) return { submitted: false, overdue: false, expired: false, hide: false, label: 'Pending', color: '#6b7280', bg: '#f3f4f6' };
+  if (!due) return { submitted: false, resubmitted: false, overdue: false, expired: false, hide: false, label: 'Pending', color: '#6b7280', bg: '#f3f4f6' };
   const daysSinceDue = Math.floor((Date.now() - due.getTime()) / (24 * 60 * 60 * 1000));
   const overdue = daysSinceDue >= 0;
   const expired = daysSinceDue > 3;
-  if (expired) return { submitted: false, overdue: true, expired: true, hide: true, history: true, label: `Expired ${daysSinceDue}d overdue`, color: '#b91c1c', bg: '#fee2e2' };
-  if (overdue) return { submitted: false, overdue: true, expired: false, hide: false, label: `Overdue ${daysSinceDue}d`, color: '#b45309', bg: '#ffedd5' };
-  return { submitted: false, overdue: false, expired: false, hide: false, label: 'Pending', color: '#6b7280', bg: '#f3f4f6' };
+  if (expired) return { submitted: false, resubmitted: false, overdue: true, expired: true, hide: true, history: true, label: `Expired ${daysSinceDue}d overdue`, color: '#b91c1c', bg: '#fee2e2' };
+  if (overdue) return { submitted: false, resubmitted: false, overdue: true, expired: false, hide: false, label: `Overdue ${daysSinceDue}d`, color: '#b45309', bg: '#ffedd5' };
+  return { submitted: false, resubmitted: false, overdue: false, expired: false, hide: false, label: 'Pending', color: '#6b7280', bg: '#f3f4f6' };
 }
 
 function Sparkline({ values }) {
@@ -183,9 +186,13 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
   const [startingHomeworkId, setStartingHomeworkId] = useState('');
   const [lastSubmitHomeworkId, setLastSubmitHomeworkId] = useState('');
   const [homeworkAttachmentUrls, setHomeworkAttachmentUrls] = useState({});
+  const [homeworkAnswerTextById, setHomeworkAnswerTextById] = useState({});
   const [homeworkUploadingById, setHomeworkUploadingById] = useState({});
   const [homeworkPreviewById, setHomeworkPreviewById] = useState({}); // local object URLs for instant preview
   const [homeworkDropActiveById, setHomeworkDropActiveById] = useState({});
+  const [editingResubmitById, setEditingResubmitById] = useState({});
+  const [expandedTeacherInfoById, setExpandedTeacherInfoById] = useState({});
+  const [expandedStudentAnswerById, setExpandedStudentAnswerById] = useState({});
   const [lightboxUrl, setLightboxUrl] = useState(''); // full-screen image viewer
   const [showHomeworkHistory, setShowHomeworkHistory] = useState(false);
   const [historyFromDate, setHistoryFromDate] = useState('');
@@ -224,6 +231,17 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
       grouped.get(subj).push(h);
     });
     return grouped;
+  }, [homework]);
+
+  const latestAssignedHomeworkId = useMemo(() => {
+    const sorted = safeArray(homework)
+      .slice()
+      .sort((a, b) => {
+        const aTs = parseDate(a?.startAt || a?.createdAt || a?.created_at || a?.dueAt || a?.due_at)?.getTime() || 0;
+        const bTs = parseDate(b?.startAt || b?.createdAt || b?.created_at || b?.dueAt || b?.due_at)?.getTime() || 0;
+        return bTs - aTs;
+      });
+    return String(sorted[0]?.id || sorted[0]?.homeworkId || sorted[0]?.homework_id || '');
   }, [homework]);
 
   const testsBySubject = useMemo(() => {
@@ -284,7 +302,28 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
     setPanelErrorKey('homework', '');
     try {
       const res = await getHomework(studentId);
-      setHomework(safeArray(res?.homework));
+      const list = safeArray(res?.homework);
+      setHomework(list);
+      setHomeworkAttachmentUrls((prev) => {
+        const next = { ...prev };
+        list.forEach((h) => {
+          const id = String(h?.id || h?.homeworkId || h?.homework_id || '');
+          if (!id || next[id]) return;
+          const urls = asUrlList(h?.latestAttachmentUrls || h?.latest_attachment_urls, h?.latestAttachmentUrl || h?.latest_attachment_url);
+          if (urls.length) next[id] = urls;
+        });
+        return next;
+      });
+      setHomeworkAnswerTextById((prev) => {
+        const next = { ...prev };
+        list.forEach((h) => {
+          const id = String(h?.id || h?.homeworkId || h?.homework_id || '');
+          if (!id || next[id]) return;
+          const text = String(h?.latestAnswerText || h?.latest_answer_text || '').trim();
+          if (text) next[id] = text;
+        });
+        return next;
+      });
     } catch (e) {
       setPanelErrorKey('homework', e?.message || 'Unable to load homework.');
       setHomework([]);
@@ -481,9 +520,10 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
   async function onSubmitHomework(hwId, flags = {}) {
     const submitted = !!flags?.submitted;
     const expired = !!flags?.expired;
-    if (submitted) {
+    const canResubmit = !!flags?.canResubmit;
+    if (submitted && !canResubmit) {
       setLastSubmitHomeworkId(String(hwId || ''));
-      setHomeworkInfo('This homework is already submitted.');
+      setHomeworkInfo('This homework is already submitted. Resubmit is allowed only for the latest homework within 1 hour.');
       return;
     }
     if (expired) {
@@ -503,6 +543,7 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
     }
     const uploadedUrls = (Array.isArray(homeworkAttachmentUrls[hwId]) ? homeworkAttachmentUrls[hwId] : [])
       .filter((u) => typeof u === 'string' && u.trim() && !String(u).startsWith('blob:'));
+    const answerText = String(homeworkAnswerTextById[hwId] || '').trim();
     const localPreviewOnlyCount = (Array.isArray(homeworkPreviewById[hwId]) ? homeworkPreviewById[hwId] : []).length;
     if (localPreviewOnlyCount > 0) {
       setLastSubmitHomeworkId(String(hwId || ''));
@@ -513,33 +554,42 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
     setHomeworkInfo('Submitting homework...');
     setStartingHomeworkId(hwId);
     try {
+      const currentHomework = safeArray(homework).find((h) => String(h?.id || h?.homeworkId || h?.homework_id || '') === String(hwId));
+      const currentAttachmentUrls = asUrlList(currentHomework?.latestAttachmentUrls || currentHomework?.latest_attachment_urls, currentHomework?.latestAttachmentUrl || currentHomework?.latest_attachment_url);
       const sub = await submitHomework(
         hwId,
         studentId,
-        { summary: 'Completed in UI flow' },
+        {
+          summary: 'Completed in UI flow',
+          text: answerText || null,
+        },
         uploadedUrls
       );
       const grade = sub?.grade ?? null;
       const submittedAtIso = new Date().toISOString();
+      const nextStatus = String(sub?.status || (submitted ? 'resubmitted' : 'submitted')).toLowerCase() === 'resubmitted' ? 'resubmitted' : 'submitted';
+      const nextRemark = nextStatus === 'resubmitted' ? 'Resubmitted' : 'Submitted';
+      const persistedUrls = uploadedUrls.length ? uploadedUrls : currentAttachmentUrls;
       setHomework((prev) => safeArray(prev).map((item) => {
         const id = String(item?.id || item?.homeworkId || item?.homework_id || '');
         if (id !== String(hwId)) return item;
         const existingCount = Number(item?.attemptCount || 0);
         return {
           ...item,
-          status: 'submitted',
-          dueStatus: 'submitted',
+          status: nextStatus,
+          dueStatus: nextStatus,
           submitted: true,
-          remark: 'Submitted',
+          remark: nextRemark,
           attemptCount: Number.isFinite(existingCount) ? existingCount + 1 : 1,
           lastAttemptAt: submittedAtIso,
           submittedAt: submittedAtIso,
-          latestAttachmentUrls: uploadedUrls,
-          latestAttachmentUrl: uploadedUrls[0] || null,
+          latestAttachmentUrls: persistedUrls,
+          latestAttachmentUrl: persistedUrls[0] || null,
+          latestAnswerText: answerText || null,
           grade: grade ?? item?.grade ?? null
         };
       }));
-      setHomeworkInfo(`Submitted successfully. Last grade: ${grade ?? '-'}`);
+      setHomeworkInfo(`${nextStatus === 'resubmitted' ? 'Resubmitted' : 'Submitted'} successfully. Last grade: ${grade ?? '-'}`);
       // Record progress for homework submission silently
       if (grade !== null) {
         const hwItem = homework.find((h) => h.id === hwId);
@@ -550,8 +600,10 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
           source: 'homework'
         }).catch(() => {});
       }
-      setHomeworkAttachmentUrls((prev) => ({ ...prev, [hwId]: uploadedUrls }));
+      setHomeworkAttachmentUrls((prev) => ({ ...prev, [hwId]: persistedUrls }));
       setHomeworkPreviewById((prev) => ({ ...prev, [hwId]: [] }));
+      setEditingResubmitById((prev) => ({ ...prev, [hwId]: false }));
+      setExpandedStudentAnswerById((prev) => ({ ...prev, [hwId]: false }));
       // Refresh in background; keep optimistic UI if one endpoint has bad/null payloads.
       loadHomeworkPanel().catch(() => {});
       loadProgressPanel().catch(() => {});
@@ -1166,6 +1218,19 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
                       {safeArray(visibleHomework).map((h) => {
                         const state = getHomeworkState(h);
                         const homeworkId = String(h?.id || h?.homeworkId || h?.homework_id || '');
+                        const isLatestAssigned = homeworkId && homeworkId === latestAssignedHomeworkId;
+                        const lastSubmittedAt = parseDate(h?.lastAttemptAt || h?.submittedAt || h?.submitted_at || h?.updatedAt || h?.updated_at);
+                        const resubmitWindowMs = 60 * 60 * 1000;
+                        // If no timestamp available but homework is submitted and is latest, assume window is still open
+                        const remainingResubmitMs = lastSubmittedAt
+                          ? Math.max(0, (lastSubmittedAt.getTime() + resubmitWindowMs) - Date.now())
+                          : (state.submitted && isLatestAssigned ? resubmitWindowMs : 0);
+                        const canResubmitWindow = state.submitted && isLatestAssigned && remainingResubmitMs > 0;
+                        const isEditingResubmit = !!editingResubmitById[homeworkId];
+                        const canResubmit = canResubmitWindow && isEditingResubmit;
+                        const remainingResubmitMinutes = Math.ceil(remainingResubmitMs / (60 * 1000));
+                        const canEnterEditMode = canResubmitWindow && !isEditingResubmit;
+                        const canSubmitNow = !state.submitted || canResubmit;
                         return (
                   <div key={homeworkId || h.title} style={{
                     background: state.overdue && !state.submitted ? '#fff1f2' : '#f8f8ff', borderRadius: '10px', padding: '14px',
@@ -1173,18 +1238,33 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
                   }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                       <div style={{ flex: 1 }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px', flexWrap: 'wrap' }}>
+                        <div
+                          role="button"
+                          tabIndex={0}
+                          onClick={() => setExpandedTeacherInfoById((prev) => ({ ...prev, [homeworkId]: !prev[homeworkId] }))}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter' || e.key === ' ') {
+                              e.preventDefault();
+                              setExpandedTeacherInfoById((prev) => ({ ...prev, [homeworkId]: !prev[homeworkId] }));
+                            }
+                          }}
+                          style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px', flexWrap: 'wrap', cursor: 'pointer' }}
+                          title="Click to view teacher instructions and assigned images"
+                        >
                           <div style={{ fontWeight: 'bold', fontSize: '15px' }}>{h.title || 'Homework Task'}</div>
                           <span style={{ background: state.bg, color: state.color, borderRadius: '999px', padding: '3px 8px', fontSize: '11px', fontWeight: 700 }}>
                             {state.label}
                           </span>
+                          <span style={{ fontSize: '11px', color: '#64748b', fontWeight: 600 }}>
+                            {expandedTeacherInfoById[homeworkId] ? 'Hide homework instructions' : 'Show homework instructions'}
+                          </span>
                         </div>
-                        {h.note && (
+                        {expandedTeacherInfoById[homeworkId] && h.note && (
                           <div style={{ color: '#444', fontSize: '14px', marginBottom: '8px', lineHeight: '1.5' }}>
                             {h.note}
                           </div>
                         )}
-                        {!state.submitted && asUrlList(h?.attachmentUrls || h?.attachment_urls, h?.attachmentUrl || h?.attachment_url).length ? (
+                        {expandedTeacherInfoById[homeworkId] && asUrlList(h?.attachmentUrls || h?.attachment_urls, h?.attachmentUrl || h?.attachment_url).length ? (
                           <div style={{ marginBottom: '10px' }}>
                             <p style={{ fontSize: '11px', color: '#888', margin: '0 0 4px' }}>📎 Teacher attachment:</p>
                             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
@@ -1219,9 +1299,43 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
                             </div>
                           </div>
                         ) : null}
+                        {state.submitted ? (
+                          (() => {
+                            const submittedText = String(h?.latestAnswerText || h?.latest_answer_text || '').trim();
+                            if (!submittedText) return null;
+                            const expanded = !!expandedStudentAnswerById[homeworkId];
+                            return (
+                              <div style={{ marginBottom: '10px', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 8, padding: '8px 10px' }}>
+                                <button
+                                  type="button"
+                                  className="eg-inline-btn"
+                                  onClick={() => setExpandedStudentAnswerById((prev) => ({ ...prev, [homeworkId]: !prev[homeworkId] }))}
+                                  style={{ marginBottom: expanded ? 6 : 0 }}
+                                >
+                                  {expanded ? 'Hide your submitted answer' : 'Show your submitted answer'}
+                                </button>
+                                {expanded ? (
+                                  <div style={{ fontSize: '12px', color: '#334155', whiteSpace: 'pre-wrap', lineHeight: 1.5 }}>
+                                    {submittedText}
+                                  </div>
+                                ) : null}
+                              </div>
+                            );
+                          })()
+                        ) : null}
                         <div style={{ marginBottom: '8px', display: 'grid', gap: '8px' }}>
-                          {h.status !== 'submitted' ? (
+                          {!state.submitted || canResubmit ? (
                             <>
+                              <div style={{ display: 'grid', gap: '6px' }}>
+                                <label style={{ fontSize: '12px', color: '#475569', fontWeight: 600 }}>Your written answer</label>
+                                <textarea
+                                  rows={3}
+                                  value={homeworkAnswerTextById[homeworkId] || ''}
+                                  onChange={(e) => setHomeworkAnswerTextById((prev) => ({ ...prev, [homeworkId]: e.target.value }))}
+                                  placeholder="Write your answer here (this will be visible to your teacher in homework status)."
+                                  style={{ width: '100%', resize: 'vertical' }}
+                                />
+                              </div>
                               <div
                                 onDragOver={(e) => { e.preventDefault(); setHomeworkDropActiveById((prev) => ({ ...prev, [homeworkId]: true })); }}
                                 onDragLeave={() => setHomeworkDropActiveById((prev) => ({ ...prev, [homeworkId]: false }))}
@@ -1284,6 +1398,21 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
                                   </div>
                                 </div>
                               ) : null}
+                              {state.submitted && isEditingResubmit ? (
+                                <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                                  <button
+                                    type="button"
+                                    className="eg-inline-btn"
+                                    onClick={() => {
+                                      setEditingResubmitById((prev) => ({ ...prev, [homeworkId]: false }));
+                                      setHomeworkAttachmentUrls((prev) => ({ ...prev, [homeworkId]: [] }));
+                                      setHomeworkPreviewById((prev) => ({ ...prev, [homeworkId]: [] }));
+                                    }}
+                                  >
+                                    Cancel edit
+                                  </button>
+                                </div>
+                              ) : null}
                             </>
                           ) : null}
                         </div>
@@ -1312,20 +1441,49 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
                             ⚠ Not submitted yet — {state.expired ? 'hidden after 3 overdue days' : 'submit before it disappears'}
                           </div>
                         ) : null}
+                        {canResubmitWindow ? (
+                          <div style={{ marginTop: '8px', color: '#1d4ed8', fontSize: '12px', fontWeight: 600 }}>
+                            {isEditingResubmit
+                              ? `Editing enabled. Resubmit within ${remainingResubmitMinutes} minute${remainingResubmitMinutes === 1 ? '' : 's'}.`
+                              : `You can edit this latest homework for ${remainingResubmitMinutes} more minute${remainingResubmitMinutes === 1 ? '' : 's'}.`}
+                          </div>
+                        ) : state.submitted && !isLatestAssigned ? (
+                          <div style={{ marginTop: '8px', display: 'flex', alignItems: 'center', gap: '4px', color: '#6b7280', fontSize: '11px' }}>
+                            <span>🔒</span>
+                            <span>Resubmit only available for the latest homework within 1 hour of submission.</span>
+                          </div>
+                        ) : state.submitted && isLatestAssigned && remainingResubmitMs === 0 && lastSubmittedAt ? (
+                          <div style={{ marginTop: '8px', display: 'flex', alignItems: 'center', gap: '4px', color: '#6b7280', fontSize: '11px' }}>
+                            <span>🔒</span>
+                            <span>1-hour resubmit window has closed.</span>
+                          </div>
+                        ) : null}
                       </div>
                       <div style={{ marginLeft: '12px', flexShrink: 0, display: 'grid', gap: '6px', justifyItems: 'end' }}>
                         <button
                           type="button"
                           className="eg-inline-btn"
-                          onClick={() => onSubmitHomework(homeworkId, { submitted: state.submitted, expired: state.expired })}
-                          disabled={startingHomeworkId === homeworkId || !!homeworkUploadingById[homeworkId]}
+                          onClick={() => {
+                            if (canEnterEditMode) {
+                              setEditingResubmitById((prev) => ({ ...prev, [homeworkId]: true }));
+                              return;
+                            }
+                            onSubmitHomework(homeworkId, { submitted: state.submitted, expired: state.expired, canResubmit });
+                          }}
+                          disabled={startingHomeworkId === homeworkId || !!homeworkUploadingById[homeworkId] || (!canSubmitNow && !canEnterEditMode)}
                           style={{ position: 'relative', zIndex: 2, pointerEvents: 'auto', cursor: 'pointer' }}
                         >
                           {startingHomeworkId === homeworkId
                             ? '...'
                             : homeworkUploadingById[homeworkId]
                               ? 'Uploading...'
-                              : (state.expired ? 'Expired' : (state.submitted ? '✅ Submitted' : 'Submit'))}
+                              : (state.expired
+                                ? 'Expired'
+                                : (canEnterEditMode
+                                  ? `Edit (${remainingResubmitMinutes}m)`
+                                  : (canResubmit
+                                  ? `Resubmit (${remainingResubmitMinutes}m)`
+                                  : (state.submitted ? `✅ ${state.resubmitted ? 'Resubmitted' : 'Submitted'}` : 'Submit'))))}
                         </button>
                         {lastSubmitHomeworkId === homeworkId && homeworkInfo ? (
                           <span style={{ fontSize: '11px', color: '#6b7280', maxWidth: '220px', textAlign: 'right', lineHeight: 1.35 }}>{homeworkInfo}</span>
