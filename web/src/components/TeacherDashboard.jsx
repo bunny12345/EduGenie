@@ -74,11 +74,22 @@ function shortDateTime(value) {
   return dt.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
 }
 
+function safeArray(v) {
+  return Array.isArray(v) ? v : [];
+}
+
 function parseSafeDate(value) {
   if (!value) return null;
   const dt = new Date(value);
   if (Number.isNaN(dt.getTime())) return null;
   return dt;
+}
+
+function toLocalDateKey(value) {
+  const dt = parseSafeDate(value);
+  if (!dt) return '';
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${dt.getFullYear()}-${pad(dt.getMonth() + 1)}-${pad(dt.getDate())}`;
 }
 
 function assignmentStableKey(item) {
@@ -201,10 +212,12 @@ export default function TeacherDashboard({ session, onLogout }) {
   const [editingHwUploading, setEditingHwUploading] = useState(false);
   const [showHistoryDropdown, setShowHistoryDropdown] = useState(false);
   const [historyFilterDate, setHistoryFilterDate] = useState('');
+  const [historyCalMonth, setHistoryCalMonth] = useState(() => { const n = new Date(); return { year: n.getFullYear(), month: n.getMonth() }; });
   const [teacherTargetClass, setTeacherTargetClass] = useState('all');
   const [hwAttemptsByHwId, setHwAttemptsByHwId] = useState({});
   const [expandedHwSubmissionById, setExpandedHwSubmissionById] = useState({});
-  const [expandedHistoryNotes, setExpandedHistoryNotes] = useState({});
+  const [expandedGradeById, setExpandedGradeById] = useState({});
+  const [expandedHistoryDetailsById, setExpandedHistoryDetailsById] = useState({});
 
   const [teacherPrompt, setTeacherPrompt] = useState('Plan a 30-minute revision session for Algebra basics.');
   const [teacherAi, setTeacherAi] = useState(null);
@@ -741,7 +754,7 @@ export default function TeacherDashboard({ session, onLogout }) {
         setHomeworkHistory(list);
         setActiveAssignments(
           list.filter((a) => {
-            const due = parseSafeDate(a?.dueAt);
+            const due = parseSafeDate(a?.dueAt || a?.due_at);
             return !due || due > now;
           }).slice(0, 40)
         );
@@ -760,7 +773,7 @@ export default function TeacherDashboard({ session, onLogout }) {
       const now = new Date();
       setActiveAssignments((prev) =>
         prev.filter((a) => {
-          const due = parseSafeDate(a?.dueAt);
+          const due = parseSafeDate(a?.dueAt || a?.due_at);
           return !due || due > now;
         })
       );
@@ -886,6 +899,59 @@ export default function TeacherDashboard({ session, onLogout }) {
       return true;
     });
   }, [selectedHomework, homeworkStatusFilter]);
+
+  const lightboxImages = useMemo(() => {
+    if (!lightboxUrl) return [];
+
+    const groups = [];
+
+    safeArray(activeAssignments).forEach((a) => {
+      const group = asUrlList(a?.attachmentUrls || a?.attachment_urls, a?.attachmentUrl || a?.attachment_url);
+      if (group.length) groups.push(group);
+    });
+
+    safeArray(homeworkHistory).forEach((h) => {
+      const group = asUrlList(h?.attachmentUrls || h?.attachment_urls, h?.attachmentUrl || h?.attachment_url);
+      if (group.length) groups.push(group);
+    });
+
+    safeArray(selectedHomework).forEach((h) => {
+      const teacherImages = asUrlList(h?.attachmentUrls || h?.attachment_urls, h?.attachmentUrl || h?.attachment_url);
+      const submittedImages = asUrlList(h?.latestAttachmentUrls || h?.latest_attachment_urls, h?.latestAttachmentUrl || h?.latest_attachment_url);
+      const attemptImages = [];
+      safeArray(hwAttemptsByHwId?.[h?.id]).forEach((attempt) => {
+        attemptImages.push(...asUrlList(attempt?.attachmentUrls || attempt?.attachment_urls, attempt?.attachmentUrl || attempt?.attachment_url));
+      });
+      const group = Array.from(new Set([...teacherImages, ...submittedImages, ...attemptImages]));
+      if (group.length) groups.push(group);
+    });
+
+    const assignGroup = Array.from(new Set([...asUrlList(assignAttachmentUrls), ...asUrlList(assignPreviewUrls)]));
+    if (assignGroup.length) groups.push(assignGroup);
+
+    const editGroup = asUrlList(editingHwAttachmentUrls);
+    if (editGroup.length) groups.push(editGroup);
+
+    const matchedGroup = groups.find((group) => group.includes(lightboxUrl));
+    if (matchedGroup) return matchedGroup;
+
+    return [lightboxUrl];
+  }, [lightboxUrl, activeAssignments, homeworkHistory, selectedHomework, hwAttemptsByHwId, assignAttachmentUrls, assignPreviewUrls, editingHwAttachmentUrls]);
+
+  const lightboxIndex = useMemo(() => {
+    if (!lightboxImages.length || !lightboxUrl) return -1;
+    return lightboxImages.indexOf(lightboxUrl);
+  }, [lightboxImages, lightboxUrl]);
+
+  const canPrevLightbox = lightboxIndex > 0;
+  const canNextLightbox = lightboxIndex >= 0 && lightboxIndex < lightboxImages.length - 1;
+
+  const moveLightbox = (direction) => {
+    if (!lightboxImages.length || !lightboxUrl || lightboxIndex < 0) return;
+    const nextIndex = lightboxIndex + direction;
+    if (nextIndex < 0 || nextIndex >= lightboxImages.length) return;
+    setLightboxUrl(lightboxImages[nextIndex]);
+  };
 
   useEffect(() => {
     setHomeworkStatusFilter('all');
@@ -1191,35 +1257,92 @@ export default function TeacherDashboard({ session, onLogout }) {
     if (files.length) onTeacherHomeworkFilesSelected(files);
   }
 
+  function toLocalDateKey(value) {
+    const dt = parseSafeDate(value);
+    if (!dt) return '';
+    const pad = (n) => String(n).padStart(2, '0');
+    return `${dt.getFullYear()}-${pad(dt.getMonth() + 1)}-${pad(dt.getDate())}`;
+  }
+
+  function getHomeworkHistoryDate(item) {
+    return toLocalDateKey(item?.startAt || item?.start_at)
+      || toLocalDateKey(item?.createdAt || item?.created_at)
+      || '';
+  }
+
+  function getHomeworkHistoryLabel(item) {
+    const start = parseSafeDate(item?.startAt || item?.start_at);
+    const due = parseSafeDate(item?.dueAt || item?.due_at);
+    const created = parseSafeDate(item?.createdAt || item?.created_at);
+    return start || created || due || null;
+  }
+
   async function loadHomeworkHistory() {
     try {
       const res = await getTeacherAssignedHomework();
-      const apiList = Array.isArray(res?.assignments) ? res.assignments : [];
+      const normalizeAssignment = (item) => {
+        const meta = item?.tasks && typeof item.tasks === 'object' && item.tasks.meta && typeof item.tasks.meta === 'object'
+          ? item.tasks.meta
+          : null;
+        const attachmentUrls = asUrlList(
+          item?.attachmentUrls || item?.attachment_urls || meta?.attachmentUrls,
+          item?.attachmentUrl || item?.attachment_url || meta?.attachmentUrl
+        );
+        return {
+          ...item,
+          className: item?.className || item?.class_name || meta?.className || '',
+          startAt: item?.startAt || item?.start_at || meta?.startAt || null,
+          dueAt: item?.dueAt || item?.due_at || meta?.dueAt || null,
+          createdAt: item?.createdAt || item?.created_at || null,
+          note: item?.note || item?.homework_note || meta?.note || '',
+          attachmentUrls,
+          attachmentUrl: attachmentUrls[0] || null
+        };
+      };
+
+      const rawApiList = Array.isArray(res?.assignments)
+        ? res.assignments
+        : (Array.isArray(res?.homework)
+          ? res.homework
+          : (Array.isArray(res?.items)
+            ? res.items
+            : (Array.isArray(res?.data) ? res.data : [])));
+      const apiList = Array.isArray(rawApiList) ? rawApiList.map(normalizeAssignment) : [];
       const cachedRaw = localStorage.getItem(historyStorageKey);
       const cachedList = cachedRaw ? JSON.parse(cachedRaw) : [];
-      const merged = [...apiList, ...(Array.isArray(cachedList) ? cachedList : [])];
-      const dedup = [];
-      const seen = new Set();
+      const normalizedCached = Array.isArray(cachedList) ? cachedList.map(normalizeAssignment) : [];
+      const merged = [...apiList, ...normalizedCached];
+      const mergedByKey = new Map();
       merged.forEach((item) => {
         const key = assignmentStableKey(item);
-        if (!seen.has(key)) {
-          seen.add(key);
-          dedup.push(item);
+        const existing = mergedByKey.get(key);
+        if (!existing) {
+          mergedByKey.set(key, item);
+          return;
         }
+
+        const existingAttachments = asUrlList(existing?.attachmentUrls || existing?.attachment_urls, existing?.attachmentUrl || existing?.attachment_url);
+        const nextAttachments = asUrlList(item?.attachmentUrls || item?.attachment_urls, item?.attachmentUrl || item?.attachment_url);
+        const mergedAttachments = Array.from(new Set([...existingAttachments, ...nextAttachments]));
+
+        const resolved = {
+          ...existing,
+          ...item,
+          note: existing?.note || item?.note || '',
+          startAt: existing?.startAt || item?.startAt || item?.start_at || null,
+          dueAt: existing?.dueAt || item?.dueAt || item?.due_at || null,
+          createdAt: existing?.createdAt || item?.createdAt || item?.created_at || null,
+          attachmentUrls: mergedAttachments,
+          attachmentUrl: mergedAttachments[0] || null
+        };
+        mergedByKey.set(key, resolved);
       });
+      const dedup = Array.from(mergedByKey.values());
 
       // ── Auto-resync: push cached items that aren't in the backend back in ──
       // This recovers homework after a server restart wiped in-memory data.
       const apiKeys = new Set(apiList.map(assignmentStableKey));
-      const cachedNormalized = (Array.isArray(cachedList) ? cachedList : []).map((item) => ({
-        ...item,
-        className: item?.className || item?.class_name || '',
-        startAt: item?.startAt || item?.start_at || null,
-        dueAt: item?.dueAt || item?.due_at || null,
-        attachmentUrls: asUrlList(item?.attachmentUrls || item?.attachment_urls, item?.attachmentUrl || item?.attachment_url),
-        attachmentUrl: (asUrlList(item?.attachmentUrls || item?.attachment_urls, item?.attachmentUrl || item?.attachment_url)[0] || null),
-        createdAt: item?.createdAt || item?.created_at || null
-      }));
+      const cachedNormalized = normalizedCached;
       const needsResync = cachedNormalized.filter(
         (item) => item?.className && !apiKeys.has(assignmentStableKey(item))
       );
@@ -1238,10 +1361,10 @@ export default function TeacherDashboard({ session, onLogout }) {
       setActiveAssignments(
         dedup
           .filter((a) => {
-            const due = parseSafeDate(a?.dueAt);
+            const due = parseSafeDate(a?.dueAt || a?.due_at);
             return !due || due > now;
           })
-          .sort((a, b) => new Date(b?.createdAt || 0).getTime() - new Date(a?.createdAt || 0).getTime())
+          .sort((a, b) => new Date(b?.createdAt || b?.created_at || 0).getTime() - new Date(a?.createdAt || a?.created_at || 0).getTime())
           .slice(0, 40)
       );
     } catch {
@@ -1249,12 +1372,30 @@ export default function TeacherDashboard({ session, onLogout }) {
       try {
         const cachedRaw = localStorage.getItem(historyStorageKey);
         const cachedList = cachedRaw ? JSON.parse(cachedRaw) : [];
-        const list = Array.isArray(cachedList) ? cachedList : [];
+        const list = Array.isArray(cachedList) ? cachedList.map((item) => {
+          const meta = item?.tasks && typeof item.tasks === 'object' && item.tasks.meta && typeof item.tasks.meta === 'object'
+            ? item.tasks.meta
+            : null;
+          const attachmentUrls = asUrlList(
+            item?.attachmentUrls || item?.attachment_urls || meta?.attachmentUrls,
+            item?.attachmentUrl || item?.attachment_url || meta?.attachmentUrl
+          );
+          return {
+            ...item,
+            className: item?.className || item?.class_name || meta?.className || '',
+            startAt: item?.startAt || item?.start_at || meta?.startAt || null,
+            dueAt: item?.dueAt || item?.due_at || meta?.dueAt || null,
+            createdAt: item?.createdAt || item?.created_at || null,
+            note: item?.note || item?.homework_note || meta?.note || '',
+            attachmentUrls,
+            attachmentUrl: attachmentUrls[0] || null
+          };
+        }) : [];
         setHomeworkHistory(list);
         const now = new Date();
         setActiveAssignments(
           list.filter((a) => {
-            const due = parseSafeDate(a?.dueAt);
+            const due = parseSafeDate(a?.dueAt || a?.due_at);
             return !due || due > now;
           }).slice(0, 40)
         );
@@ -1609,7 +1750,11 @@ export default function TeacherDashboard({ session, onLogout }) {
                   <button
                     className="td-btn-outline"
                     onClick={() => {
-                      if (!showHistoryDropdown) loadHomeworkHistory();
+                      if (!showHistoryDropdown) {
+                        setHistoryFilterDate('');
+                        setHistoryCalMonth(() => { const n = new Date(); return { year: n.getFullYear(), month: n.getMonth() }; });
+                        loadHomeworkHistory();
+                      }
                       setShowHistoryDropdown((v) => !v);
                     }}
                   >
@@ -1626,72 +1771,160 @@ export default function TeacherDashboard({ session, onLogout }) {
                         <strong>Assigned Homework History</strong>
                         <button onClick={() => setShowHistoryDropdown(false)} style={{ background: 'none', border: 'none', fontSize: '18px', cursor: 'pointer' }}>✕</button>
                       </div>
-                      <div style={{ marginBottom: '10px' }}>
-                        <label style={{ fontSize: '13px', color: '#666' }}>Filter by date: </label>
-                        <input
-                          type="date"
-                          value={historyFilterDate}
-                          onChange={(e) => setHistoryFilterDate(e.target.value)}
-                          style={{ marginLeft: '6px', padding: '4px 8px', borderRadius: '6px', border: '1px solid #ccc', fontSize: '13px' }}
-                        />
-                        {historyFilterDate && (
-                          <button onClick={() => setHistoryFilterDate('')} style={{ marginLeft: '6px', background: 'none', border: 'none', color: '#999', cursor: 'pointer', fontSize: '13px' }}>Clear</button>
-                        )}
-                      </div>
+                      {(() => {
+                        const dateStatusMap = {};
+                        safeArray(homeworkHistory).forEach((hw) => {
+                          const d = getHomeworkHistoryDate(hw);
+                          if (!d) return;
+                          if (!dateStatusMap[d]) dateStatusMap[d] = { all: 0 };
+                          dateStatusMap[d].all += 1;
+                        });
+
+                        const { year, month } = historyCalMonth;
+                        const firstDay = new Date(year, month, 1);
+                        const startOffset = (firstDay.getDay() + 6) % 7;
+                        const daysInMonth = new Date(year, month + 1, 0).getDate();
+                        const monthLabel = firstDay.toLocaleString(undefined, { month: 'long', year: 'numeric' });
+                        const DAY_LABELS = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
+                        const cells = [];
+                        for (let i = 0; i < startOffset; i += 1) cells.push(null);
+                        for (let d = 1; d <= daysInMonth; d += 1) cells.push(d);
+
+                        return (
+                          <div style={{ marginBottom: '12px', userSelect: 'none' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+                              <button type="button" onClick={() => setHistoryCalMonth(({ year: y, month: m }) => { const d = new Date(y, m - 1, 1); return { year: d.getFullYear(), month: d.getMonth() }; })} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '16px', color: '#475569', padding: '2px 6px' }}>‹</button>
+                              <span style={{ fontSize: '13px', fontWeight: 700, color: '#334155' }}>{monthLabel}</span>
+                              <button type="button" onClick={() => setHistoryCalMonth(({ year: y, month: m }) => { const d = new Date(y, m + 1, 1); return { year: d.getFullYear(), month: d.getMonth() }; })} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '16px', color: '#475569', padding: '2px 6px' }}>›</button>
+                            </div>
+                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '2px', marginBottom: '2px' }}>
+                              {DAY_LABELS.map((l, i) => (
+                                <div key={i} style={{ textAlign: 'center', fontSize: '10px', fontWeight: 700, color: '#94a3b8', padding: '2px 0' }}>{l}</div>
+                              ))}
+                            </div>
+                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '2px' }}>
+                              {cells.map((day, idx) => {
+                                if (!day) return <div key={`e-${idx}`} />;
+                                const iso = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+                                const info = dateStatusMap[iso];
+                                const isSelected = historyFilterDate === iso;
+                                let bg = 'transparent';
+                                let color = '#374151';
+                                let fontWeight = 400;
+                                if (info) {
+                                  bg = isSelected ? '#15803d' : '#dcfce7';
+                                  color = isSelected ? '#fff' : '#15803d';
+                                  fontWeight = 700;
+                                } else if (isSelected) {
+                                  bg = '#3b82f6'; color = '#fff'; fontWeight = 700;
+                                }
+                                return (
+                                  <button
+                                    key={iso}
+                                    type="button"
+                                    title={info ? `${info.all} homework assigned` : 'No homework'}
+                                    onClick={() => setHistoryFilterDate(isSelected ? '' : iso)}
+                                    style={{ background: bg, color, fontWeight, border: isSelected ? `2px solid ${color === '#fff' ? 'rgba(0,0,0,0.2)' : color}` : '1px solid transparent', borderRadius: '6px', padding: '4px 2px', fontSize: '12px', cursor: 'pointer', textAlign: 'center', lineHeight: 1.3 }}
+                                  >
+                                    {day}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                            {historyFilterDate ? (
+                              <div style={{ marginTop: '8px', display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                                <span style={{ fontSize: '12px', color: '#475569' }}>Selected: <strong>{new Date(historyFilterDate + 'T00:00:00').toLocaleDateString()}</strong></span>
+                                <button type="button" className="eg-inline-btn" onClick={() => setHistoryFilterDate('')}>Clear</button>
+                              </div>
+                            ) : null}
+                          </div>
+                        );
+                      })()}
                       {homeworkHistory.length === 0 ? (
                         <p style={{ color: '#999', fontSize: '13px' }}>No homework assigned yet.</p>
-                      ) : (
-                        homeworkHistory
+                      ) : (() => {
+                        const visibleHistoryBase = homeworkHistory
                           .filter((h) => {
-                            const relevantDate = parseSafeDate(h.dueAt) || parseSafeDate(h.startAt) || parseSafeDate(h.createdAt);
-                            if (!relevantDate) return false;
                             if (!historyFilterDate) return true;
-                            return relevantDate.toISOString().slice(0, 10) === historyFilterDate;
+                            const relevantKey = getHomeworkHistoryDate(h);
+                            return relevantKey === historyFilterDate;
                           })
-                          .filter((h) => {
-                            // Default view: only last 30 days. Older history requires date selection.
-                            if (historyFilterDate) return true;
-                            const d = parseSafeDate(h.dueAt) || parseSafeDate(h.startAt) || parseSafeDate(h.createdAt);
-                            if (!d) return false;
-                            const threshold = new Date();
-                            threshold.setDate(threshold.getDate() - 30);
-                            return d >= threshold;
-                          })
-                          .map((h) => (
-                            <div key={h.id} style={{
+                          .sort((a, b) => {
+                            const da = getHomeworkHistoryLabel(a)
+                              || new Date(0);
+                            const db = getHomeworkHistoryLabel(b)
+                              || new Date(0);
+                            return db.getTime() - da.getTime();
+                          });
+
+                        const visibleHistory = historyFilterDate
+                          ? visibleHistoryBase.filter((h) => getHomeworkHistoryDate(h) === historyFilterDate)
+                          : visibleHistoryBase.slice(0, 2);
+
+                        if (!visibleHistory.length) {
+                          return (
+                            <p style={{ color: '#999', fontSize: '13px' }}>
+                              {historyFilterDate ? 'No homework found for the selected date.' : 'No homework assigned yet.'}
+                            </p>
+                          );
+                        }
+
+                        return visibleHistory.map((h, idx) => {
+                          const historyId = String(h?.id || h?.homeworkId || h?.homework_id || h?.title || 'history');
+                          const detailsExpanded = !!expandedHistoryDetailsById[historyId];
+                          const teacherImages = asUrlList(h?.attachmentUrls || h?.attachment_urls, h?.attachmentUrl || h?.attachment_url);
+                          const historyDateKey = getHomeworkHistoryDate(h) || 'no-date';
+                          return (
+                            <div key={`${historyId}-${historyDateKey}-${idx}`} style={{
                               padding: '10px 12px', marginBottom: '8px', background: '#f8f8ff',
                               borderRadius: '8px', borderLeft: '3px solid #5b47ff', fontSize: '13px'
                             }}>
-                              <div style={{ fontWeight: 'bold', marginBottom: '2px' }}>{h.subject}: {h.title}</div>
-                              {h.note && (
-                                <div style={{ color: '#555', marginBottom: '4px', whiteSpace: 'pre-wrap' }}>
-                                  {expandedHistoryNotes[h.id] ? h.note : firstTwoParagraphs(h.note)}
-                                  {String(h.note).trim() !== firstTwoParagraphs(h.note) ? (
-                                    <button
-                                      type="button"
-                                      onClick={() => setExpandedHistoryNotes((prev) => ({ ...prev, [h.id]: !prev[h.id] }))}
-                                      style={{
-                                        marginLeft: '8px',
-                                        background: 'none',
-                                        border: 'none',
-                                        color: '#4f46e5',
-                                        cursor: 'pointer',
-                                        fontSize: '12px'
-                                      }}
-                                    >
-                                      {expandedHistoryNotes[h.id] ? 'Show less' : 'Show full'}
-                                    </button>
+                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px', marginBottom: '4px', flexWrap: 'wrap' }}>
+                                <div style={{ fontWeight: 'bold' }}>{h.subject}: {h.title}</div>
+                                <button
+                                  type="button"
+                                  className="td-inline-btn"
+                                  onClick={() => setExpandedHistoryDetailsById((prev) => ({ ...prev, [historyId]: !prev[historyId] }))}
+                                >
+                                  {detailsExpanded ? 'Hide details' : 'Show details'}
+                                </button>
+                              </div>
+                              <div style={{ color: '#888', fontSize: '12px' }}>
+                                {parseSafeDate(h.startAt || h.start_at) && <span>Start: {parseSafeDate(h.startAt || h.start_at).toLocaleString()} · </span>}
+                                {parseSafeDate(h.dueAt || h.due_at) && <span>Due: {parseSafeDate(h.dueAt || h.due_at).toLocaleString()}</span>}
+                                {!(h.startAt || h.start_at) && !(h.dueAt || h.due_at) && <span>Assigned: {(h.createdAt || h.created_at) ? new Date(h.createdAt || h.created_at).toLocaleDateString() : '–'}</span>}
+                              </div>
+                              {detailsExpanded ? (
+                                <div style={{ marginTop: '8px', display: 'grid', gap: '8px' }}>
+                                  {h.note ? (
+                                    <div style={{ color: '#555', whiteSpace: 'pre-wrap', lineHeight: 1.5 }}>
+                                      <div style={{ fontSize: '11px', color: '#64748b', fontWeight: 700, marginBottom: '3px' }}>Instructions</div>
+                                      {h.note}
+                                    </div>
+                                  ) : null}
+                                  {teacherImages.length ? (
+                                    <div>
+                                      <div style={{ fontSize: '11px', color: '#64748b', fontWeight: 700, marginBottom: '4px' }}>Teacher attachments</div>
+                                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                                        {teacherImages.map((url) => (
+                                          <img
+                                            key={url}
+                                            src={url}
+                                            alt="Homework attachment"
+                                            onClick={() => setLightboxUrl(url)}
+                                            title="Click to expand"
+                                            style={{ width: 48, height: 48, objectFit: 'cover', borderRadius: 6, cursor: 'zoom-in', border: '1px solid #d1d5db' }}
+                                          />
+                                        ))}
+                                      </div>
+                                    </div>
                                   ) : null}
                                 </div>
-                              )}
-                              <div style={{ color: '#888', fontSize: '12px' }}>
-                                {parseSafeDate(h.startAt) && <span>Start: {parseSafeDate(h.startAt).toLocaleString()} · </span>}
-                                {parseSafeDate(h.dueAt) && <span>Due: {parseSafeDate(h.dueAt).toLocaleString()}</span>}
-                                {!h.startAt && !h.dueAt && <span>Assigned: {h.createdAt ? new Date(h.createdAt).toLocaleDateString() : '–'}</span>}
-                              </div>
+                              ) : null}
                             </div>
-                          ))
-                      )}
+                          );
+                        });
+                      })()}
                     </div>
                   )}
                 </div>
@@ -2510,6 +2743,66 @@ export default function TeacherDashboard({ session, onLogout }) {
                                           {latestAnswer}
                                         </div>
                                       ) : null}
+                                      {expandedGradeById[hw.id] ? (
+                                        <div style={{ marginTop: 8, padding: '8px', background: '#fef3c7', border: '1px solid #fcd34d', borderRadius: 6, display: 'grid', gap: 6 }}>
+                                          <div style={{ fontSize: '12px', fontWeight: 600, color: '#78350f' }}>Grade Assignment</div>
+                                          <div style={{ display: 'flex', gap: 6 }}>
+                                            <input
+                                              type="number"
+                                              min={0}
+                                              max={100}
+                                              value={gradeValue}
+                                              onChange={(e) => setGradeValue(e.target.value)}
+                                              placeholder="Score (0-100)"
+                                              style={{ flex: 1, padding: '6px 8px', fontSize: '11px', borderRadius: 4, border: '1px solid #d4af37' }}
+                                            />
+                                          </div>
+                                          <textarea
+                                            value={gradeFeedback}
+                                            onChange={(e) => setGradeFeedback(e.target.value)}
+                                            placeholder="Feedback for student"
+                                            style={{ padding: '6px 8px', fontSize: '11px', borderRadius: 4, border: '1px solid #d4af37', minHeight: 50, resize: 'vertical' }}
+                                          />
+                                          <div style={{ display: 'flex', gap: 4, justifyContent: 'flex-end' }}>
+                                            <button
+                                              type="button"
+                                              onClick={async () => {
+                                                if (!gradeValue && !gradeFeedback) {
+                                                  alert('Please enter a grade or feedback');
+                                                  return;
+                                                }
+                                                setBusy(`grade-${hw.id}`);
+                                                try {
+                                                  await gradeTeacherHomework(hw.id, {
+                                                    grade: gradeValue ? parseInt(gradeValue) : null,
+                                                    feedback: gradeFeedback,
+                                                  });
+                                                  setGradeValue('');
+                                                  setGradeFeedback('');
+                                                  setExpandedGradeById((prev) => ({ ...prev, [hw.id]: false }));
+                                                  await loadHomeworkPanel(selectedStudentId);
+                                                } catch (err) {
+                                                  console.error(err);
+                                                  alert(String(err?.message || 'Error grading homework'));
+                                                } finally {
+                                                  setBusy(null);
+                                                }
+                                              }}
+                                              disabled={busy === `grade-${hw.id}`}
+                                              style={{ padding: '4px 8px', fontSize: '11px', background: '#22c55e', color: '#fff', border: 'none', borderRadius: 4, cursor: 'pointer' }}
+                                            >
+                                              {busy === `grade-${hw.id}` ? 'Saving...' : 'Save'}
+                                            </button>
+                                            <button
+                                              type="button"
+                                              onClick={() => setExpandedGradeById((prev) => ({ ...prev, [hw.id]: false }))}
+                                              style={{ padding: '4px 8px', fontSize: '11px', background: '#ef4444', color: '#fff', border: 'none', borderRadius: 4, cursor: 'pointer' }}
+                                            >
+                                              Cancel
+                                            </button>
+                                          </div>
+                                        </div>
+                                      ) : null}
                                     </div>
                                   ) : null}
                                 </div>
@@ -2524,9 +2817,9 @@ export default function TeacherDashboard({ session, onLogout }) {
                               <button
                                 type="button"
                                 className="td-inline-btn"
-                                onClick={() => { setGradingHwId(hw.id); setGradeValue(''); setGradeFeedback(''); }}
+                                onClick={() => setExpandedGradeById((prev) => ({ ...prev, [hw.id]: !prev[hw.id] }))}
                               >
-                                Grade
+                                {expandedGradeById[hw.id] ? 'Hide Grade' : 'Grade'}
                               </button>
                             ) : (
                               <span className="td-hw-done">✓</span>
@@ -2549,36 +2842,6 @@ export default function TeacherDashboard({ session, onLogout }) {
                   </p>
                 )
               ) : (!panelLoading.homework ? <p className="td-empty">No homework assigned yet.</p> : null)}
-
-              {gradingHwId ? (
-                <form className="td-form td-grade-form" onSubmit={onGradeHomework}>
-                  <h4 style={{ margin: '10px 0 6px' }}>
-                    Grade: {selectedHomework.find((h) => h.id === gradingHwId)?.title || gradingHwId}
-                  </h4>
-                  <div style={{ display: 'flex', gap: 8 }}>
-                    <input
-                      type="number"
-                      min={0}
-                      max={100}
-                      value={gradeValue}
-                      onChange={(e) => setGradeValue(e.target.value)}
-                      placeholder="Score out of 100 (optional)"
-                      style={{ flex: 1 }}
-                    />
-                  </div>
-                  <input
-                    value={gradeFeedback}
-                    onChange={(e) => setGradeFeedback(e.target.value)}
-                    placeholder="Feedback for student (optional)"
-                  />
-                  <div className="td-invite-actions">
-                    <button type="submit" disabled={busy === `grade-${gradingHwId}`}>
-                      {busy === `grade-${gradingHwId}` ? 'Saving...' : 'Save Grade'}
-                    </button>
-                    <button type="button" className="td-inline-btn danger" onClick={() => setGradingHwId(null)}>Cancel</button>
-                  </div>
-                </form>
-              ) : null}
             </article>
 
             {/* ── Test Attempt History ── */}
@@ -2746,12 +3009,32 @@ export default function TeacherDashboard({ session, onLogout }) {
             cursor: 'zoom-out'
           }}
         >
+          {canPrevLightbox ? (
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); moveLightbox(-1); }}
+              style={{ position: 'absolute', left: 18, top: '50%', transform: 'translateY(-50%)', background: 'rgba(255,255,255,0.18)', border: 'none', color: '#fff', fontSize: 28, cursor: 'pointer', borderRadius: '50%', width: 44, height: 44, lineHeight: '44px', textAlign: 'center' }}
+              aria-label="Previous image"
+            >
+              ‹
+            </button>
+          ) : null}
           <img
             src={lightboxUrl}
             alt="Full view"
             onClick={(e) => e.stopPropagation()}
             style={{ maxWidth: '92vw', maxHeight: '92vh', objectFit: 'contain', borderRadius: '8px', boxShadow: '0 8px 40px rgba(0,0,0,0.6)' }}
           />
+          {canNextLightbox ? (
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); moveLightbox(1); }}
+              style={{ position: 'absolute', right: 18, top: '50%', transform: 'translateY(-50%)', background: 'rgba(255,255,255,0.18)', border: 'none', color: '#fff', fontSize: 28, cursor: 'pointer', borderRadius: '50%', width: 44, height: 44, lineHeight: '44px', textAlign: 'center' }}
+              aria-label="Next image"
+            >
+              ›
+            </button>
+          ) : null}
           <button
             onClick={() => setLightboxUrl('')}
             style={{ position: 'absolute', top: 18, right: 24, background: 'rgba(255,255,255,0.15)', border: 'none', color: '#fff', fontSize: 28, cursor: 'pointer', borderRadius: '50%', width: 44, height: 44, lineHeight: '44px', textAlign: 'center' }}

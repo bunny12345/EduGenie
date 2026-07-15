@@ -246,6 +246,39 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
     return String(sorted[0]?.id || sorted[0]?.homeworkId || sorted[0]?.homework_id || '');
   }, [homework]);
 
+  const lightboxImages = useMemo(() => {
+    if (!lightboxUrl) return [];
+
+    const groups = safeArray(homework).map((h) => {
+      const homeworkId = String(h?.id || h?.homeworkId || h?.homework_id || '');
+      const teacherImages = asUrlList(h?.attachmentUrls || h?.attachment_urls, h?.attachmentUrl || h?.attachment_url);
+      const submittedImages = asUrlList(h?.latestAttachmentUrls || h?.latest_attachment_urls, h?.latestAttachmentUrl || h?.latest_attachment_url);
+      const localUploadImages = safeArray(homeworkAttachmentUrls?.[homeworkId]).filter((u) => typeof u === 'string' && u.trim());
+      const previewImages = safeArray(homeworkPreviewById?.[homeworkId]).filter((u) => typeof u === 'string' && u.trim());
+      return Array.from(new Set([...teacherImages, ...submittedImages, ...localUploadImages, ...previewImages]));
+    }).filter((group) => group.length > 0);
+
+    const matchedGroup = groups.find((group) => group.includes(lightboxUrl));
+    if (matchedGroup) return matchedGroup;
+
+    return [lightboxUrl];
+  }, [lightboxUrl, homework, homeworkAttachmentUrls, homeworkPreviewById]);
+
+  const lightboxIndex = useMemo(() => {
+    if (!lightboxImages.length || !lightboxUrl) return -1;
+    return lightboxImages.indexOf(lightboxUrl);
+  }, [lightboxImages, lightboxUrl]);
+
+  const canPrevLightbox = lightboxIndex > 0;
+  const canNextLightbox = lightboxIndex >= 0 && lightboxIndex < lightboxImages.length - 1;
+
+  const moveLightbox = (direction) => {
+    if (!lightboxImages.length || !lightboxUrl || lightboxIndex < 0) return;
+    const nextIndex = lightboxIndex + direction;
+    if (nextIndex < 0 || nextIndex >= lightboxImages.length) return;
+    setLightboxUrl(lightboxImages[nextIndex]);
+  };
+
   const testsBySubject = useMemo(() => {
     const grouped = new Map();
     tests.forEach((t) => {
@@ -1791,12 +1824,32 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
             cursor: 'zoom-out'
           }}
         >
+          {canPrevLightbox ? (
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); moveLightbox(-1); }}
+              style={{ position: 'absolute', left: 18, top: '50%', transform: 'translateY(-50%)', background: 'rgba(255,255,255,0.18)', border: 'none', color: '#fff', fontSize: 28, cursor: 'pointer', borderRadius: '50%', width: 44, height: 44, lineHeight: '44px', textAlign: 'center' }}
+              aria-label="Previous image"
+            >
+              ‹
+            </button>
+          ) : null}
           <img
             src={lightboxUrl}
             alt="Full view"
             onClick={(e) => e.stopPropagation()}
             style={{ maxWidth: '92vw', maxHeight: '92vh', objectFit: 'contain', borderRadius: '8px', boxShadow: '0 8px 40px rgba(0,0,0,0.6)' }}
           />
+          {canNextLightbox ? (
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); moveLightbox(1); }}
+              style={{ position: 'absolute', right: 18, top: '50%', transform: 'translateY(-50%)', background: 'rgba(255,255,255,0.18)', border: 'none', color: '#fff', fontSize: 28, cursor: 'pointer', borderRadius: '50%', width: 44, height: 44, lineHeight: '44px', textAlign: 'center' }}
+              aria-label="Next image"
+            >
+              ›
+            </button>
+          ) : null}
           <button
             onClick={() => setLightboxUrl('')}
             style={{ position: 'absolute', top: 18, right: 24, background: 'rgba(255,255,255,0.15)', border: 'none', color: '#fff', fontSize: 28, cursor: 'pointer', borderRadius: '50%', width: 44, height: 44, lineHeight: '44px', textAlign: 'center' }}

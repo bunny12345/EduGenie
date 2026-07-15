@@ -799,41 +799,47 @@ export class TeacherController {
       ]);
 
       const byTeacher = Array.isArray((byTeacherRes as any)?.data) ? (byTeacherRes as any).data : [];
-      let rows = byTeacher;
+      const scopedStudents = Array.isArray((scopedStudentsRes as any)?.students)
+        ? (scopedStudentsRes as any).students
+        : [];
+      const studentIds = scopedStudents.map((s: any) => s?.id).filter(Boolean);
 
-      // Compatibility fallback: if created_by was not persisted, pull by teacher-scoped students.
-      if (!rows.length) {
-        const scopedStudents = Array.isArray((scopedStudentsRes as any)?.students)
-          ? (scopedStudentsRes as any).students
-          : [];
-        const studentIds = scopedStudents.map((s: any) => s?.id).filter(Boolean);
-        if (studentIds.length) {
-          const byStudentsRes = await this.db.client
-            .from('homework')
-            .select('*')
-            .in('student_id', studentIds)
-            .order('created_at', { ascending: false })
-            .limit(500);
-          const byStudents = Array.isArray((byStudentsRes as any)?.data) ? (byStudentsRes as any).data : [];
-          // Deduplicate class-wide assignment rows (one row per student) for cleaner history.
-          const seen = new Set<string>();
-          rows = byStudents.filter((h: any) => {
-            const meta = this.readHomeworkMeta(h);
-            const key = [
-              h?.title || '',
-              h?.subject || '',
-              meta?.note || '',
-              meta?.startAt || '',
-              meta?.dueAt || '',
-              meta?.className || '',
-              String(h?.created_by || '')
-            ].join('|');
-            if (seen.has(key)) return false;
-            seen.add(key);
-            return true;
-          });
-        }
+      // Include any persisted local-feed homework as part of the normal response.
+      // Some older assignments may exist only in local-feed when the DB path was not used.
+      const localTeacherRows = this.localFeed.listHomeworkByTeacher(teacherId) || [];
+
+      let byStudents: any[] = [];
+      if (studentIds.length) {
+        const byStudentsRes = await this.db.client
+          .from('homework')
+          .select('*')
+          .in('student_id', studentIds)
+          .order('created_at', { ascending: false })
+          .limit(500);
+        byStudents = Array.isArray((byStudentsRes as any)?.data) ? (byStudentsRes as any).data : [];
       }
+
+      // Union direct teacher rows, legacy student-scoped rows, and local-feed rows so
+      // older homework remains visible even if it only exists in one source.
+      const combinedRows = [...byTeacher, ...byStudents, ...localTeacherRows];
+      const seen = new Set<string>();
+      const rows = combinedRows.filter((h: any) => {
+        const meta = this.readHomeworkMeta(h);
+        const key = [
+          h?.id || '',
+          h?.title || '',
+          h?.subject || '',
+          meta?.note || '',
+          meta?.startAt || '',
+          meta?.dueAt || '',
+          meta?.className || '',
+          String(h?.student_id || ''),
+          String(h?.created_by || '')
+        ].join('|');
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
 
       const assignments = rows.map((h: any) => ({
         id: h.id,
