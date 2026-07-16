@@ -93,6 +93,7 @@ function toLocalDateKey(value) {
 }
 
 function assignmentStableKey(item) {
+  if (item?.assignmentGroupId) return String(item.assignmentGroupId);
   return [
     item?.subject || '',
     item?.title || '',
@@ -198,6 +199,10 @@ export default function TeacherDashboard({ session, onLogout }) {
   const [assignPreviewUrls, setAssignPreviewUrls] = useState([]); // local object URLs for instant preview
   const [assignDropActive, setAssignDropActive] = useState(false);
   const [lightboxUrl, setLightboxUrl] = useState(''); // image to show full-screen
+  const [assignDraggedImageIndex, setAssignDraggedImageIndex] = useState(null);
+  const [assignDragOverImageIndex, setAssignDragOverImageIndex] = useState(null);
+  const [editingDraggedImageIndex, setEditingDraggedImageIndex] = useState(null);
+  const [editingDragOverImageIndex, setEditingDragOverImageIndex] = useState(null);
   const [assignStartAt, setAssignStartAt] = useState('');
   const [assignDueAt, setAssignDueAt] = useState('');
   const [activeAssignments, setActiveAssignments] = useState([]); // confirmed assignments shown at bottom
@@ -217,6 +222,7 @@ export default function TeacherDashboard({ session, onLogout }) {
   const [hwAttemptsByHwId, setHwAttemptsByHwId] = useState({});
   const [expandedHwSubmissionById, setExpandedHwSubmissionById] = useState({});
   const [expandedGradeById, setExpandedGradeById] = useState({});
+  const [gradeSubmittedById, setGradeSubmittedById] = useState({});
   const [expandedHistoryDetailsById, setExpandedHistoryDetailsById] = useState({});
 
   const [teacherPrompt, setTeacherPrompt] = useState('Plan a 30-minute revision session for Algebra basics.');
@@ -391,7 +397,15 @@ export default function TeacherDashboard({ session, onLogout }) {
     setPanelErrorKey('homework', '');
     try {
       const res = await getTeacherStudentHomework(studentId);
-      const list = Array.isArray(res?.homework) ? res.homework : [];
+      const list = Array.isArray(res?.homework)
+        ? res.homework
+            .slice()
+            .sort((a, b) => {
+              const aTs = new Date(a?.startAt || a?.createdAt || a?.created_at || a?.dueAt || a?.due_at || 0).getTime() || 0;
+              const bTs = new Date(b?.startAt || b?.createdAt || b?.created_at || b?.dueAt || b?.due_at || 0).getTime() || 0;
+              return bTs - aTs;
+            })
+        : [];
       setSelectedHomework(list);
       const attemptsMap = {};
       await Promise.all(list.map(async (h) => {
@@ -900,6 +914,14 @@ export default function TeacherDashboard({ session, onLogout }) {
     });
   }, [selectedHomework, homeworkStatusFilter]);
 
+  const latestFiveSelectedHomework = useMemo(() => {
+    return safeArray(selectedHomework).slice(0, 5);
+  }, [selectedHomework]);
+
+  const latestTwoActiveAssignments = useMemo(() => {
+    return safeArray(activeAssignments).slice(0, 2);
+  }, [activeAssignments]);
+
   const lightboxImages = useMemo(() => {
     if (!lightboxUrl) return [];
 
@@ -1008,6 +1030,7 @@ export default function TeacherDashboard({ session, onLogout }) {
       if (created) {
         const newAssignment = {
           id: res.assignments?.[0]?.id || Date.now(),
+          assignmentGroupId: res.assignments?.[0]?.assignmentGroupId || `asg-local-${Date.now()}`,
           title: assignTitle,
           subject: assignSubject,
           note: assignNote,
@@ -1109,6 +1132,89 @@ export default function TeacherDashboard({ session, onLogout }) {
     setAssignPreviewUrls([]);
   }
 
+  function onAssignImageDragStart(e, index) {
+    setAssignDraggedImageIndex(index);
+    e.dataTransfer.effectAllowed = 'move';
+  }
+
+  function onAssignImageDragOver(e, index) {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    setAssignDragOverImageIndex(index);
+  }
+
+  function onAssignImageDragLeave() {
+    setAssignDragOverImageIndex(null);
+  }
+
+  function onAssignImageDrop(e, index) {
+    e.preventDefault();
+    e.stopPropagation();
+    setAssignDragOverImageIndex(null);
+
+    if (assignDraggedImageIndex === null || assignDraggedImageIndex === index) {
+      setAssignDraggedImageIndex(null);
+      return;
+    }
+
+    const allUrls = [...assignAttachmentUrls, ...assignPreviewUrls];
+    const newUrls = [...allUrls];
+    const draggedUrl = newUrls[assignDraggedImageIndex];
+    newUrls.splice(assignDraggedImageIndex, 1);
+    newUrls.splice(index, 0, draggedUrl);
+
+    const serverUrls = assignAttachmentUrls;
+    const newServerUrls = [];
+    const newPreviewUrls = [];
+
+    newUrls.forEach((url) => {
+      if (serverUrls.includes(url)) {
+        newServerUrls.push(url);
+      } else {
+        newPreviewUrls.push(url);
+      }
+    });
+
+    setAssignAttachmentUrls(newServerUrls);
+    setAssignPreviewUrls(newPreviewUrls);
+    setAssignDraggedImageIndex(null);
+  }
+
+  function onEditingImageDragStart(e, index) {
+    setEditingDraggedImageIndex(index);
+    e.dataTransfer.effectAllowed = 'move';
+  }
+
+  function onEditingImageDragOver(e, index) {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    setEditingDragOverImageIndex(index);
+  }
+
+  function onEditingImageDragLeave() {
+    setEditingDragOverImageIndex(null);
+  }
+
+  function onEditingImageDrop(e, index) {
+    e.preventDefault();
+    e.stopPropagation();
+    setEditingDragOverImageIndex(null);
+
+    if (editingDraggedImageIndex === null || editingDraggedImageIndex === index) {
+      setEditingDraggedImageIndex(null);
+      return;
+    }
+
+    const allUrls = [...editingHwAttachmentUrls];
+    const newUrls = [...allUrls];
+    const draggedUrl = newUrls[editingDraggedImageIndex];
+    newUrls.splice(editingDraggedImageIndex, 1);
+    newUrls.splice(index, 0, draggedUrl);
+
+    setEditingHwAttachmentUrls(newUrls);
+    setEditingDraggedImageIndex(null);
+  }
+
   function onStartEditHomework(homework) {
     if (!homework?.id) return;
     setEditingHwId(homework.id);
@@ -1179,15 +1285,17 @@ export default function TeacherDashboard({ session, onLogout }) {
         note: editingHwNote || null,
         startAt: editingHwStartAt || null,
         dueAt: editingHwDueAt || null,
+        assignmentGroupId: activeAssignments.find((a) => a.id === editingHwId)?.assignmentGroupId || null,
         attachmentUrls: editingHwAttachmentUrls,
         attachmentUrl: editingHwAttachmentUrls[0] || null,
       };
       // Update in activeAssignments if it's there
       setActiveAssignments((prev) =>
         prev.map((a) =>
-          a.id === editingHwId
+          (a.id === editingHwId || (updatedHomework.assignmentGroupId && a.assignmentGroupId === updatedHomework.assignmentGroupId))
             ? {
                 ...a,
+                assignmentGroupId: updatedHomework.assignmentGroupId || a.assignmentGroupId || null,
                 title: updatedHomework.title,
                 subject: updatedHomework.subject,
                 note: updatedHomework.note,
@@ -1202,9 +1310,10 @@ export default function TeacherDashboard({ session, onLogout }) {
       );
       setHomeworkHistory((prev) => {
         const next = prev.map((a) =>
-          a.id === editingHwId
+          (a.id === editingHwId || (updatedHomework.assignmentGroupId && a.assignmentGroupId === updatedHomework.assignmentGroupId))
             ? {
                 ...a,
+                assignmentGroupId: updatedHomework.assignmentGroupId || a.assignmentGroupId || null,
                 title: updatedHomework.title,
                 subject: updatedHomework.subject,
                 note: updatedHomework.note,
@@ -1290,6 +1399,7 @@ export default function TeacherDashboard({ session, onLogout }) {
         );
         return {
           ...item,
+          assignmentGroupId: item?.assignmentGroupId || meta?.assignmentGroupId || null,
           className: item?.className || item?.class_name || meta?.className || '',
           startAt: item?.startAt || item?.start_at || meta?.startAt || null,
           dueAt: item?.dueAt || item?.due_at || meta?.dueAt || null,
@@ -1983,19 +2093,37 @@ export default function TeacherDashboard({ session, onLogout }) {
                       <button type="button" className="td-inline-btn danger" onClick={onRemoveAllTeacherAttachments}>Remove all</button>
                     </div>
                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
-                      {[...assignAttachmentUrls, ...assignPreviewUrls].map((url) => (
-                        <div key={url} style={{ position: 'relative' }}>
+                      {[...assignAttachmentUrls, ...assignPreviewUrls].map((url, index) => (
+                        <div
+                          key={url}
+                          draggable
+                          onDragStart={(e) => onAssignImageDragStart(e, index)}
+                          onDragOver={(e) => onAssignImageDragOver(e, index)}
+                          onDragLeave={onAssignImageDragLeave}
+                          onDrop={(e) => onAssignImageDrop(e, index)}
+                          style={{
+                            position: 'relative',
+                            opacity: assignDraggedImageIndex === index ? 0.5 : 1,
+                            backgroundColor: assignDragOverImageIndex === index ? '#f0f0f0' : 'transparent',
+                            borderRadius: '6px',
+                            border: assignDragOverImageIndex === index ? '2px dashed #4f46e5' : 'none',
+                            padding: assignDragOverImageIndex === index ? '4px' : '0px',
+                            cursor: 'grab',
+                            transition: 'all 0.2s ease'
+                          }}
+                        >
                           <img
                             src={url}
                             alt="Homework preview"
                             onClick={() => setLightboxUrl(url)}
-                            style={{ width: 72, height: 72, objectFit: 'cover', borderRadius: '6px', cursor: 'zoom-in', display: 'block', border: '1px solid #ddd' }}
+                            title="Drag to reorder • Click to expand"
+                            style={{ width: 72, height: 72, objectFit: 'cover', borderRadius: '6px', display: 'block', border: '1px solid #ddd', userSelect: 'none' }}
                           />
                           <button
                             type="button"
                             onClick={() => onRemoveTeacherAttachment(url)}
                             title="Remove image"
-                            style={{ position: 'absolute', top: -6, right: -6, width: 18, height: 18, borderRadius: '50%', border: 'none', background: '#ef4444', color: '#fff', fontSize: '12px', lineHeight: '18px', cursor: 'pointer', padding: 0 }}
+                            style={{ position: 'absolute', top: -6, right: -6, width: 18, height: 18, borderRadius: '50%', border: 'none', background: '#ef4444', color: '#fff', fontSize: '12px', lineHeight: '18px', cursor: 'pointer', padding: 0, zIndex: 10 }}
                           >
                             x
                           </button>
@@ -2007,7 +2135,7 @@ export default function TeacherDashboard({ session, onLogout }) {
                         ⏳ Uploading to server...
                       </div>
                     )}
-                    <p style={{ fontSize: '11px', color: '#999', margin: '6px 0 0', textAlign: 'center' }}>Click image to expand • click x to remove</p>
+                    <p style={{ fontSize: '11px', color: '#999', margin: '6px 0 0', textAlign: 'center' }}>Drag images to reorder • Click image to expand • click x to remove</p>
                   </div>
                 ) : null}
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
@@ -2142,24 +2270,43 @@ export default function TeacherDashboard({ session, onLogout }) {
                       <div>
                         <label style={{ display: 'block', fontSize: '13px', color: '#666', marginBottom: '4px' }}>Images ({editingHwAttachmentUrls.length})</label>
                         <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
-                          {editingHwAttachmentUrls.map((url) => (
-                            <div key={url} style={{ position: 'relative' }}>
+                          {editingHwAttachmentUrls.map((url, index) => (
+                            <div
+                              key={url}
+                              draggable
+                              onDragStart={(e) => onEditingImageDragStart(e, index)}
+                              onDragOver={(e) => onEditingImageDragOver(e, index)}
+                              onDragLeave={onEditingImageDragLeave}
+                              onDrop={(e) => onEditingImageDrop(e, index)}
+                              style={{
+                                position: 'relative',
+                                opacity: editingDraggedImageIndex === index ? 0.5 : 1,
+                                backgroundColor: editingDragOverImageIndex === index ? '#f0f0f0' : 'transparent',
+                                borderRadius: '4px',
+                                border: editingDragOverImageIndex === index ? '2px dashed #4f46e5' : 'none',
+                                padding: editingDragOverImageIndex === index ? '4px' : '0px',
+                                cursor: 'grab',
+                                transition: 'all 0.2s ease'
+                              }}
+                            >
                               <img
                                 src={url}
                                 alt="Homework attachment"
                                 onClick={() => setLightboxUrl(url)}
-                                style={{ width: 60, height: 60, objectFit: 'cover', borderRadius: '4px', cursor: 'zoom-in', border: '1px solid #ddd' }}
+                                title="Drag to reorder • Click to expand"
+                                style={{ width: 60, height: 60, objectFit: 'cover', borderRadius: '4px', border: '1px solid #ddd', userSelect: 'none' }}
                               />
                               <button
                                 type="button"
                                 onClick={() => setEditingHwAttachmentUrls((prev) => prev.filter((u) => u !== url))}
-                                style={{ position: 'absolute', top: -6, right: -6, width: 16, height: 16, borderRadius: '50%', border: 'none', background: '#ef4444', color: '#fff', fontSize: '11px', cursor: 'pointer', padding: 0 }}
+                                style={{ position: 'absolute', top: -6, right: -6, width: 16, height: 16, borderRadius: '50%', border: 'none', background: '#ef4444', color: '#fff', fontSize: '11px', cursor: 'pointer', padding: 0, zIndex: 10 }}
                               >
                                 x
                               </button>
                             </div>
                           ))}
                         </div>
+                        <p style={{ fontSize: '10px', color: '#999', margin: '4px 0 0', marginTop: '4px' }}>Drag images to reorder</p>
                       </div>
                     )}
                     <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
@@ -2183,11 +2330,11 @@ export default function TeacherDashboard({ session, onLogout }) {
               )}
 
               {/* Active Acknowledgments — visible until due date passes */}
-              {activeAssignments.length > 0 && (
+              {latestTwoActiveAssignments.length > 0 && (
                 <div style={{ marginTop: '18px' }}>
                   <h4 style={{ fontSize: '14px', color: '#555', marginBottom: '8px' }}>✅ Recently Assigned (visible until due date)</h4>
                   <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
-                    {activeAssignments.map((a, idx) => (
+                    {latestTwoActiveAssignments.map((a, idx) => (
                       <li key={a.id} style={{
                         padding: '10px 14px', marginBottom: '8px', background: '#eef9f0',
                         borderRadius: '8px', borderLeft: '4px solid #2ecc71', fontSize: '13px'
@@ -2680,7 +2827,7 @@ export default function TeacherDashboard({ session, onLogout }) {
                       </tr>
                     </thead>
                     <tbody>
-                      {filteredSelectedHomework.map((hw) => (
+                      {(homeworkStatusFilter === 'all' ? latestFiveSelectedHomework : filteredSelectedHomework).map((hw) => (
                         <tr key={hw.id} style={String(hw?.dueStatus || '').toLowerCase() === 'overdue' && String(hw?.status || '').toLowerCase() !== 'submitted' ? { background: '#fff1f2' } : undefined}>
                           <td><strong>{hw.title}</strong></td>
                           <td>{hw.subject}</td>
@@ -2699,131 +2846,178 @@ export default function TeacherDashboard({ session, onLogout }) {
                           <td>{hw.attemptCount || 0}</td>
                           <td>
                             {(() => {
-                              const latestUrls = asUrlList(hw?.latestAttachmentUrls || hw?.latest_attachment_urls, hw?.latestAttachmentUrl || hw?.latest_attachment_url);
-                              const fallbackUrls = asUrlList((hwAttemptsByHwId[hw.id] || [])[0]?.attachmentUrls, (hwAttemptsByHwId[hw.id] || [])[0]?.attachmentUrl);
-                              const submittedUrls = latestUrls.length ? latestUrls : fallbackUrls;
-                              const latestAnswer = (() => {
-                                const fromAttempt = String((hwAttemptsByHwId[hw.id] || [])[0]?.answers?.text || '').trim();
-                                if (fromAttempt) return fromAttempt;
-                                const fromHw = String(hw?.latestAnswerText || hw?.latest_answer_text || '').trim();
-                                return fromHw;
-                              })();
-                              const hasSubmissionDetails = submittedUrls.length > 0 || !!latestAnswer;
-                              if (!hasSubmissionDetails) {
-                                return <span style={{ fontSize: '11px', color: '#9ca3af', marginRight: 8 }}>No student submission yet</span>;
-                              }
-                              const expanded = !!expandedHwSubmissionById[hw.id];
+                              const statusLower = String(hw?.status || '').toLowerCase();
+                              const dueStatusLower = String(hw?.dueStatus || '').toLowerCase();
+                              const canGrade = ['submitted', 'resubmitted', 'graded', 'pending', 'overdue'].includes(statusLower)
+                                || ['submitted', 'resubmitted', 'overdue', 'pending'].includes(dueStatusLower);
+                              const isGradeOpen = !!expandedGradeById[hw.id];
                               return (
-                                <div style={{ marginTop: 6, marginBottom: 6 }}>
-                                  <button
-                                    type="button"
-                                    className="td-inline-btn"
-                                    onClick={() => setExpandedHwSubmissionById((prev) => ({ ...prev, [hw.id]: !prev[hw.id] }))}
-                                  >
-                                    {expanded ? 'Hide student submission' : 'Show student submission'}
-                                  </button>
-                                  {expanded ? (
-                                    <div style={{ marginTop: 6, display: 'grid', gap: 8, maxWidth: 260 }}>
-                                      {submittedUrls.length ? (
-                                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                                          {submittedUrls.map((url) => (
-                                            <img
-                                              key={url}
-                                              src={url}
-                                              alt="Student submission"
-                                              onClick={() => setLightboxUrl(url)}
-                                              title="Student submission — click to expand"
-                                              style={{ width: 32, height: 32, objectFit: 'cover', borderRadius: 4, cursor: 'zoom-in', border: '2px solid #22c55e' }}
-                                            />
-                                          ))}
-                                        </div>
-                                      ) : null}
-                                      {latestAnswer ? (
-                                        <div style={{ fontSize: '11px', color: '#334155', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 6, padding: '6px 8px', whiteSpace: 'pre-wrap' }}>
-                                          {latestAnswer}
-                                        </div>
-                                      ) : null}
-                                      {expandedGradeById[hw.id] ? (
-                                        <div style={{ marginTop: 8, padding: '8px', background: '#fef3c7', border: '1px solid #fcd34d', borderRadius: 6, display: 'grid', gap: 6 }}>
-                                          <div style={{ fontSize: '12px', fontWeight: 600, color: '#78350f' }}>Grade Assignment</div>
-                                          <div style={{ display: 'flex', gap: 6 }}>
-                                            <input
-                                              type="number"
-                                              min={0}
-                                              max={100}
-                                              value={gradeValue}
-                                              onChange={(e) => setGradeValue(e.target.value)}
-                                              placeholder="Score (0-100)"
-                                              style={{ flex: 1, padding: '6px 8px', fontSize: '11px', borderRadius: 4, border: '1px solid #d4af37' }}
-                                            />
+                                <>
+                                  {(() => {
+                                    const latestUrls = asUrlList(hw?.latestAttachmentUrls || hw?.latest_attachment_urls, hw?.latestAttachmentUrl || hw?.latest_attachment_url);
+                                    const fallbackUrls = asUrlList((hwAttemptsByHwId[hw.id] || [])[0]?.attachmentUrls, (hwAttemptsByHwId[hw.id] || [])[0]?.attachmentUrl);
+                                    const submittedUrls = latestUrls.length ? latestUrls : fallbackUrls;
+                                    const latestAnswer = (() => {
+                                      const fromAttempt = String((hwAttemptsByHwId[hw.id] || [])[0]?.answers?.text || '').trim();
+                                      if (fromAttempt) return fromAttempt;
+                                      const fromHw = String(hw?.latestAnswerText || hw?.latest_answer_text || '').trim();
+                                      return fromHw;
+                                    })();
+                                    const hasSubmissionDetails = submittedUrls.length > 0 || !!latestAnswer;
+                                    if (!hasSubmissionDetails) {
+                                      return <span style={{ fontSize: '11px', color: '#9ca3af', marginRight: 8 }}>No student submission yet</span>;
+                                    }
+                                    const expanded = !!expandedHwSubmissionById[hw.id];
+                                    return (
+                                      <div style={{ marginTop: 6, marginBottom: 6 }}>
+                                        <button
+                                          type="button"
+                                          className="td-inline-btn"
+                                          onClick={() => setExpandedHwSubmissionById((prev) => ({ ...prev, [hw.id]: !prev[hw.id] }))}
+                                        >
+                                          {expanded ? 'Hide student submission' : 'Show student submission'}
+                                        </button>
+                                        {expanded ? (
+                                          <div style={{ marginTop: 6, display: 'grid', gap: 8, maxWidth: 260 }}>
+                                            {submittedUrls.length ? (
+                                              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                                                {submittedUrls.map((url) => (
+                                                  <img
+                                                    key={url}
+                                                    src={url}
+                                                    alt="Student submission"
+                                                    onClick={() => setLightboxUrl(url)}
+                                                    title="Student submission — click to expand"
+                                                    style={{ width: 32, height: 32, objectFit: 'cover', borderRadius: 4, cursor: 'zoom-in', border: '2px solid #22c55e' }}
+                                                  />
+                                                ))}
+                                              </div>
+                                            ) : null}
+                                            {latestAnswer ? (
+                                              <div style={{ fontSize: '11px', color: '#334155', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 6, padding: '6px 8px', whiteSpace: 'pre-wrap' }}>
+                                                {latestAnswer}
+                                              </div>
+                                            ) : null}
                                           </div>
-                                          <textarea
-                                            value={gradeFeedback}
-                                            onChange={(e) => setGradeFeedback(e.target.value)}
-                                            placeholder="Feedback for student"
-                                            style={{ padding: '6px 8px', fontSize: '11px', borderRadius: 4, border: '1px solid #d4af37', minHeight: 50, resize: 'vertical' }}
-                                          />
-                                          <div style={{ display: 'flex', gap: 4, justifyContent: 'flex-end' }}>
-                                            <button
-                                              type="button"
-                                              onClick={async () => {
-                                                if (!gradeValue && !gradeFeedback) {
-                                                  alert('Please enter a grade or feedback');
-                                                  return;
-                                                }
-                                                setBusy(`grade-${hw.id}`);
-                                                try {
-                                                  await gradeTeacherHomework(hw.id, {
-                                                    grade: gradeValue ? parseInt(gradeValue) : null,
-                                                    feedback: gradeFeedback,
-                                                  });
-                                                  setGradeValue('');
-                                                  setGradeFeedback('');
-                                                  setExpandedGradeById((prev) => ({ ...prev, [hw.id]: false }));
-                                                  await loadHomeworkPanel(selectedStudentId);
-                                                } catch (err) {
-                                                  console.error(err);
-                                                  alert(String(err?.message || 'Error grading homework'));
-                                                } finally {
-                                                  setBusy(null);
-                                                }
-                                              }}
-                                              disabled={busy === `grade-${hw.id}`}
-                                              style={{ padding: '4px 8px', fontSize: '11px', background: '#22c55e', color: '#fff', border: 'none', borderRadius: 4, cursor: 'pointer' }}
-                                            >
-                                              {busy === `grade-${hw.id}` ? 'Saving...' : 'Save'}
-                                            </button>
-                                            <button
-                                              type="button"
-                                              onClick={() => setExpandedGradeById((prev) => ({ ...prev, [hw.id]: false }))}
-                                              style={{ padding: '4px 8px', fontSize: '11px', background: '#ef4444', color: '#fff', border: 'none', borderRadius: 4, cursor: 'pointer' }}
-                                            >
-                                              Cancel
-                                            </button>
-                                          </div>
-                                        </div>
-                                      ) : null}
+                                        ) : null}
+                                      </div>
+                                    );
+                                  })()}
+                                  {isGradeOpen ? (
+                                    <div style={{ marginTop: 8, padding: '8px', background: '#fef3c7', border: '1px solid #fcd34d', borderRadius: 6, display: 'grid', gap: 6 }}>
+                                      <div style={{ fontSize: '12px', fontWeight: 600, color: '#78350f' }}>Grade Assignment</div>
+                                      <div style={{ display: 'flex', gap: 6 }}>
+                                        <input
+                                          type="number"
+                                          min={0}
+                                          max={100}
+                                          value={gradeValue}
+                                          onChange={(e) => setGradeValue(e.target.value)}
+                                          placeholder="Score (0-100)"
+                                          style={{ flex: 1, padding: '6px 8px', fontSize: '11px', borderRadius: 4, border: '1px solid #d4af37' }}
+                                        />
+                                      </div>
+                                      <textarea
+                                        value={gradeFeedback}
+                                        onChange={(e) => setGradeFeedback(e.target.value)}
+                                        placeholder="Feedback for student"
+                                        style={{ padding: '6px 8px', fontSize: '11px', borderRadius: 4, border: '1px solid #d4af37', minHeight: 50, resize: 'vertical' }}
+                                      />
+                                      <div style={{ display: 'flex', gap: 4, justifyContent: 'flex-end' }}>
+                                        <button
+                                          type="button"
+                                          onClick={async () => {
+                                            if (!gradeValue && !gradeFeedback) {
+                                              alert('Please enter a grade or feedback');
+                                              return;
+                                            }
+                                            setBusy(`grade-${hw.id}`);
+                                            try {
+                                              await gradeTeacherHomework(hw.id, {
+                                                status: 'graded',
+                                                grade: gradeValue ? parseInt(gradeValue, 10) : null,
+                                                feedback: gradeFeedback,
+                                              });
+                                              setGradeSubmittedById((prev) => ({ ...prev, [hw.id]: true }));
+                                              setGradeValue('');
+                                              setGradeFeedback('');
+                                              setExpandedGradeById((prev) => ({ ...prev, [hw.id]: false }));
+                                              await loadHomeworkPanel(selectedStudentId);
+                                            } catch (err) {
+                                              console.error(err);
+                                              alert(String(err?.message || 'Error grading homework'));
+                                            } finally {
+                                              setBusy('');
+                                            }
+                                          }}
+                                          disabled={busy === `grade-${hw.id}`}
+                                          style={{ padding: '4px 8px', fontSize: '11px', background: '#22c55e', color: '#fff', border: 'none', borderRadius: 4, cursor: 'pointer' }}
+                                        >
+                                          {busy === `grade-${hw.id}` ? 'Submitting...' : 'Submit'}
+                                        </button>
+                                        <button
+                                          type="button"
+                                          onClick={() => setExpandedGradeById((prev) => ({ ...prev, [hw.id]: false }))}
+                                          style={{ padding: '4px 8px', fontSize: '11px', background: '#ef4444', color: '#fff', border: 'none', borderRadius: 4, cursor: 'pointer' }}
+                                        >
+                                          Cancel
+                                        </button>
+                                      </div>
                                     </div>
                                   ) : null}
-                                </div>
+                                  {(() => {
+                                    const isLatestHomework = selectedHomework.length > 0 && selectedHomework[0]?.id === hw.id;
+                                    const hasGrade = hw.grade !== null && hw.grade !== undefined;
+                                    const hasFeedback = !!hw.feedback;
+                                    const isSubmitted = hasGrade || hasFeedback;
+                                    return (
+                                      <>
+                                        {isSubmitted ? (
+                                          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                            <span style={{ fontSize: '11px', color: '#059669', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 4 }}>
+                                              ✓ Submitted
+                                            </span>
+                                            {isLatestHomework && (
+                                              <button
+                                                type="button"
+                                                className="td-inline-btn"
+                                                onClick={() => {
+                                                  const opening = !isGradeOpen;
+                                                  setExpandedGradeById((prev) => ({ ...prev, [hw.id]: opening }));
+                                                  if (opening) {
+                                                    setGradeValue(hw.grade !== null && hw.grade !== undefined ? String(hw.grade) : '');
+                                                    setGradeFeedback(String(hw.feedback || ''));
+                                                  }
+                                                }}
+                                              >
+                                                {isGradeOpen ? 'Cancel Edit' : 'Edit'}
+                                              </button>
+                                            )}
+                                          </div>
+                                        ) : canGrade ? (
+                                          <button
+                                            type="button"
+                                            className="td-inline-btn"
+                                            onClick={() => {
+                                              const opening = !isGradeOpen;
+                                              setExpandedGradeById((prev) => ({ ...prev, [hw.id]: opening }));
+                                              if (opening) {
+                                                setGradeValue(hw.grade !== null && hw.grade !== undefined ? String(hw.grade) : '');
+                                                setGradeFeedback(String(hw.feedback || ''));
+                                              }
+                                            }}
+                                          >
+                                            {isGradeOpen ? 'Hide Grade' : 'Grade'}
+                                          </button>
+                                        ) : (
+                                          <span className="td-hw-done">✓</span>
+                                        )}
+                                      </>
+                                    );
+                                  })()}
+                                </>
                               );
                             })()}
-                            {hw.feedback ? (
-                              <span style={{ fontSize: '11px', color: '#4b5563', marginRight: 8 }} title={hw.feedback}>
-                                Comment saved
-                              </span>
-                            ) : null}
-                            {hw.status === 'submitted' || hw.status === 'pending' ? (
-                              <button
-                                type="button"
-                                className="td-inline-btn"
-                                onClick={() => setExpandedGradeById((prev) => ({ ...prev, [hw.id]: !prev[hw.id] }))}
-                              >
-                                {expandedGradeById[hw.id] ? 'Hide Grade' : 'Grade'}
-                              </button>
-                            ) : (
-                              <span className="td-hw-done">✓</span>
-                            )}
                           </td>
                         </tr>
                       ))}

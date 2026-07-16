@@ -94,16 +94,15 @@ function getHomeworkState(h) {
   if (submitted) {
     const submittedAt = parseDate(h?.lastAttemptAt || h?.submittedAt || h?.updatedAt || h?.updated_at || h?.createdAt || h?.created_at);
     const daysSinceSubmitted = submittedAt ? Math.floor((Date.now() - submittedAt.getTime()) / (24 * 60 * 60 * 1000)) : 0;
-    const archived = daysSinceSubmitted >= 2;
     return {
       submitted: true,
       resubmitted,
       overdue: false,
       expired: false,
-      hide: archived,
-      archived,
-      history: archived,
-      label: archived ? `Archived after ${daysSinceSubmitted}d` : (resubmitted ? 'Resubmitted' : 'Submitted'),
+      hide: false,
+      archived: daysSinceSubmitted >= 2,
+      history: daysSinceSubmitted >= 2,
+      label: resubmitted ? 'Resubmitted' : 'Submitted',
       color: resubmitted ? '#2563eb' : '#16a34a',
       bg: resubmitted ? '#dbeafe' : '#dcfce7'
     };
@@ -195,6 +194,9 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
   const [expandedSubmissionDetailsById, setExpandedSubmissionDetailsById] = useState({});
   const [homeworkStatusFilter, setHomeworkStatusFilter] = useState('all');
   const [lightboxUrl, setLightboxUrl] = useState(''); // full-screen image viewer
+  const [imageReorderingHomeworkId, setImageReorderingHomeworkId] = useState(null);
+  const [draggedImageIndex, setDraggedImageIndex] = useState(null);
+  const [dragOverImageIndex, setDragOverImageIndex] = useState(null);
   const [showHomeworkHistory, setShowHomeworkHistory] = useState(false);
   const [historyFromDate, setHistoryFromDate] = useState('');
   const [historyCalMonth, setHistoryCalMonth] = useState(() => { const n = new Date(); return { year: n.getFullYear(), month: n.getMonth() }; });
@@ -302,6 +304,18 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
     setHomeworkStatusFilter('all');
   }, [activeView]);
 
+  useEffect(() => {
+    if (!homework.length) {
+      setExpandedTeacherInfoById({});
+      return;
+    }
+    if (!latestAssignedHomeworkId) return;
+    setExpandedTeacherInfoById((prev) => {
+      if (Object.keys(prev || {}).length === 1 && prev[latestAssignedHomeworkId]) return prev;
+      return { [latestAssignedHomeworkId]: true };
+    });
+  }, [homework, latestAssignedHomeworkId]);
+
   // Get unique subject list
   const subjects = useMemo(() => {
     const seen = new Set(DEFAULT_SUBJECTS);
@@ -341,7 +355,13 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
     setPanelErrorKey('homework', '');
     try {
       const res = await getHomework(studentId);
-      const list = safeArray(res?.homework);
+      const list = safeArray(res?.homework)
+        .slice()
+        .sort((a, b) => {
+          const aTs = parseDate(a?.startAt || a?.createdAt || a?.created_at || a?.dueAt || a?.due_at)?.getTime() || 0;
+          const bTs = parseDate(b?.startAt || b?.createdAt || b?.created_at || b?.dueAt || b?.due_at)?.getTime() || 0;
+          return bTs - aTs;
+        });
       setHomework(list);
       setHomeworkAttachmentUrls((prev) => {
         const next = { ...prev };
@@ -723,6 +743,66 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
     setHomeworkDropActiveById((prev) => ({ ...prev, [hwId]: false }));
     const files = Array.from(event.dataTransfer?.files || []).filter((file) => String(file?.type || '').startsWith('image/'));
     if (files.length) onStudentHomeworkFileSelected(hwId, files);
+  }
+
+  function onImageDragStart(e, hwId, index) {
+    setImageReorderingHomeworkId(hwId);
+    setDraggedImageIndex(index);
+    e.dataTransfer.effectAllowed = 'move';
+  }
+
+  function onImageDragOver(e, hwId, index) {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    if (hwId === imageReorderingHomeworkId) {
+      setDragOverImageIndex(index);
+    }
+  }
+
+  function onImageDragLeave() {
+    setDragOverImageIndex(null);
+  }
+
+  function onImageDrop(e, hwId, index) {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragOverImageIndex(null);
+
+    if (hwId !== imageReorderingHomeworkId || draggedImageIndex === null || draggedImageIndex === index) {
+      setImageReorderingHomeworkId(null);
+      setDraggedImageIndex(null);
+      return;
+    }
+
+    const allUrls = [
+      ...(Array.isArray(homeworkAttachmentUrls[hwId]) ? homeworkAttachmentUrls[hwId] : []),
+      ...(Array.isArray(homeworkPreviewById[hwId]) ? homeworkPreviewById[hwId] : [])
+    ];
+
+    const newUrls = [...allUrls];
+    const draggedUrl = newUrls[draggedImageIndex];
+    newUrls.splice(draggedImageIndex, 1);
+    newUrls.splice(index, 0, draggedUrl);
+
+    // Split back into attachment and preview URLs
+    const attachmentUrls = Array.isArray(homeworkAttachmentUrls[hwId]) ? homeworkAttachmentUrls[hwId] : [];
+    const previewUrls = Array.isArray(homeworkPreviewById[hwId]) ? homeworkPreviewById[hwId] : [];
+    
+    const newAttachmentUrls = [];
+    const newPreviewUrls = [];
+    
+    newUrls.forEach((url) => {
+      if (attachmentUrls.includes(url)) {
+        newAttachmentUrls.push(url);
+      } else {
+        newPreviewUrls.push(url);
+      }
+    });
+
+    setHomeworkAttachmentUrls((prev) => ({ ...prev, [hwId]: newAttachmentUrls }));
+    setHomeworkPreviewById((prev) => ({ ...prev, [hwId]: newPreviewUrls }));
+    setImageReorderingHomeworkId(null);
+    setDraggedImageIndex(null);
   }
 
   async function onOpenResource(id) {
@@ -1254,6 +1334,7 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
               {(() => {
                 const allHomework = homeworkBySubject.get(activeView) || [];
                 const visibleHomework = allHomework.filter((h) => !getHomeworkState(h).hide);
+                const latestFiveHomework = visibleHomework.slice(0, 5);
                 const filteredHistory = historyFromDate
                   ? allHomework.filter((h) => {
                       const startDate = parseDate(h?.startAt || h?.createdAt || h?.created_at);
@@ -1271,6 +1352,7 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
                   if (homeworkStatusFilter === 'overdue') return state.overdue && !state.submitted;
                   return true;
                 });
+                const homeworkCardsToShow = homeworkStatusFilter === 'all' ? latestFiveHomework : filteredVisibleHomework;
                 return (
                   <>
                     <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', marginBottom: '12px' }}>
@@ -1466,7 +1548,7 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
                           </div>
                         </div>
                       ) : null}
-                      {safeArray(filteredVisibleHomework).map((h) => {
+                      {safeArray(homeworkCardsToShow).map((h) => {
                         const state = getHomeworkState(h);
                         const homeworkId = String(h?.id || h?.homeworkId || h?.homework_id || '');
                         const isLatestAssigned = homeworkId && homeworkId === latestAssignedHomeworkId;
@@ -1616,41 +1698,61 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
                               </div>
                               {/* Instant thumbnail preview — shows immediately on file select */}
                               {([...(Array.isArray(homeworkAttachmentUrls[homeworkId]) ? homeworkAttachmentUrls[homeworkId] : []), ...(Array.isArray(homeworkPreviewById[homeworkId]) ? homeworkPreviewById[homeworkId] : [])]).length ? (
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', flexDirection: 'column' }}>
                                   <div style={{ width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                                     <span style={{ fontSize: '12px', color: '#666' }}>
                                       {[...(Array.isArray(homeworkAttachmentUrls[homeworkId]) ? homeworkAttachmentUrls[homeworkId] : []), ...(Array.isArray(homeworkPreviewById[homeworkId]) ? homeworkPreviewById[homeworkId] : [])].length} image(s) selected
                                     </span>
                                     <button type="button" className="eg-inline-btn" onClick={() => onRemoveAllStudentAttachments(homeworkId)}>Remove all</button>
                                   </div>
-                                  {[...(Array.isArray(homeworkAttachmentUrls[homeworkId]) ? homeworkAttachmentUrls[homeworkId] : []), ...(Array.isArray(homeworkPreviewById[homeworkId]) ? homeworkPreviewById[homeworkId] : [])].map((url) => (
-                                    <div key={url} style={{ position: 'relative', display: 'inline-block' }}>
-                                      <img
-                                        src={url}
-                                        alt="Your answer"
-                                        onClick={() => setLightboxUrl(url)}
-                                        title="Click to view full size"
-                                        style={{ width: 64, height: 64, objectFit: 'cover', borderRadius: 6, cursor: 'zoom-in', border: '2px solid #7c3aed' }}
-                                      />
-                                      <button
-                                        type="button"
-                                        onClick={() => onRemoveStudentAttachment(homeworkId, url)}
-                                        title="Remove image"
-                                        style={{ position: 'absolute', top: -6, right: -6, width: 18, height: 18, borderRadius: '50%', border: 'none', background: '#ef4444', color: '#fff', fontSize: '12px', lineHeight: '18px', cursor: 'pointer', padding: 0 }}
+                                  <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', width: '100%' }}>
+                                    {[...(Array.isArray(homeworkAttachmentUrls[homeworkId]) ? homeworkAttachmentUrls[homeworkId] : []), ...(Array.isArray(homeworkPreviewById[homeworkId]) ? homeworkPreviewById[homeworkId] : [])].map((url, index) => (
+                                      <div
+                                        key={url}
+                                        draggable
+                                        onDragStart={(e) => onImageDragStart(e, homeworkId, index)}
+                                        onDragOver={(e) => onImageDragOver(e, homeworkId, index)}
+                                        onDragLeave={onImageDragLeave}
+                                        onDrop={(e) => onImageDrop(e, homeworkId, index)}
+                                        style={{
+                                          position: 'relative',
+                                          display: 'inline-block',
+                                          opacity: draggedImageIndex === index && imageReorderingHomeworkId === homeworkId ? 0.5 : 1,
+                                          backgroundColor: dragOverImageIndex === index && imageReorderingHomeworkId === homeworkId ? '#f0f0f0' : 'transparent',
+                                          borderRadius: '6px',
+                                          border: dragOverImageIndex === index && imageReorderingHomeworkId === homeworkId ? '2px dashed #7c3aed' : 'none',
+                                          padding: dragOverImageIndex === index && imageReorderingHomeworkId === homeworkId ? '4px' : '0px',
+                                          cursor: 'grab',
+                                          transition: 'all 0.2s ease'
+                                        }}
                                       >
-                                        x
-                                      </button>
-                                      {homeworkUploadingById[homeworkId] && (
-                                        <div style={{ position: 'absolute', inset: 0, background: 'rgba(255,255,255,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 6, fontSize: 10 }}>
-                                          ⏳
-                                        </div>
-                                      )}
-                                    </div>
-                                  ))}
-                                  <div style={{ fontSize: '11px', color: '#666' }}>
+                                        <img
+                                          src={url}
+                                          alt="Your answer"
+                                          onClick={() => setLightboxUrl(url)}
+                                          title="Drag to reorder • Click to view full size"
+                                          style={{ width: 64, height: 64, objectFit: 'cover', borderRadius: 6, border: '2px solid #7c3aed', userSelect: 'none' }}
+                                        />
+                                        <button
+                                          type="button"
+                                          onClick={() => onRemoveStudentAttachment(homeworkId, url)}
+                                          title="Remove image"
+                                          style={{ position: 'absolute', top: -6, right: -6, width: 18, height: 18, borderRadius: '50%', border: 'none', background: '#ef4444', color: '#fff', fontSize: '12px', lineHeight: '18px', cursor: 'pointer', padding: 0, zIndex: 10 }}
+                                        >
+                                          x
+                                        </button>
+                                        {homeworkUploadingById[homeworkId] && (
+                                          <div style={{ position: 'absolute', inset: 0, background: 'rgba(255,255,255,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 6, fontSize: 10 }}>
+                                            ⏳
+                                          </div>
+                                        )}
+                                      </div>
+                                    ))}
+                                  </div>
+                                  <div style={{ fontSize: '11px', color: '#666', marginBottom: '8px' }}>
                                     {homeworkUploadingById[homeworkId] ? 'Uploading...' : '✅ Ready to submit'}
                                     <br />
-                                    <span style={{ color: '#aaa' }}>Tap image to expand • click x to remove</span>
+                                    <span style={{ color: '#aaa' }}>Drag images to reorder • Tap image to expand • click x to remove</span>
                                   </div>
                                 </div>
                               ) : null}
@@ -1749,7 +1851,7 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
                   </div>
                         );
                       })}
-                      {!filteredVisibleHomework.length ? (
+                      {!homeworkCardsToShow.length ? (
                         <p style={{ color: '#64748b', fontSize: '12px', margin: 0 }}>
                           {homeworkStatusFilter === 'submitted'
                             ? 'No submitted homework in this panel.'

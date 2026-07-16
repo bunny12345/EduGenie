@@ -4,6 +4,10 @@ import { AuthGuard } from '../auth/auth.guard';
 import { StudentAuthService } from '../auth/student-auth.service';
 import { LocalFeedService } from '../shared/local-feed.service';
 
+function makeAssignmentGroupId() {
+  return `asg-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
 function isTeacher(role: any) {
   const raw = String(role || '').toLowerCase();
   return raw === 'teacher' || raw.includes('teacher') || raw === 'admin';
@@ -75,6 +79,7 @@ export class TeacherController {
       startAt: row?.start_at ?? meta?.startAt ?? null,
       dueAt: row?.due_at ?? meta?.dueAt ?? null,
       className: row?.class_name ?? meta?.className ?? null,
+      assignmentGroupId: meta?.assignmentGroupId ?? null,
       attachmentUrls,
       attachmentUrl: attachmentUrls[0] ?? null,
     };
@@ -767,15 +772,32 @@ export class TeacherController {
 
     const validStatuses = ['pending', 'submitted', 'graded', 'completed'];
     const safeStatus = validStatuses.includes(status) ? status : 'graded';
+    const nowIso = new Date().toISOString();
 
     try {
-      const update: any = { status: safeStatus, updated_at: new Date().toISOString() };
+      const update: any = { status: safeStatus, updated_at: nowIso };
       if (grade !== null) update.grade = grade;
       if (feedback) update.feedback = feedback;
 
       await this.db.client.from('homework').update(update).eq('id', hwId);
+      // Keep local feed in sync so student portal can reflect grade/feedback immediately.
+      this.localFeed.updateHomework(hwId, {
+        status: safeStatus,
+        due_status: safeStatus === 'graded' ? 'submitted' : safeStatus,
+        grade: grade !== null ? grade : undefined,
+        feedback: feedback || undefined,
+        updated_at: nowIso
+      });
       return { success: true, homeworkId: hwId, status: safeStatus, grade, feedback };
     } catch (e) {
+      // DB can be temporarily unavailable in local/dev; still persist to local feed.
+      this.localFeed.updateHomework(hwId, {
+        status: safeStatus,
+        due_status: safeStatus === 'graded' ? 'submitted' : safeStatus,
+        grade: grade !== null ? grade : undefined,
+        feedback: feedback || undefined,
+        updated_at: nowIso
+      });
       return { success: true, homeworkId: hwId, status: safeStatus, grade, feedback };
     }
   }
@@ -825,8 +847,7 @@ export class TeacherController {
       const seen = new Set<string>();
       const rows = combinedRows.filter((h: any) => {
         const meta = this.readHomeworkMeta(h);
-        const key = [
-          h?.id || '',
+        const key = String(h?.id || '').trim() || [
           h?.title || '',
           h?.subject || '',
           meta?.note || '',
@@ -849,6 +870,7 @@ export class TeacherController {
         startAt: this.readHomeworkMeta(h).startAt,
         dueAt: this.readHomeworkMeta(h).dueAt,
         className: this.readHomeworkMeta(h).className,
+        assignmentGroupId: this.readHomeworkMeta(h).assignmentGroupId,
         attachmentUrls: this.readHomeworkMeta(h).attachmentUrls,
         attachmentUrl: this.readHomeworkMeta(h).attachmentUrl,
         createdAt: h.created_at || null,
@@ -867,6 +889,7 @@ export class TeacherController {
           startAt: this.readHomeworkMeta(h).startAt,
           dueAt: this.readHomeworkMeta(h).dueAt,
           className: this.readHomeworkMeta(h).className,
+          assignmentGroupId: this.readHomeworkMeta(h).assignmentGroupId,
           attachmentUrls: this.readHomeworkMeta(h).attachmentUrls,
           attachmentUrl: this.readHomeworkMeta(h).attachmentUrl,
           createdAt: h.created_at || null,
@@ -893,12 +916,15 @@ export class TeacherController {
     const existingLocal = this.localFeed.listHomeworkByTeacher(teacherId);
     // Build a dedup key set for what's already in the feed
     const existingKeys = new Set(
-      existingLocal.map((h: any) => [
-        String(h.title || '').toLowerCase(),
-        String(h.subject || '').toLowerCase(),
-        String(h.class_name || h?.tasks?.meta?.className || '').toLowerCase(),
-        String(h.due_at || '').slice(0, 16)
-      ].join('|'))
+      existingLocal.map((h: any) => {
+        const meta = this.readHomeworkMeta(h);
+        return String(meta?.assignmentGroupId || [
+          String(h.title || '').toLowerCase(),
+          String(h.subject || '').toLowerCase(),
+          String(h.class_name || h?.tasks?.meta?.className || '').toLowerCase(),
+          String(h.due_at || '').slice(0, 16)
+        ].join('|'));
+      })
     );
 
     let synced = 0;
@@ -912,7 +938,8 @@ export class TeacherController {
         ? (item?.attachmentUrls || item?.attachment_urls).filter((u: any) => typeof u === 'string' && String(u).trim()).map((u: string) => String(u).trim())
         : [];
       const normalizedAttachmentUrl = normalizedAttachmentUrls[0] || item?.attachmentUrl || item?.attachment_url || null;
-      const key = [
+      const assignmentGroupId = String(item?.assignmentGroupId || '').trim() || makeAssignmentGroupId();
+      const key = assignmentGroupId || [
         String(item.title || '').toLowerCase(),
         String(item.subject || '').toLowerCase(),
         String(normalizedClassName || '').toLowerCase(),
@@ -950,6 +977,7 @@ export class TeacherController {
         startAt: normalizedStartAt,
         dueAt: normalizedDueAt,
         className,
+        assignmentGroupId,
         attachmentUrls: normalizedAttachmentUrls.length ? normalizedAttachmentUrls : (normalizedAttachmentUrl ? [normalizedAttachmentUrl] : []),
         attachmentUrl: normalizedAttachmentUrl,
         teacherId,
@@ -1050,11 +1078,13 @@ export class TeacherController {
       .filter((u: any) => typeof u === 'string' && String(u).trim())
       .map((u: string) => String(u).trim());
     const attachmentUrl = attachmentUrls[0] || null;
+    const assignmentGroupId = String(body?.assignmentGroupId || '').trim() || makeAssignmentGroupId();
     const sharedMeta = {
       note,
       startAt,
       dueAt,
       className,
+      assignmentGroupId,
       attachmentUrls,
       attachmentUrl,
       teacherId: this.actorId(req),
@@ -1137,6 +1167,7 @@ export class TeacherController {
           startAt: this.readHomeworkMeta(h).startAt,
           dueAt: this.readHomeworkMeta(h).dueAt,
           className: this.readHomeworkMeta(h).className,
+          assignmentGroupId: this.readHomeworkMeta(h).assignmentGroupId,
           attachmentUrls: this.readHomeworkMeta(h).attachmentUrls,
           attachmentUrl: this.readHomeworkMeta(h).attachmentUrl,
           createdAt: h.created_at || new Date().toISOString()
@@ -1157,6 +1188,7 @@ export class TeacherController {
           startAt: h.start_at || null,
           dueAt: h.due_at || null,
           className: h.class_name || null,
+          assignmentGroupId: h?.tasks?.meta?.assignmentGroupId || assignmentGroupId,
           attachmentUrls: Array.isArray(h.attachment_urls) ? h.attachment_urls : (h.attachment_url ? [h.attachment_url] : []),
           attachmentUrl: h.attachment_url || null,
           createdAt: h.created_at || new Date().toISOString()
@@ -1220,6 +1252,7 @@ export class TeacherController {
 
     const applyPatchToLocal = (seedRow: any) => {
       const beforeMeta = this.readHomeworkMeta(seedRow);
+      const seedAssignmentGroupId = String(beforeMeta?.assignmentGroupId || '').trim();
       const seedCreatedBy = String(seedRow?.created_by || '').trim();
       const seedTitle = String(seedRow?.title || '').trim();
       const seedSubject = String(seedRow?.subject || '').trim();
@@ -1231,12 +1264,15 @@ export class TeacherController {
       let localUpdatedCount = 0;
       localRows.forEach((row: any) => {
         const rowMeta = this.readHomeworkMeta(row);
-        const sameGroup = String(row?.created_by || '').trim() === seedCreatedBy
-          && String(row?.title || '').trim() === seedTitle
-          && String(row?.subject || '').trim() === seedSubject
-          && String(rowMeta?.className || '').trim() === seedClassName
-          && String(rowMeta?.startAt || '').trim() === seedStartAt
-          && String(rowMeta?.dueAt || '').trim() === seedDueAt;
+        const rowAssignmentGroupId = String(rowMeta?.assignmentGroupId || '').trim();
+        const sameGroup = seedAssignmentGroupId
+          ? rowAssignmentGroupId === seedAssignmentGroupId
+          : String(row?.created_by || '').trim() === seedCreatedBy
+            && String(row?.title || '').trim() === seedTitle
+            && String(row?.subject || '').trim() === seedSubject
+            && String(rowMeta?.className || '').trim() === seedClassName
+            && String(rowMeta?.startAt || '').trim() === seedStartAt
+            && String(rowMeta?.dueAt || '').trim() === seedDueAt;
         if (sameGroup) {
           this.localFeed.updateHomework(String(row?.id || ''), {
             ...updatePayload,
@@ -1251,6 +1287,7 @@ export class TeacherController {
                 note,
                 startAt,
                 dueAt,
+                assignmentGroupId: seedAssignmentGroupId || rowAssignmentGroupId || makeAssignmentGroupId(),
                 className: updatePayload.class_name ?? rowMeta?.className ?? null,
                 attachmentUrls,
                 attachmentUrl,
@@ -1283,6 +1320,7 @@ export class TeacherController {
       }
 
       const seedMeta = this.readHomeworkMeta(seedRow);
+  const seedAssignmentGroupId = String(seedMeta?.assignmentGroupId || '').trim();
       const seedCreatedBy = String(seedRow?.created_by || teacherId || '').trim();
       const seedTitle = String(seedRow?.title || '').trim();
       const seedSubject = String(seedRow?.subject || '').trim();
@@ -1301,6 +1339,10 @@ export class TeacherController {
       const matchedIds = allForTeacher
         .filter((row: any) => {
           const rowMeta = this.readHomeworkMeta(row);
+          const rowAssignmentGroupId = String(rowMeta?.assignmentGroupId || '').trim();
+          if (seedAssignmentGroupId && rowAssignmentGroupId) {
+            return rowAssignmentGroupId === seedAssignmentGroupId;
+          }
           return String(row?.title || '').trim() === seedTitle
             && String(row?.subject || '').trim() === seedSubject
             && String(rowMeta?.className || '').trim() === seedClassName
@@ -1325,6 +1367,7 @@ export class TeacherController {
             note,
             startAt,
             dueAt,
+            assignmentGroupId: seedAssignmentGroupId || makeAssignmentGroupId(),
             className: updatePayload.class_name ?? seedMeta?.className ?? null,
             attachmentUrls,
             attachmentUrl,
@@ -1358,6 +1401,7 @@ export class TeacherController {
           startAt: this.readHomeworkMeta(sample).startAt,
           dueAt: this.readHomeworkMeta(sample).dueAt,
           className: this.readHomeworkMeta(sample).className,
+          assignmentGroupId: this.readHomeworkMeta(sample).assignmentGroupId,
           attachmentUrls: this.readHomeworkMeta(sample).attachmentUrls,
           attachmentUrl: this.readHomeworkMeta(sample).attachmentUrl,
           createdAt: sample?.created_at || seedRow?.created_at || null,
