@@ -165,12 +165,12 @@ async function getJsonChecked(url, label) {
   return checkSuccess(data, label);
 }
 
-export async function sendChat(studentId, message, personality, conversationId) {
+export async function sendChat(studentId, message, personality, conversationId, recentMessages, imageDataUrl, imageDataUrls) {
   const headers = await authHeaders();
   const res = await fetch(`${API_BASE}/chat`, {
     method: 'POST',
     headers,
-    body: JSON.stringify({ studentId, message, personality, conversationId })
+    body: JSON.stringify({ studentId, message, personality, conversationId, recentMessages, imageDataUrl, imageDataUrls })
   });
   return res.json();
 }

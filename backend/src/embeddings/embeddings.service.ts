@@ -8,6 +8,11 @@ export class EmbeddingsService {
   // target dim when using semantic embeddings (OpenAI/HF). Default to 1536.
   targetDim = parseInt(process.env.EMBEDDING_DIM || '1536', 10);
 
+  private isTruthy(value?: string) {
+    const v = String(value || '').trim().toLowerCase();
+    return v === '1' || v === 'true' || v === 'yes' || v === 'on';
+  }
+
   // Map a possibly larger embedding into our internal dim by pooling
   private compressToDim(arr: number[]): number[] {
     if (!arr || arr.length === 0) return Array(this.dim).fill(0);
@@ -25,6 +30,23 @@ export class EmbeddingsService {
 
   async embed(text: string): Promise<number[]> {
     const trimmed = (text || '').trim();
+    const strictOllamaOnly = this.isTruthy(process.env.OLLAMA_ONLY)
+      || String(process.env.LLM_PROVIDER || '').trim().toLowerCase() === 'ollama';
+
+    // In strict Ollama-only mode, skip all external embedding providers.
+    if (strictOllamaOnly) {
+      const hash = crypto.createHash('sha256').update(trimmed || '').digest();
+      const vec: number[] = [];
+      for (let i = 0; i < this.dim; i++) {
+        const b1 = hash[i * 2] ?? 0;
+        const b2 = hash[i * 2 + 1] ?? 0;
+        const uint = (b1 << 8) | b2;
+        const v = (uint / 65535) * 2 - 1;
+        vec.push(Number(v.toFixed(6)));
+      }
+      return vec;
+    }
+
     // Prefer external semantic provider if configured
     try {
       // OpenAI (preferred when key is present)

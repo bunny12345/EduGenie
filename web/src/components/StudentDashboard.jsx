@@ -86,6 +86,62 @@ function asUrlList(value, fallbackSingle) {
   return [];
 }
 
+async function fileToCompressedDataUrl(file) {
+  if (!file) throw new Error('No file selected');
+
+  const readDataUrl = () => new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ''));
+    reader.onerror = () => reject(reader.error || new Error('Unable to read image'));
+    reader.readAsDataURL(file);
+  });
+
+  // Small files can be sent as-is.
+  if (file.size <= 1.8 * 1024 * 1024) {
+    return readDataUrl();
+  }
+
+  const img = await new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const el = new Image();
+    el.onload = () => {
+      URL.revokeObjectURL(url);
+      resolve(el);
+    };
+    el.onerror = (e) => {
+      URL.revokeObjectURL(url);
+      reject(e || new Error('Unable to load image'));
+    };
+    el.src = url;
+  });
+
+  const source = img;
+  const maxSide = 1440;
+  const scale = Math.min(1, maxSide / Math.max(source.width, source.height));
+  const targetW = Math.max(1, Math.round(source.width * scale));
+  const targetH = Math.max(1, Math.round(source.height * scale));
+
+  const canvas = document.createElement('canvas');
+  canvas.width = targetW;
+  canvas.height = targetH;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return readDataUrl();
+  ctx.drawImage(source, 0, 0, targetW, targetH);
+
+  // Use JPEG compression to keep payload reasonable for local inference.
+  return canvas.toDataURL('image/jpeg', 0.8);
+}
+
+function fileToRawDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    if (!file) return reject(new Error('No file selected'));
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ''));
+    reader.onerror = () => reject(reader.error || new Error('Unable to read image'));
+    reader.readAsDataURL(file);
+  });
+}
+
 function getHomeworkState(h) {
   const due = parseDate(h?.dueAt || h?.due_at || h?.createdAt || h?.created_at);
   const rawStatus = String(h?.status || '').toLowerCase();
@@ -146,6 +202,7 @@ const DEFAULT_SUBJECTS = ['Science', 'Mathematics', 'Social'];
 export default function StudentDashboard({ studentId = 'test', onLogout }) {
   // Navigation state
   const [activeView, setActiveView] = useState('home'); // 'home' or subject name
+  const [activeSidebarTab, setActiveSidebarTab] = useState('Home');
 
   const [loading, setLoading] = useState(true);
   const [panelLoading, setPanelLoading] = useState({
@@ -204,6 +261,10 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
   const [historyToDate, setHistoryToDate] = useState('');
   const [chatInput, setChatInput] = useState('');
   const [chatLoading, setChatLoading] = useState(false);
+  const [chatFollowups, setChatFollowups] = useState([]);
+  const [chatImages, setChatImages] = useState([]);
+  const [chatImageError, setChatImageError] = useState('');
+  const chatEndRef = React.useRef(null);
   const [testResult, setTestResult] = useState(null);
   const [homeworkInfo, setHomeworkInfo] = useState('');
   const [selectedResource, setSelectedResource] = useState(null);
@@ -503,7 +564,8 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
     setPanelLoadingKey('chat', true);
     setPanelErrorKey('chat', '');
     try {
-      const res = await getChatHistory(studentId);
+      const conversationId = `conv-${studentId}`;
+      const res = await getChatHistory(studentId, conversationId);
       setChatHistory(safeArray(res?.messages));
     } catch (e) {
       setPanelErrorKey('chat', e?.message || 'Unable to load chat history.');
@@ -562,6 +624,31 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
   const progressSummary = useMemo(() => buildProgressSummary(progress), [progress]);
   const trend = useMemo(() => buildTrendPoints(progress), [progress]);
   const weeklyGoalPct = 75;
+  const sidebarItems = [
+    ['🏠', 'Home'],
+    ['🤖', 'AI Tutor'],
+    ['📝', 'Homework'],
+    ['🧪', 'Mock Tests'],
+    ['📈', 'Progress'],
+    ['📅', 'Calendar'],
+    ['🏅', 'Rewards'],
+    ['📚', 'Library'],
+    ['⚙️', 'Settings']
+  ];
+
+  function onSidebarNavClick(item) {
+    setActiveSidebarTab(item);
+    if (item === 'Home' || item === 'AI Tutor') {
+      setActiveView('home');
+      return;
+    }
+    if (item === 'Homework') {
+      const firstSubject = safeArray(subjects)[0];
+      setActiveView(firstSubject || 'home');
+      return;
+    }
+    setActiveView('home');
+  }
 
   async function onStartTest(testId) {
     if (!testId) return;
@@ -900,22 +987,263 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
     }
   }
 
-  async function onSendTutorMessage() {
-    const msg = chatInput.trim();
-    if (!msg) return;
+  // Scroll AI chat to bottom whenever messages change
+  useEffect(() => {
+    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [chatHistory, chatLoading]);
+
+  async function onSendTutorMessage(overrideMsg) {
+    const msg = (typeof overrideMsg === 'string' ? overrideMsg : chatInput).trim();
+    if (!msg && !chatImages.length) return;
+    setChatFollowups([]);
+    setChatImageError('');
+    const conversationId = `conv-${studentId}`;
+    const recentMessages = safeArray(chatHistory)
+      .slice(-20)
+      .map((m) => ({
+        role: m?.role === 'ai' ? 'assistant' : 'user',
+        content: String(m?.text || m?.message || '').trim(),
+      }))
+      .filter((m) => m.content);
+    // Optimistically add user message
+    const tempUserMsg = {
+      id: `tmp-u-${Date.now()}`,
+      role: 'user',
+      text: msg || (chatImages.length ? `Please explain these ${chatImages.length} image${chatImages.length === 1 ? '' : 's'}.` : ''),
+      ts: new Date().toISOString(),
+      imageDataUrl: chatImages[0]?.dataUrl || '',
+      imageName: chatImages[0]?.name || '',
+      imageDataUrls: chatImages.map((img) => img.dataUrl),
+      imageNames: chatImages.map((img) => img.name),
+    };
+    setChatHistory((prev) => [...safeArray(prev), tempUserMsg]);
+    setChatInput('');
     setChatLoading(true);
     setPanelErrorKey('chat', '');
     try {
-      const res = await sendChat(studentId, msg, 'Friendly', `conv-${studentId}`);
-      const hist = await getChatHistory(studentId, res?.conversationId || `conv-${studentId}`);
-      setChatHistory(safeArray(hist?.messages));
-      setChatInput('');
+      const res = await sendChat(
+        studentId,
+        msg || 'Please explain these images.',
+        'Friendly',
+        conversationId,
+        recentMessages,
+        chatImages[0]?.dataUrl || undefined,
+        chatImages.map((img) => img.dataUrl)
+      );
+      // If the backend returned an error response (401/403/500 etc.), surface it
+      if (!res?.reply && (res?.error || res?.message || res?.statusCode)) {
+        throw new Error(res?.message || res?.error || 'Chat request failed');
+      }
+      // Use the reply directly from the response — much more reliable than
+      // re-fetching from Supabase (which may return empty if persistence failed).
+      const aiMsg = { id: `ai-${Date.now()}`, role: 'ai', text: res.reply || '…', ts: new Date().toISOString() };
+      setChatHistory((prev) => [
+        ...safeArray(prev).filter((m) => m.id !== tempUserMsg.id),
+        { ...tempUserMsg },
+        aiMsg,
+      ]);
+      // Show follow-up suggestions if provided
+      if (Array.isArray(res?.followups) && res.followups.length) {
+        setChatFollowups(res.followups);
+      }
+      setChatImages([]);
     } catch (e) {
+      // Show error inline as a bot message
+      const errMsg = { id: `tmp-err-${Date.now()}`, role: 'ai', text: `⚠️ ${e?.message || 'Unable to reach AI tutor right now.'}`, ts: new Date().toISOString() };
+      setChatHistory((prev) => [...safeArray(prev).filter((m) => m.id !== tempUserMsg.id), tempUserMsg, errMsg]);
       setPanelErrorKey('chat', e?.message || 'Unable to send chat message.');
     } finally {
       setChatLoading(false);
     }
   }
+
+  async function onTutorImageSelected(files) {
+    setChatImageError('');
+    const picked = Array.isArray(files) ? files.filter(Boolean) : [];
+    if (!picked.length) {
+      return;
+    }
+
+    const prepared = [];
+    for (const file of picked) {
+      if (!String(file.type || '').startsWith('image/')) {
+        setChatImageError('Only image files are allowed.');
+        continue;
+      }
+
+      if (file.size > 20 * 1024 * 1024) {
+        setChatImageError('Please upload images smaller than 20MB each.');
+        continue;
+      }
+
+      try {
+        let dataUrl = '';
+        try {
+          dataUrl = String(await fileToCompressedDataUrl(file));
+        } catch {
+          dataUrl = String(await fileToRawDataUrl(file));
+        }
+        if (!dataUrl) throw new Error('empty image');
+        prepared.push({
+          id: `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
+          name: String(file.name || 'image'),
+          dataUrl,
+        });
+      } catch {
+        setChatImageError('Some images could not be processed. Try PNG/JPG files.');
+      }
+    }
+
+    if (!prepared.length) return;
+
+    setChatImages((prev) => {
+      const merged = [...prev, ...prepared];
+      const deduped = [];
+      const seen = new Set();
+      for (const img of merged) {
+        const key = `${img.name}|${img.dataUrl.slice(0, 80)}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        deduped.push(img);
+        if (deduped.length >= 6) break;
+      }
+      return deduped;
+    });
+  }
+
+  function removeChatImageById(id) {
+    setChatImages((prev) => prev.filter((img) => img.id !== id));
+  }
+
+  function clearChatImages() {
+    setChatImages([]);
+  }
+
+  const tutorPanel = (
+    <section className="cardish eg-grad-ai eg-ai-panel eg-ai-screen">
+      <div className="eg-ai-head">
+        <h3>🤖 AI Tutor</h3>
+      </div>
+      <div className="eg-ai-topic-list">
+        {['Fractions', 'Algebra', 'Science', 'Grammar'].map((t) => (
+          <button
+            key={t}
+            type="button"
+            className="eg-ai-topic-chip"
+            onClick={() => onSendTutorMessage(`Explain ${t} to me`)}
+          >
+            {t}
+          </button>
+        ))}
+      </div>
+      {panelLoading.chat ? <p className="eg-loading">Loading chat...</p> : null}
+      {panelError.chat ? <p className="eg-loading" style={{ color: '#dc2626' }}>{panelError.chat}</p> : null}
+      <div className="eg-ai-chat eg-ai-chat-screen">
+        {safeArray(chatHistory).map((m) => (
+          <div key={m.id || m.ts} className={`ai-msg ${m.role === 'user' ? 'user' : 'bot'} eg-ai-msg-text`}>
+            {Array.isArray(m?.imageDataUrls) && m.imageDataUrls.length ? (
+              <div className="eg-ai-inline-image-wrap eg-ai-inline-image-grid">
+                {m.imageDataUrls.slice(0, 4).map((url, idx) => (
+                  <img
+                    key={`${m.id || m.ts}-img-${idx}`}
+                    className="eg-ai-inline-image"
+                    src={String(url)}
+                    alt={String(m?.imageNames?.[idx] || `Uploaded image ${idx + 1}`)}
+                  />
+                ))}
+                <small className="eg-ai-inline-image-label">{m.imageDataUrls.length} image{m.imageDataUrls.length === 1 ? '' : 's'} attached</small>
+              </div>
+            ) : m?.imageDataUrl ? (
+              <div className="eg-ai-inline-image-wrap">
+                <img
+                  className="eg-ai-inline-image"
+                  src={String(m.imageDataUrl)}
+                  alt={String(m.imageName || 'Uploaded for AI Tutor')}
+                />
+                <small className="eg-ai-inline-image-label">Image attached</small>
+              </div>
+            ) : null}
+            {m.text || m.message}
+          </div>
+        ))}
+        {chatLoading ? (
+          <div className="ai-msg bot ai-msg-thinking">
+            <span>EduGenie is thinking</span>
+            <span className="eg-typing-dots" aria-hidden="true">
+              <i />
+              <i />
+              <i />
+            </span>
+          </div>
+        ) : null}
+        {!panelLoading.chat && !chatHistory.length && !chatLoading ? (
+          <div className="ai-msg bot">👋 Hi! I'm EduGenie, your AI tutor. Ask me anything about your subjects!</div>
+        ) : null}
+        <div ref={chatEndRef} />
+      </div>
+      {chatFollowups.length > 0 && !chatLoading ? (
+        <div className="eg-ai-followups">
+          {chatFollowups.map((f, i) => (
+            <button
+              key={i}
+              type="button"
+              className="eg-ai-followup-btn"
+              onClick={() => onSendTutorMessage(f)}
+            >
+              {f}
+            </button>
+          ))}
+        </div>
+      ) : null}
+      {chatImages.length ? (
+        <div className="eg-ai-image-preview-wrap">
+          <div className="eg-ai-image-preview-grid">
+            {chatImages.map((img) => (
+              <div key={img.id} className="eg-ai-image-tile">
+                <img className="eg-ai-image-preview" src={img.dataUrl} alt={img.name || 'Selected for AI tutor'} />
+                <button type="button" className="eg-ai-image-tile-remove" onClick={() => removeChatImageById(img.id)}>×</button>
+              </div>
+            ))}
+          </div>
+          <div className="eg-ai-image-meta">
+            <span>{chatImages.length} file{chatImages.length === 1 ? '' : 's'} selected</span>
+            <button type="button" className="eg-ai-image-clear" onClick={clearChatImages}>
+              Clear all
+            </button>
+          </div>
+        </div>
+      ) : null}
+      {chatImageError ? <p className="eg-ai-image-error">{chatImageError}</p> : null}
+      <div className="eg-ai-input-row">
+        <input
+          className="eg-ai-input"
+          value={chatInput}
+          onChange={(e) => setChatInput(e.target.value)}
+          onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); onSendTutorMessage(); } }}
+          placeholder="Ask anything or upload an image... (Enter to send)"
+          disabled={chatLoading}
+        />
+        {chatImages.length ? <span className="eg-ai-selected-pill">{chatImages.length} file{chatImages.length === 1 ? '' : 's'} ready</span> : null}
+        <label className="eg-ai-attach-btn" htmlFor="eg-ai-image-input">📎 File</label>
+        <input
+          id="eg-ai-image-input"
+          type="file"
+          accept="image/*"
+          multiple
+          style={{ display: 'none' }}
+          onChange={(e) => {
+            onTutorImageSelected(Array.from(e.target.files || []));
+            // Allow choosing the same file again (browser otherwise may not fire onChange).
+            e.target.value = '';
+          }}
+          disabled={chatLoading}
+        />
+        <button className="eg-ai-send-btn" onClick={() => onSendTutorMessage()} disabled={chatLoading || (!chatInput.trim() && !chatImages.length)}>
+          {chatLoading ? 'Sending...' : 'Send'}
+        </button>
+      </div>
+    </section>
+  );
 
   return (
     <div className="eg-shell">
@@ -929,18 +1257,8 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
         </div>
 
         <nav className="eg-nav">
-          {[
-            ['🏠', 'Home'],
-            ['🤖', 'AI Tutor'],
-            ['📝', 'Homework'],
-            ['🧪', 'Mock Tests'],
-            ['📈', 'Progress'],
-            ['📅', 'Calendar'],
-            ['🏅', 'Rewards'],
-            ['📚', 'Library'],
-            ['⚙️', 'Settings']
-          ].map(([icon, item], i) => (
-            <button key={item} className={`eg-nav-item ${i === 0 ? 'active' : ''}`}>
+          {sidebarItems.map(([icon, item]) => (
+            <button key={item} className={`eg-nav-item ${activeSidebarTab === item ? 'active' : ''}`} onClick={() => onSidebarNavClick(item)}>
               <span className="eg-dot" />
               <span className="eg-nav-icon" aria-hidden="true">{icon}</span>
               {item}
@@ -1033,9 +1351,11 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
 
         {panelError.dashboard ? <p className="eg-loading">{panelError.dashboard}</p> : null}
 
-        {activeView === 'home' ? (
+        {activeSidebarTab === 'AI Tutor' ? (
+          tutorPanel
+        ) : activeView === 'home' ? (
           <>
-            <section className="eg-main-grid">
+            <section className="eg-main-grid eg-main-grid-home">
               <div className="eg-left-stack">
               <section className="cardish eg-hero-card eg-grad-hero">
                 <h1>Good Morning, {greetingName}! 👋</h1>
@@ -1106,32 +1426,6 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
               </div>
             </section>
           </div>
-
-          <section className="cardish eg-ai-panel eg-grad-ai">
-            <div className="eg-ai-head">
-              <h3>AI Tutor</h3>
-              <button>Voice Mode</button>
-            </div>
-            <div className="eg-ai-topic-list">
-              {['Fractions', 'Algebra', 'Science', 'Grammar'].map((t) => (
-                <div key={t}>{t}</div>
-              ))}
-            </div>
-            {panelLoading.chat ? <p className="eg-loading">Loading chat...</p> : null}
-            {panelError.chat ? <p className="eg-loading">{panelError.chat}</p> : null}
-            <div className="eg-ai-chat">
-              {safeArray(chatHistoryTop).map((m) => (
-                <div key={m.id || m.ts} className={`ai-msg ${m.role === 'user' ? 'user' : 'bot'}`}>
-                  {m.text || m.message}
-                </div>
-              ))}
-              {!panelLoading.chat && !chatHistoryTop.length ? <div className="ai-msg bot">No chat history yet. Ask your first question.</div> : null}
-            </div>
-            <div className="eg-ai-input-row">
-              <input className="eg-ai-input" value={chatInput} onChange={(e) => setChatInput(e.target.value)} placeholder="Ask anything..." />
-              <button onClick={onSendTutorMessage} disabled={chatLoading}>{chatLoading ? '...' : 'Send'}</button>
-            </div>
-          </section>
         </section>
 
         <section className="eg-bottom-grid">

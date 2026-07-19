@@ -12,10 +12,27 @@ export class ChatController {
 
   @Post()
   @UseGuards(AuthGuard)
-  async chat(@Req() req: any, @Body() payload: { studentId?: string; message: string; personality?: string; conversationId?: string }) {
-    const { message, personality, conversationId } = payload;
+  async chat(
+    @Req() req: any,
+    @Body() payload: {
+      studentId?: string;
+      message: string;
+      personality?: string;
+      conversationId?: string;
+      recentMessages?: Array<{ role: string; content: string }>;
+      imageDataUrl?: string;
+      imageDataUrls?: string[];
+    }
+  ) {
+    const { message, personality, conversationId, recentMessages, imageDataUrl, imageDataUrls } = payload;
     const studentId = req.studentId || payload.studentId || 'anon';
-    const response = await this.chatService.handleMessage(studentId, message, { personality, conversationId });
+    const response = await this.chatService.handleMessage(studentId, message, {
+      personality,
+      conversationId,
+      recentMessages,
+      imageDataUrl,
+      imageDataUrls,
+    });
     this.localFeed.logStudentActivity(studentId, {
       type: 'chat',
       action: 'sent',

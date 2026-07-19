@@ -1,8 +1,34 @@
 import { Injectable } from '@nestjs/common';
 import { randomUUID } from 'crypto';
+import * as fs from 'fs';
+import * as path from 'path';
 import { LlmService } from '../llm/llm.service';
 import { SupabaseService } from '../supabase.service';
 import { EmbeddingsService } from '../embeddings/embeddings.service';
+
+type ChatTurn = {
+  role: 'user' | 'assistant';
+  content: string;
+  ts: string;
+};
+
+type ChatContextMessage = {
+  role: 'user' | 'assistant';
+  content: string;
+};
+
+type ChatImagePayload = {
+  base64: string;
+  mimeType: string;
+};
+
+type UnderstandingSignal = {
+  chapter: string;
+  understandingLevel: 'high' | 'medium' | 'developing';
+  confidenceLevel: 'high' | 'medium' | 'low';
+  evidence: string[];
+  recommendedSupport: string[];
+};
 
 function normalizeText(s: string) {
   if (!s) return '';
@@ -15,88 +41,438 @@ function normalizeText(s: string) {
     .trim();
 }
 
+function extractChapterSignals(history: Array<{ role: string; content: string }>): UnderstandingSignal[] {
+  const chapterKeywords: Record<string, string[]> = {
+    fractions: ['fraction', 'fractions', 'numerator', 'denominator', 'equivalent fraction'],
+    algebra: ['algebra', 'equation', 'equations', 'variable', 'solve for x', 'expression'],
+    science: ['science', 'force', 'energy', 'plant', 'plants', 'cell', 'cells'],
+    grammar: ['grammar', 'noun', 'verb', 'tense', 'sentence', 'adjective'],
+    decimals: ['decimal', 'decimals', 'place value'],
+    geometry: ['geometry', 'angle', 'angles', 'triangle', 'area', 'perimeter'],
+  };
+
+  const userMessages = history
+    .filter((item) => item.role === 'user' && item.content)
+    .map((item) => String(item.content).toLowerCase());
+
+  const signals: UnderstandingSignal[] = [];
+
+  Object.entries(chapterKeywords).forEach(([chapter, keywords]) => {
+    const matching = userMessages.filter((msg) => keywords.some((keyword) => msg.includes(keyword)));
+    if (!matching.length) return;
+
+    const advancedQuestionCount = matching.filter((msg) => /why|how|compare|pattern|strategy|prove|explain step|understand/.test(msg)).length;
+    const helpQuestionCount = matching.filter((msg) => /help|don't understand|dont understand|confused|stuck|hard|difficult|again|simple/.test(msg)).length;
+    const practiceQuestionCount = matching.filter((msg) => /practice|quiz|question|test me/.test(msg)).length;
+
+    let understandingLevel: UnderstandingSignal['understandingLevel'] = 'medium';
+    let confidenceLevel: UnderstandingSignal['confidenceLevel'] = 'medium';
+
+    if (advancedQuestionCount >= 2 && helpQuestionCount === 0) understandingLevel = 'high';
+    else if (helpQuestionCount >= 2) understandingLevel = 'developing';
+
+    if (practiceQuestionCount >= 2 || advancedQuestionCount >= 2) confidenceLevel = 'high';
+    if (helpQuestionCount >= 2) confidenceLevel = 'low';
+
+    const evidence: string[] = [];
+    if (advancedQuestionCount > 0) evidence.push('asks deeper how/why questions');
+    if (practiceQuestionCount > 0) evidence.push('actively requests practice or self-testing');
+    if (helpQuestionCount > 0) evidence.push('shows confusion or asks for simpler explanations');
+
+    const recommendedSupport: string[] = [];
+    if (understandingLevel === 'high') recommendedSupport.push('give challenge problems and mixed application questions');
+    if (understandingLevel === 'medium') recommendedSupport.push('reinforce with worked examples and short practice sets');
+    if (understandingLevel === 'developing') recommendedSupport.push('re-teach with simpler steps, visuals, and concept checks');
+
+    signals.push({
+      chapter,
+      understandingLevel,
+      confidenceLevel,
+      evidence,
+      recommendedSupport,
+    });
+  });
+
+  return signals.slice(0, 4);
+}
+
 @Injectable()
 export class ChatService {
+  // Process-local fallback context so follow-up questions still work when DB writes fail.
+  private static conversationCache = new Map<string, ChatTurn[]>();
+  private readonly localSnapshotDir = path.join(process.cwd(), 'local-data');
+  private readonly localSnapshotFile = path.join(this.localSnapshotDir, 'chat-snapshots.json');
+
   constructor(
     private readonly llm: LlmService,
     private readonly db: SupabaseService,
     private readonly embeddings: EmbeddingsService
   ) {}
 
+  private getCacheKey(studentId: string, conversationId: string) {
+    return `${studentId}::${conversationId}`;
+  }
+
+  private appendCacheTurn(studentId: string, conversationId: string, role: 'user' | 'assistant', content: string) {
+    const key = this.getCacheKey(studentId, conversationId);
+    const existing = ChatService.conversationCache.get(key) || [];
+    const next = [...existing, { role, content: String(content || ''), ts: new Date().toISOString() }].slice(-60);
+    ChatService.conversationCache.set(key, next);
+  }
+
+  private getCacheHistory(studentId: string, conversationId: string) {
+    const key = this.getCacheKey(studentId, conversationId);
+    return (ChatService.conversationCache.get(key) || []).slice(-20);
+  }
+
+  private getSnapshotKey(studentId: string, conversationId: string) {
+    return `${studentId}::${conversationId}`;
+  }
+
+  private readLocalSnapshots(): Record<string, ChatTurn[]> {
+    try {
+      if (!fs.existsSync(this.localSnapshotFile)) return {};
+      const raw = fs.readFileSync(this.localSnapshotFile, 'utf8');
+      const parsed = JSON.parse(raw);
+      return parsed && typeof parsed === 'object' ? parsed : {};
+    } catch {
+      return {};
+    }
+  }
+
+  private writeLocalSnapshots(store: Record<string, ChatTurn[]>) {
+    try {
+      if (!fs.existsSync(this.localSnapshotDir)) fs.mkdirSync(this.localSnapshotDir, { recursive: true });
+      fs.writeFileSync(this.localSnapshotFile, JSON.stringify(store, null, 2), 'utf8');
+    } catch (e) {
+      console.warn('Local snapshot persist failed', (e as any)?.message || e);
+    }
+  }
+
+  private loadLocalSnapshotHistory(studentId: string, conversationId: string): ChatTurn[] {
+    const store = this.readLocalSnapshots();
+    const key = this.getSnapshotKey(studentId, conversationId);
+    return this.normalizeTurns(Array.isArray(store[key]) ? store[key] : []);
+  }
+
+  private persistLocalSnapshotHistory(studentId: string, conversationId: string, turns: ChatTurn[]) {
+    const store = this.readLocalSnapshots();
+    const key = this.getSnapshotKey(studentId, conversationId);
+    store[key] = this.normalizeTurns(turns);
+    this.writeLocalSnapshots(store);
+  }
+
+  private normalizeTurns(turns: ChatTurn[]) {
+    return (Array.isArray(turns) ? turns : [])
+      .filter((t) => t && (t.role === 'user' || t.role === 'assistant') && String(t.content || '').trim())
+      .map((t) => ({
+        role: t.role,
+        content: String(t.content || '').trim(),
+        ts: t.ts || new Date().toISOString(),
+      }))
+      .slice(-60);
+  }
+
+  private toContextMessages(turns: ChatTurn[]): ChatContextMessage[] {
+    return this.normalizeTurns(turns)
+      .map((t) => ({ role: t.role, content: t.content }))
+      .slice(-20);
+  }
+
+  private extractImagePayload(dataUrl?: string): ChatImagePayload | null {
+    const raw = String(dataUrl || '').trim();
+    if (!raw) return null;
+
+    const match = raw.match(/^data:(image\/[a-zA-Z0-9.+-]+);base64,(.+)$/);
+    if (!match) return null;
+
+    const mimeType = match[1].toLowerCase();
+    const base64 = match[2].trim();
+    if (!base64) return null;
+
+    // Guardrails for payload size: keep request under practical limits for local inference.
+    if (base64.length > 9_000_000) return null;
+
+    return { base64, mimeType };
+  }
+
+  private extractImagePayloads(dataUrls?: string[]): ChatImagePayload[] {
+    const list = Array.isArray(dataUrls) ? dataUrls : [];
+    const parsed = list
+      .map((url) => this.extractImagePayload(url))
+      .filter((v): v is ChatImagePayload => !!v);
+
+    // Keep payload size practical for local inference.
+    return parsed.slice(0, 6);
+  }
+
+  private async loadSnapshotHistory(studentId: string, conversationId: string): Promise<ChatTurn[]> {
+    try {
+      const res = await this.db.client
+        .from('conversation_snapshots')
+        .select('snapshot,updated_at')
+        .eq('student_id', studentId)
+        .eq('conversation_id', conversationId)
+        .order('updated_at', { ascending: false })
+        .limit(1);
+      const rows = (res && res.data) || (Array.isArray(res) ? res : []);
+      const row = Array.isArray(rows) ? rows[0] : null;
+      const snapshot = row?.snapshot;
+      if (!Array.isArray(snapshot)) return this.loadLocalSnapshotHistory(studentId, conversationId);
+      return this.normalizeTurns(
+        snapshot.map((t: any) => ({
+          role: t?.role === 'assistant' ? 'assistant' : 'user',
+          content: String(t?.content || ''),
+          ts: String(t?.ts || row?.updated_at || new Date().toISOString()),
+        }))
+      );
+    } catch (e) {
+      return this.loadLocalSnapshotHistory(studentId, conversationId);
+    }
+  }
+
+  private async persistSnapshotHistory(studentId: string, conversationId: string, turns: ChatTurn[]) {
+    const snapshot = this.normalizeTurns(turns);
+    if (!snapshot.length) return;
+
+    this.persistLocalSnapshotHistory(studentId, conversationId, snapshot);
+
+    const nowIso = new Date().toISOString();
+    const payload = {
+      student_id: studentId,
+      conversation_id: conversationId,
+      snapshot,
+      turn_count: snapshot.length,
+      last_message_at: snapshot[snapshot.length - 1]?.ts || nowIso,
+      updated_at: nowIso,
+    };
+
+    try {
+      const found = await this.db.client
+        .from('conversation_snapshots')
+        .select('id')
+        .eq('student_id', studentId)
+        .eq('conversation_id', conversationId)
+        .limit(1);
+      const rows = (found && found.data) || (Array.isArray(found) ? found : []);
+      const existing = Array.isArray(rows) ? rows[0] : null;
+
+      if (existing?.id) {
+        await this.db.client
+          .from('conversation_snapshots')
+          .update(payload)
+          .eq('id', existing.id);
+      } else {
+        await this.db.client
+          .from('conversation_snapshots')
+          .insert([{ ...payload, created_at: nowIso }]);
+      }
+    } catch (e) {
+      console.warn('Conversation snapshot persist failed', e?.message || e);
+    }
+  }
+
   async handleMessage(
     studentId: string,
     message: string,
-    opts?: { personality?: string; conversationId?: string }
+    opts?: {
+      personality?: string;
+      conversationId?: string;
+      recentMessages?: Array<{ role: string; content: string }>;
+      imageDataUrl?: string;
+      imageDataUrls?: string[];
+    }
   ) {
-    // compute embedding
+    const convId = opts?.conversationId || `conv-${studentId}`;
+    const imagePayload = this.extractImagePayload(opts?.imageDataUrl);
+    const imagePayloads = this.extractImagePayloads(opts?.imageDataUrls);
+    const mergedImages = [
+      ...imagePayloads,
+      ...(imagePayload ? [imagePayload] : []),
+    ];
+    const uniqueImages = Array.from(new Map(mergedImages.map((img) => [img.base64.slice(0, 80), img])).values()).slice(0, 6);
+
+    // Keep a process-local conversation trail for reliability across transient DB issues.
+    this.appendCacheTurn(studentId, convId, 'user', message);
+
+    // Compute embedding for the incoming message
     const emb = await this.embeddings.embed(message);
 
-    // store message (with embedding where supported)
+    // Persist the student message
     try {
-      await this.db.client.from('messages').insert([{ student_id: studentId, message, embedding: emb }]);
+      await this.db.client.from('messages').insert([{
+        student_id: studentId,
+        role: 'user',
+        message,
+        conversation_id: convId,
+        embedding: emb
+      }]);
     } catch (e) {
-      console.warn('Supabase insert failed', e?.message || e);
+      console.warn('Supabase message insert failed', e?.message || e);
     }
 
-    // retrieve relevant memories (nearest by cosine)
-    let memoryPrompt = '';
+    // ── Fetch student profile ──────────────────────────────────────────────
     let studentName: string | null = null;
+    let studentClass: string | null = null;
     let memRows: any[] = [];
+    try {
+      const sres = await this.db.client.from('students').select('id,name,class_name,class').eq('id', studentId).limit(1);
+      const srows = (sres && sres.data) || (Array.isArray(sres) ? sres : []);
+      if (Array.isArray(srows) && srows[0]) {
+        studentName = srows[0].name || null;
+        studentClass = srows[0].class_name || srows[0].class || null;
+      }
+    } catch (e) { /* ignore */ }
+
+    // ── Fetch recent memories (top-3 by cosine similarity) ────────────────
+    let relevantMemories: string[] = [];
     try {
       const res = await this.db.client.from('memories').select('*').eq('student_id', studentId);
       memRows = (res && (res as any).data) || (Array.isArray(res) ? res : []);
       if (Array.isArray(memRows) && memRows.length > 0) {
-        // compute similarity for each memory that has embedding
+        // Fallback name/class from memories if not in students table
+        if (!studentName) {
+          const nameMem = memRows.find((r: any) => (r.key || '').toLowerCase().includes('name'));
+          if (nameMem?.value) studentName = nameMem.value;
+        }
+
         const scored = memRows
           .map((r: any) => {
             const mEmb = r.embedding;
-            if (!mEmb || !Array.isArray(mEmb)) return { r, score: -1 };
-            const score = this.embeddings.cosine(emb, mEmb);
-            return { r, score };
+            if (!mEmb || !Array.isArray(mEmb)) return { r, score: 0 };
+            return { r, score: this.embeddings.cosine(emb, mEmb) };
           })
           .sort((a: any, b: any) => b.score - a.score)
           .slice(0, 3);
 
-        memoryPrompt = scored.map((s: any) => s.r.value || s.r.key || '').join('\n');
+        relevantMemories = scored
+          .filter((s: any) => s.r.value)
+          .map((s: any) => `- ${s.r.key || 'note'}: ${s.r.value}`);
       }
-    } catch (e) {
-      // ignore retrieval errors in prototype
-    }
+    } catch (e) { /* ignore retrieval errors */ }
 
-    // Try to fetch a student profile (name) from students table; fallback to a memory with key containing 'name'
+    // ── Fetch recent conversation history (conversation-scoped) ───────────
+    let recentHistory: Array<{ role: string; content: string }> = [];
     try {
-      const sres = await this.db.client.from('students').select('id,name').eq('id', studentId).limit(1);
-      const srows = (sres && sres.data) || (Array.isArray(sres) ? sres : []);
-      if (Array.isArray(srows) && srows[0] && srows[0].name) {
-        studentName = srows[0].name;
-      } else {
-        // fallback: look for a memory whose key suggests the student's name
-        if (Array.isArray(memRows) && memRows.length > 0) {
-          const nameMem = memRows.find((r: any) => (r.key || '').toLowerCase().includes('name'));
-          if (nameMem && nameMem.value) studentName = nameMem.value;
-        }
+      const hq = this.db.client
+        .from('messages')
+        .select('role,message,created_at')
+        .eq('conversation_id', convId)
+        .eq('student_id', studentId)
+        .order('created_at', { ascending: false })
+        .limit(40);
+      const hres = await hq;
+      const hrows = (hres && hres.data) || (Array.isArray(hres) ? hres : []);
+      if (Array.isArray(hrows)) {
+        recentHistory = hrows
+          .reverse()
+          // exclude the message we just inserted
+          .filter((r: any) => r.message !== message || r.role !== 'user')
+          .slice(-20)
+          .map((r: any) => ({
+            role: r.role === 'ai' ? 'assistant' : 'user',
+            content: r.message || ''
+          }))
+          .filter((m) => m.content);
       }
-    } catch (e) {
-      // ignore
-    }
+    } catch (e) { /* ignore */ }
 
-    if (!memoryPrompt) memoryPrompt = `Student ${studentId} memory: [none].`;
+    const snapshotHistory = this.toContextMessages(await this.loadSnapshotHistory(studentId, convId));
 
-    const nameLine = studentName ? `StudentName: ${studentName}` : '';
-    const personalityLine = opts?.personality ? `Personality: ${opts.personality}` : '';
-    const prompt = `${personalityLine}\n${nameLine}\n${memoryPrompt}\nStudent asks: ${message}\nTeacher reply:`;
-    const reply = await this.llm.query(prompt);
+    const cacheHistory = this.toContextMessages(this.getCacheHistory(studentId, convId));
 
-    // store reply
+    const clientHistory = Array.isArray(opts?.recentMessages)
+      ? opts.recentMessages
+        .filter((m) => m && typeof m.content === 'string' && m.content.trim())
+        .map((m) => ({
+          role: m.role === 'assistant' ? 'assistant' : 'user',
+          content: m.content.trim()
+        }))
+        .slice(-20)
+      : [];
+
+    // Prefer the most complete source among DB, snapshots, cache, and client history.
+    const candidates = [recentHistory, snapshotHistory, cacheHistory, clientHistory].sort((a, b) => b.length - a.length);
+    recentHistory = (candidates[0] || [])
+      .filter((m) => m.content && !(m.role === 'user' && m.content === message))
+      .slice(-20);
+
+    const understandingSignals = extractChapterSignals(recentHistory);
+
+    // ── Build system prompt ────────────────────────────────────────────────
+    const nameGreet = studentName ? ` The student's name is ${studentName}.` : '';
+    const classLine = studentClass ? ` They are in ${studentClass}.` : '';
+    const memoriesSection = relevantMemories.length
+      ? `\n\nRelevant things you know about this student:\n${relevantMemories.join('\n')}`
+      : '';
+    const understandingSection = understandingSignals.length
+      ? `\n\nObserved learning signals from prior conversation:\n${understandingSignals.map((signal) => {
+          const evidence = signal.evidence.length ? signal.evidence.join(', ') : 'limited evidence';
+          const support = signal.recommendedSupport.join(', ');
+          return `- ${signal.chapter}: understanding ${signal.understandingLevel}, confidence ${signal.confidenceLevel}; evidence: ${evidence}; support: ${support}`;
+        }).join('\n')}`
+      : '';
+
+    const systemPrompt =
+      `You are EduGenie, a friendly and encouraging AI tutor for school students.${nameGreet}${classLine}` +
+      ` Your job is to help students understand their subjects clearly and build confidence.` +
+      ` Always give clear, step-by-step explanations suited to a school student.` +
+      ` Use simple language, examples, and analogies. If asked for practice questions, provide them.` +
+      ` Keep responses concise (3-5 sentences for simple questions; use numbered steps for complex ones).` +
+      ` Treat prior turns in this conversation as source of truth for follow-ups like "above", "previous", "those", "this".` +
+      ` If the user asks for answers to previously generated questions, answer those exact questions from context.` +
+      ` If prior conversation context is available, never say you cannot remember or that this is a brand new conversation.` +
+      ` If the user asks about their understanding level, learning behavior, strengths, weak spots, or chapter performance, analyze it from their previous questions, requests for help, and practice patterns in this conversation.` +
+      ` If the student provides an image, carefully describe what you can see and explain it like a tutor.` +
+      ` If text is visible in the image, read it and explain it step-by-step.` +
+      ` If the image is unclear, say what is uncertain and ask for a clearer image.` +
+      ` Be explicit about what evidence you used from the conversation, and if evidence is thin, say that clearly instead of claiming no memory.` +
+      ` Be warm, patient, and encouraging.` +
+      memoriesSection +
+      understandingSection;
+
+    // ── Assemble messages array ────────────────────────────────────────────
+    const messages: Array<{ role: string; content: string }> = [
+      { role: 'system', content: systemPrompt },
+      ...recentHistory,
+      { role: 'user', content: message }
+    ];
+
+    const reply = await this.llm.query(messages, {
+      imageBase64: uniqueImages[0]?.base64,
+      imageBase64List: uniqueImages.map((img) => img.base64),
+    });
+
+    this.appendCacheTurn(studentId, convId, 'assistant', reply);
+
+    const nowIso = new Date().toISOString();
+    const persistedTurns: ChatTurn[] = [
+      ...recentHistory.map((m) => ({
+        role: (m.role === 'assistant' ? 'assistant' : 'user') as 'user' | 'assistant',
+        content: m.content,
+        ts: nowIso,
+      })),
+      { role: 'user' as const, content: message, ts: nowIso },
+      { role: 'assistant' as const, content: reply, ts: nowIso },
+    ].slice(-60) as ChatTurn[];
+    await this.persistSnapshotHistory(studentId, convId, persistedTurns);
+
+    // Persist AI reply
     try {
-      await this.db.client.from('messages').insert([{ student_id: studentId, message: reply, role: 'ai', embedding: await this.embeddings.embed(reply) }]);
-    } catch (e) {}
+      await this.db.client.from('messages').insert([{
+        student_id: studentId,
+        role: 'ai',
+        message: reply,
+        conversation_id: convId,
+        embedding: await this.embeddings.embed(reply)
+      }]);
+    } catch (e) { /* ignore */ }
 
     const followups = this.buildFollowups(message);
     return {
       reply,
       followups,
-      conversationId: opts?.conversationId || `conv-${studentId}`
+      conversationId: convId
     };
   }
 
@@ -108,6 +484,7 @@ export class ChatService {
   }
 
   async getHistory(studentId: string, conversationId?: string) {
+    const convId = conversationId || `conv-${studentId}`;
     try {
       const q = this.db.client.from('messages').select('*').eq('student_id', studentId).order('created_at', { ascending: true }).limit(200);
       const res = await q;
@@ -116,6 +493,28 @@ export class ChatService {
         ? rows.filter((r: any) => (conversationId ? (r.conversation_id || `conv-${studentId}`) === conversationId : true))
         : [];
 
+      if (filtered.length === 0) {
+        const snap = await this.loadSnapshotHistory(studentId, convId);
+        if (snap.length) {
+          return snap.map((m, idx) => ({
+            id: `snapshot-${idx}-${m.ts}`,
+            role: m.role === 'assistant' ? 'ai' : 'user',
+            text: m.content,
+            ts: m.ts,
+          }));
+        }
+
+        const cached = this.getCacheHistory(studentId, convId);
+        if (cached.length) {
+          return cached.map((m, idx) => ({
+            id: `cache-${idx}-${m.ts}`,
+            role: m.role === 'assistant' ? 'ai' : 'user',
+            text: m.content,
+            ts: m.ts,
+          }));
+        }
+      }
+
       return filtered.map((r: any) => ({
         id: r.id,
         role: r.role || 'user',
@@ -123,7 +522,23 @@ export class ChatService {
         ts: r.created_at || new Date().toISOString()
       }));
     } catch (e) {
-      return [];
+      const snap = await this.loadSnapshotHistory(studentId, convId);
+      if (snap.length) {
+        return snap.map((m, idx) => ({
+          id: `snapshot-${idx}-${m.ts}`,
+          role: m.role === 'assistant' ? 'ai' : 'user',
+          text: m.content,
+          ts: m.ts,
+        }));
+      }
+
+      const cached = this.getCacheHistory(studentId, convId);
+      return cached.map((m, idx) => ({
+        id: `cache-${idx}-${m.ts}`,
+        role: m.role === 'assistant' ? 'ai' : 'user',
+        text: m.content,
+        ts: m.ts,
+      }));
     }
   }
 

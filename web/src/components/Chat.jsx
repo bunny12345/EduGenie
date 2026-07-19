@@ -11,6 +11,7 @@ export default function Chat({ studentId = 'test' }) {
   const [typing, setTyping] = useState(false);
   const [followups, setFollowups] = useState([]);
   const messagesRef = useRef(null);
+  const conversationId = `conv-${studentId}`;
 
   async function sendMessage(txt) {
     const ts = Date.now();
@@ -20,7 +21,15 @@ export default function Chat({ studentId = 'test' }) {
     setLoading(true);
     setTyping(true);
     try {
-      const res = await sendChat(studentId, txt);
+      const recentMessages = history
+        .slice(-20)
+        .map((m) => ({
+          role: m?.role === 'assistant' ? 'assistant' : 'user',
+          content: String(m?.text || '').trim(),
+        }))
+        .filter((m) => m.content);
+
+      const res = await sendChat(studentId, txt, 'Friendly', conversationId, recentMessages);
       const raw = (res && (res.reply || res.answer || res.data)) || null;
       let assistantText = 'No reply';
       if (typeof raw === 'string') assistantText = raw;
