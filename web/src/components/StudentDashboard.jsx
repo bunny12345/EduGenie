@@ -192,6 +192,7 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
   const [editingResubmitById, setEditingResubmitById] = useState({});
   const [expandedTeacherInfoById, setExpandedTeacherInfoById] = useState({});
   const [expandedSubmissionDetailsById, setExpandedSubmissionDetailsById] = useState({});
+  const [expandedFeedbackById, setExpandedFeedbackById] = useState({});
   const [homeworkStatusFilter, setHomeworkStatusFilter] = useState('all');
   const [lightboxUrl, setLightboxUrl] = useState(''); // full-screen image viewer
   const [imageReorderingHomeworkId, setImageReorderingHomeworkId] = useState(null);
@@ -246,6 +247,18 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
         return bTs - aTs;
       });
     return String(sorted[0]?.id || sorted[0]?.homeworkId || sorted[0]?.homework_id || '');
+  }, [homework]);
+
+  const latestSubmittedHomeworkId = useMemo(() => {
+    const sortedSubmitted = safeArray(homework)
+      .filter((h) => getHomeworkState(h).submitted && ((h?.grade !== null && h?.grade !== undefined) || h?.feedback))
+      .slice()
+      .sort((a, b) => {
+        const aTs = parseDate(a?.lastAttemptAt || a?.submittedAt || a?.submitted_at || a?.updatedAt || a?.updated_at || a?.createdAt || a?.created_at)?.getTime() || 0;
+        const bTs = parseDate(b?.lastAttemptAt || b?.submittedAt || b?.submitted_at || b?.updatedAt || b?.updated_at || b?.createdAt || b?.created_at)?.getTime() || 0;
+        return bTs - aTs;
+      });
+    return String(sortedSubmitted[0]?.id || sortedSubmitted[0]?.homeworkId || sortedSubmitted[0]?.homework_id || '');
   }, [homework]);
 
   const lightboxImages = useMemo(() => {
@@ -315,6 +328,17 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
       return { [latestAssignedHomeworkId]: true };
     });
   }, [homework, latestAssignedHomeworkId]);
+
+  useEffect(() => {
+    if (!homework.length || !latestSubmittedHomeworkId) {
+      setExpandedFeedbackById({});
+      return;
+    }
+    setExpandedFeedbackById((prev) => {
+      if (Object.keys(prev || {}).length === 1 && prev[latestSubmittedHomeworkId]) return prev;
+      return { [latestSubmittedHomeworkId]: true };
+    });
+  }, [homework, latestSubmittedHomeworkId]);
 
   // Get unique subject list
   const subjects = useMemo(() => {
@@ -1536,12 +1560,33 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
                                     </div>
                                   ) : null}
                                   {/* Grade / feedback */}
-                                  {((h.grade !== null && h.grade !== undefined) || h.feedback) ? (
-                                    <div style={{ marginTop: '8px', fontSize: '12px', color: '#1d4ed8', background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: '6px', padding: '6px 8px' }}>
-                                      {h.grade !== null && h.grade !== undefined ? <span>Grade: {h.grade}/100</span> : null}
-                                      {h.feedback ? <span>{h.grade !== null && h.grade !== undefined ? ' · ' : ''}Feedback: {h.feedback}</span> : null}
-                                    </div>
-                                  ) : null}
+                                  {((h.grade !== null && h.grade !== undefined) || h.feedback) ? (() => {
+                                    const historyHomeworkId = String(h?.id || h?.homeworkId || h?.homework_id || '');
+                                    const feedbackExpanded = !!expandedFeedbackById[historyHomeworkId];
+                                    const isLatestSubmitted = historyHomeworkId && historyHomeworkId === latestSubmittedHomeworkId;
+                                    return (
+                                      <div style={{ marginTop: '8px', border: '1px solid #bfdbfe', borderRadius: '6px', background: '#eff6ff', padding: '6px 8px' }}>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                                          <div style={{ fontSize: '12px', fontWeight: 700, color: '#1d4ed8' }}>
+                                            Teacher feedback {isLatestSubmitted ? '(latest)' : ''}
+                                          </div>
+                                          <button
+                                            type="button"
+                                            className="eg-inline-btn"
+                                            onClick={() => setExpandedFeedbackById((prev) => ({ ...prev, [historyHomeworkId]: !prev[historyHomeworkId] }))}
+                                          >
+                                            {feedbackExpanded ? 'Hide feedback' : 'Show feedback'}
+                                          </button>
+                                        </div>
+                                        {feedbackExpanded ? (
+                                          <div style={{ marginTop: '6px', fontSize: '12px', color: '#1f2937' }}>
+                                            {h.grade !== null && h.grade !== undefined ? <span>Grade: {h.grade}/100</span> : null}
+                                            {h.feedback ? <span>{h.grade !== null && h.grade !== undefined ? ' · ' : ''}Feedback: {h.feedback}</span> : null}
+                                          </div>
+                                        ) : null}
+                                      </div>
+                                    );
+                                  })() : null}
                                 </div>
                               );
                             })}
@@ -1774,19 +1819,38 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
                             </>
                           ) : null}
                         </div>
-                        {(h.grade !== null && h.grade !== undefined) || h.feedback ? (
-                          <div style={{ marginBottom: '8px', background: '#eef6ff', border: '1px solid #cfe0ff', borderRadius: '8px', padding: '10px' }}>
-                            <div style={{ fontSize: '12px', fontWeight: 700, color: '#1d4ed8', marginBottom: '4px' }}>Teacher feedback</div>
-                            {h.grade !== null && h.grade !== undefined ? (
-                              <div style={{ fontSize: '12px', color: '#1f2937', marginBottom: h.feedback ? '4px' : 0 }}>
-                                Grade: {h.grade}/100
+                        {(h.grade !== null && h.grade !== undefined) || h.feedback ? (() => {
+                          const feedbackExpanded = !!expandedFeedbackById[homeworkId];
+                          const isLatestSubmitted = homeworkId && homeworkId === latestSubmittedHomeworkId;
+                          return (
+                            <div style={{ marginBottom: '8px', background: '#eef6ff', border: '1px solid #cfe0ff', borderRadius: '8px', padding: '10px' }}>
+                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                                <div style={{ fontSize: '12px', fontWeight: 700, color: '#1d4ed8' }}>
+                                  Teacher feedback {isLatestSubmitted ? '(latest)' : ''}
+                                </div>
+                                <button
+                                  type="button"
+                                  className="eg-inline-btn"
+                                  onClick={() => setExpandedFeedbackById((prev) => ({ ...prev, [homeworkId]: !prev[homeworkId] }))}
+                                >
+                                  {feedbackExpanded ? 'Hide feedback' : 'Show feedback'}
+                                </button>
                               </div>
-                            ) : null}
-                            {h.feedback ? (
-                              <div style={{ fontSize: '12px', color: '#374151', lineHeight: '1.45' }}>{h.feedback}</div>
-                            ) : null}
-                          </div>
-                        ) : null}
+                              {feedbackExpanded ? (
+                                <div style={{ marginTop: '8px' }}>
+                                  {h.grade !== null && h.grade !== undefined ? (
+                                    <div style={{ fontSize: '12px', color: '#1f2937', marginBottom: h.feedback ? '4px' : 0 }}>
+                                      Grade: {h.grade}/100
+                                    </div>
+                                  ) : null}
+                                  {h.feedback ? (
+                                    <div style={{ fontSize: '12px', color: '#374151', lineHeight: '1.45' }}>{h.feedback}</div>
+                                  ) : null}
+                                </div>
+                              ) : null}
+                            </div>
+                          );
+                        })() : null}
                         <div style={{ fontSize: '12px', color: '#888' }}>
                           {h.startAt && <span>📅 Start: {new Date(h.startAt).toLocaleString()} &nbsp;</span>}
                           {h.dueAt && <span>⏰ Due: {new Date(h.dueAt).toLocaleString()}</span>}

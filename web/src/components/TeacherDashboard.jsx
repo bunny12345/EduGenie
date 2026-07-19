@@ -125,6 +125,22 @@ function firstTwoParagraphs(text) {
   return `${parts.slice(0, 2).join('\n\n')}...`;
 }
 
+function normalizeClassName(value) {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, ' ');
+}
+
+function getClassNameFromItem(item) {
+  return item?.className || item?.class_name || item?.studentClass || item?.student_class || '';
+}
+
+function isInTargetClass(item, targetClass) {
+  if (!targetClass || targetClass === 'all') return true;
+  return normalizeClassName(getClassNameFromItem(item)) === normalizeClassName(targetClass);
+}
+
 export default function TeacherDashboard({ session, onLogout }) {
   const [loading, setLoading] = useState(true);
   const [teacherProfile, setTeacherProfile] = useState(null);
@@ -219,6 +235,8 @@ export default function TeacherDashboard({ session, onLogout }) {
   const [historyFilterDate, setHistoryFilterDate] = useState('');
   const [historyCalMonth, setHistoryCalMonth] = useState(() => { const n = new Date(); return { year: n.getFullYear(), month: n.getMonth() }; });
   const [teacherTargetClass, setTeacherTargetClass] = useState('all');
+  const lastTeacherTargetClassRef = React.useRef('all');
+  const [allKnownClasses, setAllKnownClasses] = useState([]);
   const [hwAttemptsByHwId, setHwAttemptsByHwId] = useState({});
   const [expandedHwSubmissionById, setExpandedHwSubmissionById] = useState({});
   const [expandedGradeById, setExpandedGradeById] = useState({});
@@ -292,6 +310,17 @@ export default function TeacherDashboard({ session, onLogout }) {
       });
       const loadedStudents = Array.isArray(studentsRes?.students) ? studentsRes.students : [];
       setStudents(loadedStudents);
+
+      // Accumulate class names — never shrink the dropdown when a class filter is active
+      setAllKnownClasses((prev) => {
+        const merged = new Set(prev);
+        loadedStudents.forEach((s) => {
+          const v = String(s?.className || '').trim();
+          if (v) merged.add(v);
+        });
+        const next = Array.from(merged).sort((a, b) => a.localeCompare(b));
+        return next.length === prev.length && next.every((v, i) => v === prev[i]) ? prev : next;
+      });
 
       if (!selectedStudentId && loadedStudents.length) {
         const firstId = loadedStudents[0].id;
@@ -848,7 +877,7 @@ export default function TeacherDashboard({ session, onLogout }) {
   }
 
   function selectAllVisibleStudents() {
-    setSelectedStudentIds((students || []).map((student) => student.id));
+    setSelectedStudentIds((classScopedStudents || []).map((student) => student.id));
   }
 
   function clearSelectedStudents() {
@@ -885,24 +914,61 @@ export default function TeacherDashboard({ session, onLogout }) {
     }
   }
 
-  const classOptions = useMemo(() => {
-    const uniq = new Set();
-    (students || []).forEach((student) => {
-      const value = String(student?.className || '').trim();
-      if (value) uniq.add(value);
-    });
-    return Array.from(uniq).sort((a, b) => a.localeCompare(b));
-  }, [students]);
+  const classOptions = allKnownClasses;
+
+  const classScopedStudents = useMemo(
+    () => safeArray(students).filter((s) => isInTargetClass(s, teacherTargetClass)),
+    [students, teacherTargetClass]
+  );
+
+  const classScopedAnnouncements = useMemo(
+    () => safeArray(announcements).filter((a) => isInTargetClass(a, teacherTargetClass)),
+    [announcements, teacherTargetClass]
+  );
+
+  const classScopedActiveAssignments = useMemo(
+    () => safeArray(activeAssignments).filter((a) => isInTargetClass(a, teacherTargetClass)),
+    [activeAssignments, teacherTargetClass]
+  );
+
+  const classScopedHomeworkHistory = useMemo(
+    () => safeArray(homeworkHistory).filter((h) => isInTargetClass(h, teacherTargetClass)),
+    [homeworkHistory, teacherTargetClass]
+  );
+
+  const classScopedTests = useMemo(
+    () => safeArray(tests).filter((t) => isInTargetClass(t, teacherTargetClass)),
+    [tests, teacherTargetClass]
+  );
+
+  const classScopedSelectedHomework = useMemo(
+    () => safeArray(selectedHomework).filter((h) => {
+      // Homework status rows are already student-scoped; keep rows that don't carry class metadata.
+      const itemClass = getClassNameFromItem(h);
+      if (!itemClass) return true;
+      return isInTargetClass(h, teacherTargetClass);
+    }),
+    [selectedHomework, teacherTargetClass]
+  );
+
+  const classScopedSelectedTestAttempts = useMemo(
+    () => safeArray(selectedTestAttempts).filter((a) => {
+      const itemClass = getClassNameFromItem(a);
+      if (!itemClass) return true;
+      return isInTargetClass(a, teacherTargetClass);
+    }),
+    [selectedTestAttempts, teacherTargetClass]
+  );
 
   const selectedHomeworkSummary = useMemo(() => {
-    const submitted = (selectedHomework || []).filter((h) => String(h?.dueStatus || h?.status || '').toLowerCase() === 'submitted' || String(h?.status || '').toLowerCase() === 'graded').length;
-    const notSubmitted = (selectedHomework || []).filter((h) => String(h?.dueStatus || h?.status || '').toLowerCase() !== 'submitted' && String(h?.status || '').toLowerCase() !== 'graded').length;
-    const overdue = (selectedHomework || []).filter((h) => String(h?.dueStatus || '').toLowerCase() === 'overdue').length;
+    const submitted = classScopedSelectedHomework.filter((h) => String(h?.dueStatus || h?.status || '').toLowerCase() === 'submitted' || String(h?.status || '').toLowerCase() === 'graded').length;
+    const notSubmitted = classScopedSelectedHomework.filter((h) => String(h?.dueStatus || h?.status || '').toLowerCase() !== 'submitted' && String(h?.status || '').toLowerCase() !== 'graded').length;
+    const overdue = classScopedSelectedHomework.filter((h) => String(h?.dueStatus || '').toLowerCase() === 'overdue').length;
     return { submitted, notSubmitted, overdue };
-  }, [selectedHomework]);
+  }, [classScopedSelectedHomework]);
 
   const filteredSelectedHomework = useMemo(() => {
-    return (selectedHomework || []).filter((h) => {
+    return classScopedSelectedHomework.filter((h) => {
       const dueStatus = String(h?.dueStatus || '').toLowerCase();
       const status = String(h?.status || '').toLowerCase();
       const isSubmitted = dueStatus === 'submitted' || status === 'submitted' || status === 'graded';
@@ -912,32 +978,32 @@ export default function TeacherDashboard({ session, onLogout }) {
       if (homeworkStatusFilter === 'overdue') return isOverdue;
       return true;
     });
-  }, [selectedHomework, homeworkStatusFilter]);
+  }, [classScopedSelectedHomework, homeworkStatusFilter]);
 
   const latestFiveSelectedHomework = useMemo(() => {
-    return safeArray(selectedHomework).slice(0, 5);
-  }, [selectedHomework]);
+    return safeArray(classScopedSelectedHomework).slice(0, 5);
+  }, [classScopedSelectedHomework]);
 
   const latestTwoActiveAssignments = useMemo(() => {
-    return safeArray(activeAssignments).slice(0, 2);
-  }, [activeAssignments]);
+    return safeArray(classScopedActiveAssignments).slice(0, 2);
+  }, [classScopedActiveAssignments]);
 
   const lightboxImages = useMemo(() => {
     if (!lightboxUrl) return [];
 
     const groups = [];
 
-    safeArray(activeAssignments).forEach((a) => {
+    safeArray(classScopedActiveAssignments).forEach((a) => {
       const group = asUrlList(a?.attachmentUrls || a?.attachment_urls, a?.attachmentUrl || a?.attachment_url);
       if (group.length) groups.push(group);
     });
 
-    safeArray(homeworkHistory).forEach((h) => {
+    safeArray(classScopedHomeworkHistory).forEach((h) => {
       const group = asUrlList(h?.attachmentUrls || h?.attachment_urls, h?.attachmentUrl || h?.attachment_url);
       if (group.length) groups.push(group);
     });
 
-    safeArray(selectedHomework).forEach((h) => {
+    safeArray(classScopedSelectedHomework).forEach((h) => {
       const teacherImages = asUrlList(h?.attachmentUrls || h?.attachment_urls, h?.attachmentUrl || h?.attachment_url);
       const submittedImages = asUrlList(h?.latestAttachmentUrls || h?.latest_attachment_urls, h?.latestAttachmentUrl || h?.latest_attachment_url);
       const attemptImages = [];
@@ -958,7 +1024,40 @@ export default function TeacherDashboard({ session, onLogout }) {
     if (matchedGroup) return matchedGroup;
 
     return [lightboxUrl];
-  }, [lightboxUrl, activeAssignments, homeworkHistory, selectedHomework, hwAttemptsByHwId, assignAttachmentUrls, assignPreviewUrls, editingHwAttachmentUrls]);
+  }, [lightboxUrl, classScopedActiveAssignments, classScopedHomeworkHistory, classScopedSelectedHomework, hwAttemptsByHwId, assignAttachmentUrls, assignPreviewUrls, editingHwAttachmentUrls]);
+
+  useEffect(() => {
+    const previousTeacherTargetClass = lastTeacherTargetClassRef.current;
+    if (teacherTargetClass !== 'all') {
+      const studentMatchesPreviousTeacherClass =
+        previousTeacherTargetClass !== 'all'
+        && normalizeClassName(studentClassFilter) === normalizeClassName(previousTeacherTargetClass);
+      // Keep student filter in sync until user manually diverges from the last teacher-selected class.
+      const shouldAutoSyncStudentFilter = studentClassFilter === 'all' || studentMatchesPreviousTeacherClass;
+      if (shouldAutoSyncStudentFilter && studentClassFilter !== teacherTargetClass) {
+        setStudentClassFilter(teacherTargetClass);
+      }
+    }
+    lastTeacherTargetClassRef.current = teacherTargetClass;
+    if (!classScopedStudents.length) {
+      setSelectedStudentId('');
+      setSelectedStudentIds([]);
+      return;
+    }
+    if (!classScopedStudents.some((s) => s.id === selectedStudentId)) {
+      const nextStudentId = classScopedStudents[0]?.id || '';
+      setSelectedStudentId(nextStudentId);
+      setSelectedStudentIds(nextStudentId ? [nextStudentId] : []);
+    }
+  }, [teacherTargetClass, classScopedStudents, selectedStudentId, studentClassFilter]);
+
+  useEffect(() => {
+    if (!teacherTargetClass || teacherTargetClass === 'all') return;
+    loadAnnouncementsPanel();
+    loadHomeworkHistory();
+    loadTestsPanel();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [teacherTargetClass]);
 
   const lightboxIndex = useMemo(() => {
     if (!lightboxImages.length || !lightboxUrl) return -1;
@@ -1707,7 +1806,7 @@ export default function TeacherDashboard({ session, onLogout }) {
     ? (selectedActivity || [])
     : (selectedActivity || []).filter((item) => String(item.type || '').toLowerCase() === activityTypeFilter);
 
-  const selectedStudentName = (students.find((s) => s.id === selectedStudentId)?.name) || selectedStudentId || 'Student';
+  const selectedStudentName = (classScopedStudents.find((s) => s.id === selectedStudentId)?.name) || selectedStudentId || 'Student';
 
   const navItems = [
     { key: 'teacher', label: 'Teacher', icon: '📋' },
@@ -1831,13 +1930,13 @@ export default function TeacherDashboard({ session, onLogout }) {
               {panelLoading.announcements ? <p className="td-empty">Loading announcements...</p> : null}
               {panelError.announcements ? <p className="td-empty">{panelError.announcements}</p> : null}
               <ul className="td-announcements">
-                {(announcements || []).slice(0, 5).map((a) => (
+                {classScopedAnnouncements.slice(0, 5).map((a) => (
                   <li key={a.id || `${a.title}-${a.createdAt}`}>
                     <strong>{a.title}</strong>
                     <p>{a.message}</p>
                   </li>
                 ))}
-                {!panelLoading.announcements && !announcements.length ? <p className="td-empty">No announcements posted yet.</p> : null}
+                {!panelLoading.announcements && !classScopedAnnouncements.length ? <p className="td-empty">No announcements posted yet.</p> : null}
               </ul>
             </article>
 
@@ -1846,7 +1945,7 @@ export default function TeacherDashboard({ session, onLogout }) {
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                   <h3 style={{ margin: 0 }}>📝 Assign Homework</h3>
                   <span style={{ fontSize: '12px', color: '#666', background: '#f3f4f6', border: '1px solid #e5e7eb', borderRadius: '999px', padding: '2px 8px' }}>
-                    Active: {activeAssignments.length} | History: {homeworkHistory.length}
+                    Active: {classScopedActiveAssignments.length} | History: {classScopedHomeworkHistory.length}
                   </span>
                 </div>
                 <div style={{ position: 'relative' }}>
@@ -1883,7 +1982,7 @@ export default function TeacherDashboard({ session, onLogout }) {
                       </div>
                       {(() => {
                         const dateStatusMap = {};
-                        safeArray(homeworkHistory).forEach((hw) => {
+                        safeArray(classScopedHomeworkHistory).forEach((hw) => {
                           const d = getHomeworkHistoryDate(hw);
                           if (!d) return;
                           if (!dateStatusMap[d]) dateStatusMap[d] = { all: 0 };
@@ -1950,10 +2049,10 @@ export default function TeacherDashboard({ session, onLogout }) {
                           </div>
                         );
                       })()}
-                      {homeworkHistory.length === 0 ? (
+                      {classScopedHomeworkHistory.length === 0 ? (
                         <p style={{ color: '#999', fontSize: '13px' }}>No homework assigned yet.</p>
                       ) : (() => {
-                        const visibleHistoryBase = homeworkHistory
+                        const visibleHistoryBase = classScopedHomeworkHistory
                           .filter((h) => {
                             if (!historyFilterDate) return true;
                             const relevantKey = getHomeworkHistoryDate(h);
@@ -2416,9 +2515,9 @@ export default function TeacherDashboard({ session, onLogout }) {
               {panelLoading.tests ? <p className="td-empty">Loading tests...</p> : null}
               {panelError.tests ? <p className="td-empty">{panelError.tests}</p> : null}
 
-              {tests.length ? (
+              {classScopedTests.length ? (
                 <ul className="td-announcements">
-                  {tests.map((t) => (
+                  {classScopedTests.map((t) => (
                     <li key={t.id} className="td-invite-row">
                       <div>
                         <strong>{t.title}</strong>
@@ -2587,7 +2686,7 @@ export default function TeacherDashboard({ session, onLogout }) {
               {panelLoading.students ? <p className="td-empty">Loading students...</p> : null}
               {panelError.students ? <p className="td-empty">{panelError.students}</p> : null}
               <div className="td-student-list">
-                {(students || []).map((s) => (
+                {classScopedStudents.map((s) => (
                   <button
                     key={s.id}
                     className={selectedStudentId === s.id ? 'active' : ''}
@@ -2606,7 +2705,7 @@ export default function TeacherDashboard({ session, onLogout }) {
                     />
                   </button>
                 ))}
-                {!panelLoading.students && !students.length ? <p className="td-empty">No students available yet.</p> : null}
+                {!panelLoading.students && !classScopedStudents.length ? <p className="td-empty">No students available yet for this class.</p> : null}
               </div>
             </article>
 
@@ -2770,21 +2869,21 @@ export default function TeacherDashboard({ session, onLogout }) {
               <h3>Homework Status</h3>
               <div className="td-analytics-header">
                 <p>{selectedStudentId ? `📝 All homework for ${selectedStudentName}` : 'Select a student to view homework.'}</p>
-                {selectedHomework.length > 0 && (
+                {classScopedSelectedHomework.length > 0 && (
                   <button
                     type="button"
                     className="td-export-btn"
                     onClick={() => exportCSV(
                       `homework-${selectedStudentName}-${new Date().toISOString().slice(0,10)}.csv`,
                       ['Title', 'Subject', 'Due Date', 'Status', 'Grade', 'Attempts', 'Submitted At'],
-                      selectedHomework.map((h) => [h.title, h.subject, h.dueAt || '', h.status, h.grade ?? '', h.attemptCount, h.submittedAt || ''])
+                      classScopedSelectedHomework.map((h) => [h.title, h.subject, h.dueAt || '', h.status, h.grade ?? '', h.attemptCount, h.submittedAt || ''])
                     )}
                   >
                     ↓ Export CSV
                   </button>
                 )}
               </div>
-              {selectedHomework.length > 0 ? (
+              {classScopedSelectedHomework.length > 0 ? (
                 <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', marginBottom: '12px' }}>
                   <button
                     type="button"
@@ -2811,7 +2910,7 @@ export default function TeacherDashboard({ session, onLogout }) {
               ) : null}
               {panelLoading.homework ? <p className="td-empty">Loading homework...</p> : null}
               {panelError.homework ? <p className="td-empty">{panelError.homework}</p> : null}
-              {selectedHomework.length > 0 ? (
+              {classScopedSelectedHomework.length > 0 ? (
                 filteredSelectedHomework.length > 0 ? (
                   <div className="td-hw-table-wrap">
                     <table className="td-hw-table">
@@ -2966,7 +3065,7 @@ export default function TeacherDashboard({ session, onLogout }) {
                                     </div>
                                   ) : null}
                                   {(() => {
-                                    const isLatestHomework = selectedHomework.length > 0 && selectedHomework[0]?.id === hw.id;
+                                    const isLatestHomework = classScopedSelectedHomework.length > 0 && classScopedSelectedHomework[0]?.id === hw.id;
                                     const hasGrade = hw.grade !== null && hw.grade !== undefined;
                                     const hasFeedback = !!hw.feedback;
                                     const isSubmitted = hasGrade || hasFeedback;
@@ -3043,14 +3142,14 @@ export default function TeacherDashboard({ session, onLogout }) {
               <h3>Test Attempt History</h3>
               <div className="td-analytics-header">
                 <p>{selectedStudentId ? `📊 All test attempts for ${selectedStudentName}` : 'Select a student to view test history.'}</p>
-                {selectedTestAttempts.length > 0 && (
+                {classScopedSelectedTestAttempts.length > 0 && (
                   <button
                     type="button"
                     className="td-export-btn"
                     onClick={() => exportCSV(
                       `tests-${selectedStudentName}-${new Date().toISOString().slice(0,10)}.csv`,
                       ['Test', 'Subject', 'Started', 'Submitted', 'Score', 'Status'],
-                      selectedTestAttempts.map((a) => [a.testTitle, a.subject, a.startedAt || '', a.submittedAt || '', a.score !== null ? `${a.score}${a.maxScore ? `/${a.maxScore}` : ''}` : '—', a.status])
+                      classScopedSelectedTestAttempts.map((a) => [a.testTitle, a.subject, a.startedAt || '', a.submittedAt || '', a.score !== null ? `${a.score}${a.maxScore ? `/${a.maxScore}` : ''}` : '—', a.status])
                     )}
                   >
                     ↓ Export CSV
@@ -3059,7 +3158,7 @@ export default function TeacherDashboard({ session, onLogout }) {
               </div>
               {panelLoading.testAttempts ? <p className="td-empty">Loading test attempts...</p> : null}
               {panelError.testAttempts ? <p className="td-empty">{panelError.testAttempts}</p> : null}
-              {selectedTestAttempts.length > 0 ? (
+              {classScopedSelectedTestAttempts.length > 0 ? (
                 <div className="td-hw-table-wrap">
                   <table className="td-hw-table">
                     <thead>
@@ -3073,7 +3172,7 @@ export default function TeacherDashboard({ session, onLogout }) {
                       </tr>
                     </thead>
                     <tbody>
-                      {selectedTestAttempts.map((a) => (
+                      {classScopedSelectedTestAttempts.map((a) => (
                         <tr key={a.id}>
                           <td><strong>{a.testTitle}</strong></td>
                           <td>{a.subject}</td>
