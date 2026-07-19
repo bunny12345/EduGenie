@@ -10,6 +10,10 @@ type ChatTurn = {
   role: 'user' | 'assistant';
   content: string;
   ts: string;
+  imageDataUrl?: string;
+  imageName?: string;
+  imageDataUrls?: string[];
+  imageNames?: string[];
 };
 
 type ChatContextMessage = {
@@ -113,10 +117,10 @@ export class ChatService {
     return `${studentId}::${conversationId}`;
   }
 
-  private appendCacheTurn(studentId: string, conversationId: string, role: 'user' | 'assistant', content: string) {
+  private appendCacheTurn(studentId: string, conversationId: string, turn: ChatTurn) {
     const key = this.getCacheKey(studentId, conversationId);
     const existing = ChatService.conversationCache.get(key) || [];
-    const next = [...existing, { role, content: String(content || ''), ts: new Date().toISOString() }].slice(-60);
+    const next = [...existing, this.normalizeTurns([turn])[0]].filter(Boolean).slice(-60) as ChatTurn[];
     ChatService.conversationCache.set(key, next);
   }
 
@@ -169,6 +173,14 @@ export class ChatService {
         role: t.role,
         content: String(t.content || '').trim(),
         ts: t.ts || new Date().toISOString(),
+        imageDataUrl: String(t.imageDataUrl || '').trim() || undefined,
+        imageName: String(t.imageName || '').trim() || undefined,
+        imageDataUrls: Array.isArray(t.imageDataUrls)
+          ? t.imageDataUrls.map((url) => String(url || '').trim()).filter(Boolean).slice(0, 6)
+          : undefined,
+        imageNames: Array.isArray(t.imageNames)
+          ? t.imageNames.map((name) => String(name || '').trim()).filter(Boolean).slice(0, 6)
+          : undefined,
       }))
       .slice(-60);
   }
@@ -206,6 +218,43 @@ export class ChatService {
     return parsed.slice(0, 6);
   }
 
+  private buildMessageMetadata(turn?: Partial<ChatTurn> | null) {
+    const imageDataUrls = Array.isArray(turn?.imageDataUrls)
+      ? turn.imageDataUrls.map((url) => String(url || '').trim()).filter(Boolean).slice(0, 6)
+      : [];
+    const imageNames = Array.isArray(turn?.imageNames)
+      ? turn.imageNames.map((name) => String(name || '').trim()).filter(Boolean).slice(0, 6)
+      : [];
+    const imageDataUrl = String(turn?.imageDataUrl || '').trim();
+    const imageName = String(turn?.imageName || '').trim();
+
+    return {
+      imageDataUrl: imageDataUrl || imageDataUrls[0] || null,
+      imageName: imageName || imageNames[0] || null,
+      imageDataUrls,
+      imageNames,
+    };
+  }
+
+  private readMessageMetadata(row: any) {
+    const meta = row?.message_metadata && typeof row.message_metadata === 'object' ? row.message_metadata : {};
+    const imageDataUrls = Array.isArray(meta?.imageDataUrls)
+      ? meta.imageDataUrls.map((url: any) => String(url || '').trim()).filter(Boolean).slice(0, 6)
+      : [];
+    const imageNames = Array.isArray(meta?.imageNames)
+      ? meta.imageNames.map((name: any) => String(name || '').trim()).filter(Boolean).slice(0, 6)
+      : [];
+    const imageDataUrl = String(meta?.imageDataUrl || '').trim();
+    const imageName = String(meta?.imageName || '').trim();
+
+    return {
+      imageDataUrl: imageDataUrl || imageDataUrls[0] || '',
+      imageName: imageName || imageNames[0] || '',
+      imageDataUrls,
+      imageNames,
+    };
+  }
+
   private async loadSnapshotHistory(studentId: string, conversationId: string): Promise<ChatTurn[]> {
     try {
       const res = await this.db.client
@@ -224,6 +273,10 @@ export class ChatService {
           role: t?.role === 'assistant' ? 'assistant' : 'user',
           content: String(t?.content || ''),
           ts: String(t?.ts || row?.updated_at || new Date().toISOString()),
+          imageDataUrl: typeof t?.imageDataUrl === 'string' ? t.imageDataUrl : '',
+          imageName: typeof t?.imageName === 'string' ? t.imageName : '',
+          imageDataUrls: Array.isArray(t?.imageDataUrls) ? t.imageDataUrls : [],
+          imageNames: Array.isArray(t?.imageNames) ? t.imageNames : [],
         }))
       );
     } catch (e) {
@@ -281,6 +334,7 @@ export class ChatService {
       recentMessages?: Array<{ role: string; content: string }>;
       imageDataUrl?: string;
       imageDataUrls?: string[];
+      imageNames?: string[];
     }
   ) {
     const convId = opts?.conversationId || `conv-${studentId}`;
@@ -293,7 +347,20 @@ export class ChatService {
     const uniqueImages = Array.from(new Map(mergedImages.map((img) => [img.base64.slice(0, 80), img])).values()).slice(0, 6);
 
     // Keep a process-local conversation trail for reliability across transient DB issues.
-    this.appendCacheTurn(studentId, convId, 'user', message);
+    const userTurn: ChatTurn = {
+      role: 'user',
+      content: message,
+      ts: new Date().toISOString(),
+      imageDataUrl: uniqueImages[0] ? `data:${uniqueImages[0].mimeType};base64,${uniqueImages[0].base64}` : undefined,
+      imageDataUrls: uniqueImages.map((img) => `data:${img.mimeType};base64,${img.base64}`),
+      imageNames: Array.isArray(opts?.imageNames)
+        ? opts.imageNames.map((name) => String(name || '').trim()).filter(Boolean).slice(0, 6)
+        : undefined,
+      imageName: Array.isArray(opts?.imageNames) && opts.imageNames.length
+        ? String(opts.imageNames[0] || '').trim() || undefined
+        : undefined,
+    };
+    this.appendCacheTurn(studentId, convId, userTurn);
 
     // Compute embedding for the incoming message
     const emb = await this.embeddings.embed(message);
@@ -304,6 +371,7 @@ export class ChatService {
         student_id: studentId,
         role: 'user',
         message,
+        message_metadata: this.buildMessageMetadata(userTurn),
         conversation_id: convId,
         embedding: emb
       }]);
@@ -356,7 +424,7 @@ export class ChatService {
     try {
       const hq = this.db.client
         .from('messages')
-        .select('role,message,created_at')
+        .select('role,message,created_at,message_metadata')
         .eq('conversation_id', convId)
         .eq('student_id', studentId)
         .order('created_at', { ascending: false })
@@ -443,18 +511,22 @@ export class ChatService {
       imageBase64List: uniqueImages.map((img) => img.base64),
     });
 
-    this.appendCacheTurn(studentId, convId, 'assistant', reply);
+    const assistantTurn: ChatTurn = {
+      role: 'assistant',
+      content: reply,
+      ts: new Date().toISOString(),
+    };
+    this.appendCacheTurn(studentId, convId, assistantTurn);
 
-    const nowIso = new Date().toISOString();
-    const persistedTurns: ChatTurn[] = [
-      ...recentHistory.map((m) => ({
-        role: (m.role === 'assistant' ? 'assistant' : 'user') as 'user' | 'assistant',
-        content: m.content,
-        ts: nowIso,
-      })),
-      { role: 'user' as const, content: message, ts: nowIso },
-      { role: 'assistant' as const, content: reply, ts: nowIso },
-    ].slice(-60) as ChatTurn[];
+    const snapshotTurns = await this.loadSnapshotHistory(studentId, convId);
+    const baseTurns: ChatTurn[] = snapshotTurns.length
+      ? snapshotTurns
+      : recentHistory.map((m) => ({
+          role: (m.role === 'assistant' ? 'assistant' : 'user') as 'user' | 'assistant',
+          content: m.content,
+          ts: new Date().toISOString(),
+        }));
+    const persistedTurns: ChatTurn[] = [...baseTurns, userTurn, assistantTurn].slice(-60);
     await this.persistSnapshotHistory(studentId, convId, persistedTurns);
 
     // Persist AI reply
@@ -463,6 +535,7 @@ export class ChatService {
         student_id: studentId,
         role: 'ai',
         message: reply,
+        message_metadata: this.buildMessageMetadata(assistantTurn),
         conversation_id: convId,
         embedding: await this.embeddings.embed(reply)
       }]);
@@ -493,17 +566,37 @@ export class ChatService {
         ? rows.filter((r: any) => (conversationId ? (r.conversation_id || `conv-${studentId}`) === conversationId : true))
         : [];
 
-      if (filtered.length === 0) {
-        const snap = await this.loadSnapshotHistory(studentId, convId);
-        if (snap.length) {
-          return snap.map((m, idx) => ({
-            id: `snapshot-${idx}-${m.ts}`,
-            role: m.role === 'assistant' ? 'ai' : 'user',
-            text: m.content,
-            ts: m.ts,
-          }));
-        }
+      if (filtered.length > 0) {
+        return filtered.map((r: any) => {
+          const meta = this.readMessageMetadata(r);
+          return {
+            id: r.id,
+            role: r.role || 'user',
+            text: r.message || '',
+            ts: r.created_at || new Date().toISOString(),
+            imageDataUrl: meta.imageDataUrl,
+            imageName: meta.imageName,
+            imageDataUrls: meta.imageDataUrls,
+            imageNames: meta.imageNames,
+          };
+        });
+      }
 
+      const snap = await this.loadSnapshotHistory(studentId, convId);
+      if (snap.length) {
+        return snap.map((m, idx) => ({
+          id: `snapshot-${idx}-${m.ts}`,
+          role: m.role === 'assistant' ? 'ai' : 'user',
+          text: m.content,
+          ts: m.ts,
+          imageDataUrl: m.imageDataUrl || '',
+          imageName: m.imageName || '',
+          imageDataUrls: Array.isArray(m.imageDataUrls) ? m.imageDataUrls : [],
+          imageNames: Array.isArray(m.imageNames) ? m.imageNames : [],
+        }));
+      }
+
+      if (filtered.length === 0) {
         const cached = this.getCacheHistory(studentId, convId);
         if (cached.length) {
           return cached.map((m, idx) => ({
@@ -511,16 +604,14 @@ export class ChatService {
             role: m.role === 'assistant' ? 'ai' : 'user',
             text: m.content,
             ts: m.ts,
+            imageDataUrl: m.imageDataUrl || '',
+            imageName: m.imageName || '',
+            imageDataUrls: Array.isArray(m.imageDataUrls) ? m.imageDataUrls : [],
+            imageNames: Array.isArray(m.imageNames) ? m.imageNames : [],
           }));
         }
       }
 
-      return filtered.map((r: any) => ({
-        id: r.id,
-        role: r.role || 'user',
-        text: r.message || '',
-        ts: r.created_at || new Date().toISOString()
-      }));
     } catch (e) {
       const snap = await this.loadSnapshotHistory(studentId, convId);
       if (snap.length) {
@@ -529,6 +620,10 @@ export class ChatService {
           role: m.role === 'assistant' ? 'ai' : 'user',
           text: m.content,
           ts: m.ts,
+          imageDataUrl: m.imageDataUrl || '',
+          imageName: m.imageName || '',
+          imageDataUrls: Array.isArray(m.imageDataUrls) ? m.imageDataUrls : [],
+          imageNames: Array.isArray(m.imageNames) ? m.imageNames : [],
         }));
       }
 
@@ -538,6 +633,10 @@ export class ChatService {
         role: m.role === 'assistant' ? 'ai' : 'user',
         text: m.content,
         ts: m.ts,
+        imageDataUrl: m.imageDataUrl || '',
+        imageName: m.imageName || '',
+        imageDataUrls: Array.isArray(m.imageDataUrls) ? m.imageDataUrls : [],
+        imageNames: Array.isArray(m.imageNames) ? m.imageNames : [],
       }));
     }
   }

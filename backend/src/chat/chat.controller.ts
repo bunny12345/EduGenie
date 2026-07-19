@@ -22,9 +22,10 @@ export class ChatController {
       recentMessages?: Array<{ role: string; content: string }>;
       imageDataUrl?: string;
       imageDataUrls?: string[];
+      imageNames?: string[];
     }
   ) {
-    const { message, personality, conversationId, recentMessages, imageDataUrl, imageDataUrls } = payload;
+    const { message, personality, conversationId, recentMessages, imageDataUrl, imageDataUrls, imageNames } = payload;
     const studentId = req.studentId || payload.studentId || 'anon';
     const response = await this.chatService.handleMessage(studentId, message, {
       personality,
@@ -32,6 +33,7 @@ export class ChatController {
       recentMessages,
       imageDataUrl,
       imageDataUrls,
+      imageNames,
     });
     this.localFeed.logStudentActivity(studentId, {
       type: 'chat',

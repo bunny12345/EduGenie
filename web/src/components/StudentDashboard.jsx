@@ -635,6 +635,7 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
     ['📚', 'Library'],
     ['⚙️', 'Settings']
   ];
+  const contentViewKey = activeSidebarTab === 'AI Tutor' ? 'ai-tutor-view' : (activeView === 'home' ? 'home-view' : `subject-view-${activeView}`);
 
   function onSidebarNavClick(item) {
     setActiveSidebarTab(item);
@@ -1028,7 +1029,8 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
         conversationId,
         recentMessages,
         chatImages[0]?.dataUrl || undefined,
-        chatImages.map((img) => img.dataUrl)
+        chatImages.map((img) => img.dataUrl),
+        chatImages.map((img) => img.name)
       );
       // If the backend returned an error response (401/403/500 etc.), surface it
       if (!res?.reply && (res?.error || res?.message || res?.statusCode)) {
@@ -1121,20 +1123,23 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
 
   const tutorPanel = (
     <section className="cardish eg-grad-ai eg-ai-panel eg-ai-screen">
-      <div className="eg-ai-head">
-        <h3>🤖 AI Tutor</h3>
-      </div>
-      <div className="eg-ai-topic-list">
-        {['Fractions', 'Algebra', 'Science', 'Grammar'].map((t) => (
-          <button
-            key={t}
-            type="button"
-            className="eg-ai-topic-chip"
-            onClick={() => onSendTutorMessage(`Explain ${t} to me`)}
-          >
-            {t}
-          </button>
-        ))}
+      <div className="eg-ai-top-sticky">
+        <div className="eg-ai-head">
+          <h3>🤖 AI Tutor</h3>
+          <span className="eg-ai-head-hint">Quick prompts</span>
+        </div>
+        <div className="eg-ai-topic-list">
+          {['Fractions', 'Algebra', 'Science', 'Grammar'].map((t) => (
+            <button
+              key={t}
+              type="button"
+              className="eg-ai-topic-chip"
+              onClick={() => onSendTutorMessage(`Explain ${t} to me`)}
+            >
+              {t}
+            </button>
+          ))}
+        </div>
       </div>
       {panelLoading.chat ? <p className="eg-loading">Loading chat...</p> : null}
       {panelError.chat ? <p className="eg-loading" style={{ color: '#dc2626' }}>{panelError.chat}</p> : null}
@@ -1351,6 +1356,7 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
 
         {panelError.dashboard ? <p className="eg-loading">{panelError.dashboard}</p> : null}
 
+        <div key={contentViewKey} className={`eg-view-shell ${activeSidebarTab === 'AI Tutor' ? 'eg-view-ai' : 'eg-view-standard'}`}>
         {activeSidebarTab === 'AI Tutor' ? (
           tutorPanel
         ) : activeView === 'home' ? (
@@ -2269,6 +2275,7 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
             )}
           </section>
         )}
+        </div>
 
         {loading ? <p className="eg-loading">Loading dashboard data...</p> : null}
       </div>

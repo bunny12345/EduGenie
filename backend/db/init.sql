@@ -18,6 +18,7 @@ CREATE TABLE IF NOT EXISTS messages (
   student_id uuid REFERENCES students(id) ON DELETE SET NULL,
   role text,
   message text,
+  message_metadata jsonb NOT NULL DEFAULT '{}'::jsonb,
   conversation_id text,
   created_at timestamptz DEFAULT now(),
   embedding vector(8)
