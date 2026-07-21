@@ -8,8 +8,10 @@
     "build": "tsc -p tsconfig.build.json",
     "start:dev": "ts-node-dev --respawn --transpile-only src/main.ts",
     "mock-llm": "node mock_llm/server.js",
+    "mock-tts": "node mock_tts/server.js",
     "dev": "npm run start:dev",
     "dev:full": "concurrently \"npm run mock-llm\" \"npm run start:dev\"",
+    "dev:full:voice": "concurrently \"npm run mock-llm\" \"npm run mock-tts\" \"npm run start:dev\"",
     "smoke:rls-api": "bash scripts/rls_api_smoke.sh"
   },
   "keywords": [],
@@ -20,6 +22,7 @@
     "pg": "^8.9.0",
     "express": "^4.18.2",
     "node-fetch": "^3.0.0",
+    "pdf-parse": "^1.1.1",
     "jsonwebtoken": "^9.0.0",
     "cors": "^2.8.5",
     "@nestjs/common": "^10.0.0",

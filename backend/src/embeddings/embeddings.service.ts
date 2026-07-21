@@ -28,27 +28,60 @@ export class EmbeddingsService {
     return out;
   }
 
-  async embed(text: string): Promise<number[]> {
+  private normalizeToTargetDim(arr: number[], targetDim: number): number[] {
+    const dim = Math.max(1, Number(targetDim || this.dim));
+    if (!arr || arr.length === 0) return Array(dim).fill(0);
+    if (arr.length === dim) return arr.map((v) => Number(v));
+    if (arr.length > dim) return this.poolToDim(arr, dim);
+    const out = arr.map((v) => Number(v));
+    while (out.length < dim) out.push(0);
+    return out;
+  }
+
+  private async requestOllamaEmbedding(text: string): Promise<number[] | null> {
+    const model = process.env.OLLAMA_EMBEDDING_MODEL || 'nomic-embed-text';
+    const base = process.env.OLLAMA_URL || process.env.LLM_URL || 'http://localhost:11434';
+    try {
+      const res = await fetch(`${base}/api/embeddings`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ model, prompt: text })
+      });
+      if (!res.ok) return null;
+      const data: any = await res.json();
+      const emb = Array.isArray(data?.embedding) ? data.embedding as number[] : null;
+      return emb && emb.length ? emb : null;
+    } catch (e) {
+      console.warn('ollama embedding request failed:', e?.message || e);
+      return null;
+    }
+  }
+
+  async embed(text: string, opts?: { targetDim?: number; preferSemantic?: boolean }): Promise<number[]> {
     const trimmed = (text || '').trim();
+    const requestedTargetDim = Math.max(1, Number(opts?.targetDim || this.dim));
+    const preferSemantic = !!opts?.preferSemantic;
     const strictOllamaOnly = this.isTruthy(process.env.OLLAMA_ONLY)
       || String(process.env.LLM_PROVIDER || '').trim().toLowerCase() === 'ollama';
 
     // In strict Ollama-only mode, skip all external embedding providers.
     if (strictOllamaOnly) {
-      const hash = crypto.createHash('sha256').update(trimmed || '').digest();
-      const vec: number[] = [];
-      for (let i = 0; i < this.dim; i++) {
-        const b1 = hash[i * 2] ?? 0;
-        const b2 = hash[i * 2 + 1] ?? 0;
-        const uint = (b1 << 8) | b2;
-        const v = (uint / 65535) * 2 - 1;
-        vec.push(Number(v.toFixed(6)));
+      const ollamaEmb = await this.requestOllamaEmbedding(trimmed);
+      if (ollamaEmb && ollamaEmb.length) {
+        return this.normalizeToTargetDim(ollamaEmb, requestedTargetDim);
       }
-      return vec;
     }
 
     // Prefer external semantic provider if configured
     try {
+      if (preferSemantic || this.isTruthy(process.env.OLLAMA_EMBEDDINGS) || this.isTruthy(process.env.OLLAMA_ONLY)
+        || String(process.env.LLM_PROVIDER || '').trim().toLowerCase() === 'ollama') {
+        const ollamaEmb = await this.requestOllamaEmbedding(trimmed);
+        if (ollamaEmb && ollamaEmb.length) {
+          return this.normalizeToTargetDim(ollamaEmb, requestedTargetDim);
+        }
+      }
+
       // OpenAI (preferred when key is present)
       if (process.env.OPENAI_API_KEY) {
         const model = process.env.OPENAI_EMBEDDING_MODEL || 'text-embedding-3-small';
@@ -64,11 +97,11 @@ export class EmbeddingsService {
         if (data && data.data && data.data[0] && Array.isArray(data.data[0].embedding)) {
           const emb = data.data[0].embedding as number[];
           // If the model produces a different dim, down/up-sample to targetDim by pooling.
-          if (emb.length === this.targetDim) return emb.map((v) => Number(v));
+          if (emb.length === requestedTargetDim) return emb.map((v) => Number(v));
           // If targetDim smaller than emb, compress by pooling; if larger, pad with zeros.
-          if (this.targetDim !== this.dim) {
-            // return full-dim target array for DB storage; do NOT compress to 8-d anymore when OpenAI used
-            return this.poolToDim(emb, this.targetDim);
+          if (requestedTargetDim !== this.dim) {
+            // return full-dim target array for DB storage; do NOT compress to 8-d anymore when semantic provider used
+            return this.poolToDim(emb, requestedTargetDim);
           }
           return this.compressToDim(emb);
         }
@@ -87,7 +120,7 @@ export class EmbeddingsService {
         });
         const data: any = await res.json();
         if (data && Array.isArray(data)) {
-          return this.poolToDim(data as number[], this.targetDim);
+          return this.poolToDim(data as number[], requestedTargetDim);
         }
       }
     } catch (e) {
@@ -98,14 +131,15 @@ export class EmbeddingsService {
     // Stable, deterministic pseudo-embedding for prototypes using SHA-256
     const hash = crypto.createHash('sha256').update(trimmed || '').digest();
     const vec: number[] = [];
-    for (let i = 0; i < this.dim; i++) {
+    const outDim = requestedTargetDim <= this.dim ? this.dim : requestedTargetDim;
+    for (let i = 0; i < outDim; i++) {
       const b1 = hash[i * 2] ?? 0;
       const b2 = hash[i * 2 + 1] ?? 0;
       const uint = (b1 << 8) | b2; // 0..65535
       const v = (uint / 65535) * 2 - 1; // map to -1..1
       vec.push(Number(v.toFixed(6)));
     }
-    return vec;
+    return this.normalizeToTargetDim(vec, requestedTargetDim);
   }
 
   cosine(a: number[], b: number[]) {

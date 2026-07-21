@@ -23,11 +23,14 @@ import {
   getTeacherStudentDeliveryStatus,
   getTeacherStudentProgress,
   getTeacherStudents,
+  listCurriculumLessonDocuments,
+  listCurriculumLessons,
   getTests,
   listTeacherStudentInvites,
   listTestQuestions,
   postTeacherAnnouncement,
   registerTeacherStudent,
+  setCurriculumLessonVisibility,
   resendTeacherStudentInvite,
   revokeTeacherStudentInvite,
   updateTest,
@@ -155,7 +158,8 @@ export default function TeacherDashboard({ session, onLogout }) {
     announcements: false,
     tests: false,
     homework: false,
-    testAttempts: false
+    testAttempts: false,
+    curriculum: false
   });
 
   const [panelError, setPanelError] = useState({
@@ -168,7 +172,8 @@ export default function TeacherDashboard({ session, onLogout }) {
     announcements: '',
     tests: '',
     homework: '',
-    testAttempts: ''
+    testAttempts: '',
+    curriculum: ''
   });
 
   const [dashboard, setDashboard] = useState({ summary: {} });
@@ -276,6 +281,14 @@ export default function TeacherDashboard({ session, onLogout }) {
   const [editingQuestionText, setEditingQuestionText] = useState('');
   const [editingQuestionOptions, setEditingQuestionOptions] = useState(['', '', '', '']);
   const [editingQuestionCorrect, setEditingQuestionCorrect] = useState(0);
+
+  const defaultCurriculumSubject = String(teacherProfile?.subject || session?.subject || assignSubject || 'General').trim() || 'General';
+  const [curriculumSubject, setCurriculumSubject] = useState(defaultCurriculumSubject);
+  const [curriculumClassName, setCurriculumClassName] = useState('all');
+  const [curriculumLessons, setCurriculumLessons] = useState([]);
+  const [curriculumDocumentsByLesson, setCurriculumDocumentsByLesson] = useState({});
+  const [curriculumSelectedLessonId, setCurriculumSelectedLessonId] = useState('');
+  const [curriculumVisibilitySaving, setCurriculumVisibilitySaving] = useState('');
 
   const STUDENT_INVITES_PER_PAGE = 5;
 
@@ -519,6 +532,51 @@ export default function TeacherDashboard({ session, onLogout }) {
       setTests([]);
     } finally {
       setPanelLoadingKey('tests', false);
+    }
+  }
+
+  async function loadCurriculumPanel({ className = curriculumClassName, subject = curriculumSubject } = {}) {
+    setPanelLoadingKey('curriculum', true);
+    setPanelErrorKey('curriculum', '');
+    try {
+      const res = await listCurriculumLessons({ className: className === 'all' ? '' : className, subject: subject || '' });
+      const loadedLessons = Array.isArray(res?.lessons) ? res.lessons : [];
+      setCurriculumLessons(loadedLessons);
+      if (!curriculumSelectedLessonId && loadedLessons.length) {
+        setCurriculumSelectedLessonId(loadedLessons[0].id);
+      }
+      const selectedIds = loadedLessons.map((lesson) => String(lesson.id || '')).filter(Boolean).slice(0, 12);
+      const docEntries = await Promise.all(selectedIds.map(async (lessonId) => {
+        try {
+          const docRes = await listCurriculumLessonDocuments(lessonId);
+          return [lessonId, Array.isArray(docRes?.documents) ? docRes.documents : []];
+        } catch {
+          return [lessonId, []];
+        }
+      }));
+      setCurriculumDocumentsByLesson(Object.fromEntries(docEntries));
+    } catch (e) {
+      setPanelErrorKey('curriculum', e?.message || 'Unable to load curriculum lessons.');
+      setCurriculumLessons([]);
+      setCurriculumDocumentsByLesson({});
+    } finally {
+      setPanelLoadingKey('curriculum', false);
+    }
+  }
+
+  async function onToggleCurriculumVisibility(lessonId, classNames, isVisible) {
+    if (!lessonId) return;
+    const rows = Array.isArray(classNames) ? classNames : [classNames];
+    const cleaned = rows.map((v) => String(v || '').trim()).filter(Boolean);
+    if (!cleaned.length) return;
+    setCurriculumVisibilitySaving(lessonId);
+    try {
+      await setCurriculumLessonVisibility(lessonId, { classNames: cleaned, isVisible });
+      await loadCurriculumPanel();
+    } catch (e) {
+      setNote(e?.message || 'Unable to update lesson visibility.');
+    } finally {
+      setCurriculumVisibilitySaving('');
     }
   }
 
@@ -858,6 +916,18 @@ export default function TeacherDashboard({ session, onLogout }) {
     loadTestQuestions(createdTestId);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [createdTestId]);
+
+  useEffect(() => {
+    if (teacherProfile?.subject && (!curriculumSubject || curriculumSubject === 'General')) {
+      setCurriculumSubject(teacherProfile.subject);
+    }
+  }, [teacherProfile?.subject, curriculumSubject]);
+
+  useEffect(() => {
+    if (activeSection !== 'curriculum') return;
+    loadCurriculumPanel({ className: curriculumClassName, subject: curriculumSubject });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeSection, curriculumClassName, curriculumSubject]);
 
   const topStats = useMemo(() => {
     const s = dashboard?.summary || {};
@@ -1810,6 +1880,7 @@ export default function TeacherDashboard({ session, onLogout }) {
 
   const navItems = [
     { key: 'teacher', label: 'Teacher', icon: '📋' },
+    { key: 'curriculum', label: 'Curriculum', icon: '📚' },
     { key: 'students', label: 'Students', icon: '👤' },
     { key: 'registration', label: 'Registration', icon: '✏️' }
   ];
@@ -1867,7 +1938,13 @@ export default function TeacherDashboard({ session, onLogout }) {
               {teacherProfile?.subject || session?.subject
                 ? <><strong>{teacherProfile?.subject || session?.subject}</strong>{' · '}</>  
                 : null}
-              {activeSection === 'teacher' ? 'Manage announcements, homework, and tests.' : activeSection === 'students' ? 'Monitor student progress, activity, and delivery.' : 'Register students and manage invitations.'}
+              {activeSection === 'teacher'
+                ? 'Manage announcements, homework, and tests.'
+                : activeSection === 'curriculum'
+                  ? 'Control class visibility for admin-managed curriculum lessons.'
+                  : activeSection === 'students'
+                    ? 'Monitor student progress, activity, and delivery.'
+                    : 'Register students and manage invitations.'}
             </p>
             {teacherProfile?.schoolName ? (
               <p style={{ fontSize: 11, color: '#8892c4', marginTop: 2 }}>🏫 {teacherProfile.schoolName}</p>
@@ -2634,6 +2711,114 @@ export default function TeacherDashboard({ session, onLogout }) {
               ) : null}
 
               {testsNote ? <p className="td-note">{testsNote}</p> : null}
+            </article>
+          </section>
+        )}
+
+        {/* ══════════ CURRICULUM SECTION ══════════ */}
+        {activeSection === 'curriculum' && (
+          <section className="td-grid">
+            <article className="td-card td-card-wide">
+              <h3>Curriculum Library</h3>
+              <p>School admin creates lessons and uploads PDFs. Teachers can toggle class visibility here.</p>
+              <div className="invite-toolbar">
+                <input
+                  className="invite-search"
+                  value={curriculumSubject}
+                  onChange={(e) => setCurriculumSubject(e.target.value)}
+                  placeholder="Subject (e.g. Science)"
+                />
+                <select
+                  className="invite-filter"
+                  value={curriculumClassName}
+                  onChange={(e) => setCurriculumClassName(e.target.value)}
+                >
+                  <option value="all">All classes</option>
+                  {classOptions.map((className) => (
+                    <option key={className} value={className}>{className}</option>
+                  ))}
+                </select>
+                <button type="button" className="td-inline-btn" onClick={() => loadCurriculumPanel()}>
+                  ↻ Refresh
+                </button>
+              </div>
+              <p style={{ marginTop: 10, fontSize: 12, color: '#6b7280' }}>
+                Need a new lesson or PDF content update? Ask your school admin to manage curriculum content.
+              </p>
+            </article>
+
+            <article className="td-card">
+              <h3>Lessons</h3>
+              {panelLoading.curriculum ? <p className="td-empty">Loading lessons...</p> : null}
+              {panelError.curriculum ? <p className="td-empty">{panelError.curriculum}</p> : null}
+              <div className="td-student-list" style={{ maxHeight: 520, overflowY: 'auto' }}>
+                {curriculumLessons.map((lesson) => {
+                  const docs = curriculumDocumentsByLesson[String(lesson.id || '')] || [];
+                  const visibleClasses = Array.isArray(lesson.visibleClassNames) ? lesson.visibleClassNames : [];
+                  const isSelected = curriculumSelectedLessonId === lesson.id;
+                  return (
+                    <button
+                      key={lesson.id}
+                      type="button"
+                      className={isSelected ? 'active' : ''}
+                      onClick={() => setCurriculumSelectedLessonId(lesson.id)}
+                    >
+                      <div style={{ textAlign: 'left' }}>
+                        <strong>{lesson.title}</strong>
+                        <span>{lesson.subject} · {lesson.documentCount || docs.length || 0} PDF(s)</span>
+                        <span style={{ display: 'block', marginTop: 4, color: '#6b7280' }}>{lesson.description || 'No description'}</span>
+                        <span style={{ display: 'block', marginTop: 4, fontSize: 11, color: '#4b5563' }}>
+                          Visible to: {visibleClasses.length ? visibleClasses.join(', ') : 'No classes yet'}
+                        </span>
+                      </div>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 6, alignItems: 'flex-end' }}>
+                        <span className="td-invite-status">#{lesson.order_index ?? 0}</span>
+                        {curriculumClassName !== 'all' ? (
+                          <button
+                            type="button"
+                            className="td-inline-btn"
+                            disabled={curriculumVisibilitySaving === lesson.id}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              const visible = !(visibleClasses.some((cn) => String(cn).toLowerCase() === String(curriculumClassName).toLowerCase()));
+                              onToggleCurriculumVisibility(lesson.id, [curriculumClassName], visible);
+                            }}
+                          >
+                            {visibleClasses.some((cn) => String(cn).toLowerCase() === String(curriculumClassName).toLowerCase()) ? 'Hide from class' : 'Show to class'}
+                          </button>
+                        ) : null}
+                      </div>
+                    </button>
+                  );
+                })}
+                {!panelLoading.curriculum && !curriculumLessons.length ? <p className="td-empty">No lessons created yet.</p> : null}
+              </div>
+            </article>
+
+            <article className="td-card td-card-wide">
+              <h3>Lesson Documents</h3>
+              <p>
+                {curriculumSelectedLessonId
+                  ? `Selected lesson: ${curriculumLessons.find((l) => l.id === curriculumSelectedLessonId)?.title || curriculumSelectedLessonId}`
+                  : 'Select a lesson first.'}
+              </p>
+              <p style={{ marginTop: 0, fontSize: 12, color: '#6b7280' }}>Read-only for teachers. Upload is restricted to school admin.</p>
+              {curriculumSelectedLessonId ? (
+                <div style={{ marginTop: 12 }}>
+                  <h4 style={{ marginBottom: 8 }}>Uploaded documents</h4>
+                  <ul className="td-announcements">
+                    {(curriculumDocumentsByLesson[String(curriculumSelectedLessonId)] || []).map((doc) => (
+                      <li key={doc.id}>
+                        <div>
+                          <strong>{doc.file_name}</strong>
+                          <p>{doc.extraction_status || 'pending'} · {doc.mime_type || 'application/pdf'}</p>
+                        </div>
+                        {doc.file_url ? <a href={doc.file_url} target="_blank" rel="noreferrer">Open file</a> : null}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
             </article>
           </section>
         )}

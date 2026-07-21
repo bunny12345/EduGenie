@@ -165,12 +165,13 @@ async function getJsonChecked(url, label) {
   return checkSuccess(data, label);
 }
 
-export async function sendChat(studentId, message, personality, conversationId, recentMessages, imageDataUrl, imageDataUrls, imageNames) {
+export async function sendChat(studentId, message, personality, conversationId, recentMessages, imageDataUrl, imageDataUrls, imageNames, lessonId, lessonTitle, lessonSubject, signal) {
   const headers = await authHeaders();
   const res = await fetch(`${API_BASE}/chat`, {
     method: 'POST',
     headers,
-    body: JSON.stringify({ studentId, message, personality, conversationId, recentMessages, imageDataUrl, imageDataUrls, imageNames })
+    signal,
+    body: JSON.stringify({ studentId, message, personality, conversationId, recentMessages, imageDataUrl, imageDataUrls, imageNames, lessonId, lessonTitle, lessonSubject })
   });
   return res.json();
 }
@@ -179,6 +180,34 @@ export async function getChatHistory(studentId, conversationId) {
   let url = `${API_BASE}/chat/history?studentId=${encodeURIComponent(studentId)}`;
   if (conversationId) url += `&conversationId=${encodeURIComponent(conversationId)}`;
   return getJsonChecked(url, 'getChatHistory');
+}
+
+export async function getLearningTimeline(studentId, limit = 20) {
+  const safeLimit = Number.isFinite(Number(limit)) ? Number(limit) : 20;
+  const url = `${API_BASE}/chat/learning-timeline?studentId=${encodeURIComponent(studentId)}&limit=${encodeURIComponent(String(safeLimit))}`;
+  return getJsonChecked(url, 'getLearningTimeline');
+}
+
+export async function translateReadAloud(text, targetLanguage = 'en-US', studentId) {
+  const headers = await authHeaders();
+  const res = await fetch(`${API_BASE}/chat/translate-read-aloud`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({ text, targetLanguage, studentId })
+  });
+  const data = await res.json();
+  return checkSuccess(data, 'translateReadAloud');
+}
+
+export async function generateLocalTtsAudio(text, targetLanguage = 'en-US', studentId, voice, speed = 1) {
+  const headers = await authHeaders();
+  const res = await fetch(`${API_BASE}/chat/tts-audio`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({ text, targetLanguage, studentId, voice, speed })
+  });
+  const data = await res.json();
+  return checkSuccess(data, 'generateLocalTtsAudio');
 }
 
 export async function listMemories(studentId) {
@@ -815,6 +844,54 @@ export async function askTeacherAi(prompt) {
   return res.json();
 }
 
+export async function createCurriculumLesson(payload) {
+  const headers = await authHeaders();
+  const res = await fetch(`${API_BASE}/curriculum/lessons`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify(payload || {})
+  });
+  return res.json();
+}
+
+export async function listCurriculumLessons(params = {}) {
+  const res = await fetch(withQuery('/curriculum/lessons', params || {}), {
+    headers: await authHeaders()
+  });
+  if (!res.ok) throw new Error(`listCurriculumLessons failed: ${res.status}`);
+  const data = await res.json();
+  return checkSuccess(data, 'listCurriculumLessons');
+}
+
+export async function setCurriculumLessonVisibility(lessonId, payload) {
+  const headers = await authHeaders();
+  const res = await fetch(`${API_BASE}/curriculum/lessons/${encodeURIComponent(lessonId)}/visibility`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify(payload || {})
+  });
+  return res.json();
+}
+
+export async function uploadCurriculumLessonDocument(lessonId, payload) {
+  const headers = await authHeaders();
+  const res = await fetch(`${API_BASE}/curriculum/lessons/${encodeURIComponent(lessonId)}/documents/upload`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify(payload || {})
+  });
+  return res.json();
+}
+
+export async function listCurriculumLessonDocuments(lessonId) {
+  const res = await fetch(`${API_BASE}/curriculum/lessons/${encodeURIComponent(lessonId)}/documents`, {
+    headers: await authHeaders()
+  });
+  if (!res.ok) throw new Error(`listCurriculumLessonDocuments failed: ${res.status}`);
+  const data = await res.json();
+  return checkSuccess(data, 'listCurriculumLessonDocuments');
+}
+
 const api = {
   sendChat,
   listMemories,
@@ -832,6 +909,9 @@ const api = {
   getRewards,
   earnReward,
   getChatHistory,
+  getLearningTimeline,
+  translateReadAloud,
+  generateLocalTtsAudio,
   getTests,
   startTest,
   submitTestAttempt,
@@ -860,6 +940,11 @@ const api = {
   getTeacherAnnouncements,
   postTeacherAnnouncement,
   askTeacherAi,
+  createCurriculumLesson,
+  listCurriculumLessons,
+  setCurriculumLessonVisibility,
+  uploadCurriculumLessonDocument,
+  listCurriculumLessonDocuments,
   studentLogin,
   registerTeacherStudent,
   teacherLogin,

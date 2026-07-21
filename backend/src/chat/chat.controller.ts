@@ -23,9 +23,12 @@ export class ChatController {
       imageDataUrl?: string;
       imageDataUrls?: string[];
       imageNames?: string[];
+      lessonId?: string;
+      lessonTitle?: string;
+      lessonSubject?: string;
     }
   ) {
-    const { message, personality, conversationId, recentMessages, imageDataUrl, imageDataUrls, imageNames } = payload;
+    const { message, personality, conversationId, recentMessages, imageDataUrl, imageDataUrls, imageNames, lessonId, lessonTitle, lessonSubject } = payload;
     const studentId = req.studentId || payload.studentId || 'anon';
     const response = await this.chatService.handleMessage(studentId, message, {
       personality,
@@ -34,6 +37,9 @@ export class ChatController {
       imageDataUrl,
       imageDataUrls,
       imageNames,
+      lessonId,
+      lessonTitle,
+      lessonSubject,
     });
     this.localFeed.logStudentActivity(studentId, {
       type: 'chat',
@@ -51,6 +57,66 @@ export class ChatController {
     const id = req.studentId || studentId || 'anon';
     const messages = await this.chatService.getHistory(id, conversationId);
     return { success: true, messages };
+  }
+
+  @Get('learning-timeline')
+  @UseGuards(AuthGuard)
+  async learningTimeline(@Req() req: any, @Query('studentId') studentId?: string, @Query('limit') limit?: string) {
+    const id = req.studentId || studentId || 'anon';
+    const parsedLimit = Number(limit || 20);
+    const result = await this.chatService.getLearningTimeline(id, {
+      limit: Number.isFinite(parsedLimit) ? parsedLimit : 20,
+    });
+    return { success: true, ...result };
+  }
+
+  @Get('lesson-mastery')
+  @UseGuards(AuthGuard)
+  async lessonMastery(@Req() req: any, @Query('studentId') studentId?: string, @Query('lessonId') lessonId?: string) {
+    const id = req.studentId || studentId || 'anon';
+    const mastery = await this.chatService.getLessonMastery(id, lessonId);
+    return { success: true, mastery };
+  }
+
+  @Post('translate-read-aloud')
+  @UseGuards(AuthGuard)
+  async translateReadAloud(@Req() req: any, @Body() payload: { studentId?: string; text: string; targetLanguage?: string }) {
+    const id = req.studentId || payload.studentId || 'anon';
+    const translated = await this.chatService.translateForReadAloud(payload?.text, payload?.targetLanguage);
+    this.localFeed.logStudentActivity(id, {
+      type: 'chat',
+      action: 'tts-translate',
+      title: 'Read aloud translation',
+      details: String(payload?.targetLanguage || 'en-US'),
+      meta: { targetLanguage: payload?.targetLanguage || 'en-US' }
+    });
+    return { success: true, text: translated, targetLanguage: payload?.targetLanguage || 'en-US' };
+  }
+
+  @Post('tts-audio')
+  @UseGuards(AuthGuard)
+  async localTtsAudio(
+    @Req() req: any,
+    @Body() payload: { studentId?: string; text: string; targetLanguage?: string; voice?: string; speed?: number }
+  ) {
+    const id = req.studentId || payload.studentId || 'anon';
+    const tts = await this.chatService.generateLocalTtsAudio(payload?.text, payload?.targetLanguage, payload?.voice, payload?.speed);
+    if (!tts?.audioBase64) {
+      return {
+        success: false,
+        error: 'Local TTS is unavailable. Start your self-hosted TTS service and set TTS_SERVICE_URL.'
+      };
+    }
+
+    this.localFeed.logStudentActivity(id, {
+      type: 'chat',
+      action: 'tts-local',
+      title: 'Voice playback',
+      details: String(payload?.targetLanguage || 'en-US'),
+      meta: { targetLanguage: payload?.targetLanguage || 'en-US', voice: payload?.voice || tts.voice || null, speed: payload?.speed ?? 1 }
+    });
+
+    return { success: true, ...tts };
   }
 
   @Get('seed')

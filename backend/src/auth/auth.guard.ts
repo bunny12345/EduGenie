@@ -16,6 +16,8 @@ export class AuthGuard implements CanActivate {
 
     // Attach user info and studentId to request for downstream handlers
     req.user = payload;
+    req.actorId = payload.sub || payload.user_id || payload.id || null;
+    req.actorRole = payload.role || null;
     req.studentId = payload.sub || payload.user_id || payload.id || null;
     return true;
   }
