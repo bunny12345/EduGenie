@@ -188,17 +188,6 @@ export async function getLearningTimeline(studentId, limit = 20) {
   return getJsonChecked(url, 'getLearningTimeline');
 }
 
-export async function translateReadAloud(text, targetLanguage = 'en-US', studentId) {
-  const headers = await authHeaders();
-  const res = await fetch(`${API_BASE}/chat/translate-read-aloud`, {
-    method: 'POST',
-    headers,
-    body: JSON.stringify({ text, targetLanguage, studentId })
-  });
-  const data = await res.json();
-  return checkSuccess(data, 'translateReadAloud');
-}
-
 export async function generateLocalTtsAudio(text, targetLanguage = 'en-US', studentId, voice, speed = 1) {
   const headers = await authHeaders();
   const res = await fetch(`${API_BASE}/chat/tts-audio`, {
@@ -910,7 +899,6 @@ const api = {
   earnReward,
   getChatHistory,
   getLearningTimeline,
-  translateReadAloud,
   generateLocalTtsAudio,
   getTests,
   startTest,

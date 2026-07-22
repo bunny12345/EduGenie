@@ -22,7 +22,6 @@ import {
   startTest,
   submitHomework,
   generateLocalTtsAudio,
-  translateReadAloud,
   uploadHomeworkImage,
   submitTestAttempt
 } from '../api';
@@ -280,12 +279,10 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
   const [chatImageError, setChatImageError] = useState('');
   const [chatReadAloudId, setChatReadAloudId] = useState('');
   const [chatReadAloudSupported, setChatReadAloudSupported] = useState(false);
-  const [chatReadAloudLanguage, setChatReadAloudLanguage] = useState('en-US');
   const [chatReadAloudSpeed, setChatReadAloudSpeed] = useState(1);
   const [chatVoicePlayId, setChatVoicePlayId] = useState('');
   const [chatVoiceLoadingId, setChatVoiceLoadingId] = useState('');
   const welcomedLessonsRef = React.useRef(new Set());
-  const readAloudTranslationCacheRef = React.useRef({});
   const localVoiceCacheRef = React.useRef({});
   const localAudioRef = React.useRef(null);
   const localAudioUrlRef = React.useRef('');
@@ -917,18 +914,6 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
     return pool.slice().sort((a, b) => scoreVoice(b) - scoreVoice(a))[0] || pool[0] || null;
   }
 
-  function getReadLanguageLabel(code) {
-    const value = String(code || 'en-US');
-    const option = [
-      { code: 'en-US', label: 'English' },
-      { code: 'te-IN', label: 'Telugu' },
-      { code: 'hi-IN', label: 'Hindi' },
-      { code: 'ta-IN', label: 'Tamil' },
-      { code: 'kn-IN', label: 'Kannada' },
-    ].find((item) => item.code === value);
-    return option?.label || value;
-  }
-
   function clampSpeed(value) {
     const n = Number(value);
     if (!Number.isFinite(n)) return 1;
@@ -1016,35 +1001,13 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
     const text = getReadAloudText(rawText);
     if (!text) return;
 
-    const selectedLanguage = String(chatReadAloudLanguage || 'en-US');
-    const cacheKey = `${id}::${selectedLanguage}::${text.slice(0, 120)}`;
-
-    let spokenText = text;
-    if (!/^en(-|_|$)/i.test(selectedLanguage)) {
-      const cached = readAloudTranslationCacheRef.current[cacheKey];
-      if (cached) {
-        spokenText = cached;
-      } else {
-        try {
-          const translatedRes = await translateReadAloud(text, selectedLanguage, studentId);
-          const translatedText = String(translatedRes?.text || '').trim();
-          if (translatedText) {
-            spokenText = translatedText;
-            readAloudTranslationCacheRef.current[cacheKey] = translatedText;
-          }
-        } catch {
-          // Fallback to original text if translation fails.
-        }
-      }
-    }
-
     speechSessionRef.current += 1;
     const sessionId = speechSessionRef.current;
     synth.cancel();
     stopLocalVoicePlayback();
-    currentReadAloudRef.current = { messageId: id, text: spokenText, languageCode: selectedLanguage };
+    currentReadAloudRef.current = { messageId: id, text, languageCode: 'en-US' };
     setChatReadAloudId(id);
-    await speakSegmentsSequentially({ id: sessionId, text: spokenText, languageCode: selectedLanguage });
+    await speakSegmentsSequentially({ id: sessionId, text, languageCode: 'en-US' });
     if (speechSessionRef.current === sessionId) {
       currentReadAloudRef.current = { messageId: '', text: '', languageCode: '' };
       setChatReadAloudId('');
@@ -1095,12 +1058,11 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
       currentReadAloudRef.current = { messageId: '', text: '', languageCode: '' };
       setChatReadAloudId('');
 
-      const language = String(chatReadAloudLanguage || 'en-US');
-      const cacheKey = `${id}::${language}::${cleanText.slice(0, 160)}`;
+      const cacheKey = `${id}::en-US::${cleanText.slice(0, 160)}`;
 
       let cached = localVoiceCacheRef.current[cacheKey];
       if (!cached) {
-        const tts = await generateLocalTtsAudio(cleanText, language, studentId, undefined, chatReadAloudSpeed);
+        const tts = await generateLocalTtsAudio(cleanText, 'en-US', studentId, undefined, chatReadAloudSpeed);
         const audioBase64 = String(tts?.audioBase64 || '').trim();
         if (!audioBase64) throw new Error('Local TTS returned empty audio.');
         cached = {
@@ -1694,18 +1656,6 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
           <h3>🤖 AI Tutor</h3>
           <div className="eg-ai-head-controls">
             <span className="eg-ai-head-hint">Quick prompts</span>
-            <select
-              className="eg-ai-read-language"
-              value={chatReadAloudLanguage}
-              onChange={(e) => setChatReadAloudLanguage(e.target.value)}
-              aria-label="Read aloud language"
-            >
-              <option value="en-US">Read in English</option>
-              <option value="te-IN">Read in Telugu</option>
-              <option value="hi-IN">Read in Hindi</option>
-              <option value="ta-IN">Read in Tamil</option>
-              <option value="kn-IN">Read in Kannada</option>
-            </select>
             <div className="eg-ai-speed-control" title={`Read aloud speed: ${getSpeedLabel(chatReadAloudSpeed)}`}>
               <label htmlFor="eg-ai-speed-range">Speed</label>
               <input
@@ -1817,9 +1767,9 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
                   className="eg-ai-read-btn"
                   onClick={() => onToggleReadAloud(messageId, messageText)}
                   disabled={!chatReadAloudSupported}
-                  title={chatReadAloudSupported ? `Read this response aloud in ${getReadLanguageLabel(chatReadAloudLanguage)}` : 'Read aloud is not supported on this browser'}
+                  title={chatReadAloudSupported ? 'Read this response aloud' : 'Read aloud is not supported on this browser'}
                 >
-                  {isSpeaking ? 'Stop Audio' : `Read ${getReadLanguageLabel(chatReadAloudLanguage)}`}
+                  {isSpeaking ? 'Stop Audio' : 'Read Aloud'}
                 </button>
               </div>
             ) : null}

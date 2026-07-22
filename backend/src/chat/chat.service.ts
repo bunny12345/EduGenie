@@ -1149,48 +1149,6 @@ export class ChatService {
     }
   }
 
-  async translateForReadAloud(text: string, targetLanguage?: string) {
-    const sourceText = String(text || '').trim();
-    if (!sourceText) return '';
-
-    const target = String(targetLanguage || 'en-US').trim();
-    if (!target || /^en(-|_|$)/i.test(target)) {
-      return sourceText;
-    }
-
-    const languageMap: Record<string, string> = {
-      'te': 'Telugu',
-      'te-in': 'Telugu',
-      'hi': 'Hindi',
-      'hi-in': 'Hindi',
-      'ta': 'Tamil',
-      'ta-in': 'Tamil',
-      'kn': 'Kannada',
-      'kn-in': 'Kannada',
-    };
-    const normalized = target.toLowerCase();
-    const languageName = languageMap[normalized] || languageMap[normalized.split('-')[0]] || target;
-
-    try {
-      const messages = [
-        {
-          role: 'system',
-          content: `You are a translation assistant for school students. Translate the text into ${languageName}. Keep the meaning simple and clear. Return only translated text without markdown, labels, bullet prefixes, or explanation.`
-        },
-        {
-          role: 'user',
-          content: sourceText
-        }
-      ];
-      const translated = await this.llm.query(messages as Array<{ role: string; content: string }>);
-      const clean = String(translated || '').trim().replace(/^"|"$/g, '');
-      return clean || sourceText;
-    } catch (e) {
-      console.warn('translateForReadAloud failed', e?.message || e);
-      return sourceText;
-    }
-  }
-
   async generateLocalTtsAudio(text: string, targetLanguage?: string, voice?: string, speed?: number) {
     const sourceText = String(text || '').trim();
     if (!sourceText) return null;
@@ -1202,10 +1160,7 @@ export class ChatService {
     const preferredVoice = String(voice || process.env.TTS_SERVICE_VOICE || '').trim();
 
     // Keep request payload bounded to avoid oversized TTS calls.
-    const boundedSource = sourceText.slice(0, 2200);
-    const spokenText = /^en(-|_|$)/i.test(target)
-      ? boundedSource
-      : await this.translateForReadAloud(boundedSource, target);
+    const spokenText = sourceText.slice(0, 2200);
 
     try {
       const res = await fetch(serviceUrl, {

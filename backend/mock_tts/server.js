@@ -7,7 +7,18 @@ const { spawn } = require('child_process');
 
 const PORT = Number(process.env.TTS_PORT || 5005);
 const HOST = process.env.TTS_HOST || '127.0.0.1';
-const DEFAULT_VOICE = String(process.env.TTS_DEFAULT_VOICE || 'Samantha').trim();
+const DEFAULT_PIPER_BIN = path.join(os.homedir(), '.local', 'bin', 'piper');
+const PIPER_BIN = String(
+  process.env.PIPER_BIN
+  || (fs.existsSync(DEFAULT_PIPER_BIN) ? DEFAULT_PIPER_BIN : 'piper')
+).trim() || 'piper';
+const PIPER_MODEL = String(
+  process.env.PIPER_MODEL
+  || process.env.TTS_DEFAULT_VOICE
+  || path.join(__dirname, 'models', 'en_US-lessac-medium.onnx')
+).trim();
+
+
 
 function json(res, code, payload) {
   const body = JSON.stringify(payload);
@@ -46,9 +57,31 @@ function clamp(value, min, max, fallback) {
   return Math.max(min, Math.min(max, n));
 }
 
-function speedToWordsPerMinute(speed) {
-  const multiplier = clamp(speed, 0.5, 1.8, 1);
-  return Math.round(180 * multiplier);
+function speedToLengthScale(speed) {
+  const multiplier = clamp(speed, 0.6, 1.8, 1);
+  // Piper speaks slower with larger length_scale and faster with smaller values.
+  return Number((1 / multiplier).toFixed(2));
+}
+
+
+
+async function synthesizeWithPiper(text, modelPath, outWavPath, speed) {
+  const lengthScale = speedToLengthScale(speed);
+  const args = ['--model', modelPath, '--output_file', outWavPath, '--length_scale', String(lengthScale)];
+  return new Promise((resolve, reject) => {
+    const child = spawn(PIPER_BIN, args, { stdio: ['pipe', 'pipe', 'pipe'] });
+    let stderr = '';
+    child.stderr.on('data', (d) => { stderr += String(d || ''); });
+    child.on('error', (err) => {
+      reject(new Error(`Unable to start Piper binary "${PIPER_BIN}": ${err?.message || err}`));
+    });
+    child.on('close', (code) => {
+      if (code === 0) return resolve(true);
+      return reject(new Error(`Piper exited with code ${code}: ${stderr}`));
+    });
+    child.stdin.write(text);
+    child.stdin.end();
+  });
 }
 
 async function synthesizeSpeechToBuffer(text, voice, speed) {
@@ -56,38 +89,29 @@ async function synthesizeSpeechToBuffer(text, voice, speed) {
   fs.mkdirSync(tmpDir, { recursive: true });
 
   const id = randomUUID();
-  const aiffPath = path.join(tmpDir, `${id}.aiff`);
-  const mp3Path = path.join(tmpDir, `${id}.mp3`);
   const wavPath = path.join(tmpDir, `${id}.wav`);
-
-  const safeVoice = String(voice || DEFAULT_VOICE || '').trim();
-  const rate = speedToWordsPerMinute(speed);
-  const sayArgs = ['-o', aiffPath, text];
-  if (safeVoice) {
-    sayArgs.splice(2, 0, '-v', safeVoice);
+  const mp3Path = path.join(tmpDir, `${id}.mp3`);
+  const safeModel = String(voice || PIPER_MODEL || '').trim();
+  if (!safeModel) {
+    throw new Error('No Piper model configured. Set PIPER_MODEL to an .onnx model path.');
   }
-  sayArgs.splice(2, 0, '-r', String(rate));
+  if (!fs.existsSync(safeModel)) {
+    throw new Error(`Piper model not found at ${safeModel}. Set PIPER_MODEL to a valid .onnx file.`);
+  }
 
   try {
-    await runCmd('say', sayArgs);
+    await synthesizeWithPiper(text, safeModel, wavPath, speed);
 
     try {
-      await runCmd('ffmpeg', ['-y', '-i', aiffPath, '-codec:a', 'libmp3lame', '-q:a', '4', mp3Path]);
+      await runCmd('ffmpeg', ['-y', '-i', wavPath, '-codec:a', 'libmp3lame', '-q:a', '4', mp3Path]);
       const mp3 = fs.readFileSync(mp3Path);
       return { buffer: mp3, mimeType: 'audio/mpeg' };
     } catch {
-      // Browser-safe fallback: convert AIFF to WAV using macOS afconvert.
-      try {
-        await runCmd('afconvert', ['-f', 'WAVE', '-d', 'LEI16@22050', aiffPath, wavPath]);
-        const wav = fs.readFileSync(wavPath);
-        return { buffer: wav, mimeType: 'audio/wav' };
-      } catch {
-        const aiff = fs.readFileSync(aiffPath);
-        return { buffer: aiff, mimeType: 'audio/aiff' };
-      }
+      // Browser-safe fallback if ffmpeg is unavailable.
+      const wav = fs.readFileSync(wavPath);
+      return { buffer: wav, mimeType: 'audio/wav' };
     }
   } finally {
-    try { if (fs.existsSync(aiffPath)) fs.unlinkSync(aiffPath); } catch {}
     try { if (fs.existsSync(mp3Path)) fs.unlinkSync(mp3Path); } catch {}
     try { if (fs.existsSync(wavPath)) fs.unlinkSync(wavPath); } catch {}
   }
@@ -95,7 +119,12 @@ async function synthesizeSpeechToBuffer(text, voice, speed) {
 
 const server = http.createServer(async (req, res) => {
   if (req.method === 'GET' && req.url === '/health') {
-    return json(res, 200, { ok: true, service: 'mock-tts', engine: 'macos-say' });
+    return json(res, 200, {
+      ok: true,
+      service: 'mock-tts',
+      engine: 'piper',
+      model: path.basename(PIPER_MODEL || ''),
+    });
   }
 
   if (req.method === 'POST' && req.url === '/tts') {

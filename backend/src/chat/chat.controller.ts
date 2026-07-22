@@ -78,21 +78,6 @@ export class ChatController {
     return { success: true, mastery };
   }
 
-  @Post('translate-read-aloud')
-  @UseGuards(AuthGuard)
-  async translateReadAloud(@Req() req: any, @Body() payload: { studentId?: string; text: string; targetLanguage?: string }) {
-    const id = req.studentId || payload.studentId || 'anon';
-    const translated = await this.chatService.translateForReadAloud(payload?.text, payload?.targetLanguage);
-    this.localFeed.logStudentActivity(id, {
-      type: 'chat',
-      action: 'tts-translate',
-      title: 'Read aloud translation',
-      details: String(payload?.targetLanguage || 'en-US'),
-      meta: { targetLanguage: payload?.targetLanguage || 'en-US' }
-    });
-    return { success: true, text: translated, targetLanguage: payload?.targetLanguage || 'en-US' };
-  }
-
   @Post('tts-audio')
   @UseGuards(AuthGuard)
   async localTtsAudio(
