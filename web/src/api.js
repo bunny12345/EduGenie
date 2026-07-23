@@ -237,6 +237,39 @@ export async function getDashboard(studentId) {
   return getJsonChecked(url, 'getDashboard');
 }
 
+// ─── Knowledge Orchard ──────────────────────────────────────────────────────
+export async function getOrchard(studentId) {
+  const url = `${API_BASE}/orchard?studentId=${encodeURIComponent(studentId)}`;
+  return getJsonChecked(url, 'getOrchard');
+}
+
+export async function getOrchardTree(studentId, subjectKey) {
+  const url = `${API_BASE}/orchard/${encodeURIComponent(subjectKey)}?studentId=${encodeURIComponent(studentId)}`;
+  return getJsonChecked(url, 'getOrchardTree');
+}
+
+export async function recordOrchardActivity(payload) {
+  const headers = await authHeaders();
+  const res = await fetch(`${API_BASE}/orchard/activity`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify(payload)
+  });
+  const data = await res.json();
+  return checkSuccess(data, 'recordOrchardActivity');
+}
+
+export async function completeOrchardReview(payload) {
+  const headers = await authHeaders();
+  const res = await fetch(`${API_BASE}/orchard/review/complete`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify(payload)
+  });
+  const data = await res.json();
+  return checkSuccess(data, 'completeOrchardReview');
+}
+
 export async function getHomework(studentId) {
   const url = `${API_BASE}/homework?studentId=${encodeURIComponent(studentId)}`;
   return getJsonChecked(url, 'getHomework');
@@ -900,6 +933,10 @@ const api = {
   getChatHistory,
   getLearningTimeline,
   generateLocalTtsAudio,
+  getOrchard,
+  getOrchardTree,
+  recordOrchardActivity,
+  completeOrchardReview,
   getTests,
   startTest,
   submitTestAttempt,

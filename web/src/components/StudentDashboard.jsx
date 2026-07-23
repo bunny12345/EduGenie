@@ -25,6 +25,7 @@ import {
   uploadHomeworkImage,
   submitTestAttempt
 } from '../api';
+import StudentOrchard from './StudentOrchard';
 
 function safeArray(v) {
   return Array.isArray(v) ? v : [];
@@ -813,6 +814,7 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
   const weeklyGoalPct = 75;
   const sidebarItems = [
     ['🏠', 'Home'],
+    ['🌳', 'My Orchard'],
     ['🤖', 'AI Tutor'],
     ['📝', 'Homework'],
     ['🧪', 'Mock Tests'],
@@ -822,7 +824,11 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
     ['📚', 'Library'],
     ['⚙️', 'Settings']
   ];
-  const contentViewKey = activeSidebarTab === 'AI Tutor' ? 'ai-tutor-view' : (activeView === 'home' ? 'home-view' : `subject-view-${activeView}`);
+  const contentViewKey = activeSidebarTab === 'AI Tutor'
+    ? 'ai-tutor-view'
+    : activeSidebarTab === 'My Orchard'
+      ? 'orchard-view'
+      : (activeView === 'home' ? 'home-view' : `subject-view-${activeView}`);
 
   function onSidebarNavClick(item) {
     setActiveSidebarTab(item);
@@ -1917,6 +1923,7 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
         </header>
 
         {/* Subject Navigation */}
+        {activeSidebarTab !== 'My Orchard' && (
         <div style={{ display: 'flex', gap: '8px', padding: '12px 20px', backgroundColor: '#f5f5f5', borderBottom: '1px solid #e0e0e0', overflowX: 'auto', alignItems: 'center' }}>
           <button 
             onClick={() => setActiveView('home')}
@@ -1975,12 +1982,15 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
             );
           })}
         </div>
+        )}
 
         {panelError.dashboard ? <p className="eg-loading">{panelError.dashboard}</p> : null}
 
         <div key={contentViewKey} className={`eg-view-shell ${activeSidebarTab === 'AI Tutor' ? 'eg-view-ai' : 'eg-view-standard'}`}>
         {activeSidebarTab === 'AI Tutor' ? (
           tutorPanel
+        ) : activeSidebarTab === 'My Orchard' ? (
+          <StudentOrchard studentId={studentId} greetingName={greetingName} />
         ) : activeView === 'home' ? (
           <>
             <section className="eg-main-grid eg-main-grid-home">

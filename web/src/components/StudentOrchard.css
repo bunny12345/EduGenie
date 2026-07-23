@@ -1,0 +1,787 @@
+/* Knowledge Orchard — student overview styles */
+
+.eg-orch {
+  padding: 18px 22px 40px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  color: #1f2340;
+}
+
+.eg-orch-loading,
+.eg-orch-error,
+.eg-orch-detail-empty {
+  padding: 48px;
+  text-align: center;
+  color: #6b7090;
+  font-size: 16px;
+}
+.eg-orch-error button {
+  margin-top: 12px;
+  padding: 8px 18px;
+  border: none;
+  border-radius: 20px;
+  background: #7c3aed;
+  color: #fff;
+  cursor: pointer;
+}
+
+/* Header */
+.eg-orch-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.eg-orch-greeting {
+  margin: 0;
+  font-size: 26px;
+  font-weight: 800;
+}
+.eg-orch-sub {
+  margin: 4px 0 0;
+  color: #6b7090;
+}
+.eg-orch-counters {
+  display: flex;
+  gap: 12px;
+}
+.eg-orch-counter {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: #fff;
+  border-radius: 16px;
+  padding: 10px 14px;
+  box-shadow: 0 4px 14px rgba(31, 35, 64, 0.06);
+}
+.eg-orch-counter-icon {
+  font-size: 22px;
+}
+.eg-orch-counter strong {
+  display: block;
+  font-size: 16px;
+  line-height: 1.1;
+}
+.eg-orch-counter span {
+  font-size: 11px;
+  color: #8a8fae;
+}
+
+/* Banner */
+.eg-orch-banner {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: linear-gradient(120deg, #f4f0ff 0%, #eefaf1 100%);
+  border-radius: 20px;
+  padding: 18px 22px;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.eg-orch-banner-left {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+.eg-orch-banner-emoji {
+  font-size: 34px;
+}
+.eg-orch-banner-left h2 {
+  margin: 0;
+  font-size: 18px;
+}
+.eg-orch-banner-left p {
+  margin: 2px 0 0;
+  color: #6b7090;
+  font-size: 13px;
+}
+.eg-orch-banner-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.eg-orch-banner-progress {
+  display: flex;
+  flex-direction: column;
+}
+.eg-orch-banner-progress span {
+  font-size: 12px;
+  color: #6b7090;
+}
+.eg-orch-banner-progress strong {
+  font-size: 20px;
+}
+
+/* Rings */
+.eg-orch-ring-label {
+  font-size: 13px;
+  font-weight: 700;
+  fill: #1f2340;
+}
+
+/* Main grid */
+.eg-orch-main {
+  display: grid;
+  grid-template-columns: 2fr 1fr;
+  gap: 18px;
+  align-items: start;
+}
+@media (max-width: 1000px) {
+  .eg-orch-main {
+    grid-template-columns: 1fr;
+  }
+}
+
+.eg-orch-tree-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 14px;
+}
+@media (max-width: 720px) {
+  .eg-orch-tree-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+.eg-orch-tree-card {
+  --accent: #7c3aed;
+  text-align: left;
+  border: 2px solid transparent;
+  background: #fff;
+  border-radius: 18px;
+  padding: 14px;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  box-shadow: 0 6px 18px rgba(31, 35, 64, 0.06);
+  transition: transform 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.eg-orch-tree-card:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 12px 26px rgba(31, 35, 64, 0.12);
+}
+.eg-orch-tree-card.selected {
+  border-color: var(--accent);
+}
+.eg-orch-tree-card.health-wilting {
+  background: #fbfaf6;
+}
+
+.eg-orch-tree-card-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.eg-orch-tree-name {
+  font-weight: 700;
+  font-size: 14px;
+}
+.eg-orch-tree-emoji {
+  margin-right: 4px;
+}
+.eg-orch-tree-art {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 132px;
+  background: radial-gradient(circle at 50% 85%, rgba(0, 0, 0, 0.05), transparent 60%);
+}
+.eg-orch-tree-health-badge {
+  position: absolute;
+  bottom: 4px;
+  right: 4px;
+  font-size: 11px;
+  background: rgba(255, 255, 255, 0.9);
+  border-radius: 12px;
+  padding: 2px 8px;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+}
+.eg-orch-tree-foot {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 12px;
+}
+.eg-orch-tree-stage {
+  font-weight: 700;
+  color: var(--accent);
+}
+.eg-orch-tree-chapters {
+  color: #8a8fae;
+}
+.eg-orch-tree-bar {
+  height: 6px;
+  border-radius: 6px;
+  background: #ececf6;
+  overflow: hidden;
+}
+.eg-orch-tree-bar span {
+  display: block;
+  height: 100%;
+  border-radius: 6px;
+}
+.eg-orch-tree-explore {
+  align-self: flex-end;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--accent);
+  cursor: pointer;
+  padding: 2px 4px;
+  border-radius: 8px;
+}
+.eg-orch-tree-explore:hover {
+  background: rgba(124, 58, 237, 0.08);
+}
+
+/* Detail panel */
+.eg-orch-detail {
+  --accent: #7c3aed;
+  position: relative;
+  background: #fff;
+  border-radius: 20px;
+  padding: 18px;
+  box-shadow: 0 6px 18px rgba(31, 35, 64, 0.06);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.eg-orch-detail-head {
+  font-weight: 800;
+  font-size: 16px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.eg-orch-detail-expand {
+  border: none;
+  background: #f0ecff;
+  color: var(--accent);
+  width: 30px;
+  height: 30px;
+  border-radius: 10px;
+  cursor: pointer;
+  font-size: 16px;
+  line-height: 1;
+}
+.eg-orch-detail-expand:hover {
+  background: #e4dcff;
+}
+.eg-orch-detail-art {
+  display: flex;
+  justify-content: center;
+  padding: 8px;
+  background: radial-gradient(circle at 50% 90%, rgba(0, 0, 0, 0.06), transparent 65%);
+  border-radius: 16px;
+}
+.eg-orch-detail-stage {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: #f5f3ff;
+  border-radius: 12px;
+  padding: 10px 14px;
+}
+.eg-orch-detail-stage strong {
+  color: var(--accent);
+}
+.eg-orch-detail-stage span {
+  font-size: 12px;
+  color: #6b7090;
+}
+.eg-orch-detail-chapters {
+  font-size: 13px;
+  color: #6b7090;
+}
+
+.eg-orch-next {
+  border: 1px dashed #d9d5f0;
+  border-radius: 14px;
+  padding: 12px;
+}
+.eg-orch-next-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #8a8fae;
+}
+.eg-orch-next-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 6px;
+}
+.eg-orch-next-row strong {
+  display: block;
+  font-size: 14px;
+}
+.eg-orch-next-row span {
+  font-size: 12px;
+  color: #8a8fae;
+}
+.eg-orch-next-btn {
+  border: none;
+  border-radius: 20px;
+  background: var(--accent);
+  color: #fff;
+  padding: 8px 18px;
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.eg-orch-needs {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.eg-orch-needs-title {
+  font-weight: 700;
+  font-size: 13px;
+}
+.eg-orch-need {
+  display: grid;
+  grid-template-columns: 20px 62px 1fr 40px;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+}
+.eg-orch-need-label {
+  color: #6b7090;
+}
+.eg-orch-need-track {
+  height: 8px;
+  border-radius: 8px;
+  background: #ececf6;
+  overflow: hidden;
+}
+.eg-orch-need-fill {
+  display: block;
+  height: 100%;
+  border-radius: 8px;
+}
+.eg-orch-need-pct {
+  text-align: right;
+  color: #6b7090;
+}
+
+.eg-orch-tip {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  background: #eef7ff;
+  border-radius: 14px;
+  padding: 12px;
+}
+.eg-orch-tip span {
+  font-size: 20px;
+}
+.eg-orch-tip p {
+  margin: 0;
+  font-size: 13px;
+  color: #3a4066;
+}
+.eg-orch-detail-loading {
+  position: absolute;
+  top: 12px;
+  right: 14px;
+  font-size: 11px;
+  color: #8a8fae;
+}
+
+/* Bottom row */
+.eg-orch-bottom {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 18px;
+}
+@media (max-width: 1000px) {
+  .eg-orch-bottom {
+    grid-template-columns: 1fr;
+  }
+}
+.eg-orch-panel {
+  background: #fff;
+  border-radius: 18px;
+  padding: 16px;
+  box-shadow: 0 6px 18px rgba(31, 35, 64, 0.06);
+}
+.eg-orch-panel h3 {
+  margin: 0 0 12px;
+  font-size: 15px;
+}
+
+.eg-orch-week {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 4px;
+}
+.eg-orch-day {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 6px 0;
+  border-radius: 10px;
+  font-size: 11px;
+}
+.eg-orch-day.today {
+  background: #f0ecff;
+}
+.eg-orch-day-label {
+  color: #8a8fae;
+}
+.eg-orch-day-num {
+  font-weight: 700;
+}
+.eg-orch-streak {
+  margin: 12px 0 0;
+  font-size: 12px;
+  color: #6b7090;
+}
+
+.eg-orch-missions {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.eg-orch-missions li {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: #f7f7fb;
+  border-radius: 12px;
+  padding: 10px 12px;
+  font-size: 13px;
+}
+.eg-orch-mission-reward {
+  font-weight: 700;
+  color: #16a34a;
+}
+
+.eg-orch-chart {
+  display: block;
+  height: 110px;
+}
+.eg-orch-chart-empty {
+  color: #8a8fae;
+  font-size: 13px;
+  padding: 24px 0;
+  text-align: center;
+}
+.eg-orch-chart-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+  font-size: 11px;
+}
+
+/* ─── Single-tree detail view (Phase 4) ─────────────────────────────────── */
+.eg-tree-detail {
+  --accent: #7c3aed;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+.eg-tree-detail-back {
+  align-self: flex-start;
+  border: none;
+  background: #fff;
+  color: var(--accent);
+  font-weight: 700;
+  border-radius: 20px;
+  padding: 8px 16px;
+  cursor: pointer;
+  box-shadow: 0 4px 14px rgba(31, 35, 64, 0.06);
+}
+.eg-tree-detail-back:hover {
+  background: #f5f3ff;
+}
+
+.eg-tree-detail-hero {
+  display: grid;
+  grid-template-columns: 260px 1fr;
+  gap: 20px;
+  align-items: center;
+  background: linear-gradient(120deg, #f7f4ff 0%, #eefaf1 100%);
+  border-radius: 22px;
+  padding: 22px;
+}
+@media (max-width: 820px) {
+  .eg-tree-detail-hero {
+    grid-template-columns: 1fr;
+    justify-items: center;
+    text-align: center;
+  }
+}
+.eg-tree-detail-hero-art {
+  display: flex;
+  justify-content: center;
+  background: radial-gradient(circle at 50% 90%, rgba(0, 0, 0, 0.08), transparent 65%);
+  border-radius: 18px;
+  padding: 10px;
+}
+.eg-tree-detail-hero-info h1 {
+  margin: 0 0 10px;
+  font-size: 24px;
+}
+.eg-tree-detail-emoji {
+  margin-right: 6px;
+}
+.eg-tree-detail-stage-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 14px;
+}
+.eg-tree-detail-stage {
+  font-weight: 800;
+  color: var(--accent);
+  background: #fff;
+  border-radius: 14px;
+  padding: 4px 12px;
+}
+.eg-tree-detail-level,
+.eg-tree-detail-health,
+.eg-tree-detail-season {
+  font-size: 12px;
+  background: #fff;
+  border-radius: 14px;
+  padding: 4px 12px;
+  color: #4a4f70;
+}
+.eg-tree-detail-health.health-thirsty { color: #b45309; }
+.eg-tree-detail-health.health-wilting { color: #b91c1c; }
+
+.eg-tree-detail-stats {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+  margin-bottom: 14px;
+}
+@media (max-width: 620px) {
+  .eg-tree-detail-stats {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+.eg-tree-detail-stat {
+  background: #fff;
+  border-radius: 14px;
+  padding: 10px 12px;
+}
+.eg-tree-detail-stat strong {
+  display: block;
+  font-size: 18px;
+}
+.eg-tree-detail-stat span {
+  font-size: 11px;
+  color: #8a8fae;
+}
+
+.eg-tree-detail-roots {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 10px;
+  align-items: center;
+  background: #fff;
+  border-radius: 14px;
+  padding: 10px 14px;
+  font-size: 12px;
+  color: #4a4f70;
+}
+.eg-tree-detail-roots-track {
+  height: 10px;
+  border-radius: 8px;
+  background: #ececf6;
+  overflow: hidden;
+}
+.eg-tree-detail-roots-fill {
+  display: block;
+  height: 100%;
+  border-radius: 8px;
+  background: linear-gradient(90deg, #a78bfa, #7c3aed);
+}
+.eg-tree-detail-roots-hint {
+  color: #8a8fae;
+}
+@media (max-width: 620px) {
+  .eg-tree-detail-roots {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Seedbed — chapters as individual seeds/fruits */
+.eg-tree-detail-chapters-wrap {
+  background: #fff;
+  border-radius: 20px;
+  padding: 18px;
+  box-shadow: 0 6px 18px rgba(31, 35, 64, 0.06);
+}
+.eg-tree-detail-chapters-head h2 {
+  margin: 0;
+  font-size: 17px;
+}
+.eg-tree-detail-chapters-head p {
+  margin: 4px 0 14px;
+  color: #6b7090;
+  font-size: 13px;
+}
+.eg-tree-detail-seedbed {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
+  gap: 12px;
+}
+.eg-seed {
+  border: 2px solid transparent;
+  background: #f7f7fb;
+  border-radius: 16px;
+  padding: 12px 8px;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  transition: transform 0.12s ease, border-color 0.12s ease, background 0.12s ease;
+}
+.eg-seed:hover {
+  transform: translateY(-2px);
+  background: #f0ecff;
+}
+.eg-seed.active {
+  border-color: var(--accent);
+  background: #f5f3ff;
+}
+.eg-seed.golden {
+  background: linear-gradient(135deg, #fff8e1, #fef3c7);
+  box-shadow: 0 4px 14px rgba(234, 179, 8, 0.25);
+}
+.eg-seed-glyph {
+  font-size: 30px;
+  line-height: 1;
+}
+.eg-seed-num {
+  font-size: 12px;
+  font-weight: 700;
+}
+.eg-seed-stage {
+  font-size: 10px;
+  color: #8a8fae;
+  text-align: center;
+}
+.eg-seed-bar {
+  width: 100%;
+  height: 5px;
+  border-radius: 5px;
+  background: #e4e2ef;
+  overflow: hidden;
+}
+.eg-seed-bar span {
+  display: block;
+  height: 100%;
+  border-radius: 5px;
+  background: var(--accent);
+}
+
+/* Chapter milestone panel */
+.eg-chapter-panel {
+  background: #fff;
+  border-radius: 20px;
+  padding: 18px;
+  box-shadow: 0 6px 18px rgba(31, 35, 64, 0.06);
+}
+.eg-chapter-panel-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 14px;
+}
+.eg-chapter-panel-head > div {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.eg-chapter-panel-glyph {
+  font-size: 30px;
+}
+.eg-chapter-panel-head strong {
+  display: block;
+  font-size: 15px;
+}
+.eg-chapter-panel-head span {
+  font-size: 12px;
+  color: #8a8fae;
+}
+.eg-chapter-panel-close {
+  border: none;
+  background: #f0eef8;
+  width: 30px;
+  height: 30px;
+  border-radius: 10px;
+  cursor: pointer;
+  color: #6b7090;
+}
+
+.eg-chapter-milestones {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+}
+@media (max-width: 820px) {
+  .eg-chapter-milestones {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+@media (max-width: 520px) {
+  .eg-chapter-milestones {
+    grid-template-columns: 1fr;
+  }
+}
+.eg-mstone-group {
+  background: #f7f7fb;
+  border-radius: 14px;
+  padding: 12px;
+  border: 1px solid transparent;
+}
+.eg-mstone-group.complete {
+  background: #ecfdf3;
+  border-color: #bbf7d0;
+}
+.eg-mstone-group-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 12px;
+  font-weight: 700;
+  margin-bottom: 8px;
+}
+.eg-mstone-count {
+  color: #8a8fae;
+}
+.eg-mstone-group ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.eg-mstone-group li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: #6b7090;
+}
+.eg-mstone-group li.checked {
+  color: #1f2340;
+}
+.eg-mstone-check {
+  font-size: 13px;
+}
