@@ -16,6 +16,8 @@ import {
   SubjectCatalogEntry,
   SUBJECT_CATALOG,
   SUBJECT_BY_KEY,
+  treeStageFromCompletion,
+  normalizeSubjectKey,
 } from './orchard.constants';
 
 const METER_WINDOW_DAYS = 14; // rolling window for water/sunlight/fertilizer
@@ -82,6 +84,43 @@ export class OrchardService {
         .sort((a, b) => a.order_index - b.order_index);
     }
     return SUBJECT_CATALOG;
+  }
+
+  // ─── which subjects does this student actually have? ─────────────────────────
+  // Mirrors the student portal's subject nav so the orchard only shows trees for
+  // subjects that are actually registered/present for the student. The portal
+  // (StudentDashboard) builds its subject list from a small default baseline plus
+  // whatever subjects appear in the student's homework, tests and progress — which
+  // are driven by the teacher(s) registered for their class. We resolve the same
+  // sources here and keep only canonical subjects that exist in the tree catalog.
+  async resolveStudentSubjectKeys(studentId: string): Promise<string[]> {
+    // Baseline mirrors StudentDashboard DEFAULT_SUBJECTS = ['Science','Mathematics','Social'].
+    const names = new Set<string>(['Science', 'Mathematics', 'Social']);
+
+    // Subjects seen in the student's own homework / tests / progress metrics.
+    for (const [table, field] of [
+      ['homework', 'subject'],
+      ['test_attempts', 'subject'],
+      ['progress_metrics', 'subject'],
+    ] as Array<[string, string]>) {
+      const rows = await this.selectRows(table, [['student_id', studentId]]);
+      for (const r of rows || []) {
+        const s = r[field] || r.metric_key;
+        if (s) names.add(String(s));
+      }
+    }
+
+    // Normalize free-text names to canonical keys and keep only catalog subjects.
+    const catalog = await this.getCatalog();
+    const catalogKeys = new Set(catalog.map((c) => c.subject_key));
+    const keys = new Set<string>();
+    for (const n of names) {
+      const k = normalizeSubjectKey(n);
+      if (k && catalogKeys.has(k)) keys.add(k);
+    }
+    // Safety net: never show an empty orchard — fall back to the portal defaults.
+    if (!keys.size) ['mathematics', 'science', 'social'].forEach((k) => keys.add(k));
+    return Array.from(keys);
   }
 
   // ─── class resolution ────────────────────────────────────────────────────────
@@ -216,7 +255,10 @@ export class OrchardService {
   // ─── ensure the whole orchard exists for a student ───────────────────────────
   async ensureOrchard(studentId: string): Promise<{ className: string; catalog: SubjectCatalogEntry[] }> {
     const className = await this.resolveClassName(studentId);
-    const catalog = await this.getCatalog();
+    // Only build trees for the subjects this student actually has (mirrors the
+    // student portal). Subjects not registered for the student get no tree.
+    const allowed = new Set(await this.resolveStudentSubjectKeys(studentId));
+    const catalog = (await this.getCatalog()).filter((s) => allowed.has(s.subject_key));
     await this.ensureProfile(studentId);
     for (const subject of catalog) {
       await this.ensureTree(studentId, subject, className);
@@ -249,6 +291,65 @@ export class OrchardService {
     };
   }
 
+  // ─── LIVE meters relative to NOW → real decay over time ──────────────────────
+  // Used on the READ path so a tree gets thirsty/wilting (and its mood turns
+  // sad/sleepy) when the student stops studying. Each watering activity fades as
+  // it ages out of the rolling window, so the meters drop smoothly with time.
+  private computeLiveMeters(activity: any[]): {
+    water: number;
+    sunlight: number;
+    fertilizer: number;
+    lastActivityMs: number;
+    daysSinceLast: number | null;
+  } {
+    const now = Date.now();
+    const windowMs = METER_WINDOW_DAYS * 24 * 3600 * 1000;
+    const windowStart = now - windowMs;
+    let water = 0;
+    let sunlight = 0;
+    let fertilizer = 0;
+    let lastActivityMs = 0;
+    for (const a of activity || []) {
+      const t = new Date(a.occurred_at || a.created_at || now).getTime();
+      if (t > now) continue; // ignore future-dated rows for decay math
+      if (t > lastActivityMs) lastActivityMs = t;
+      if (t < windowStart) continue;
+      // Fade older activity: fresh = full weight, ~14 days old ≈ 0.
+      const weight = 1 - (now - t) / windowMs;
+      water += Number(a.water || 0) * weight;
+      sunlight += Number(a.sunlight || 0) * weight;
+      fertilizer += Number(a.fertilizer || 0) * weight;
+    }
+    return {
+      water: clampPct(water * 5),
+      sunlight: clampPct(sunlight * 6),
+      fertilizer: clampPct(fertilizer * 7),
+      lastActivityMs,
+      daysSinceLast: lastActivityMs ? Math.floor((now - lastActivityMs) / (24 * 3600 * 1000)) : null,
+    };
+  }
+
+  // Fetch a student's activity grouped by subject_key (one query) for live reads.
+  private async activityBySubject(studentId: string): Promise<Map<string, any[]>> {
+    const rows = await this.selectRows('orchard_activity', [['student_id', studentId]]);
+    const map = new Map<string, any[]>();
+    for (const r of rows || []) {
+      const k = String(r.subject_key || '');
+      if (!map.has(k)) map.set(k, []);
+      map.get(k)!.push(r);
+    }
+    return map;
+  }
+
+  // Derive the tree's facial mood from its stage + live health (mirrors the
+  // frontend moodForState so the drawn face matches what the API reports).
+  private moodForTree(stage: string, health: string): string {
+    if (stage === 'golden_fruit') return 'excited';
+    if (health === 'wilting') return 'sleepy';
+    if (health === 'thirsty') return 'sad';
+    return 'happy';
+  }
+
   // ─── recompute a tree's aggregate state from its chapters + activity ─────────
   private async recomputeTree(studentId: string, subjectKey: string): Promise<any> {
     const growth = await this.selectRows('chapter_growth', [
@@ -263,13 +364,11 @@ export class OrchardService {
     const orderByChapter = new Map((chapters || []).map((c) => [String(c.id), Number(c.order_index || c.chapter_number || 0)]));
 
     const total = growth.length || 0;
-    let stageSum = 0;
     let rootsSum = 0;
     let completed = 0;
 
     for (const g of growth) {
       const idx = Number(g.stage_index || 0);
-      stageSum += idx;
       rootsSum += Number(g.roots_pct || 0);
       if (idx >= STAGE_INDEX['fruit']) completed += 1;
     }
@@ -286,10 +385,11 @@ export class OrchardService {
     if (inProgress.length) nextChapterId = inProgress[0].g.chapter_id;
     else if (seeds.length) nextChapterId = seeds[0].g.chapter_id;
 
-    const avgIdx = total ? stageSum / total : 0;
-    const roundedIdx = Math.round(avgIdx);
-    const treeStage = STAGES[Math.max(0, Math.min(STAGES.length - 1, roundedIdx))];
-    const progressPct = clampPct((avgIdx / (STAGES.length - 1)) * 100);
+    // Tree stage is driven by how many chapters the student has FINISHED
+    // (reached fruit) out of the subject's total, independent of chapter count.
+    // Golden fruit appears only when every chapter is finished.
+    const { stage: treeStage, index: roundedIdx } = treeStageFromCompletion(completed, total);
+    const progressPct = clampPct(total ? (completed / total) * 100 : 0);
     const rootsPct = clampPct(total ? rootsSum / total : 0);
     const level = Math.max(1, Math.min(7, roundedIdx + 1));
 
@@ -524,9 +624,13 @@ export class OrchardService {
     const profile = (profileRows && profileRows[0]) || {};
     const treeRows = await this.selectRows('orchard_trees', [['student_id', studentId]]);
     const byKey = new Map((treeRows || []).map((t) => [t.subject_key, t]));
+    // Live meters relative to NOW so trees decay when the student stops studying.
+    const activityMap = await this.activityBySubject(studentId);
 
     const trees = catalog.map((subject) => {
       const t = byKey.get(subject.subject_key) || {};
+      const live = this.computeLiveMeters(activityMap.get(subject.subject_key) || []);
+      const health = healthFromWater(live.water);
       return {
         subjectKey: subject.subject_key,
         subject: subject.display_name,
@@ -543,11 +647,13 @@ export class OrchardService {
         completedChapters: t.completed_chapters || 0,
         progressPct: t.progress_pct || 0,
         rootsPct: t.roots_pct || 0,
-        waterPct: t.water_pct || 0,
-        sunlightPct: t.sunlight_pct || 0,
-        fertilizerPct: t.fertilizer_pct || 0,
-        health: t.health || 'healthy',
-        season: t.season || 'spring',
+        waterPct: live.water,
+        sunlightPct: live.sunlight,
+        fertilizerPct: live.fertilizer,
+        health,
+        mood: this.moodForTree(t.stage || 'seed', health),
+        daysSinceLast: live.daysSinceLast,
+        season: seasonForDate(new Date()),
       };
     });
 
@@ -608,6 +714,15 @@ export class OrchardService {
 
     const nextChapter = chapters.find((c) => c.chapterId === t.next_chapter_id) || chapters.find((c) => c.stageIndex === 0) || null;
 
+    // Live meters relative to NOW so this tree decays when study stops.
+    const activity = await this.selectRows('orchard_activity', [
+      ['student_id', studentId],
+      ['subject_key', subjectKey],
+    ]);
+    const live = this.computeLiveMeters(activity);
+    const stage = t.stage || 'seed';
+    const health = healthFromWater(live.water);
+
     return {
       success: true,
       subjectKey,
@@ -618,19 +733,21 @@ export class OrchardService {
       treeEmoji: subject.tree_emoji,
       accentColor: subject.accent_color,
       tree: {
-        stage: t.stage || 'seed',
-        stageLabel: STAGE_LABEL[(t.stage || 'seed') as keyof typeof STAGE_LABEL],
+        stage,
+        stageLabel: STAGE_LABEL[stage as keyof typeof STAGE_LABEL],
         level: t.level || 1,
         maxLevel: t.max_level || 7,
         totalChapters: t.total_chapters || chapters.length,
         completedChapters: t.completed_chapters || 0,
         progressPct: t.progress_pct || 0,
         rootsPct: t.roots_pct || 0,
-        waterPct: t.water_pct || 0,
-        sunlightPct: t.sunlight_pct || 0,
-        fertilizerPct: t.fertilizer_pct || 0,
-        health: t.health || 'healthy',
-        season: t.season || 'spring',
+        waterPct: live.water,
+        sunlightPct: live.sunlight,
+        fertilizerPct: live.fertilizer,
+        health,
+        mood: this.moodForTree(stage, health),
+        daysSinceLast: live.daysSinceLast,
+        season: seasonForDate(new Date()),
       },
       nextChapter,
       chapters,

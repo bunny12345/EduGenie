@@ -43,16 +43,18 @@ const MATH_CHAPTERS = [
 ];
 
 // Target growth stage per chapter — a showcase distribution across all stages.
-// index: 0 seed .. 7 golden_fruit
+// index: 0 seed .. 7 golden_fruit.
+// The TREE now grows by how many chapters are FINISHED (fruit=6 or golden=7).
+// Here 11 of 18 are finished (4 golden + 7 fruit) → tree = Mature Tree, while
+// the remaining chapters show a spread of in-progress stages in the tiles.
 const TARGETS: number[] = [
-  7, 7, 7, // 3 golden fruits (fully mastered, months ago)
-  6, 6, 6, // 3 fruits
-  5, 5, // 2 blossoms
-  4, 4, 4, // 3 mature trees
-  3, 3, // 2 growing trees
+  7, 7, 7, 7, // 4 golden fruits (fully mastered months ago)
+  6, 6, 6, 6, 6, 6, 6, // 7 fruits  → 11 finished chapters total
+  5, 5, // 2 blossoms (in progress)
+  4, 4, // 2 mature trees (in progress)
+  3, // 1 growing tree
   2, // 1 young plant
-  1, // 1 sprout
-  0, 0, 0, // 3 untouched seeds
+  0, // 1 untouched seed
 ];
 
 // Roots (understanding %) that fits each stage.

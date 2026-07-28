@@ -189,6 +189,27 @@ export function computeStage(milestones: Milestones, rootsPct: number): { stage:
   return { stage: reached, index: STAGE_INDEX[reached] };
 }
 
+// Tree-level growth: the subject tree advances purely by how many of its
+// chapters the student has FINISHED, regardless of the subject's total chapter
+// count. This keeps the model simple ("one tree per subject that grows as you
+// complete chapters") and works for any number of chapters. The final
+// golden-fruit stage is reserved for finishing EVERY chapter in the subject.
+export function treeStageFromCompletion(completed: number, total: number): { stage: StageKey; index: number } {
+  if (!total || total <= 0 || completed <= 0) {
+    return { stage: 'seed', index: 0 };
+  }
+  if (completed >= total) {
+    return { stage: 'golden_fruit', index: STAGE_INDEX['golden_fruit'] };
+  }
+  // Spread partial progress across the six middle stages (sprout → fruit) so
+  // the very first finished chapter already shows visible growth, and 'fruit'
+  // only appears when nearly all chapters are done. 'golden_fruit' is never
+  // reached here — only at 100% completion above.
+  const fraction = completed / total; // 0 < fraction < 1
+  const idx = Math.min(STAGE_INDEX['fruit'], Math.max(1, Math.ceil(fraction * 6)));
+  return { stage: STAGES[idx], index: idx };
+}
+
 export function clampPct(n: number): number {
   if (!Number.isFinite(n)) return 0;
   return Math.max(0, Math.min(100, Math.round(n)));

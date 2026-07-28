@@ -28,6 +28,23 @@ web/public/assets/orchard/<treeType>/<stage>.<ext>
 
 - **ext**: `png` (preferred), `svg`, or `webp`. The loader tries png → svg → webp.
 
+## Facial expressions (moods)
+
+The tree is "alive" — its expression changes with how well it's cared for. Add
+mood variants by inserting a mood word before the extension:
+
+```
+web/public/assets/orchard/<treeType>/<stage>.<mood>.png
+```
+
+- **mood**: `happy` (healthy), `sad` (thirsty/behind), `sleepy` (wilting/neglected),
+  `excited` (celebration / golden). The plain `<stage>.png` is treated as `happy`.
+- Loader order per stage: `<stage>.<mood>.png` → `<stage>.happy.png` → `<stage>.png`
+  → svg/webp → emoji placeholder. So moods are fully optional and incremental.
+
+Example: `web/public/assets/orchard/oak/mature_tree.sad.png`
+
+
 ## Example
 
 ```

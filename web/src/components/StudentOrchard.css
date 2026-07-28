@@ -6,6 +6,15 @@
   flex-direction: column;
   gap: 18px;
   color: #1f2340;
+  position: relative;
+  overflow: hidden;
+  border-radius: 20px;
+  isolation: isolate;
+}
+/* Keep all real content above the living-orchard backdrop. */
+.eg-orch > *:not(.eg-orch-ambience) {
+  position: relative;
+  z-index: 1;
 }
 
 .eg-orch-loading,
@@ -785,3 +794,231 @@
 .eg-mstone-check {
   font-size: 13px;
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   PHASE 6 — LIVING ORCHARD: seasons, sky, ambient life, treehouse, harvest
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* Full-bleed decorative backdrop behind the orchard content. */
+.eg-orch-ambience {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  overflow: hidden;
+  border-radius: 20px;
+}
+
+/* ── Season-aware sky ─────────────────────────────────────────────────────── */
+.eg-amb-sky {
+  position: absolute;
+  inset: 0;
+  transition: background 1.2s ease;
+}
+.season-spring .eg-amb-sky { background: linear-gradient(180deg, #dff3ff 0%, #eafbf0 55%, #f4fbef 100%); }
+.season-summer .eg-amb-sky { background: linear-gradient(180deg, #cdeeff 0%, #e6f9ef 55%, #f2fce9 100%); }
+.season-autumn .eg-amb-sky { background: linear-gradient(180deg, #ffeede 0%, #fdf1e0 55%, #fbf5e9 100%); }
+.season-winter .eg-amb-sky { background: linear-gradient(180deg, #e8f1fb 0%, #eef4fb 55%, #f6f9fd 100%); }
+.eg-orch-ambience.is-night .eg-amb-sky {
+  background: linear-gradient(180deg, #1b2350 0%, #26315f 45%, #33406e 100%);
+}
+
+/* Rolling green ground the trees sit on. */
+.eg-amb-ground {
+  position: absolute;
+  left: -5%;
+  right: -5%;
+  bottom: -40px;
+  height: 160px;
+  background: radial-gradient(120% 100% at 50% 0%, rgba(74, 190, 120, 0.28), rgba(74, 190, 120, 0.08) 70%, transparent);
+  border-radius: 50% 50% 0 0 / 60px 60px 0 0;
+}
+.is-night .eg-amb-ground {
+  background: radial-gradient(120% 100% at 50% 0%, rgba(40, 110, 80, 0.35), rgba(30, 80, 60, 0.12) 70%, transparent);
+}
+
+/* ── Sun / moon ───────────────────────────────────────────────────────────── */
+.eg-amb-celestial {
+  position: absolute;
+  top: 18px;
+  right: 34px;
+  font-size: 40px;
+  filter: drop-shadow(0 0 18px rgba(255, 214, 120, 0.65));
+  animation: eg-amb-pulse 6s ease-in-out infinite;
+}
+.eg-amb-celestial.moon {
+  filter: drop-shadow(0 0 14px rgba(180, 200, 255, 0.7));
+}
+@keyframes eg-amb-pulse {
+  0%, 100% { transform: scale(1); opacity: 0.95; }
+  50% { transform: scale(1.08); opacity: 1; }
+}
+
+/* ── Clouds ───────────────────────────────────────────────────────────────── */
+.eg-amb-cloud {
+  position: absolute;
+  font-size: 34px;
+  opacity: 0.85;
+  will-change: transform;
+}
+.is-night .eg-amb-cloud { opacity: 0.35; }
+.eg-amb-cloud.c1 { top: 40px; left: -12%; animation: eg-amb-drift 46s linear infinite; }
+.eg-amb-cloud.c2 { top: 92px; left: -18%; font-size: 26px; animation: eg-amb-drift 62s linear infinite 8s; }
+.eg-amb-cloud.c3 { top: 22px; left: -22%; font-size: 30px; animation: eg-amb-drift 74s linear infinite 20s; }
+@keyframes eg-amb-drift {
+  0% { transform: translateX(0); }
+  100% { transform: translateX(130vw); }
+}
+
+/* ── Birds gliding across the sky ─────────────────────────────────────────── */
+.eg-amb-bird {
+  position: absolute;
+  font-size: 20px;
+  opacity: 0.9;
+  will-change: transform;
+}
+.eg-amb-bird.b1 { top: 60px; left: -8%; animation: eg-amb-fly 24s linear infinite 3s; }
+.eg-amb-bird.b2 { top: 120px; left: -8%; font-size: 16px; animation: eg-amb-fly 32s linear infinite 12s; }
+@keyframes eg-amb-fly {
+  0% { transform: translateX(0) translateY(0); }
+  25% { transform: translateX(30vw) translateY(-12px); }
+  50% { transform: translateX(60vw) translateY(6px); }
+  75% { transform: translateX(90vw) translateY(-8px); }
+  100% { transform: translateX(122vw) translateY(0); }
+}
+
+/* ── Butterflies fluttering low near healthy trees ────────────────────────── */
+.eg-amb-butterfly {
+  position: absolute;
+  font-size: 20px;
+  will-change: transform;
+}
+.eg-amb-butterfly.f1 { bottom: 60px; left: 12%; animation: eg-amb-flutter 14s ease-in-out infinite; }
+.eg-amb-butterfly.f2 { bottom: 100px; left: 48%; font-size: 17px; animation: eg-amb-flutter 18s ease-in-out infinite 4s; }
+.eg-amb-butterfly.f3 { bottom: 74px; left: 78%; font-size: 22px; animation: eg-amb-flutter 16s ease-in-out infinite 8s; }
+@keyframes eg-amb-flutter {
+  0%   { transform: translate(0, 0) rotate(-6deg); }
+  20%  { transform: translate(40px, -30px) rotate(8deg); }
+  40%  { transform: translate(80px, 10px) rotate(-4deg); }
+  60%  { transform: translate(30px, -20px) rotate(10deg); }
+  80%  { transform: translate(-30px, 6px) rotate(-8deg); }
+  100% { transform: translate(0, 0) rotate(-6deg); }
+}
+
+/* ── Fireflies at dusk / celebrating golden fruit ─────────────────────────── */
+.eg-amb-firefly {
+  position: absolute;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: radial-gradient(circle, #fff6b0 0%, #ffe066 45%, rgba(255, 224, 102, 0) 70%);
+  box-shadow: 0 0 10px 3px rgba(255, 224, 102, 0.7);
+  will-change: transform, opacity;
+}
+.eg-amb-firefly.ff1 { bottom: 70px; left: 20%; animation: eg-amb-glow 5s ease-in-out infinite, eg-amb-wander 12s ease-in-out infinite; }
+.eg-amb-firefly.ff2 { bottom: 110px; left: 40%; animation: eg-amb-glow 4s ease-in-out infinite 1s, eg-amb-wander 15s ease-in-out infinite 2s; }
+.eg-amb-firefly.ff3 { bottom: 90px; left: 60%; animation: eg-amb-glow 6s ease-in-out infinite 2s, eg-amb-wander 13s ease-in-out infinite 1s; }
+.eg-amb-firefly.ff4 { bottom: 130px; left: 76%; animation: eg-amb-glow 5s ease-in-out infinite 3s, eg-amb-wander 17s ease-in-out infinite 3s; }
+.eg-amb-firefly.ff5 { bottom: 60px; left: 88%; animation: eg-amb-glow 4.5s ease-in-out infinite 1.5s, eg-amb-wander 14s ease-in-out infinite 2.5s; }
+@keyframes eg-amb-glow {
+  0%, 100% { opacity: 0.15; }
+  50% { opacity: 1; }
+}
+@keyframes eg-amb-wander {
+  0%   { transform: translate(0, 0); }
+  25%  { transform: translate(26px, -24px); }
+  50%  { transform: translate(-18px, -40px); }
+  75%  { transform: translate(-30px, -12px); }
+  100% { transform: translate(0, 0); }
+}
+
+/* ── Seasonal falling particles ───────────────────────────────────────────── */
+.eg-amb-particle {
+  position: absolute;
+  top: -6%;
+  font-size: 16px;
+  opacity: 0.85;
+  will-change: transform;
+}
+.eg-amb-particle.p1 { left: 8%;  animation: eg-amb-fall 11s linear infinite 0s; }
+.eg-amb-particle.p2 { left: 24%; animation: eg-amb-fall 14s linear infinite 2s; }
+.eg-amb-particle.p3 { left: 42%; animation: eg-amb-fall 12s linear infinite 4s; }
+.eg-amb-particle.p4 { left: 58%; animation: eg-amb-fall 15s linear infinite 1s; }
+.eg-amb-particle.p5 { left: 74%; animation: eg-amb-fall 13s linear infinite 3s; }
+.eg-amb-particle.p6 { left: 90%; animation: eg-amb-fall 16s linear infinite 5s; }
+.eg-amb-particle.snow { font-size: 13px; }
+@keyframes eg-amb-fall {
+  0%   { transform: translateY(-10px) translateX(0) rotate(0deg); opacity: 0; }
+  10%  { opacity: 0.85; }
+  90%  { opacity: 0.85; }
+  100% { transform: translateY(560px) translateX(40px) rotate(320deg); opacity: 0; }
+}
+
+/* ── Cosy treehouse ───────────────────────────────────────────────────────── */
+.eg-amb-treehouse {
+  position: absolute;
+  bottom: 18px;
+  right: 26px;
+  font-size: 40px;
+  filter: drop-shadow(0 6px 10px rgba(31, 35, 64, 0.25));
+  animation: eg-amb-bob 5s ease-in-out infinite;
+}
+@keyframes eg-amb-bob {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-5px); }
+}
+
+/* ── Season badge in the banner ───────────────────────────────────────────── */
+.eg-orch-season-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.85);
+  border: 1px solid rgba(124, 58, 237, 0.18);
+  font-size: 13px;
+  font-weight: 700;
+  color: #4b2e83;
+  box-shadow: 0 3px 10px rgba(31, 35, 64, 0.08);
+}
+
+/* ── Harvest counter + ribbon ─────────────────────────────────────────────── */
+.eg-orch-counter-harvest.has-harvest {
+  background: linear-gradient(135deg, #fffbe6, #fff2c7);
+  box-shadow: 0 4px 16px rgba(234, 179, 8, 0.28);
+  animation: eg-amb-pulse 3.5s ease-in-out infinite;
+}
+.eg-orch-tree-harvest-ribbon {
+  position: absolute;
+  top: 8px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 3px 12px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 800;
+  color: #7a4d00;
+  background: linear-gradient(135deg, #ffe066, #ffc93c);
+  box-shadow: 0 3px 10px rgba(234, 179, 8, 0.4);
+  white-space: nowrap;
+  animation: eg-amb-bob 2.6s ease-in-out infinite;
+}
+
+/* Respect users who prefer reduced motion — freeze all ambient animation. */
+@media (prefers-reduced-motion: reduce) {
+  .eg-amb-celestial,
+  .eg-amb-cloud,
+  .eg-amb-bird,
+  .eg-amb-butterfly,
+  .eg-amb-firefly,
+  .eg-amb-particle,
+  .eg-amb-treehouse,
+  .eg-orch-counter-harvest.has-harvest,
+  .eg-orch-tree-harvest-ribbon {
+    animation: none !important;
+  }
+  .eg-amb-bird,
+  .eg-amb-particle { display: none; }
+}
+

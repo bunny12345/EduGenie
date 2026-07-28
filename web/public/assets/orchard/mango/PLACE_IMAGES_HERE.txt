@@ -1,0 +1,2 @@
+Place the 8 stage images here: seed.png sprout.png young_plant.png growing_tree.png mature_tree.png blossom.png fruit.png golden_fruit.png
+See ../ARTIST_SPEC_SHEET.md for full details.

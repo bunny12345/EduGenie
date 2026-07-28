@@ -2,7 +2,18 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { getOrchard, getOrchardTree } from '../api';
 import TreeSprite from './orchard/TreeSprite';
 import OrchardTreeDetail from './orchard/OrchardTreeDetail';
+import OrchardAmbience from './orchard/OrchardAmbience';
 import './StudentOrchard.css';
+
+// Stage ordering used to decide when the treehouse (mature tree) appears.
+const STAGE_ORDER = ['seed', 'sprout', 'young_plant', 'growing_tree', 'mature_tree', 'blossom', 'fruit', 'golden_fruit'];
+
+const SEASON_META = {
+  spring: { emoji: '🌸', label: 'Spring' },
+  summer: { emoji: '☀️', label: 'Summer' },
+  autumn: { emoji: '🍂', label: 'Autumn' },
+  winter: { emoji: '❄️', label: 'Winter' },
+};
 
 function ProgressRing({ value = 0, size = 56, stroke = 6, color = '#7c3aed', trackColor = '#ececf6' }) {
   const radius = (size - stroke) / 2;
@@ -150,6 +161,19 @@ export default function StudentOrchard({ studentId, greetingName = 'there' }) {
 
   const missions = useMemo(() => buildMissions(trees), [trees]);
 
+  // ─── Living orchard (Phase 6): season, day/night, ambient life, harvest ──────
+  const season = trees[0]?.season || seasonForClient(new Date());
+  const night = useMemo(() => {
+    const h = new Date().getHours();
+    return h < 6 || h >= 19;
+  }, []);
+  const vibrancy = trees.length
+    ? trees.filter((t) => t.health === 'healthy').length / trees.length
+    : 0;
+  const goldenTrees = useMemo(() => trees.filter((t) => t.stage === 'golden_fruit'), [trees]);
+  const hasMature = trees.some((t) => STAGE_ORDER.indexOf(t.stage) >= STAGE_ORDER.indexOf('mature_tree'));
+  const seasonMeta = SEASON_META[season] || SEASON_META.spring;
+
   if (loading) {
     return <div className="eg-orch-loading">🌱 Growing your orchard…</div>;
   }
@@ -180,7 +204,14 @@ export default function StudentOrchard({ studentId, greetingName = 'there' }) {
   }
 
   return (
-    <div className="eg-orch">
+    <div className={`eg-orch season-${season} ${night ? 'is-night' : 'is-day'}`}>
+      <OrchardAmbience
+        season={season}
+        night={night}
+        vibrancy={vibrancy}
+        golden={goldenTrees.length}
+        treehouse={hasMature}
+      />
       {/* Header */}
       <div className="eg-orch-header">
         <div>
@@ -209,6 +240,13 @@ export default function StudentOrchard({ studentId, greetingName = 'there' }) {
               <span>Gems</span>
             </div>
           </div>
+          <div className={`eg-orch-counter eg-orch-counter-harvest ${goldenTrees.length ? 'has-harvest' : ''}`}>
+            <span className="eg-orch-counter-icon">🧺</span>
+            <div>
+              <strong>{goldenTrees.length}</strong>
+              <span>Harvest</span>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -222,6 +260,9 @@ export default function StudentOrchard({ studentId, greetingName = 'there' }) {
           </div>
         </div>
         <div className="eg-orch-banner-right">
+          <span className="eg-orch-season-badge" title={`It's ${seasonMeta.label} in your orchard`}>
+            {seasonMeta.emoji} {seasonMeta.label}{night ? ' · Night' : ''}
+          </span>
           <ProgressRing value={overall} size={64} />
           <div className="eg-orch-banner-progress">
             <span>Overall Progress</span>
@@ -248,6 +289,9 @@ export default function StudentOrchard({ studentId, greetingName = 'there' }) {
               </div>
               <div className="eg-orch-tree-art">
                 <TreeSprite treeType={t.treeType} stage={t.stage} size={128} accentColor={t.accentColor} health={t.health} />
+                {t.stage === 'golden_fruit' && (
+                  <span className="eg-orch-tree-harvest-ribbon">🧺 Ready to harvest</span>
+                )}
                 {t.health !== 'healthy' && (
                   <span className="eg-orch-tree-health-badge">{t.health === 'thirsty' ? '💧 Thirsty' : '🍂 Needs care'}</span>
                 )}
@@ -383,4 +427,14 @@ function buildTip(tree) {
   if (tree.stage === 'golden_fruit') return `Amazing! Your ${tree.subject} tree is bearing golden fruit. You truly mastered this.`;
   if (tree.progressPct >= 60) return `Great progress! Keep nurturing your ${tree.subject} tree toward fruit.`;
   return `Plant more seeds — start the next ${tree.subject} chapter to grow your tree.`;
+}
+
+// Fallback season from the local date (matches backend seasonForDate), used only
+// when the API hasn't supplied a per-tree season yet.
+function seasonForClient(d) {
+  const m = d.getMonth();
+  if (m >= 2 && m <= 4) return 'spring';
+  if (m >= 5 && m <= 7) return 'summer';
+  if (m >= 8 && m <= 9) return 'autumn';
+  return 'winter';
 }
