@@ -140,29 +140,33 @@ function activityRowsForChapter(chapterId: string, targetIndex: number, monthsBa
 function recentUpkeepRows(chapterIds: string[]) {
   const rows: any[] = [];
   const picks = chapterIds.slice(0, 4);
-  const plan: Array<[string, number, number, number, number]> = [
-    ['revision', 1, 2, 1, 0],
-    ['homework', 2, 1, 2, 0],
-    ['mock_test', 4, 3, 3, 0],
-    ['question', 5, 0, 0, 2],
-    ['flashcards', 7, 1, 1, 0],
-    ['revision', 9, 2, 1, 0],
-    ['active_recall', 11, 1, 2, 1],
+  // A consecutive daily streak ending TODAY (day 0) so the header streak is live.
+  // Each day gets at least one activity; type rotates for realism.
+  const STREAK_DAYS = 12;
+  const rotation: Array<[string, number, number, number, number]> = [
+    ['revision', 0, 2, 1, 0],
+    ['homework', 0, 2, 1, 2],
+    ['mock_test', 0, 4, 3, 0],
+    ['question', 0, 1, 0, 0],
+    ['flashcards', 0, 1, 1, 0],
+    ['active_recall', 0, 1, 2, 1],
   ];
-  plan.forEach(([type, daysAgo, w, s, f], i) => {
+  for (let daysAgo = 0; daysAgo < STREAK_DAYS; daysAgo++) {
+    const [type, , w, s, f] = rotation[daysAgo % rotation.length];
     rows.push({
       student_id: BUNNY,
       subject_key: SUBJECT,
-      chapter_id: picks[i % picks.length],
+      chapter_id: picks[daysAgo % picks.length],
       activity_type: type,
       water: w,
       sunlight: s,
       fertilizer: f,
       correct: type === 'mock_test' ? true : null,
-      occurred_at: isoDaysAgo(daysAgo),
+      // Anchor at midday to avoid any timezone date drift.
+      occurred_at: isoDaysAgo(daysAgo).split('T')[0] + 'T12:00:00.000Z',
       created_at: new Date().toISOString(),
     });
-  });
+  }
   return rows;
 }
 

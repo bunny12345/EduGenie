@@ -80,24 +80,38 @@ function GrowthChart({ trees }) {
   );
 }
 
-function WeekStrip({ dayStreak = 0 }) {
+function WeekStrip({ activeDates = [] }) {
+  const active = useMemo(() => new Set(activeDates), [activeDates]);
   const today = new Date();
   const dow = (today.getDay() + 6) % 7; // Mon=0
   const monday = new Date(today);
   monday.setDate(today.getDate() - dow);
   const labels = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+  const iso = (d) => {
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+  };
   return (
     <div className="eg-orch-week">
       {labels.map((lbl, i) => {
         const d = new Date(monday);
         d.setDate(monday.getDate() + i);
         const isToday = d.toDateString() === today.toDateString();
-        const isPast = d < today && !isToday;
+        const isFuture = d > today && !isToday;
+        const studied = active.has(iso(d));
+        // ✅ studied that day · 💧 today, not yet studied · 🌱 past day missed · · future
+        let mark;
+        if (isFuture) mark = '·';
+        else if (studied) mark = '✅';
+        else if (isToday) mark = '💧';
+        else mark = '🌱';
         return (
-          <div key={lbl} className={`eg-orch-day ${isToday ? 'today' : ''}`}>
+          <div key={lbl} className={`eg-orch-day ${isToday ? 'today' : ''} ${studied && !isFuture ? 'studied' : ''}`}>
             <span className="eg-orch-day-label">{lbl}</span>
             <span className="eg-orch-day-num">{d.getDate()}</span>
-            <span className="eg-orch-day-mark">{isPast ? '✅' : isToday ? '💧' : '·'}</span>
+            <span className="eg-orch-day-mark">{mark}</span>
           </div>
         );
       })}
@@ -243,7 +257,7 @@ export default function StudentOrchard({ studentId, greetingName = 'there' }) {
           <div className={`eg-orch-counter eg-orch-counter-harvest ${goldenTrees.length ? 'has-harvest' : ''}`}>
             <span className="eg-orch-counter-icon">🧺</span>
             <div>
-              <strong>{goldenTrees.length}</strong>
+              <strong>{profile.harvest ?? goldenTrees.length}</strong>
               <span>Harvest</span>
             </div>
           </div>
@@ -380,7 +394,7 @@ export default function StudentOrchard({ studentId, greetingName = 'there' }) {
       <div className="eg-orch-bottom">
         <div className="eg-orch-panel">
           <h3>Orchard Calendar</h3>
-          <WeekStrip dayStreak={profile.dayStreak} />
+          <WeekStrip activeDates={profile.activeDates} />
           <p className="eg-orch-streak">🔥 {profile.dayStreak || 0} day streak — keep it going!</p>
         </div>
 

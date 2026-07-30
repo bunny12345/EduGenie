@@ -779,7 +779,16 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
   }, []);
 
   const greetingName = dashboard?.greetingName || 'Student';
-  const streakDays = Number(dashboard?.streak?.days || 0);
+  const streak = dashboard?.streak || {};
+  const streakDays = Number(streak.days || 0);
+  const streakLongest = Number(streak.longest || 0);
+  const streakActiveToday = Boolean(streak.activeToday);
+  const streakAtRisk = Boolean(streak.atRisk);
+  const streakFreezeUsed = Boolean(streak.freezeUsed);
+  const streakFreezesAvailable = Number(streak.freezesAvailable ?? 0);
+  const streakMilestones = Array.isArray(streak.milestones) ? streak.milestones : [];
+  const streakNextMilestone = streak.nextMilestone ?? null;
+  const streakDaysToNext = streak.daysToNextMilestone ?? null;
   const coins = Number(rewards?.coins || 0);
   const badges = Array.isArray(rewards?.badges) ? rewards.badges.length : 0;
 
@@ -1909,7 +1918,26 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
         <header className="eg-topbar cardish">
           <div className="eg-search">Search for topics, tests, books...</div>
           <div className="eg-top-actions">
-            <span className="pill">🔥 {streakDays}</span>
+            <button
+              type="button"
+              className={`eg-streak-chip ${streakDays > 0 ? 'is-active' : 'is-zero'} ${streakActiveToday ? 'done-today' : 'pending-today'} ${streakAtRisk ? 'at-risk' : ''}`}
+              onClick={() => setActiveSidebarTab('Rewards')}
+              title={
+                streakDays > 0
+                  ? `${streakDays}-day learning streak${streakActiveToday ? ' — done today! ✅' : ' — ⚠️ study today or you\'ll lose it!'}`
+                    + `${streakFreezeUsed ? '  ·  ❄️ A freeze saved a missed day' : streakFreezesAvailable > 0 ? '  ·  ❄️ 1 freeze ready (protects one missed day)' : ''}`
+                    + `${streakLongest > streakDays ? `  ·  🏆 Best: ${streakLongest} days` : ''}`
+                    + `${streakNextMilestone ? `  ·  ${streakDaysToNext} day(s) to your ${streakNextMilestone}-day badge` : ''}`
+                  : 'Start your learning streak today! Do any lesson, homework, test or orchard task.'
+              }
+            >
+              <span className="eg-streak-flame" aria-hidden="true">{streakAtRisk ? '⚠️' : '🔥'}</span>
+              <span className="eg-streak-count">{streakDays}</span>
+              <span className="eg-streak-word">day{streakDays === 1 ? '' : 's'}</span>
+              {(streakFreezeUsed || streakFreezesAvailable > 0) && streakDays > 0 && (
+                <span className="eg-streak-freeze" aria-hidden="true" title="Streak freeze">❄️</span>
+              )}
+            </button>
             <span className="pill">🏅 {badges}</span>
             <div className="eg-profile-chip">
               <div className="eg-profile-avatar">🧑</div>
@@ -2024,10 +2052,57 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
                   <button>Start Learning</button>
                 </div>
 
-                <div className="eg-streak-box">
-                  <h4>Current Streak</h4>
+                <div className={`eg-streak-box ${streakActiveToday ? 'done-today' : ''} ${streakAtRisk ? 'at-risk' : ''}`}>
+                  <h4>Current Streak {streakActiveToday ? '✅' : ''}</h4>
                   <strong>{streakDays}</strong>
-                  <span>Days</span>
+                  <span>Day{streakDays === 1 ? '' : 's'} 🔥</span>
+
+                  {/* At-risk nudge — reminder to study today before losing the streak */}
+                  {streakAtRisk && (
+                    <div className="eg-streak-nudge">
+                      ⚠️ {streakFreezesAvailable > 0
+                        ? <>Study today to keep your streak! <span className="eg-streak-nudge-freeze">❄️ A freeze will protect it once.</span></>
+                        : 'Study today or your streak resets!'}
+                    </div>
+                  )}
+
+                  {/* Freeze status */}
+                  {streakDays > 0 && !streakAtRisk && (
+                    <div className="eg-streak-freeze-line">
+                      {streakFreezeUsed
+                        ? '❄️ A freeze saved a missed day'
+                        : streakFreezesAvailable > 0
+                          ? '❄️ Freeze ready — one missed day is protected'
+                          : ''}
+                    </div>
+                  )}
+
+                  {/* Milestone badges 7 / 30 / 100 */}
+                  <div className="eg-streak-badges">
+                    {streakMilestones.map((m) => (
+                      <span
+                        key={m.days}
+                        className={`eg-streak-badge ${m.earned ? 'earned' : 'locked'}`}
+                        title={m.earned ? `${m.label} — ${m.days}-day badge earned!` : `${m.label} — reach ${m.days} days to unlock`}
+                      >
+                        <span className="eg-streak-badge-icon">{m.earned ? m.icon : '🔒'}</span>
+                        <small>{m.days}d</small>
+                      </span>
+                    ))}
+                  </div>
+
+                  {/* Next milestone progress */}
+                  {streakNextMilestone && (
+                    <div className="eg-streak-next">
+                      <div className="eg-streak-next-bar">
+                        <span style={{ width: `${Math.min(100, Math.round((streakDays / streakNextMilestone) * 100))}%` }} />
+                      </div>
+                      <small>{streakDaysToNext} day{streakDaysToNext === 1 ? '' : 's'} to your {streakNextMilestone}-day badge</small>
+                    </div>
+                  )}
+
+                  {streakLongest > 0 && <div className="eg-streak-sub"><small>🏆 Best: {streakLongest} day{streakLongest === 1 ? '' : 's'}</small></div>}
+
                   <div className="eg-goal-ring">
                     <div>{weeklyGoalPct}%</div>
                     <small>Weekly Goal</small>

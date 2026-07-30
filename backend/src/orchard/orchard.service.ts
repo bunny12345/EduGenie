@@ -350,6 +350,73 @@ export class OrchardService {
     return 'happy';
   }
 
+  // ─── LIVE profile currencies derived from REAL activity + tree state ─────────
+  // The header counters (Water Drops / Sunshine / Gems / Harvest / streak /
+  // companion) are computed from the student's actual orchard_activity log and
+  // their trees' progress, instead of trusting cached/seeded numbers. This keeps
+  // every counter honest and in sync with what the student really did.
+  private computeLiveProfile(
+    allActivity: any[],
+    trees: Array<{ completedChapters?: number; stage?: string }>,
+  ): {
+    waterDrops: number;
+    sunshine: number;
+    gems: number;
+    companionLevel: number;
+    companionXp: number;
+    companionXpMax: number;
+    dayStreak: number;
+    harvest: number;
+    activeDates: string[];
+  } {
+    let waterDrops = 0;
+    let sunshine = 0;
+    let totalXp = 0;
+    const activeDays = new Set<string>();
+    for (const a of allActivity || []) {
+      const w = Number(a.water || 0);
+      const s = Number(a.sunlight || 0);
+      waterDrops += w;
+      sunshine += s;
+      totalXp += w + s + 5; // matches bumpProfile's per-activity XP
+      const day = String(a.occurred_at || a.created_at || '').split('T')[0];
+      if (day) activeDays.add(day);
+    }
+
+    // Gems are a rare mastery currency: earned per fruited chapter, with a big
+    // bonus for fully golden (100%-complete) subjects.
+    const totalCompleted = trees.reduce((sum, t) => sum + Number(t.completedChapters || 0), 0);
+    const harvest = trees.filter((t) => t.stage === 'golden_fruit').length;
+    const gems = totalCompleted * 3 + harvest * 25;
+
+    // Companion level/xp from lifetime XP (level up every 1200 XP).
+    const companionXpMax = 1200;
+    const companionLevel = 1 + Math.floor(totalXp / companionXpMax);
+    const companionXp = totalXp % companionXpMax;
+
+    // Day streak = consecutive calendar days with activity, counting back from
+    // the most recent active day (today or yesterday keeps the streak "live").
+    const dayStreak = this.streakFromDays(activeDays);
+
+    // Real calendar of study days (last 60) so the UI can mark true activity.
+    const activeDates = Array.from(activeDays).sort().slice(-60);
+
+    return { waterDrops, sunshine, gems, companionLevel, companionXp, companionXpMax, dayStreak, harvest, activeDates };
+  }
+
+  // Count consecutive days ending at the latest active day.
+  private streakFromDays(activeDays: Set<string>): number {
+    if (!activeDays.size) return 0;
+    const sorted = Array.from(activeDays).sort(); // ascending YYYY-MM-DD
+    let cursor = new Date(sorted[sorted.length - 1] + 'T00:00:00Z');
+    let streak = 0;
+    while (activeDays.has(cursor.toISOString().split('T')[0])) {
+      streak += 1;
+      cursor.setUTCDate(cursor.getUTCDate() - 1);
+    }
+    return streak;
+  }
+
   // ─── recompute a tree's aggregate state from its chapters + activity ─────────
   private async recomputeTree(studentId: string, subjectKey: string): Promise<any> {
     const growth = await this.selectRows('chapter_growth', [
@@ -620,8 +687,6 @@ export class OrchardService {
   // ─── read: full orchard overview ─────────────────────────────────────────────
   async getOrchard(studentId: string): Promise<any> {
     const { catalog } = await this.ensureOrchard(studentId);
-    const profileRows = await this.selectRows('orchard_profile', [['student_id', studentId]]);
-    const profile = (profileRows && profileRows[0]) || {};
     const treeRows = await this.selectRows('orchard_trees', [['student_id', studentId]]);
     const byKey = new Map((treeRows || []).map((t) => [t.subject_key, t]));
     // Live meters relative to NOW so trees decay when the student stops studying.
@@ -661,16 +726,22 @@ export class OrchardService {
       ? Math.round(trees.reduce((sum, t) => sum + (t.progressPct || 0), 0) / trees.length)
       : 0;
 
+    // Live currencies from the real activity log + tree state (see helper).
+    const allActivity = Array.from(activityMap.values()).flat();
+    const live = this.computeLiveProfile(allActivity, trees);
+
     return {
       success: true,
       profile: {
-        waterDrops: Number(profile.water_drops || 0),
-        sunshine: Number(profile.sunshine || 0),
-        gems: Number(profile.gems || 0),
-        companionLevel: Number(profile.companion_level || 1),
-        companionXp: Number(profile.companion_xp || 0),
-        companionXpMax: Number(profile.companion_xp_max || 1200),
-        dayStreak: Number(profile.day_streak || 0),
+        waterDrops: live.waterDrops,
+        sunshine: live.sunshine,
+        gems: live.gems,
+        harvest: live.harvest,
+        companionLevel: live.companionLevel,
+        companionXp: live.companionXp,
+        companionXpMax: live.companionXpMax,
+        dayStreak: live.dayStreak,
+        activeDates: live.activeDates,
       },
       overallProgress,
       trees,
