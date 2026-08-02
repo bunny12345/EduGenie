@@ -15,25 +15,36 @@ export class RewardsController {
   async getRewards(@Req() req: any, @Query('studentId') studentId: string) {
     const id = req.studentId || studentId;
     try {
-      const res = await this.db.client.from('student_rewards').select('*').eq('student_id', id).limit(20);
-      const rows = (res && (res as any).data) || [];
-      const head = (Array.isArray(rows) && rows[0]) || { coins: 0, badges: [] };
-      const recentRewards = (Array.isArray(rows) ? rows : []).slice(0, 6).map((r: any) => ({
-        id: r.id,
-        type: r.reward_type || 'coin',
-        label: r.label || r.reason || 'Reward',
-        amount: r.amount || 0,
-        createdAt: r.created_at || null
-      }));
-      const fallback = this.localFeed.getRewards(id);
-      const merged = {
-        coins: Math.max(Number(head.coins || 0), Number(fallback.coins || 0)),
-        badges: Array.isArray(head.badges) && head.badges.length ? head.badges : (fallback.badges || []),
-        recentRewards: recentRewards.length ? recentRewards : (fallback.recentRewards || [])
-      };
+      const res = await this.db.client.from('student_rewards').select('*').eq('student_id', id).limit(500);
+      if ((res as any)?.error) throw (res as any).error;
+      const rows = ((res as any)?.data as any[]) || [];
+      // student_rewards is a LEDGER: the coin balance is the SUM of coin amounts.
+      // This is persisted in the DB, so it survives restarts and re-logins. Because
+      // the query succeeded, we trust the DB (even with 0 rows) and do not fall back
+      // to the in-memory mirror, which could otherwise mask the true balance.
+      const dbCoins = rows
+        .filter((r: any) => String(r.reward_type || 'coin') === 'coin')
+        .reduce((sum: number, r: any) => sum + Number(r.amount || 0), 0);
+      const badges = rows
+        .filter((r: any) => String(r.reward_type || '') === 'badge')
+        .map((b: any) => b.label || b.reason)
+        .filter(Boolean);
+      const recentRewards = rows
+        .slice()
+        .sort((a: any, b: any) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime())
+        .slice(0, 6)
+        .map((r: any) => ({
+          id: r.id,
+          type: r.reward_type || 'coin',
+          label: r.label || r.reason || 'Reward',
+          amount: r.amount || 0,
+          createdAt: r.created_at || null
+        }));
+      const merged = { coins: dbCoins, badges, recentRewards };
       this.localFeed.setRewards(id, merged);
       return { success: true, coins: merged.coins, badges: merged.badges, recentRewards: merged.recentRewards };
     } catch (e) {
+      // DB unreachable — serve the last known in-memory mirror.
       const fallback = this.localFeed.getRewards(id);
       return {
         success: true,
@@ -52,37 +63,30 @@ export class RewardsController {
     const coins = Math.max(1, Math.min(1000, Number(body.coins || 10)));
     const reason = String(body.reason || 'Activity reward').slice(0, 200);
     try {
-      // Upsert: add coins to existing row or insert new
-      const existing = await this.db.client.from('student_rewards').select('id,coins').eq('student_id', sid).limit(1);
-      const row = (existing as any)?.data?.[0] || null;
-      if (row) {
-        const newCoins = (Number(row.coins) || 0) + coins;
-        await this.db.client.from('student_rewards').update({ coins: newCoins }).eq('id', row.id);
-        this.localFeed.addReward(sid, { amount: coins, reason, reward_type: 'coin' });
-        this.localFeed.logStudentActivity(sid, {
-          type: 'reward',
-          action: 'earned',
-          title: `${coins} coins earned`,
-          details: reason,
-          meta: { coins, balance: newCoins }
-        });
-        return { success: true, newBalance: newCoins };
-      } else {
-        const ins = await this.db.client
-          .from('student_rewards')
-          .insert([{ student_id: sid, coins, badges: [], label: reason, reason, reward_type: 'coin', amount: coins }])
-          .select();
-        const newRow = (ins as any)?.data?.[0] || { coins };
-        this.localFeed.addReward(sid, { amount: coins, reason, reward_type: 'coin' });
-        this.localFeed.logStudentActivity(sid, {
-          type: 'reward',
-          action: 'earned',
-          title: `${coins} coins earned`,
-          details: reason,
-          meta: { coins, balance: newRow.coins || coins }
-        });
-        return { success: true, newBalance: newRow.coins || coins };
-      }
+      // Append a coin ledger row (persistent balance = SUM of coin amounts).
+      const ins = await this.db.client
+        .from('student_rewards')
+        .insert([{ student_id: sid, reward_type: 'coin', amount: coins, label: reason, reason }])
+        .select();
+      if ((ins as any)?.error) throw (ins as any).error;
+
+      // Recompute the authoritative balance from the ledger.
+      const res = await this.db.client.from('student_rewards').select('amount,reward_type').eq('student_id', sid).limit(500);
+      const rows = (res && (res as any).data) || [];
+      const newBalance = (Array.isArray(rows) ? rows : [])
+        .filter((r: any) => String(r.reward_type || 'coin') === 'coin')
+        .reduce((sum: number, r: any) => sum + Number(r.amount || 0), 0);
+
+      this.localFeed.addReward(sid, { amount: coins, reason, reward_type: 'coin' });
+      this.localFeed.setRewards(sid, { ...this.localFeed.getRewards(sid), coins: newBalance });
+      this.localFeed.logStudentActivity(sid, {
+        type: 'reward',
+        action: 'earned',
+        title: `${coins} coins earned`,
+        details: reason,
+        meta: { coins, balance: newBalance }
+      });
+      return { success: true, newBalance };
     } catch (e) {
       // Graceful: return optimistic balance on DB failure
       const next = this.localFeed.addReward(sid, { amount: coins, reason, reward_type: 'coin' });

@@ -4,6 +4,7 @@ import * as path from 'path';
 import { randomUUID } from 'crypto';
 import { SupabaseService } from '../supabase.service';
 import { EmbeddingsService } from '../embeddings/embeddings.service';
+import { FlashcardsService } from '../games/flashcards.service';
 
 type VisibilityInput = {
   teacherId: string;
@@ -44,7 +45,8 @@ type AdminUploadInput = Omit<UploadInput, 'teacherId'> & {
 export class CurriculumService {
   constructor(
     private readonly db: SupabaseService,
-    private readonly embeddings: EmbeddingsService
+    private readonly embeddings: EmbeddingsService,
+    private readonly flashcards: FlashcardsService
   ) {}
 
   private normalizeClassNames(value: any): string[] {
@@ -378,6 +380,11 @@ export class CurriculumService {
       await this.db.client.from('lesson_documents')
         .update({ extraction_status: 'completed', error_message: null, updated_at: new Date().toISOString() })
         .eq('id', doc.id);
+
+      // Fire-and-forget: pre-build this chapter's flashcards from the freshly
+      // extracted content so students never wait on the AI (and we only spend
+      // tokens once per chapter). Failures here must not affect the upload.
+      this.flashcards.generateForLesson(lessonId).catch(() => { /* best-effort */ });
 
       return {
         document: { ...doc, extraction_status: 'completed' },

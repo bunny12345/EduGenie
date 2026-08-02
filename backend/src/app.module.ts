@@ -14,6 +14,10 @@ import { AuthController } from './controllers/auth.controller';
 import { SchoolController } from './controllers/school.controller';
 import { OrchardController } from './orchard/orchard.controller';
 import { OrchardService } from './orchard/orchard.service';
+import { GamesController } from './games/games.controller';
+import { FlashcardsService } from './games/flashcards.service';
+import { LlmService } from './llm/llm.service';
+import { LearningScoreService } from './progress/learning-score.service';
 import { SupabaseService } from './supabase.service';
 import { AuthGuard } from './auth/auth.guard';
 import { StudentAuthService } from './auth/student-auth.service';
@@ -36,8 +40,9 @@ import { SharedModule } from './shared/shared.module';
     CurriculumController,
     AuthController,
     SchoolController,
-    OrchardController
+    OrchardController,
+    GamesController
   ],
-  providers: [SupabaseService, AuthGuard, StudentAuthService, CurriculumService, EmbeddingsService, OrchardService]
+  providers: [SupabaseService, AuthGuard, StudentAuthService, CurriculumService, EmbeddingsService, OrchardService, FlashcardsService, LlmService, LearningScoreService]
 })
 export class AppModule {}

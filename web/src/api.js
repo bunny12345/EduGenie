@@ -270,6 +270,55 @@ export async function completeOrchardReview(payload) {
   return checkSuccess(data, 'completeOrchardReview');
 }
 
+// ─── Learning Games ──────────────────────────────────────────────────────────
+export async function getGamesCatalog() {
+  return getJsonChecked(`${API_BASE}/games`, 'getGamesCatalog');
+}
+
+export async function getFlashcardOverview(studentId) {
+  const url = `${API_BASE}/games/flashcards/overview?studentId=${encodeURIComponent(studentId)}`;
+  return getJsonChecked(url, 'getFlashcardOverview');
+}
+
+export async function getFlashcardCards(studentId, { subject, deckId, scope = 'all', mode = 'review', limit = 20 } = {}) {
+  const params = new URLSearchParams({ studentId, subject: subject || '', scope, mode, limit: String(limit) });
+  if (deckId) params.set('deckId', deckId);
+  return getJsonChecked(`${API_BASE}/games/flashcards/cards?${params.toString()}`, 'getFlashcardCards');
+}
+
+export async function submitFlashcardReview(payload) {
+  const headers = await authHeaders();
+  const res = await fetch(`${API_BASE}/games/flashcards/review`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify(payload)
+  });
+  const data = await res.json();
+  return checkSuccess(data, 'submitFlashcardReview');
+}
+
+export async function logGameSession(payload) {
+  const headers = await authHeaders();
+  const res = await fetch(`${API_BASE}/games/session`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify(payload)
+  });
+  const data = await res.json();
+  return checkSuccess(data, 'logGameSession');
+}
+
+export async function completeFlashcardChapter(payload) {
+  const headers = await authHeaders();
+  const res = await fetch(`${API_BASE}/games/flashcards/complete-chapter`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify(payload)
+  });
+  const data = await res.json();
+  return checkSuccess(data, 'completeFlashcardChapter');
+}
+
 export async function getHomework(studentId) {
   const url = `${API_BASE}/homework?studentId=${encodeURIComponent(studentId)}`;
   return getJsonChecked(url, 'getHomework');
@@ -344,6 +393,11 @@ export async function getHomeworkAttempts(homeworkId, studentId) {
 export async function getProgress(studentId, period = 'week') {
   const url = `${API_BASE}/progress?studentId=${encodeURIComponent(studentId)}&period=${encodeURIComponent(period)}`;
   return getJsonChecked(url, 'getProgress');
+}
+
+export async function getLearningScore(studentId) {
+  const url = `${API_BASE}/progress/learning-score?studentId=${encodeURIComponent(studentId)}`;
+  return getJsonChecked(url, 'getLearningScore');
 }
 
 export async function getCalendar(studentId) {

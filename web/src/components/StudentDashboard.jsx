@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   createCalendarEvent,
   earnReward,
@@ -26,9 +26,43 @@ import {
   submitTestAttempt
 } from '../api';
 import StudentOrchard from './StudentOrchard';
+import StudentGames from './StudentGames';
+import StudentProgress from './StudentProgress';
 
 function safeArray(v) {
   return Array.isArray(v) ? v : [];
+}
+
+// Play a short, bright "coin cling" using the Web Audio API — two quick metallic
+// chimes (a fifth apart) with a fast decay. No audio asset needed, and it stays
+// silent if the browser blocks audio until the first user interaction.
+let _coinAudioCtx = null;
+function playCoinSound() {
+  try {
+    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+    if (!AudioCtx) return;
+    if (!_coinAudioCtx) _coinAudioCtx = new AudioCtx();
+    const ctx = _coinAudioCtx;
+    if (ctx.state === 'suspended') ctx.resume().catch(() => {});
+    const now = ctx.currentTime;
+    const master = ctx.createGain();
+    master.gain.value = 0.18;
+    master.connect(ctx.destination);
+    // Two chimes: B5 then E6 — the classic "ding-ding" coin pickup.
+    [[987.77, 0], [1318.51, 0.08]].forEach(([freq, offset]) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(freq, now + offset);
+      gain.gain.setValueAtTime(0.0001, now + offset);
+      gain.gain.exponentialRampToValueAtTime(1, now + offset + 0.012);
+      gain.gain.exponentialRampToValueAtTime(0.0001, now + offset + 0.32);
+      osc.connect(gain);
+      gain.connect(master);
+      osc.start(now + offset);
+      osc.stop(now + offset + 0.34);
+    });
+  } catch { /* audio not available — fail silently */ }
 }
 
 function fmtDate(value) {
@@ -241,6 +275,8 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
   const [progress, setProgress] = useState([]);
   const [events, setEvents] = useState([]);
   const [rewards, setRewards] = useState({ coins: 0, badges: [] });
+  const [coinGain, setCoinGain] = useState(null); // { id, amount } — floating "+N" highlight on the coins chip
+  const prevCoinsRef = useRef(null); // last seen coin balance, to detect increases
   const [tests, setTests] = useState([]);
   const [library, setLibrary] = useState([]);
   const [learningTimeline, setLearningTimeline] = useState([]);
@@ -792,6 +828,22 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
   const coins = Number(rewards?.coins || 0);
   const badges = Array.isArray(rewards?.badges) ? rewards.badges.length : 0;
 
+  // Whenever the coin balance climbs, flash a floating "+N" on the chip and play
+  // the coin cling. We skip the very first render (initial load) so the sound
+  // only fires on real earnings, not when the saved balance first appears.
+  useEffect(() => {
+    const prev = prevCoinsRef.current;
+    prevCoinsRef.current = coins;
+    if (prev === null) return; // first observed balance — don't celebrate a load
+    if (coins > prev) {
+      const gained = coins - prev;
+      setCoinGain({ id: Date.now(), amount: gained });
+      playCoinSound();
+      const t = setTimeout(() => setCoinGain(null), 1600);
+      return () => clearTimeout(t);
+    }
+  }, [coins]);
+
   const eventsTop = events.slice(0, 3);
   const testsTop = tests.slice(0, 3);
   const libraryTop = library.slice(0, 4);
@@ -824,6 +876,7 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
   const sidebarItems = [
     ['🏠', 'Home'],
     ['🌳', 'My Orchard'],
+    ['🎮', 'Games'],
     ['🤖', 'AI Tutor'],
     ['📝', 'Homework'],
     ['🧪', 'Mock Tests'],
@@ -837,7 +890,9 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
     ? 'ai-tutor-view'
     : activeSidebarTab === 'My Orchard'
       ? 'orchard-view'
-      : (activeView === 'home' ? 'home-view' : `subject-view-${activeView}`);
+      : activeSidebarTab === 'Games'
+        ? 'games-view'
+        : (activeView === 'home' ? 'home-view' : `subject-view-${activeView}`);
 
   function onSidebarNavClick(item) {
     setActiveSidebarTab(item);
@@ -1145,6 +1200,43 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
       setSelectedTutorLessonId(String(matchedLesson.id || ''));
       setSelectedTutorLesson(matchedLesson);
     }
+  }
+
+  // Deep-link from a flashcard's "Ask AI" button into the AI Tutor: open the
+  // matching subject + chapter and auto-send an explain request for the card.
+  async function onAskTutorFromGame({ subjectName, chapterTitle, question, answer }) {
+    const subject = String(subjectName || tutorSubject || 'Science').trim() || 'Science';
+    setActiveSidebarTab('AI Tutor');
+    setActiveView('home');
+    setTutorSubject(subject);
+    setSelectedTutorLessonId('');
+    setSelectedTutorLesson(null);
+
+    // Load the subject's lessons and try to match the chapter by title.
+    const lessons = await loadTutorLessonsPanel(subject);
+    const norm = (s) => String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+    const target = norm(chapterTitle);
+    const matched = safeArray(lessons).find((l) => {
+      const t = norm(l?.title);
+      return t && target && (t === target || t.includes(target) || target.includes(t));
+    });
+    if (matched) {
+      setSelectedTutorLessonId(String(matched.id || ''));
+      setSelectedTutorLesson(matched);
+    }
+
+    const q = String(question || '').trim();
+    const a = String(answer || '').trim();
+    const prompt =
+      `I'm revising the chapter "${chapterTitle}". Please explain this flashcard in simple terms `
+      + `with a short example.\n\nQuestion: ${q}${a ? `\nAnswer: ${a}` : ''}`;
+    // Small delay so the tab switch + lesson selection settle before sending.
+    setTimeout(() => { onSendTutorMessage(prompt); }, 60);
+  }
+
+  // A flashcard chapter bonus was awarded — reflect the new balance in the top bar.
+  function onGameCoinsEarned(totalCoins) {
+    setRewards((prev) => ({ ...(prev || { badges: [] }), coins: Number(totalCoins || 0) }));
   }
 
   async function onStartTest(testId) {
@@ -1934,8 +2026,28 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
               <span className="eg-streak-flame" aria-hidden="true">{streakAtRisk ? '⚠️' : '🔥'}</span>
               <span className="eg-streak-count">{streakDays}</span>
               <span className="eg-streak-word">day{streakDays === 1 ? '' : 's'}</span>
-              {(streakFreezeUsed || streakFreezesAvailable > 0) && streakDays > 0 && (
-                <span className="eg-streak-freeze" aria-hidden="true" title="Streak freeze">❄️</span>
+              {streakDays > 0 && (streakFreezesAvailable > 0 || streakFreezeUsed) && (
+                <span
+                  key={streakFreezesAvailable > 0 ? 'freeze-ready' : 'freeze-spent'}
+                  className={`eg-streak-freeze ${streakFreezesAvailable > 0 ? 'is-ready' : 'is-spent'}`}
+                  aria-hidden="true"
+                  title={streakFreezesAvailable > 0 ? 'Streak freeze ready — protects one missed day' : 'Freeze used up — it saved a missed day'}
+                >❄️</span>
+              )}
+            </button>
+            <button
+              type="button"
+              className={`eg-coins-chip ${coins > 0 ? 'is-active' : 'is-zero'} ${coinGain ? 'is-gaining' : ''}`}
+              onClick={() => setActiveSidebarTab('Rewards')}
+              title={`${coins} coins earned — finish flashcard chapters (+100), tests and daily check-ins to collect more`}
+            >
+              <span className="eg-coin-medallion" aria-hidden="true">
+                <span className="eg-coin-face">★</span>
+              </span>
+              <span className="eg-coins-count" key={`coins-${coins}`}>{coins}</span>
+              <span className="eg-coins-word">coins</span>
+              {coinGain && (
+                <span className="eg-coins-delta" key={coinGain.id} aria-hidden="true">+{coinGain.amount}</span>
               )}
             </button>
             <span className="pill">🏅 {badges}</span>
@@ -1951,7 +2063,7 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
         </header>
 
         {/* Subject Navigation */}
-        {activeSidebarTab !== 'My Orchard' && (
+        {activeSidebarTab !== 'My Orchard' && activeSidebarTab !== 'Games' && activeSidebarTab !== 'Progress' && (
         <div style={{ display: 'flex', gap: '8px', padding: '12px 20px', backgroundColor: '#f5f5f5', borderBottom: '1px solid #e0e0e0', overflowX: 'auto', alignItems: 'center' }}>
           <button 
             onClick={() => setActiveView('home')}
@@ -2019,6 +2131,10 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
           tutorPanel
         ) : activeSidebarTab === 'My Orchard' ? (
           <StudentOrchard studentId={studentId} greetingName={greetingName} />
+        ) : activeSidebarTab === 'Games' ? (
+          <StudentGames studentId={studentId} greetingName={greetingName} onAskTutor={onAskTutorFromGame} onCoinsEarned={onGameCoinsEarned} />
+        ) : activeSidebarTab === 'Progress' ? (
+          <StudentProgress studentId={studentId} greetingName={greetingName} />
         ) : activeView === 'home' ? (
           <>
             <section className="eg-main-grid eg-main-grid-home">

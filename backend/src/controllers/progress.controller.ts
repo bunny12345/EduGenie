@@ -1,10 +1,28 @@
 import { Controller, Get, Post, Query, Body, UseGuards, Req } from '@nestjs/common';
 import { SupabaseService } from '../supabase.service';
 import { AuthGuard } from '../auth/auth.guard';
+import { LearningScoreService } from '../progress/learning-score.service';
 
 @Controller('progress')
 export class ProgressController {
-  constructor(private readonly db: SupabaseService) {}
+  constructor(
+    private readonly db: SupabaseService,
+    private readonly learningScore: LearningScoreService,
+  ) {}
+
+  // Rich "Learning Score" (credit-score style /1000) with 9 dimensions, a month
+  // trend, per-subject breakdown and a decline alert. Computed live from real
+  // activity, so it starts at zero for a fresh student and grows automatically.
+  @Get('learning-score')
+  @UseGuards(AuthGuard)
+  async getLearningScore(@Req() req: any, @Query('studentId') studentId: string) {
+    const id = req.studentId || studentId;
+    try {
+      return await this.learningScore.getLearningScore(id);
+    } catch (e) {
+      return { success: false, error: String((e as any)?.message || e || 'learning score failed'), hasData: false, score: 0, maxScore: 1000, dimensions: [], trend: [], subjects: [] };
+    }
+  }
 
   @Get()
   @UseGuards(AuthGuard)
