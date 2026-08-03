@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import * as fs from 'fs';
 import * as path from 'path';
 import { SupabaseService } from '../supabase.service';
+import { StudentAuthService } from '../auth/student-auth.service';
 import {
   ACTIVITY_EFFECTS,
   clampPct,
@@ -18,6 +19,7 @@ import {
   SUBJECT_BY_KEY,
   treeStageFromCompletion,
   normalizeSubjectKey,
+  subjectEntryFor,
 } from './orchard.constants';
 
 const METER_WINDOW_DAYS = 14; // rolling window for water/sunlight/fertilizer
@@ -33,7 +35,10 @@ interface ActivityInput {
 
 @Injectable()
 export class OrchardService {
-  constructor(private readonly db: SupabaseService) {}
+  constructor(
+    private readonly db: SupabaseService,
+    private readonly studentAuth: StudentAuthService,
+  ) {}
 
   // ─── low-level DB helpers (work in both real Supabase and mock modes) ──────
   private async selectRows(table: string, eqs: Array<[string, any]>): Promise<any[]> {
@@ -97,6 +102,23 @@ export class OrchardService {
     // Baseline mirrors StudentDashboard DEFAULT_SUBJECTS = ['Science','Mathematics','Social'].
     const names = new Set<string>(['Science', 'Mathematics', 'Social']);
 
+    // Subjects registered for the student's class via their teacher(s). This is
+    // what makes a freshly-registered subject (e.g. English or Biology) appear
+    // with every feature even before any homework/test exists for it yet — for
+    // any student in the class the moment a teacher registers that subject.
+    try {
+      const { schoolId, className } = await this.resolveStudentContext(studentId);
+      if (schoolId && className) {
+        const teachers = await this.studentAuth.listClassTeachers(schoolId, className);
+        for (const t of teachers || []) {
+          const subj = String((t && t.subject) || '').trim();
+          if (subj && subj.toLowerCase() !== 'general') names.add(subj);
+        }
+      }
+    } catch {
+      /* class-teacher lookup is best-effort */
+    }
+
     // Subjects seen in the student's own homework / tests / progress metrics.
     for (const [table, field] of [
       ['homework', 'subject'],
@@ -110,40 +132,52 @@ export class OrchardService {
       }
     }
 
-    // Normalize free-text names to canonical keys and keep only catalog subjects.
-    const catalog = await this.getCatalog();
-    const catalogKeys = new Set(catalog.map((c) => c.subject_key));
+    // Normalize free-text names to canonical keys. Base subjects map to the
+    // fixed catalog; any other registered subject becomes its own dynamic key
+    // so it is represented everywhere (orchard, progress, games) too.
     const keys = new Set<string>();
     for (const n of names) {
       const k = normalizeSubjectKey(n);
-      if (k && catalogKeys.has(k)) keys.add(k);
+      if (k) keys.add(k);
     }
     // Safety net: never show an empty orchard — fall back to the portal defaults.
     if (!keys.size) ['mathematics', 'science', 'social'].forEach((k) => keys.add(k));
     return Array.from(keys);
   }
 
-  // ─── class resolution ────────────────────────────────────────────────────────
-  private async resolveClassName(studentId: string): Promise<string> {
+  // ─── class + school resolution ───────────────────────────────────────────────
+  private async resolveStudentContext(studentId: string): Promise<{ schoolId: string; className: string }> {
+    let schoolId = '';
+    let className = '';
     // 1) students table (real DB)
     const rows = await this.selectRows('students', [['id', studentId]]);
     const s = rows && rows[0];
     if (s) {
-      const c = s.class_name || s.class || s.className;
-      if (c) return String(c);
+      className = String(s.class_name || s.class || s.className || '');
+      schoolId = String(s.school_id || s.schoolId || '');
     }
-    // 2) local accounts file
-    try {
-      const file = path.join(process.cwd(), 'local-data', 'student-accounts.json');
-      if (fs.existsSync(file)) {
-        const list = JSON.parse(fs.readFileSync(file, 'utf8'));
-        const acct = Array.isArray(list) ? list.find((a: any) => a.studentId === studentId) : null;
-        if (acct && acct.className) return String(acct.className);
+    // 2) local accounts file (covers dev/mock accounts)
+    if (!schoolId || !className) {
+      try {
+        const file = path.join(process.cwd(), 'local-data', 'student-accounts.json');
+        if (fs.existsSync(file)) {
+          const list = JSON.parse(fs.readFileSync(file, 'utf8'));
+          const acct = Array.isArray(list) ? list.find((a: any) => a.studentId === studentId) : null;
+          if (acct) {
+            if (!className) className = String(acct.className || '');
+            if (!schoolId) schoolId = String(acct.schoolId || '');
+          }
+        }
+      } catch {
+        /* ignore */
       }
-    } catch {
-      /* ignore */
     }
-    return DEFAULT_CLASS;
+    if (!className) className = DEFAULT_CLASS;
+    return { schoolId, className };
+  }
+
+  private async resolveClassName(studentId: string): Promise<string> {
+    return (await this.resolveStudentContext(studentId)).className;
   }
 
   // ─── ensure chapters (seeds) exist for a subject + class ─────────────────────
@@ -257,8 +291,13 @@ export class OrchardService {
     const className = await this.resolveClassName(studentId);
     // Only build trees for the subjects this student actually has (mirrors the
     // student portal). Subjects not registered for the student get no tree.
-    const allowed = new Set(await this.resolveStudentSubjectKeys(studentId));
-    const catalog = (await this.getCatalog()).filter((s) => allowed.has(s.subject_key));
+    // Dynamic subjects (outside the fixed base catalog) get a synthesized entry
+    // so a freshly-registered subject still grows its own tree.
+    const allowedKeys = await this.resolveStudentSubjectKeys(studentId);
+    const byKey = new Map((await this.getCatalog()).map((s) => [s.subject_key, s]));
+    const catalog = allowedKeys
+      .map((key) => byKey.get(key) || subjectEntryFor(key))
+      .sort((a, b) => a.order_index - b.order_index);
     await this.ensureProfile(studentId);
     for (const subject of catalog) {
       await this.ensureTree(studentId, subject, className);
@@ -500,7 +539,11 @@ export class OrchardService {
   // ─── record a learning activity → drive growth ──────────────────────────────
   async recordActivity(studentId: string, input: ActivityInput): Promise<any> {
     const subjectKey = input.subjectKey;
-    if (!SUBJECT_BY_KEY[subjectKey]) {
+    if (!subjectKey) {
+      return { success: false, error: 'unknown subject' };
+    }
+    const allowedForActivity = new Set(await this.resolveStudentSubjectKeys(studentId));
+    if (!SUBJECT_BY_KEY[subjectKey] && !allowedForActivity.has(subjectKey)) {
       return { success: false, error: `unknown subject ${subjectKey}` };
     }
     await this.ensureOrchard(studentId);
@@ -750,9 +793,11 @@ export class OrchardService {
 
   // ─── read: single tree detail with its chapters ──────────────────────────────
   async getTree(studentId: string, subjectKey: string): Promise<any> {
-    if (!SUBJECT_BY_KEY[subjectKey]) return { success: false, error: 'unknown subject' };
+    if (!subjectKey) return { success: false, error: 'unknown subject' };
+    const allowedForTree = new Set(await this.resolveStudentSubjectKeys(studentId));
+    if (!SUBJECT_BY_KEY[subjectKey] && !allowedForTree.has(subjectKey)) return { success: false, error: 'unknown subject' };
     await this.ensureOrchard(studentId);
-    const subject = (await this.getCatalog()).find((s) => s.subject_key === subjectKey) || SUBJECT_BY_KEY[subjectKey];
+    const subject = (await this.getCatalog()).find((s) => s.subject_key === subjectKey) || subjectEntryFor(subjectKey);
     const treeRows = await this.selectRows('orchard_trees', [
       ['student_id', studentId],
       ['subject_key', subjectKey],

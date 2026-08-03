@@ -2,6 +2,7 @@ import { Controller, Get, Query, UseGuards, Req } from '@nestjs/common';
 import { SupabaseService } from '../supabase.service';
 import { AuthGuard } from '../auth/auth.guard';
 import { LocalFeedService } from '../shared/local-feed.service';
+import { StudentAuthService } from '../auth/student-auth.service';
 
 @Controller('dashboard')
 export class DashboardController {
@@ -9,7 +10,8 @@ export class DashboardController {
 
   constructor(
     private readonly db: SupabaseService,
-    private readonly localFeed: LocalFeedService
+    private readonly localFeed: LocalFeedService,
+    private readonly studentAuth: StudentAuthService
   ) {}
 
   @Get()
@@ -22,7 +24,7 @@ export class DashboardController {
     if (cached && cached.expiresAt > now) return cached.value;
 
     try {
-      const s = await this.db.client.from('students').select('id,name').eq('id', id).limit(1);
+      const s = await this.db.client.from('students').select('id,name,school_id,class_name,teacher_id').eq('id', id).limit(1);
       const student = (s && (s as any).data && (s as any).data[0]) || null;
 
       const hw = await this.db.client.from('homework').select('*').eq('student_id', id).order('due_at', { ascending: true }).limit(8);
@@ -83,10 +85,25 @@ export class DashboardController {
 
       const streak = await this.computeLearningStreak(id, mergedHomeworkRows, progressRows);
 
+      // Teachers responsible for this student's class (with their subjects), so
+      // the student portal can show "My Teachers" for their class.
+      let classTeachers: Array<{ id: string; name: string; subject: string }> = [];
+      try {
+        const schoolId = student?.school_id || null;
+        const className = student?.class_name || null;
+        if (schoolId && className) {
+          classTeachers = await this.studentAuth.listClassTeachers(schoolId, className);
+        }
+      } catch (_e) {
+        classTeachers = [];
+      }
+
       const dashboard = {
         greetingName: student?.name || null,
+        className: student?.class_name || null,
         todayPlan,
         subjects,
+        classTeachers,
         streak,
         recommendations,
         announcements: mergedAnnouncements
@@ -101,7 +118,7 @@ export class DashboardController {
       DashboardController.cache.set(cacheKey, { expiresAt: now + 10_000, value: response });
       return response;
     } catch (e) {
-      const dashboard = { greetingName: null, todayPlan: [], subjects: [], streak: { days: 0, longest: 0, activeToday: false, atRisk: false, freezeUsed: false, freezesAvailable: 1, maxFreezes: 1, milestones: [], nextMilestone: 7, daysToNextMilestone: 7, activeDates: [], lastActiveDate: null }, recommendations: [], announcements: [] };
+      const dashboard = { greetingName: null, todayPlan: [], subjects: [], classTeachers: [], streak: { days: 0, longest: 0, activeToday: false, atRisk: false, freezeUsed: false, freezesAvailable: 1, maxFreezes: 1, milestones: [], nextMilestone: 7, daysToNextMilestone: 7, activeDates: [], lastActiveDate: null }, recommendations: [], announcements: [] };
       return { success: false, error: String((e as any)?.message || e || 'dashboard failed'), dashboard, ...dashboard };
     }
   }

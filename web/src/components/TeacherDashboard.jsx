@@ -251,7 +251,10 @@ export default function TeacherDashboard({ session, onLogout }) {
   const [teacherPrompt, setTeacherPrompt] = useState('Plan a 30-minute revision session for Algebra basics.');
   const [teacherAi, setTeacherAi] = useState(null);
   const [historyStorageKey] = useState(() => {
-    const tId = String(session?.teacherId || session?.id || 'teacher-local');
+    // Use the signed-in teacher's id so each teacher keeps a distinct history
+    // cache. Falling back to a shared key would leak one teacher's assignments
+    // (and their subject) into another teacher's portal.
+    const tId = String(session?.userId || session?.teacherId || session?.id || 'teacher-local');
     return `teacher-homework-history-${tId}`;
   });
   const [historyReady, setHistoryReady] = useState(false);
@@ -282,6 +285,7 @@ export default function TeacherDashboard({ session, onLogout }) {
   const [editingQuestionOptions, setEditingQuestionOptions] = useState(['', '', '', '']);
   const [editingQuestionCorrect, setEditingQuestionCorrect] = useState(0);
 
+  const lockedSubject = String(teacherProfile?.subject || session?.subject || '').trim();
   const defaultCurriculumSubject = String(teacherProfile?.subject || session?.subject || assignSubject || 'General').trim() || 'General';
   const [curriculumSubject, setCurriculumSubject] = useState(defaultCurriculumSubject);
   const [curriculumClassName, setCurriculumClassName] = useState('all');
@@ -845,6 +849,17 @@ export default function TeacherDashboard({ session, onLogout }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Lock subject-bound fields to the teacher's own subject once the profile
+  // loads, so a teacher only ever creates/edits content for their own subject.
+  useEffect(() => {
+    const subj = String(teacherProfile?.subject || '').trim();
+    if (!subj || subj.toLowerCase() === 'general') return;
+    setAssignSubject(subj);
+    setNewTestSubject(subj);
+    setCurriculumSubject(subj);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [teacherProfile]);
+
   useEffect(() => {
     try {
       const raw = localStorage.getItem(historyStorageKey);
@@ -987,8 +1002,15 @@ export default function TeacherDashboard({ session, onLogout }) {
   const classOptions = allKnownClasses;
 
   const classScopedStudents = useMemo(
-    () => safeArray(students).filter((s) => isInTargetClass(s, teacherTargetClass)),
-    [students, teacherTargetClass]
+    () => {
+      // The Students panel has its own class dropdown (studentClassFilter); the
+      // roster must follow it. In other sections fall back to the teacher's
+      // active class. This prevents an empty list when the Students dropdown and
+      // the teacher-section active class point at different classes.
+      const target = activeSection === 'students' ? studentClassFilter : teacherTargetClass;
+      return safeArray(students).filter((s) => isInTargetClass(s, target));
+    },
+    [students, teacherTargetClass, studentClassFilter, activeSection]
   );
 
   const classScopedAnnouncements = useMemo(
@@ -2231,6 +2253,9 @@ export default function TeacherDashboard({ session, onLogout }) {
                   value={assignSubject}
                   onChange={(e) => setAssignSubject(e.target.value)}
                   placeholder="Subject (e.g. Science, Mathematics, Social)"
+                  readOnly={!!lockedSubject}
+                  title={lockedSubject ? 'Locked to your subject' : undefined}
+                  style={lockedSubject ? { background: '#f2f4fb', cursor: 'not-allowed' } : undefined}
                 />
                 <textarea
                   rows={4}
@@ -2397,7 +2422,9 @@ export default function TeacherDashboard({ session, onLogout }) {
                         type="text"
                         value={editingHwSubject}
                         onChange={(e) => setEditingHwSubject(e.target.value)}
-                        style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #ddd', fontSize: '13px' }}
+                        style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #ddd', fontSize: '13px', ...(lockedSubject ? { background: '#f2f4fb', cursor: 'not-allowed' } : {}) }}
+                        readOnly={!!lockedSubject}
+                        title={lockedSubject ? 'Locked to your subject' : undefined}
                       />
                     </div>
                     <div>
@@ -2629,7 +2656,7 @@ export default function TeacherDashboard({ session, onLogout }) {
                 <form className="td-form" onSubmit={onSaveTestEdit} style={{ marginTop: 14 }}>
                   <h4 style={{ margin: '0 0 8px' }}>Edit Test</h4>
                   <input className="td-input" value={editingTestTitle} onChange={(e) => setEditingTestTitle(e.target.value)} placeholder="Test title" required />
-                  <input className="td-input" value={editingTestSubject} onChange={(e) => setEditingTestSubject(e.target.value)} placeholder="Subject" />
+                  <input className="td-input" value={editingTestSubject} onChange={(e) => setEditingTestSubject(e.target.value)} placeholder="Subject" readOnly={!!lockedSubject} title={lockedSubject ? 'Locked to your subject' : undefined} style={lockedSubject ? { background: '#f2f4fb', cursor: 'not-allowed' } : undefined} />
                   <input className="td-input" value={editingTestClass} onChange={(e) => setEditingTestClass(e.target.value)} placeholder="Class name" />
                   <input className="td-input" type="number" min={1} max={180} value={editingTestDuration} onChange={(e) => setEditingTestDuration(e.target.value)} placeholder="Duration (minutes)" />
                   <div className="td-invite-actions">
@@ -2642,7 +2669,7 @@ export default function TeacherDashboard({ session, onLogout }) {
               <form className="td-form" onSubmit={onCreateTest} style={{ marginTop: 14 }}>
                 <h4 style={{ margin: '0 0 8px' }}>New Test</h4>
                 <input className="td-input" value={newTestTitle} onChange={(e) => setNewTestTitle(e.target.value)} placeholder="Test title" required />
-                <input className="td-input" value={newTestSubject} onChange={(e) => setNewTestSubject(e.target.value)} placeholder="Subject" />
+                <input className="td-input" value={newTestSubject} onChange={(e) => setNewTestSubject(e.target.value)} placeholder="Subject" readOnly={!!lockedSubject} title={lockedSubject ? 'Locked to your subject' : undefined} style={lockedSubject ? { background: '#f2f4fb', cursor: 'not-allowed' } : undefined} />
                 <input className="td-input" value={newTestDuration} type="number" min={1} max={180} onChange={(e) => setNewTestDuration(e.target.value)} placeholder="Duration (minutes)" />
                 <button type="submit" disabled={busy === 'createTest' || teacherTargetClass === 'all'}>{busy === 'createTest' ? 'Creating...' : teacherTargetClass === 'all' ? 'Select a class first' : `Create Test for ${teacherTargetClass}`}</button>
               </form>

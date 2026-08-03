@@ -467,11 +467,19 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
   // Get unique subject list
   const subjects = useMemo(() => {
     const seen = new Set(DEFAULT_SUBJECTS);
+    // Subjects of the teachers assigned to this student's class. This makes any
+    // newly-registered subject (e.g. Biology, English) appear as a functional
+    // tab as soon as a teacher is registered for it — even before any homework
+    // has been assigned — mirroring how Mathematics/Science/Social behave.
+    (Array.isArray(dashboard?.classTeachers) ? dashboard.classTeachers : []).forEach((t) => {
+      const subj = String(t?.subject || '').trim();
+      if (subj && subj.toLowerCase() !== 'general') seen.add(subj);
+    });
     homeworkBySubject.forEach((_, subj) => seen.add(subj));
     testsBySubject.forEach((_, subj) => seen.add(subj));
     progressBySubject.forEach((_, subj) => seen.add(subj));
     return Array.from(seen).sort();
-  }, [homeworkBySubject, testsBySubject, progressBySubject]);
+  }, [dashboard, homeworkBySubject, testsBySubject, progressBySubject]);
 
   // Calculate notification count for each subject
   const getSubjectNotifications = (subject) => {
@@ -815,6 +823,8 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
   }, []);
 
   const greetingName = dashboard?.greetingName || 'Student';
+  const classTeachers = Array.isArray(dashboard?.classTeachers) ? dashboard.classTeachers : [];
+  const className = dashboard?.className || '';
   const streak = dashboard?.streak || {};
   const streakDays = Number(streak.days || 0);
   const streakLongest = Number(streak.longest || 0);
@@ -2023,7 +2033,7 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
                   : 'Start your learning streak today! Do any lesson, homework, test or orchard task.'
               }
             >
-              <span className="eg-streak-flame" aria-hidden="true">{streakAtRisk ? '⚠️' : '🔥'}</span>
+              <span className="eg-streak-flame" aria-hidden="true">🔥</span>
               <span className="eg-streak-count">{streakDays}</span>
               <span className="eg-streak-word">day{streakDays === 1 ? '' : 's'}</span>
               {streakDays > 0 && (streakFreezesAvailable > 0 || streakFreezeUsed) && (
@@ -2176,7 +2186,7 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
                   {/* At-risk nudge — reminder to study today before losing the streak */}
                   {streakAtRisk && (
                     <div className="eg-streak-nudge">
-                      ⚠️ {streakFreezesAvailable > 0
+                      {streakFreezesAvailable > 0
                         ? <>Study today to keep your streak! <span className="eg-streak-nudge-freeze">❄️ A freeze will protect it once.</span></>
                         : 'Study today or your streak resets!'}
                     </div>
@@ -2238,6 +2248,25 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
                 </article>
               ))}
               {!panelLoading.progress && !progressSummary.length ? <p className="eg-loading">No progress metrics yet.</p> : null}
+            </section>
+
+            <section className="cardish eg-teachers-card">
+              <h3>My Teachers {className ? <span className="eg-teachers-class">· {className}</span> : null}</h3>
+              {classTeachers.length ? (
+                <div className="eg-teachers-grid">
+                  {classTeachers.map((t) => (
+                    <div key={t.id} className="eg-teacher-chip">
+                      <span className="eg-teacher-avatar">👩‍🏫</span>
+                      <span className="eg-teacher-text">
+                        <strong>{t.subject}</strong>
+                        <small>{t.name}</small>
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="eg-loading">Your class teachers will appear here once your school assigns them.</p>
+              )}
             </section>
 
             <section className="cardish eg-reco-card eg-grad-reco">

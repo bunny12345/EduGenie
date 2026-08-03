@@ -815,6 +815,35 @@ export async function schoolInviteTeacher(payload) {
   return res.json();
 }
 
+export async function schoolUpdateTeacher(teacherId, payload) {
+  const headers = await authHeaders();
+  const url = `${API_BASE}/school/teachers/${encodeURIComponent(teacherId)}`;
+  const res = await fetch(url, {
+    method: 'PATCH',
+    headers,
+    body: JSON.stringify(payload || {})
+  });
+  return res.json();
+}
+
+export async function schoolResetTeacherPassword(teacherId, password) {
+  const headers = await authHeaders();
+  const url = `${API_BASE}/school/teachers/${encodeURIComponent(teacherId)}/reset-password`;
+  const res = await fetch(url, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({ password })
+  });
+  return res.json();
+}
+
+export async function schoolDeleteTeacher(teacherId) {
+  const headers = await authHeaders();
+  const url = `${API_BASE}/school/teachers/${encodeURIComponent(teacherId)}`;
+  const res = await fetch(url, { method: 'DELETE', headers });
+  return res.json();
+}
+
 export async function revokeSchoolTeacherInvite(token) {
   const headers = await authHeaders();
   const url = `${API_BASE}/school/invites/teacher/${encodeURIComponent(token)}/revoke`;
@@ -1038,6 +1067,9 @@ const api = {
   schoolInvites,
   schoolStudents,
   schoolRegisterTeacher,
-  schoolInviteTeacher
+  schoolInviteTeacher,
+  schoolUpdateTeacher,
+  schoolResetTeacherPassword,
+  schoolDeleteTeacher
 };
 export default api;

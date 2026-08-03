@@ -3,7 +3,7 @@ import { SupabaseService } from '../supabase.service';
 import { LlmService } from '../llm/llm.service';
 import { OrchardService } from '../orchard/orchard.service';
 import { LocalFeedService } from '../shared/local-feed.service';
-import { SUBJECT_BY_KEY, normalizeSubjectKey } from '../orchard/orchard.constants';
+import { normalizeSubjectKey, subjectEntryFor } from '../orchard/orchard.constants';
 import {
   GAME_CATALOG,
   GameCatalogEntry,
@@ -77,12 +77,12 @@ export class FlashcardsService {
   }
 
   private subjectMeta(subjectKey: string) {
-    const s = SUBJECT_BY_KEY[subjectKey];
+    const s = subjectEntryFor(subjectKey);
     return {
-      displayName: s ? s.display_name : subjectKey,
-      accent: s ? s.accent_color : '#6d5efc',
-      treeEmoji: s ? s.tree_emoji : '📘',
-      fruitEmoji: s ? s.fruit_emoji : '⭐',
+      displayName: s.display_name,
+      accent: s.accent_color,
+      treeEmoji: s.tree_emoji,
+      fruitEmoji: s.fruit_emoji,
     };
   }
 

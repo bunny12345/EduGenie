@@ -11,6 +11,9 @@ import {
   schoolRegisterTeacher,
   schoolStudents,
   schoolTeachers,
+  schoolUpdateTeacher,
+  schoolResetTeacherPassword,
+  schoolDeleteTeacher,
   uploadCurriculumLessonDocument
 } from '../api';
 
@@ -31,6 +34,61 @@ function shortDate(value) {
   return dt.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 }
 
+const GRADE_OPTIONS = [5, 6, 7, 8, 9, 10, 11, 12];
+
+function GradeMultiSelect({ selected, onChange, disabled }) {
+  const [open, setOpen] = useState(false);
+  const boxRef = React.useRef(null);
+
+  useEffect(() => {
+    if (!open) return undefined;
+    function onDocClick(e) {
+      if (boxRef.current && !boxRef.current.contains(e.target)) setOpen(false);
+    }
+    document.addEventListener('mousedown', onDocClick);
+    return () => document.removeEventListener('mousedown', onDocClick);
+  }, [open]);
+
+  const toggle = (grade) => {
+    const set = new Set(selected);
+    if (set.has(grade)) set.delete(grade);
+    else set.add(grade);
+    onChange(Array.from(set).sort((a, b) => a - b));
+  };
+
+  const label = selected.length
+    ? selected.map((g) => `Class ${g}`).join(', ')
+    : 'Select classes this teacher handles';
+
+  return (
+    <div className={`sd-grade-select ${open ? 'is-open' : ''}`} ref={boxRef}>
+      <button
+        type="button"
+        className="sd-grade-trigger"
+        onClick={() => !disabled && setOpen((v) => !v)}
+        disabled={disabled}
+        title={label}
+      >
+        <span className={selected.length ? '' : 'sd-grade-placeholder'}>{label}</span>
+        <span className="sd-grade-caret" aria-hidden="true">▾</span>
+      </button>
+      {open ? (
+        <div className="sd-grade-menu" role="listbox" aria-multiselectable="true">
+          {GRADE_OPTIONS.map((grade) => {
+            const checked = selected.includes(grade);
+            return (
+              <label key={grade} className={`sd-grade-option ${checked ? 'is-checked' : ''}`}>
+                <input type="checkbox" checked={checked} onChange={() => toggle(grade)} />
+                <span>Class {grade}</span>
+              </label>
+            );
+          })}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 export default function SchoolDashboard({ session, onLogout }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -39,6 +97,7 @@ export default function SchoolDashboard({ session, onLogout }) {
   const [teacherSubject, setTeacherSubject] = useState('Mathematics');
   const [teacherLoginId, setTeacherLoginId] = useState('');
   const [teacherPassword, setTeacherPassword] = useState('');
+  const [teacherGrades, setTeacherGrades] = useState([]);
   const [note, setNote] = useState('');
   const [busy, setBusy] = useState('');
   const [createdTeacher, setCreatedTeacher] = useState(null);
@@ -54,6 +113,14 @@ export default function SchoolDashboard({ session, onLogout }) {
   const [teacherSearch, setTeacherSearch] = useState('');
   const [teacherPage, setTeacherPage] = useState(1);
   const [teacherTotalPages, setTeacherTotalPages] = useState(1);
+  // Teacher management (edit / reset password / delete)
+  const [editingTeacherId, setEditingTeacherId] = useState('');
+  const [editTeacherForm, setEditTeacherForm] = useState({ name: '', email: '', subject: '', grades: [] });
+  const [resetTeacher, setResetTeacher] = useState(null);
+  const [resetPasswordValue, setResetPasswordValue] = useState('');
+  const [deleteTeacher, setDeleteTeacher] = useState(null);
+  const [teacherActionBusy, setTeacherActionBusy] = useState('');
+  const [teacherActionNote, setTeacherActionNote] = useState('');
   const [studentSearch, setStudentSearch] = useState('');
   const [studentPage, setStudentPage] = useState(1);
   const [studentTotalPages, setStudentTotalPages] = useState(1);
@@ -464,7 +531,8 @@ export default function SchoolDashboard({ session, onLogout }) {
         email: teacherEmail,
         subject: teacherSubject,
         loginId: teacherLoginId,
-        password: teacherPassword
+        password: teacherPassword,
+        grades: teacherGrades.map((g) => `Class ${g}`)
       });
       if (!res?.success) {
         setNote(res?.error || 'Teacher registration failed.');
@@ -488,11 +556,117 @@ export default function SchoolDashboard({ session, onLogout }) {
       setTeacherEmail('');
       setTeacherLoginId('');
       setTeacherPassword('');
+      setTeacherGrades([]);
       setNote('Teacher account created. Share login credentials manually.');
     } catch (e2) {
       setNote('Unable to register teacher right now.');
     } finally {
       setBusy('');
+    }
+  }
+
+  function startEditTeacher(t) {
+    setTeacherActionNote('');
+    setEditingTeacherId(t.id || t.loginId || '');
+    setEditTeacherForm({
+      name: t.name || '',
+      email: t.email || '',
+      subject: t.subject || '',
+      grades: (Array.isArray(t.grades) ? t.grades : [])
+        .map((g) => parseInt(String(g).replace(/\D/g, ''), 10))
+        .filter((n) => Number.isInteger(n))
+    });
+  }
+
+  function cancelEditTeacher() {
+    setEditingTeacherId('');
+    setTeacherActionNote('');
+  }
+
+  async function onSaveTeacherEdit(teacherId) {
+    if (!editTeacherForm.name.trim()) {
+      setTeacherActionNote('Teacher name is required.');
+      return;
+    }
+    setTeacherActionBusy(`edit-${teacherId}`);
+    setTeacherActionNote('');
+    try {
+      const res = await schoolUpdateTeacher(teacherId, {
+        name: editTeacherForm.name,
+        email: editTeacherForm.email,
+        subject: editTeacherForm.subject,
+        grades: editTeacherForm.grades.map((g) => `Class ${g}`)
+      });
+      if (!res?.success) {
+        setTeacherActionNote(res?.error || 'Could not update teacher.');
+        return;
+      }
+      setEditingTeacherId('');
+      await loadTeachers({ q: teacherSearch, page: teacherPage, limit: TEACHERS_PER_PAGE });
+      setNote('Teacher details updated.');
+    } catch (e2) {
+      setTeacherActionNote('Unable to update teacher right now.');
+    } finally {
+      setTeacherActionBusy('');
+    }
+  }
+
+  async function onConfirmResetPassword() {
+    if (!resetTeacher) return;
+    if (!resetPasswordValue || resetPasswordValue.length < 8) {
+      setTeacherActionNote('Password must be at least 8 characters.');
+      return;
+    }
+    setTeacherActionBusy(`reset-${resetTeacher.id}`);
+    setTeacherActionNote('');
+    try {
+      const res = await schoolResetTeacherPassword(resetTeacher.id, resetPasswordValue);
+      if (!res?.success) {
+        setTeacherActionNote(res?.error || 'Could not reset password.');
+        return;
+      }
+      setCreatedTeacher({
+        name: resetTeacher.name,
+        email: resetTeacher.email,
+        loginId: resetTeacher.loginId,
+        password: resetPasswordValue,
+        grades: resetTeacher.grades || []
+      });
+      setResetTeacher(null);
+      setResetPasswordValue('');
+      setNote('Password reset. Share the new credentials with the teacher.');
+    } catch (e2) {
+      setTeacherActionNote('Unable to reset password right now.');
+    } finally {
+      setTeacherActionBusy('');
+    }
+  }
+
+  async function onConfirmDeleteTeacher() {
+    if (!deleteTeacher) return;
+    setTeacherActionBusy(`delete-${deleteTeacher.id}`);
+    setTeacherActionNote('');
+    try {
+      const res = await schoolDeleteTeacher(deleteTeacher.id);
+      if (!res?.success) {
+        setTeacherActionNote(res?.error || 'Could not delete teacher.');
+        return;
+      }
+      setDeleteTeacher(null);
+      setDashboard((prev) => ({
+        ...prev,
+        summary: {
+          ...(prev.summary || {}),
+          teachers: Math.max(0, Number(prev?.summary?.teachers || 0) - 1)
+        }
+      }));
+      await loadTeachers({ q: teacherSearch, page: 1, limit: TEACHERS_PER_PAGE });
+      setTeacherPage(1);
+      setNote('Teacher registration deleted.');
+    } catch (e2) {
+      setTeacherActionNote('Unable to delete teacher right now.');
+    } finally {
+      setTeacherActionBusy('');
     }
   }
 
@@ -632,6 +806,8 @@ export default function SchoolDashboard({ session, onLogout }) {
             <input value={teacherSubject} onChange={(e) => setTeacherSubject(e.target.value)} placeholder="Subject" />
             <input value={teacherLoginId} onChange={(e) => setTeacherLoginId(e.target.value)} placeholder="Teacher login ID" />
             <input type="password" value={teacherPassword} onChange={(e) => setTeacherPassword(e.target.value)} placeholder="Strong password" />
+            <label className="sd-field-label">Classes (grades this teacher handles)</label>
+            <GradeMultiSelect selected={teacherGrades} onChange={setTeacherGrades} disabled={busy === 'manual'} />
             <button type="submit" disabled={busy === 'manual'}>{busy === 'manual' ? 'Creating...' : 'Create Teacher Account'}</button>
           </form>
           {createdTeacher ? (
@@ -641,6 +817,9 @@ export default function SchoolDashboard({ session, onLogout }) {
               <p>Email: {createdTeacher.email}</p>
               <p>Login ID: {createdTeacher.loginId}</p>
               <p>Password: {createdTeacher.password}</p>
+              {Array.isArray(createdTeacher.grades) && createdTeacher.grades.length ? (
+                <p>Classes: {createdTeacher.grades.join(', ')}</p>
+              ) : null}
             </div>
           ) : null}
         </article>
@@ -755,10 +934,78 @@ export default function SchoolDashboard({ session, onLogout }) {
               placeholder="Search teachers by name/email/subject"
             />
           </div>
-          <ul className="sd-list">
-            {(teachers.length ? teachers : []).map((t) => (
-              <li key={t.id || t.loginId}>{t.name || 'Teacher'} - {t.subject || 'General'}</li>
-            ))}
+          <ul className="sd-list sd-teacher-list">
+            {(teachers.length ? teachers : []).map((t) => {
+              const tid = t.id || t.loginId;
+              const isEditing = editingTeacherId === tid;
+              return (
+                <li key={tid} className="sd-teacher-item">
+                  {isEditing ? (
+                    <div className="sd-teacher-edit">
+                      <input
+                        value={editTeacherForm.name}
+                        onChange={(e) => setEditTeacherForm((f) => ({ ...f, name: e.target.value }))}
+                        placeholder="Teacher name"
+                      />
+                      <input
+                        value={editTeacherForm.email}
+                        onChange={(e) => setEditTeacherForm((f) => ({ ...f, email: e.target.value }))}
+                        placeholder="Teacher email"
+                      />
+                      <input
+                        value={editTeacherForm.subject}
+                        onChange={(e) => setEditTeacherForm((f) => ({ ...f, subject: e.target.value }))}
+                        placeholder="Subject"
+                      />
+                      <GradeMultiSelect
+                        selected={editTeacherForm.grades}
+                        onChange={(grades) => setEditTeacherForm((f) => ({ ...f, grades }))}
+                        disabled={teacherActionBusy === `edit-${tid}`}
+                      />
+                      {teacherActionNote ? <p className="sd-teacher-action-note">{teacherActionNote}</p> : null}
+                      <div className="sd-teacher-edit-actions">
+                        <button
+                          type="button"
+                          className="sd-inline-btn primary"
+                          onClick={() => onSaveTeacherEdit(tid)}
+                          disabled={teacherActionBusy === `edit-${tid}`}
+                        >
+                          {teacherActionBusy === `edit-${tid}` ? 'Saving...' : 'Save'}
+                        </button>
+                        <button type="button" className="sd-inline-btn" onClick={cancelEditTeacher}>Cancel</button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="sd-teacher-row">
+                      <div className="sd-teacher-info">
+                        <strong>{t.name || 'Teacher'}</strong>
+                        <span className="sd-teacher-meta">{t.subject || 'General'}</span>
+                        {Array.isArray(t.grades) && t.grades.length ? (
+                          <span className="sd-teacher-grades"> · {t.grades.join(', ')}</span>
+                        ) : (
+                          <span className="sd-teacher-grades sd-teacher-grades-none"> · No classes assigned</span>
+                        )}
+                      </div>
+                      <div className="sd-teacher-actions">
+                        <button type="button" className="sd-icon-btn" title="Edit teacher" onClick={() => startEditTeacher(t)}>✏️</button>
+                        <button
+                          type="button"
+                          className="sd-icon-btn"
+                          title="Reset password"
+                          onClick={() => { setResetTeacher(t); setResetPasswordValue(''); setTeacherActionNote(''); }}
+                        >🔑</button>
+                        <button
+                          type="button"
+                          className="sd-icon-btn danger"
+                          title="Delete teacher"
+                          onClick={() => { setDeleteTeacher(t); setTeacherActionNote(''); }}
+                        >🗑️</button>
+                      </div>
+                    </div>
+                  )}
+                </li>
+              );
+            })}
             {!teachers.length ? <li>No teachers match the current search.</li> : null}
           </ul>
           <div className="invite-pager">
@@ -920,6 +1167,59 @@ export default function SchoolDashboard({ session, onLogout }) {
       </section>
 
       {note ? <p className="sd-note">{note}</p> : null}
+
+      {resetTeacher ? (
+        <div className="sd-modal-overlay" onClick={() => { setResetTeacher(null); setTeacherActionNote(''); }}>
+          <div className="sd-modal" onClick={(e) => e.stopPropagation()}>
+            <h3>Reset password</h3>
+            <p>Set a new password for <strong>{resetTeacher.name || 'this teacher'}</strong> (login ID: {resetTeacher.loginId || '—'}).</p>
+            <input
+              type="text"
+              value={resetPasswordValue}
+              onChange={(e) => setResetPasswordValue(e.target.value)}
+              placeholder="New password (min 8 characters)"
+              autoFocus
+            />
+            {teacherActionNote ? <p className="sd-teacher-action-note">{teacherActionNote}</p> : null}
+            <div className="sd-modal-actions">
+              <button type="button" className="sd-inline-btn" onClick={() => { setResetTeacher(null); setTeacherActionNote(''); }}>Cancel</button>
+              <button
+                type="button"
+                className="sd-inline-btn primary"
+                onClick={onConfirmResetPassword}
+                disabled={teacherActionBusy === `reset-${resetTeacher.id}`}
+              >
+                {teacherActionBusy === `reset-${resetTeacher.id}` ? 'Resetting...' : 'Reset password'}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {deleteTeacher ? (
+        <div className="sd-modal-overlay" onClick={() => { setDeleteTeacher(null); setTeacherActionNote(''); }}>
+          <div className="sd-modal" onClick={(e) => e.stopPropagation()}>
+            <h3>Delete teacher?</h3>
+            <p className="sd-modal-warning">
+              ⚠️ This will permanently delete <strong>{deleteTeacher.name || 'this teacher'}</strong>
+              {deleteTeacher.subject ? ` (${deleteTeacher.subject})` : ''} and unlink their students.
+              This action cannot be undone.
+            </p>
+            {teacherActionNote ? <p className="sd-teacher-action-note">{teacherActionNote}</p> : null}
+            <div className="sd-modal-actions">
+              <button type="button" className="sd-inline-btn" onClick={() => { setDeleteTeacher(null); setTeacherActionNote(''); }}>Cancel</button>
+              <button
+                type="button"
+                className="sd-inline-btn danger"
+                onClick={onConfirmDeleteTeacher}
+                disabled={teacherActionBusy === `delete-${deleteTeacher.id}`}
+              >
+                {teacherActionBusy === `delete-${deleteTeacher.id}` ? 'Deleting...' : 'Delete teacher'}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

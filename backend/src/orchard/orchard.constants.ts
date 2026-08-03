@@ -153,18 +153,79 @@ export const SUBJECT_BY_KEY: Record<string, SubjectCatalogEntry> = SUBJECT_CATAL
   return acc;
 }, {} as Record<string, SubjectCatalogEntry>);
 
-// Map free-text subject names (from homework/tests/curriculum) to a canonical key.
+// Turn any free-text subject name into a stable, url-safe key (e.g. "Biology" →
+// "biology", "Political Science" → "political_science"). Used for subjects that
+// are not part of the fixed base catalog so every registered subject still gets
+// a consistent key across homework, tests, orchard trees and games.
+export function slugifySubject(raw?: string): string {
+  return (
+    String(raw || '')
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '_')
+      .replace(/^_+|_+$/g, '') || 'subject'
+  );
+}
+
+// Prettify a subject key back into a human display name ("political_science" →
+// "Political Science"). Used as a fallback display name for dynamic subjects.
+export function prettifySubjectName(key?: string): string {
+  const words = String(key || '')
+    .replace(/[_-]+/g, ' ')
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1));
+  return words.join(' ') || 'Subject';
+}
+
+// Map free-text subject names (from homework/tests/curriculum) to a canonical
+// key. Base subjects map to the fixed catalog; anything else (Biology, Physics,
+// Chemistry, Sanskrit, …) becomes its own dynamic subject key so a teacher who
+// registers that subject shows up with every feature instead of being dropped.
 export function normalizeSubjectKey(raw?: string): string | null {
   const s = String(raw || '').trim().toLowerCase();
   if (!s) return null;
   if (/(math|maths|mathematics|algebra|geometry)/.test(s)) return 'mathematics';
-  if (/(science|physics|chemistry|biology|evs)/.test(s)) return 'science';
   if (/(english|language arts|grammar)/.test(s)) return 'english';
   if (/(social|history|civics|geography|sst)/.test(s)) return 'social';
   if (/(computer|coding|cs|informatics|it)/.test(s)) return 'computer';
   if (/(hindi)/.test(s)) return 'hindi';
+  if (/(science|evs)/.test(s)) return 'science';
   if (SUBJECT_BY_KEY[s]) return s;
-  return null;
+  return slugifySubject(s);
+}
+
+// Deterministic visual palette for dynamically-registered subjects so each new
+// subject gets a stable, distinct tree look without needing a catalog row.
+const DYNAMIC_SUBJECT_PALETTE: Array<Pick<SubjectCatalogEntry, 'tree_type' | 'fruit_type' | 'fruit_emoji' | 'tree_emoji' | 'accent_color'>> = [
+  { tree_type: 'willow', fruit_type: 'berry', fruit_emoji: '🫐', tree_emoji: '🌳', accent_color: '#2563eb' },
+  { tree_type: 'maple', fruit_type: 'peach', fruit_emoji: '🍑', tree_emoji: '🍁', accent_color: '#db2777' },
+  { tree_type: 'pine', fruit_type: 'plum', fruit_emoji: '🍇', tree_emoji: '🌲', accent_color: '#7c3aed' },
+  { tree_type: 'palm', fruit_type: 'coconut', fruit_emoji: '🥥', tree_emoji: '🌴', accent_color: '#0d9488' },
+  { tree_type: 'olive', fruit_type: 'lemon', fruit_emoji: '🍋', tree_emoji: '🌳', accent_color: '#65a30d' },
+  { tree_type: 'redwood', fruit_type: 'green_apple', fruit_emoji: '🍏', tree_emoji: '🌲', accent_color: '#0891b2' },
+];
+
+function hashSubjectKey(key: string): number {
+  let h = 0;
+  for (let i = 0; i < key.length; i++) h = (h * 31 + key.charCodeAt(i)) | 0;
+  return Math.abs(h);
+}
+
+// Resolve a subject catalog entry for ANY key. Returns the fixed base-catalog
+// entry when the key is one of the built-ins, otherwise synthesizes a stable
+// dynamic entry so newly-registered subjects render everywhere (orchard trees,
+// progress cards, games) without a DB catalog row.
+export function subjectEntryFor(subjectKey: string, displayName?: string): SubjectCatalogEntry {
+  if (SUBJECT_BY_KEY[subjectKey]) return SUBJECT_BY_KEY[subjectKey];
+  const palette = DYNAMIC_SUBJECT_PALETTE[hashSubjectKey(subjectKey) % DYNAMIC_SUBJECT_PALETTE.length];
+  return {
+    subject_key: subjectKey,
+    display_name: displayName && displayName.trim() ? displayName.trim() : prettifySubjectName(subjectKey),
+    order_index: 100 + (hashSubjectKey(subjectKey) % 100),
+    ...palette,
+  };
 }
 
 // Compute the growth stage from a chapter's milestones + roots.

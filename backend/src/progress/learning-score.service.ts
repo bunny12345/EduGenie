@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { SupabaseService } from '../supabase.service';
 import { OrchardService } from '../orchard/orchard.service';
-import { SUBJECT_BY_KEY, normalizeSubjectKey } from '../orchard/orchard.constants';
+import { normalizeSubjectKey, subjectEntryFor } from '../orchard/orchard.constants';
 
 /**
  * LearningScoreService — turns a student's raw activity across the whole portal
@@ -477,7 +477,7 @@ export class LearningScoreService {
   }
 
   private subjectBreakdown(key: string, ctx: any, buckets: Array<{ key: string; label: string; end: number; future?: boolean }>, dayBuckets: Array<{ key: string; label: string; weekday?: string; end: number; future?: boolean }>): any {
-    const meta = SUBJECT_BY_KEY[key] || { display_name: key, accent_color: '#6d5efc', tree_emoji: '🌱' };
+    const meta = subjectEntryFor(key);
     const sTests = ctx.attempts.filter((a: any) => normalizeSubjectKey(a.subject) === key);
     const sSessions = ctx.sessions.filter((s: any) => String(s.subject_key || '') === key);
     const sFc = ctx.fcProgress.filter((r: any) => String(r.subject_key || '') === key);

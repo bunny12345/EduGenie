@@ -1,4 +1,4 @@
-import { Body, Controller, ForbiddenException, Get, Param, Post, Query, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, ForbiddenException, Get, Param, Patch, Post, Query, Req, UseGuards } from '@nestjs/common';
 import { AuthGuard } from '../auth/auth.guard';
 import { StudentAuthService } from '../auth/student-auth.service';
 
@@ -116,8 +116,47 @@ export class SchoolController {
       subject: body?.subject,
       loginId: body?.loginId,
       password: body?.password,
+      grades: body?.grades,
       createdBy: req?.user?.sub || null
     });
+    if (!res.ok) return { success: false, error: res.error };
+    return { success: true, teacher: res.teacher };
+  }
+
+  @Patch('teachers/:id')
+  async updateTeacher(@Req() req: any, @Param('id') id: string, @Body() body: any) {
+    this.ensureSchoolAdmin(req);
+    const schoolId = req?.user?.schoolId || req?.user?.sub;
+    const res = await this.authFlow.updateTeacherBySchool({
+      schoolId,
+      teacherId: id,
+      name: body?.name,
+      email: body?.email,
+      subject: body?.subject,
+      grades: body?.grades
+    });
+    if (!res.ok) return { success: false, error: res.error };
+    return { success: true, teacher: res.teacher };
+  }
+
+  @Post('teachers/:id/reset-password')
+  async resetTeacherPassword(@Req() req: any, @Param('id') id: string, @Body() body: any) {
+    this.ensureSchoolAdmin(req);
+    const schoolId = req?.user?.schoolId || req?.user?.sub;
+    const res = await this.authFlow.resetTeacherPassword({
+      schoolId,
+      teacherId: id,
+      password: body?.password
+    });
+    if (!res.ok) return { success: false, error: res.error };
+    return { success: true, teacher: res.teacher };
+  }
+
+  @Delete('teachers/:id')
+  async deleteTeacher(@Req() req: any, @Param('id') id: string) {
+    this.ensureSchoolAdmin(req);
+    const schoolId = req?.user?.schoolId || req?.user?.sub;
+    const res = await this.authFlow.deleteTeacherBySchool({ schoolId, teacherId: id });
     if (!res.ok) return { success: false, error: res.error };
     return { success: true, teacher: res.teacher };
   }

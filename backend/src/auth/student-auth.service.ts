@@ -29,7 +29,27 @@ type TeacherAccount = {
   name?: string;
   subject?: string;
   schoolId: string;
+  grades?: string[];
 };
+
+/**
+ * Normalize a list of grade selections into canonical class names.
+ * Accepts inputs like 5, "5", "Class 5", "5th", "grade 5" and keeps only
+ * grades 5..12, returning e.g. ["Class 5", "Class 9"] sorted ascending.
+ */
+export function normalizeGrades(input: unknown): string[] {
+  const raw = Array.isArray(input) ? input : input == null ? [] : [input];
+  const nums = new Set<number>();
+  for (const item of raw) {
+    const match = String(item ?? '').match(/\d+/);
+    if (!match) continue;
+    const n = Number(match[0]);
+    if (Number.isInteger(n) && n >= 5 && n <= 12) nums.add(n);
+  }
+  return Array.from(nums)
+    .sort((a, b) => a - b)
+    .map((n) => `Class ${n}`);
+}
 
 type SchoolAccount = {
   schoolId: string;
@@ -134,6 +154,55 @@ export class StudentAuthService implements OnModuleInit {
 
   private findTeacher(loginId: string) {
     return StudentAuthService.teacherAccounts.get(String(loginId || '').toLowerCase()) || null;
+  }
+
+  private findTeacherById(teacherId: string): TeacherAccount | null {
+    const id = String(teacherId || '').trim();
+    if (!id) return null;
+    for (const account of StudentAuthService.teacherAccounts.values()) {
+      if (String(account.teacherId || '').trim() === id) return account;
+    }
+    return null;
+  }
+
+  private removeTeacherAccount(teacherId: string) {
+    const id = String(teacherId || '').trim();
+    for (const [loginId, account] of StudentAuthService.teacherAccounts.entries()) {
+      if (String(account.teacherId || '').trim() === id) {
+        StudentAuthService.teacherAccounts.delete(loginId);
+      }
+    }
+    this.persistTeacherAccounts();
+  }
+
+  /**
+   * Detect a duplicate subject-for-a-class conflict within a school.
+   * Two teachers may not teach the same subject for the same class. Returns the
+   * conflicting class name when a clash is found, otherwise null. The check runs
+   * against the in-memory/persisted teacher store (which mirrors every teacher
+   * registered through the app).
+   */
+  private findSubjectGradeConflict(
+    schoolId: string,
+    subject: string,
+    grades: string[],
+    excludeTeacherId?: string
+  ): { grade: string } | null {
+    const sid = String(schoolId || '').trim();
+    const subj = String(subject || '').trim().toLowerCase();
+    const gradeSet = new Set(normalizeGrades(grades).map((g) => g.toLowerCase()));
+    const excludeId = String(excludeTeacherId || '').trim();
+    if (!sid || !subj || !gradeSet.size) return null;
+
+    for (const account of StudentAuthService.teacherAccounts.values()) {
+      if (String(account.schoolId || '').trim() !== sid) continue;
+      if (excludeId && String(account.teacherId || '').trim() === excludeId) continue;
+      if (String(account.subject || '').trim().toLowerCase() !== subj) continue;
+      for (const g of normalizeGrades(account.grades)) {
+        if (gradeSet.has(g.toLowerCase())) return { grade: g };
+      }
+    }
+    return null;
   }
 
   private rememberSchool(account: SchoolAccount) {
@@ -275,6 +344,7 @@ export class StudentAuthService implements OnModuleInit {
     subject?: string;
     loginId: string;
     password: string;
+    grades?: string[];
     createdBy?: string;
   }) {
     const schoolId = String(payload.schoolId || '').trim();
@@ -283,6 +353,7 @@ export class StudentAuthService implements OnModuleInit {
     const subject = String(payload.subject || '').trim() || 'General';
     const loginId = String(payload.loginId || '').trim().toLowerCase();
     const password = String(payload.password || '');
+    const grades = normalizeGrades(payload.grades);
 
     if (!schoolId || !name || !email || !loginId || !password) {
       return { ok: false, error: 'schoolId, name, email, loginId and password are required' };
@@ -292,6 +363,10 @@ export class StudentAuthService implements OnModuleInit {
     }
     if (this.findTeacher(loginId)) {
       return { ok: false, error: 'Teacher login ID already exists' };
+    }
+    const conflict = this.findSubjectGradeConflict(schoolId, subject, grades);
+    if (conflict) {
+      return { ok: false, error: `${subject} teacher already exists for ${conflict.grade}.` };
     }
 
     const teacherId = randomUUID();
@@ -306,27 +381,41 @@ export class StudentAuthService implements OnModuleInit {
       passwordHash,
       name,
       subject,
-      schoolId
+      schoolId,
+      grades
     };
     this.rememberTeacher(account);
 
+    const baseRow = {
+      id: teacherId,
+      school_id: schoolId,
+      name,
+      email,
+      subject,
+      login_id: loginId,
+      password_salt: passwordSalt,
+      password_hash: passwordHash,
+      created_by: payload.createdBy || null,
+      created_at: new Date().toISOString()
+    };
+
     try {
-      await this.db.client.from('teachers').insert([
-        {
-          id: teacherId,
-          school_id: schoolId,
-          name,
-          email,
-          subject,
-          login_id: loginId,
-          password_salt: passwordSalt,
-          password_hash: passwordHash,
-          created_by: payload.createdBy || null,
-          created_at: new Date().toISOString()
-        }
-      ]);
+      const insertRes: any = await this.db.client
+        .from('teachers')
+        .insert([{ ...baseRow, grades }]);
+      // Supabase returns an error object (rather than throwing) when the
+      // `grades` column hasn't been migrated yet — retry without it so the
+      // teacher row is still persisted. Grades remain available via the local
+      // account store and resolveTeacherGrades().
+      if (insertRes && insertRes.error) {
+        await this.db.client.from('teachers').insert([baseRow]);
+      }
     } catch (e) {
-      // fallback only.
+      try {
+        await this.db.client.from('teachers').insert([baseRow]);
+      } catch (_e2) {
+        // fallback only.
+      }
     }
 
     return {
@@ -337,9 +426,212 @@ export class StudentAuthService implements OnModuleInit {
         name,
         email,
         subject,
-        loginId
+        loginId,
+        grades
       }
     };
+  }
+
+  /**
+   * Load a teacher by id, preferring the in-memory store and falling back to the
+   * DB. Returns a normalized TeacherAccount (grades included) or null.
+   */
+  private async loadTeacherAccount(teacherId: string): Promise<TeacherAccount | null> {
+    const local = this.findTeacherById(teacherId);
+    if (local) return local;
+    const id = String(teacherId || '').trim();
+    if (!id) return null;
+    try {
+      const res = await this.db.client.from('teachers').select('*').eq('id', id);
+      const row = Array.isArray((res as any)?.data) ? (res as any).data[0] : null;
+      if (row) {
+        const account: TeacherAccount = {
+          teacherId: row.id,
+          loginId: row.login_id,
+          email: row.email,
+          passwordSalt: row.password_salt,
+          passwordHash: row.password_hash,
+          name: row.name,
+          subject: row.subject,
+          schoolId: row.school_id,
+          grades: normalizeGrades(row.grades)
+        };
+        this.rememberTeacher(account);
+        return account;
+      }
+    } catch (_e) {
+      // fallback only.
+    }
+    return null;
+  }
+
+  async updateTeacherBySchool(payload: {
+    schoolId: string;
+    teacherId: string;
+    name?: string;
+    email?: string;
+    subject?: string;
+    grades?: string[];
+  }) {
+    const schoolId = String(payload.schoolId || '').trim();
+    const teacherId = String(payload.teacherId || '').trim();
+    if (!schoolId || !teacherId) {
+      return { ok: false, error: 'schoolId and teacherId are required' };
+    }
+
+    const existing = await this.loadTeacherAccount(teacherId);
+    if (!existing || String(existing.schoolId || '').trim() !== schoolId) {
+      return { ok: false, error: 'Teacher not found in this school' };
+    }
+
+    const name = payload.name !== undefined ? String(payload.name || '').trim() : existing.name || '';
+    const email = payload.email !== undefined ? String(payload.email || '').trim().toLowerCase() : existing.email || '';
+    const subject = payload.subject !== undefined
+      ? (String(payload.subject || '').trim() || 'General')
+      : (existing.subject || 'General');
+    const grades = payload.grades !== undefined ? normalizeGrades(payload.grades) : normalizeGrades(existing.grades);
+
+    if (!name) return { ok: false, error: 'Name is required' };
+
+    const conflict = this.findSubjectGradeConflict(schoolId, subject, grades, teacherId);
+    if (conflict) {
+      return { ok: false, error: `${subject} teacher already exists for ${conflict.grade}.` };
+    }
+
+    const updated: TeacherAccount = { ...existing, name, email, subject, grades };
+    this.rememberTeacher(updated);
+
+    try {
+      const res: any = await this.db.client
+        .from('teachers')
+        .update({ name, email, subject, grades, updated_at: new Date().toISOString() })
+        .eq('id', teacherId);
+      if (res && res.error) {
+        await this.db.client
+          .from('teachers')
+          .update({ name, email, subject, updated_at: new Date().toISOString() })
+          .eq('id', teacherId);
+      }
+    } catch (_e) {
+      try {
+        await this.db.client
+          .from('teachers')
+          .update({ name, email, subject, updated_at: new Date().toISOString() })
+          .eq('id', teacherId);
+      } catch (_e2) {
+        // fallback only.
+      }
+    }
+
+    return {
+      ok: true,
+      teacher: {
+        id: teacherId,
+        schoolId,
+        name,
+        email,
+        subject,
+        loginId: updated.loginId,
+        grades
+      }
+    };
+  }
+
+  async resetTeacherPassword(payload: { schoolId: string; teacherId: string; password: string }) {
+    const schoolId = String(payload.schoolId || '').trim();
+    const teacherId = String(payload.teacherId || '').trim();
+    const password = String(payload.password || '');
+    if (!schoolId || !teacherId) return { ok: false, error: 'schoolId and teacherId are required' };
+    if (password.length < 8) return { ok: false, error: 'Password must be at least 8 characters long' };
+
+    const existing = await this.loadTeacherAccount(teacherId);
+    if (!existing || String(existing.schoolId || '').trim() !== schoolId) {
+      return { ok: false, error: 'Teacher not found in this school' };
+    }
+
+    const passwordSalt = randomBytes(12).toString('hex');
+    const passwordHash = this.hashPassword(password, passwordSalt);
+    this.rememberTeacher({ ...existing, passwordSalt, passwordHash });
+
+    try {
+      await this.db.client
+        .from('teachers')
+        .update({ password_salt: passwordSalt, password_hash: passwordHash, updated_at: new Date().toISOString() })
+        .eq('id', teacherId);
+    } catch (_e) {
+      // fallback only.
+    }
+
+    return { ok: true, teacher: { id: teacherId, loginId: existing.loginId } };
+  }
+
+  async deleteTeacherBySchool(payload: { schoolId: string; teacherId: string }) {
+    const schoolId = String(payload.schoolId || '').trim();
+    const teacherId = String(payload.teacherId || '').trim();
+    if (!schoolId || !teacherId) return { ok: false, error: 'schoolId and teacherId are required' };
+
+    const existing = await this.loadTeacherAccount(teacherId);
+    if (!existing || String(existing.schoolId || '').trim() !== schoolId) {
+      return { ok: false, error: 'Teacher not found in this school' };
+    }
+
+    this.removeTeacherAccount(teacherId);
+
+    try {
+      // Unlink students so we never leave dangling teacher references.
+      await this.db.client.from('students').update({ teacher_id: null }).eq('teacher_id', teacherId);
+      await this.db.client.from('teachers').delete().eq('id', teacherId);
+    } catch (_e) {
+      // fallback only.
+    }
+
+    return { ok: true, teacher: { id: teacherId } };
+  }
+
+  /**
+   * List the teachers (with their subjects) responsible for a given class in a
+   * school. Used by the student portal so a student can see which teacher takes
+   * each subject for their class. Merges in-memory accounts with DB rows.
+   */
+  async listClassTeachers(schoolId: string, className: string) {
+    const sid = String(schoolId || '').trim();
+    const cn = String(className || '').trim().toLowerCase();
+    if (!sid || !cn) return [] as Array<{ id: string; name: string; subject: string }>;
+
+    const byId = new Map<string, { id: string; name: string; subject: string }>();
+
+    // DB teachers first (source of truth for the roster).
+    try {
+      const res = await this.db.client.from('teachers').select('*').eq('school_id', sid);
+      const rows = Array.isArray((res as any)?.data) ? (res as any).data : [];
+      for (const r of rows) {
+        const grades = normalizeGrades(r.grades);
+        if (grades.some((g) => g.toLowerCase() === cn)) {
+          byId.set(String(r.id), {
+            id: String(r.id),
+            name: r.name || 'Teacher',
+            subject: r.subject || 'General'
+          });
+        }
+      }
+    } catch (_e) {
+      // fallback only.
+    }
+
+    // Merge in-memory accounts (covers the grades-column-not-migrated case).
+    for (const account of StudentAuthService.teacherAccounts.values()) {
+      if (String(account.schoolId || '').trim() !== sid) continue;
+      const grades = normalizeGrades(account.grades);
+      if (grades.some((g) => g.toLowerCase() === cn)) {
+        byId.set(String(account.teacherId), {
+          id: String(account.teacherId),
+          name: account.name || 'Teacher',
+          subject: account.subject || 'General'
+        });
+      }
+    }
+
+    return Array.from(byId.values()).sort((a, b) => a.subject.localeCompare(b.subject));
   }
 
   async loginTeacher(loginIdRaw: string, passwordRaw: string) {
@@ -361,7 +653,8 @@ export class StudentAuthService implements OnModuleInit {
             passwordHash: row.password_hash,
             name: row.name,
             subject: row.subject,
-            schoolId: row.school_id
+            schoolId: row.school_id,
+            grades: normalizeGrades(row.grades)
           };
           this.rememberTeacher(account);
         }
@@ -386,8 +679,84 @@ export class StudentAuthService implements OnModuleInit {
         name: account.name || 'Teacher',
         subject: account.subject || 'General',
         loginId: account.loginId,
-        email: account.email
+        email: account.email,
+        grades: normalizeGrades(account.grades)
       }
+    };
+  }
+
+  /**
+   * Resolve the canonical class names (grades) a teacher is assigned to.
+   * Checks the in-memory/persisted teacher accounts first, then the DB.
+   */
+  async resolveTeacherGrades(teacherId?: string): Promise<string[]> {
+    const id = String(teacherId || '').trim();
+    if (!id) return [];
+
+    for (const account of StudentAuthService.teacherAccounts.values()) {
+      if (String(account.teacherId || '').trim() === id) {
+        return normalizeGrades(account.grades);
+      }
+    }
+
+    try {
+      const res = await this.db.client.from('teachers').select('grades').eq('id', id);
+      const row = Array.isArray((res as any)?.data) ? (res as any).data[0] : null;
+      if (row) return normalizeGrades(row.grades);
+    } catch (_e) {
+      // fallback only.
+    }
+    return [];
+  }
+
+  /**
+   * Resolve the subject a teacher is registered to teach. Prefers the
+   * in-memory/persisted account store, then falls back to the DB. Returns an
+   * empty string when the teacher has no explicit subject so callers can decide
+   * how to treat an unscoped teacher.
+   */
+  async resolveTeacherSubject(teacherId?: string): Promise<string> {
+    const id = String(teacherId || '').trim();
+    if (!id) return '';
+
+    const local = this.findTeacherById(id);
+    if (local) return String(local.subject || '').trim();
+
+    try {
+      const res = await this.db.client.from('teachers').select('subject').eq('id', id);
+      const row = Array.isArray((res as any)?.data) ? (res as any).data[0] : null;
+      if (row) return String(row.subject || '').trim();
+    } catch (_e) {
+      // fallback only.
+    }
+    return '';
+  }
+
+  /**
+   * Public accessor for the locally-stored teacher account (name, subject,
+   * email, school and grades). Returns null when the teacher only exists in the
+   * DB. Used by controllers to backfill profile details when the DB row is
+   * missing (e.g. the grades column has not been migrated yet).
+   */
+  getLocalTeacher(teacherId?: string): {
+    id: string;
+    name?: string;
+    subject?: string;
+    email?: string;
+    schoolId?: string;
+    loginId?: string;
+    grades: string[];
+  } | null {
+    const account = this.findTeacherById(String(teacherId || '').trim());
+    if (!account) return null;
+    return {
+      id: account.teacherId,
+      name: account.name,
+      subject: account.subject,
+      email: account.email,
+      schoolId: account.schoolId,
+      loginId: account.loginId,
+      grades: normalizeGrades(account.grades)
     };
   }
 
@@ -675,20 +1044,63 @@ export class StudentAuthService implements OnModuleInit {
       if (queryText) {
         q = q.or(`name.ilike.%${queryText}%,email.ilike.%${queryText}%,subject.ilike.%${queryText}%,login_id.ilike.%${queryText}%`);
       }
-      const res = await q.order('created_at', { ascending: false }).range(from, to);
+      const res = await q.order('created_at', { ascending: false });
       const rows = Array.isArray((res as any)?.data) ? (res as any).data : [];
-      const total = Number((res as any)?.count || rows.length);
-      const totalPages = Math.max(1, Math.ceil(total / limit));
-      return {
-        teachers: rows.map((r: any) => ({
+      // Local grades fallback: when the `grades` column hasn't been migrated,
+      // DB rows carry no grades, so fill them in from the local account store.
+      const localGradesById = new Map<string, string[]>();
+      for (const t of StudentAuthService.teacherAccounts.values()) {
+        localGradesById.set(String(t.teacherId || ''), normalizeGrades(t.grades));
+      }
+
+      const byId = new Map<string, any>();
+      for (const r of rows) {
+        const dbGrades = normalizeGrades(r.grades);
+        const grades = dbGrades.length ? dbGrades : (localGradesById.get(String(r.id || '')) || []);
+        byId.set(String(r.id || ''), {
           id: r.id,
           schoolId: r.school_id,
           name: r.name || 'Teacher',
           email: r.email || null,
           subject: r.subject || 'General',
           loginId: r.login_id || null,
+          grades,
           createdAt: r.created_at || null
-        })),
+        });
+      }
+
+      // Merge in-memory accounts so teachers whose DB insert failed (e.g. the
+      // grades column has not been migrated) are still listed and searchable.
+      for (const t of StudentAuthService.teacherAccounts.values()) {
+        if (String(t.schoolId || '').trim() !== schoolId) continue;
+        const id = String(t.teacherId || '');
+        if (byId.has(id)) continue;
+        if (queryText) {
+          const text = `${t.name || ''} ${t.email || ''} ${t.subject || ''} ${t.loginId || ''}`.toLowerCase();
+          if (!text.includes(queryText)) continue;
+        }
+        byId.set(id, {
+          id: t.teacherId,
+          schoolId: t.schoolId,
+          name: t.name || 'Teacher',
+          email: t.email || null,
+          subject: t.subject || 'General',
+          loginId: t.loginId || null,
+          grades: normalizeGrades(t.grades),
+          createdAt: null
+        });
+      }
+
+      const merged = Array.from(byId.values()).sort((a, b) => {
+        const aTs = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+        const bTs = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+        return bTs - aTs;
+      });
+      const total = merged.length;
+      const totalPages = Math.max(1, Math.ceil(total / limit));
+      const paged = merged.slice(from, from + limit);
+      return {
+        teachers: paged,
         pagination: {
           page,
           limit,
@@ -711,6 +1123,7 @@ export class StudentAuthService implements OnModuleInit {
           email: t.email || null,
           subject: t.subject || 'General',
           loginId: t.loginId,
+          grades: normalizeGrades(t.grades),
           createdAt: null
         }));
       const total = locals.length;
@@ -732,6 +1145,7 @@ export class StudentAuthService implements OnModuleInit {
     scope: {
       schoolId?: string;
       teacherId?: string;
+      grades?: string[];
       q?: string;
       className?: string;
       page?: number;
@@ -740,6 +1154,9 @@ export class StudentAuthService implements OnModuleInit {
   ) {
     const schoolId = String(scope.schoolId || '').trim();
     const teacherId = String(scope.teacherId || '').trim();
+    const grades = normalizeGrades(scope.grades);
+    const gradeSet = new Set(grades.map((g) => g.toLowerCase()));
+    const scopeByGrades = gradeSet.size > 0 && !!schoolId;
     const queryText = String(scope.q || '').trim().toLowerCase();
     const classNameFilter = String(scope.className || '').trim().toLowerCase();
     const hasPaging = scope.page !== undefined || scope.limit !== undefined || !!queryText || !!classNameFilter;
@@ -750,26 +1167,39 @@ export class StudentAuthService implements OnModuleInit {
     const from = (page - 1) * limit;
     const to = from + limit - 1;
 
+    const inGrades = (className: unknown, rowTeacherId?: unknown) => {
+      if (!gradeSet.size) return true;
+      const cn = String(className || '').trim().toLowerCase();
+      if (gradeSet.has(cn)) return true;
+      // Students directly assigned to this teacher stay visible too.
+      return !!teacherId && String(rowTeacherId || '').trim() === teacherId;
+    };
+
     try {
       let q = this.db.client.from('students').select('*', { count: 'exact' });
-      if (teacherId) q = q.eq('teacher_id', teacherId);
+      if (scopeByGrades) q = q.eq('school_id', schoolId);
+      else if (teacherId) q = q.eq('teacher_id', teacherId);
       else if (schoolId) q = q.eq('school_id', schoolId);
       if (queryText) {
         q = q.or(`name.ilike.%${queryText}%,full_name.ilike.%${queryText}%,class_name.ilike.%${queryText}%,class.ilike.%${queryText}%,grade.ilike.%${queryText}%`);
       }
       const res = await q.order('created_at', { ascending: false }).range(from, to);
       const rowsRaw = Array.isArray((res as any)?.data) ? (res as any).data : [];
-      const rows = classNameFilter
-        ? rowsRaw.filter((r: any) => String(r?.class_name || r?.class || r?.grade || '').trim().toLowerCase() === classNameFilter)
-        : rowsRaw;
+      const rows = rowsRaw
+        .filter((r: any) => inGrades(r?.class_name ?? r?.class ?? r?.grade, r?.teacher_id))
+        .filter((r: any) => (classNameFilter
+          ? String(r?.class_name || r?.class || r?.grade || '').trim().toLowerCase() === classNameFilter
+          : true));
 
       // Always merge in local-memory accounts so students registered locally
       // (but whose DB insert may have failed) are still included.
       const dbIds = new Set(rows.map((r: any) => String(r.id || '')));
       const localStudents = Array.from(StudentAuthService.localAccounts.values())
         .filter((s) => !dbIds.has(s.studentId)) // avoid duplicates already in DB rows
-        .filter((s) => (teacherId ? s.teacherId === teacherId : true))
-        .filter((s) => (schoolId ? s.schoolId === schoolId : true))
+        .filter((s) => (scopeByGrades
+          ? s.schoolId === schoolId && inGrades(s.className, s.teacherId)
+          : teacherId ? s.teacherId === teacherId : true))
+        .filter((s) => (!scopeByGrades && schoolId ? s.schoolId === schoolId : true))
         .filter((s) => {
           if (!queryText) return true;
           const text = `${s.name || ''} ${s.className || ''} ${s.loginId || ''}`.toLowerCase();
@@ -809,8 +1239,10 @@ export class StudentAuthService implements OnModuleInit {
       };
     } catch (e) {
       const locals = Array.from(StudentAuthService.localAccounts.values())
-        .filter((s) => (teacherId ? s.teacherId === teacherId : true))
-        .filter((s) => (schoolId ? s.schoolId === schoolId : true))
+        .filter((s) => (scopeByGrades
+          ? s.schoolId === schoolId && inGrades(s.className, s.teacherId)
+          : teacherId ? s.teacherId === teacherId : true))
+        .filter((s) => (!scopeByGrades && schoolId ? s.schoolId === schoolId : true))
         .filter((s) => {
           if (!queryText) return true;
           const text = `${s.name || ''} ${s.className || ''} ${s.loginId || ''}`.toLowerCase();

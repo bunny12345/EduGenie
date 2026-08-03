@@ -36,11 +36,46 @@ export class TeacherController {
     }
   }
 
+  /**
+   * Build the student-scope for the signed-in teacher. When the teacher has
+   * grades assigned by the school admin, students are scoped to those classes
+   * within the school; otherwise it falls back to directly-assigned students.
+   */
+  private async teacherScope(req: any): Promise<{ teacherId?: string; schoolId?: string; grades: string[] }> {
+    const teacherId = req?.user?.sub || undefined;
+    const schoolId = req?.user?.schoolId || undefined;
+    let grades: string[] = [];
+    try {
+      grades = await this.studentAuth.resolveTeacherGrades(teacherId);
+    } catch (_e) {
+      grades = [];
+    }
+    return { teacherId, schoolId, grades };
+  }
+
+  /**
+   * Resolve the signed-in teacher's subject (lower-cased) so their portal can be
+   * scoped to only their own subject's homework/tests. Returns an empty string
+   * when the teacher has no explicit subject, in which case callers should not
+   * apply subject filtering.
+   */
+  private async teacherSubject(req: any): Promise<string> {
+    const teacherId = req?.user?.sub || undefined;
+    let subject = '';
+    try {
+      subject = await this.studentAuth.resolveTeacherSubject(teacherId);
+    } catch (_e) {
+      subject = '';
+    }
+    if (!subject) subject = String(req?.user?.subject || '').trim();
+    const lowered = subject.toLowerCase();
+    // Treat the generic default as "unscoped" so legacy/unset teachers still see
+    // their full roster instead of accidentally hiding everything.
+    return lowered === 'general' ? '' : lowered;
+  }
+
   private async ensureStudentAccess(req: any, studentId: string) {
-    const scopedStudents = await this.studentAuth.listStudentsByScope({
-      teacherId: req?.user?.sub || undefined,
-      schoolId: req?.user?.schoolId || undefined
-    });
+    const scopedStudents = await this.studentAuth.listStudentsByScope(await this.teacherScope(req));
     const scopedRows = Array.isArray(scopedStudents.students) ? scopedStudents.students : [];
     const hasScopedRoster = scopedRows.length > 0;
     const allowed = new Set(scopedRows.map((s: any) => s.id));
@@ -90,6 +125,9 @@ export class TeacherController {
     this.ensureTeacher(req);
     const teacherId = this.actorId(req);
     const schoolId = req?.user?.schoolId || null;
+    // Locally-stored account (covers teachers whose DB row is missing, e.g. the
+    // grades column has not been migrated so the insert fell back or failed).
+    const local = teacherId ? this.studentAuth.getLocalTeacher(teacherId) : null;
 
     try {
       const row = teacherId
@@ -104,11 +142,11 @@ export class TeacherController {
       return {
         success: true,
         profile: {
-          id: teacher?.id || teacherId || 'teacher-local',
-          name: teacher?.name || req?.user?.name || 'Teacher',
-          email: teacher?.email || req?.user?.email || null,
-          subject: teacher?.subject || req?.user?.subject || 'General',
-          schoolId: teacher?.school_id || schoolId || null,
+          id: teacher?.id || local?.id || teacherId || 'teacher-local',
+          name: teacher?.name || local?.name || req?.user?.name || 'Teacher',
+          email: teacher?.email || local?.email || req?.user?.email || null,
+          subject: teacher?.subject || local?.subject || req?.user?.subject || 'General',
+          schoolId: teacher?.school_id || local?.schoolId || schoolId || null,
           schoolName: school?.name || null,
           schoolLogo: school?.logo_url || null,
           avatarUrl: teacher?.avatar_url || null,
@@ -119,11 +157,11 @@ export class TeacherController {
       return {
         success: true,
         profile: {
-          id: teacherId || 'teacher-local',
-          name: req?.user?.name || 'Teacher',
-          email: req?.user?.email || null,
-          subject: req?.user?.subject || 'General',
-          schoolId: schoolId || null,
+          id: local?.id || teacherId || 'teacher-local',
+          name: local?.name || req?.user?.name || 'Teacher',
+          email: local?.email || req?.user?.email || null,
+          subject: local?.subject || req?.user?.subject || 'General',
+          schoolId: local?.schoolId || schoolId || null,
           schoolName: null,
           schoolLogo: null,
           avatarUrl: null,
@@ -137,17 +175,19 @@ export class TeacherController {
   async dashboard(@Req() req: any) {
     this.ensureTeacher(req);
     try {
-      const scopedStudentsRes = await this.studentAuth.listStudentsByScope({
-        teacherId: this.actorId(req) || undefined,
-        schoolId: req?.user?.schoolId || undefined
-      });
+      const scopedStudentsRes = await this.studentAuth.listStudentsByScope(await this.teacherScope(req));
       const students = Array.isArray(scopedStudentsRes.students) ? scopedStudentsRes.students : [];
       const studentIds = students.map((s: any) => s.id).filter(Boolean);
+      const subjectScope = await this.teacherSubject(req);
 
       let homeworkRows: any[] = [];
       if (studentIds.length) {
         const homeworkRes = await this.db.client.from('homework').select('*').in('student_id', studentIds).order('created_at', { ascending: false }).limit(500);
         homeworkRows = Array.isArray((homeworkRes as any)?.data) ? (homeworkRes as any).data : [];
+      }
+      // Subject scoping: only count homework for the teacher's own subject.
+      if (subjectScope) {
+        homeworkRows = homeworkRows.filter((h: any) => String(h?.subject || '').trim().toLowerCase() === subjectScope);
       }
 
       let progressRows: any[] = [];
@@ -183,7 +223,13 @@ export class TeacherController {
         : this.sampleStudents();
 
       const mergedAnnouncements = announcements.length ? announcements : this.localFeed.listAnnouncements();
-      const mergedHomeworkRows = homeworkRows.length ? homeworkRows : this.localFeed.listHomeworkForStudents(studentIds);
+      const localHomeworkFallback = (() => {
+        const rows = this.localFeed.listHomeworkForStudents(studentIds);
+        return subjectScope
+          ? rows.filter((h: any) => String(h?.subject || '').trim().toLowerCase() === subjectScope)
+          : rows;
+      })();
+      const mergedHomeworkRows = homeworkRows.length ? homeworkRows : localHomeworkFallback;
 
       return {
         success: true,
@@ -225,8 +271,7 @@ export class TeacherController {
     this.ensureTeacher(req);
     try {
       const scopeStudents = await this.studentAuth.listStudentsByScope({
-        teacherId: req?.user?.sub || undefined,
-        schoolId: req?.user?.schoolId || undefined,
+        ...(await this.teacherScope(req)),
         className: className || undefined
       });
       const rows = Array.isArray(scopeStudents.students) ? scopeStudents.students : [];
@@ -276,10 +321,7 @@ export class TeacherController {
       return { success: false, updated: 0, studentIds: [], error: 'studentIds is required' };
     }
 
-    const scopedStudents = await this.studentAuth.listStudentsByScope({
-      teacherId: req?.user?.sub || undefined,
-      schoolId: req?.user?.schoolId || undefined
-    });
+    const scopedStudents = await this.studentAuth.listStudentsByScope(await this.teacherScope(req));
     const scopedRows = Array.isArray(scopedStudents.students) ? scopedStudents.students : [];
     const hasScopedRoster = scopedRows.length > 0;
     const allowed = new Set(scopedRows.map((s: any) => String(s.id || '').trim()));
@@ -567,6 +609,7 @@ export class TeacherController {
   async studentHomework(@Req() req: any, @Param('id') studentId: string) {
     this.ensureTeacher(req);
     await this.ensureStudentAccess(req, studentId);
+    const subjectScope = await this.teacherSubject(req);
 
     try {
       const [hwRes, attRes] = await Promise.all([
@@ -574,9 +617,15 @@ export class TeacherController {
         this.db.client.from('homework_attempts').select('*').eq('student_id', studentId).order('created_at', { ascending: false }).limit(100)
       ]);
 
-      const hwRows: any[] = Array.isArray((hwRes as any)?.data) && (hwRes as any).data.length
+      const hwRowsAll: any[] = Array.isArray((hwRes as any)?.data) && (hwRes as any).data.length
         ? (hwRes as any).data
         : this.localFeed.listHomeworkForStudent(studentId);
+
+      // Subject scoping: a teacher only sees homework for the subject they are
+      // registered to teach. When the teacher has no explicit subject, show all.
+      const hwRows: any[] = subjectScope
+        ? hwRowsAll.filter((h: any) => String(h?.subject || '').trim().toLowerCase() === subjectScope)
+        : hwRowsAll;
 
       const attempts: any[] = Array.isArray((attRes as any)?.data) ? (attRes as any).data : [];
       const attemptsByHw = new Map<string, any[]>();
@@ -645,7 +694,10 @@ export class TeacherController {
 
       return { success: true, studentId, homework };
     } catch (e) {
-      const localHw = this.localFeed.listHomeworkForStudent(studentId);
+      const localHwAll = this.localFeed.listHomeworkForStudent(studentId);
+      const localHw = subjectScope
+        ? localHwAll.filter((h: any) => String(h?.subject || '').trim().toLowerCase() === subjectScope)
+        : localHwAll;
       return {
         success: true,
         studentId,
@@ -714,6 +766,7 @@ export class TeacherController {
   async studentTestAttempts(@Req() req: any, @Param('id') studentId: string) {
     this.ensureTeacher(req);
     await this.ensureStudentAccess(req, studentId);
+    const subjectScope = await this.teacherSubject(req);
 
     try {
       const [attRes, testsRes] = await Promise.all([
@@ -755,7 +808,12 @@ export class TeacherController {
         };
       });
 
-      return { success: true, studentId, attempts: result };
+      // Subject scoping: a teacher only sees test attempts for their own subject.
+      const scoped = subjectScope
+        ? result.filter((r: any) => String(r?.subject || '').trim().toLowerCase() === subjectScope)
+        : result;
+
+      return { success: true, studentId, attempts: scoped };
     } catch (e) {
       return { success: true, studentId, attempts: [] };
     }
@@ -806,12 +864,10 @@ export class TeacherController {
   async listTeacherHomework(@Req() req: any) {
     this.ensureTeacher(req);
     const teacherId = this.actorId(req);
+    const subjectScope = await this.teacherSubject(req);
     try {
       const [scopedStudentsRes, byTeacherRes] = await Promise.all([
-        this.studentAuth.listStudentsByScope({
-          teacherId: this.actorId(req) || undefined,
-          schoolId: req?.user?.schoolId || undefined
-        }),
+        this.studentAuth.listStudentsByScope(await this.teacherScope(req)),
         this.db.client
           .from('homework')
           .select('*')
@@ -862,7 +918,13 @@ export class TeacherController {
         return true;
       });
 
-      const assignments = rows.map((h: any) => ({
+      // Subject scoping: only surface homework for the teacher's own subject so a
+      // teacher never sees another subject's assignments in their history.
+      const scopedRows = subjectScope
+        ? rows.filter((h: any) => String(h?.subject || '').trim().toLowerCase() === subjectScope)
+        : rows;
+
+      const assignments = scopedRows.map((h: any) => ({
         id: h.id,
         title: h.title,
         subject: h.subject,
@@ -879,9 +941,12 @@ export class TeacherController {
     } catch (e) {
       // Fall back to local feed — filter by created_by
       const allHw = this.localFeed.listHomeworkByTeacher(teacherId);
+      const scopedHw = subjectScope
+        ? allHw.filter((h: any) => String(h?.subject || '').trim().toLowerCase() === subjectScope)
+        : allHw;
       return {
         success: true,
-        assignments: allHw.map((h: any) => ({
+        assignments: scopedHw.map((h: any) => ({
           id: h.id,
           title: h.title,
           subject: h.subject,
@@ -957,8 +1022,7 @@ export class TeacherController {
       if (className) {
         try {
           const classStudents = await this.studentAuth.listStudentsByScope({
-            teacherId: teacherId || undefined,
-            schoolId: req?.user?.schoolId || undefined,
+            ...(await this.teacherScope(req)),
             className
           });
           effectiveStudentIds = (classStudents.students || []).map((s: any) => s.id).filter(Boolean);
@@ -1041,8 +1105,7 @@ export class TeacherController {
     if (targetClass) {
       // Resolve all students in the given class
       const classStudents = await this.studentAuth.listStudentsByScope({
-        teacherId: req?.user?.sub || undefined,
-        schoolId: req?.user?.schoolId || undefined,
+        ...(await this.teacherScope(req)),
         className: targetClass
       });
       effectiveStudentIds = (classStudents.students || []).map((s: any) => s.id);
@@ -1053,10 +1116,7 @@ export class TeacherController {
       if (!studentIds.length) {
         return { success: false, created: 0, assignments: [], error: 'Provide either className or studentIds' };
       }
-      const scopedStudents = await this.studentAuth.listStudentsByScope({
-        teacherId: req?.user?.sub || undefined,
-        schoolId: req?.user?.schoolId || undefined
-      });
+      const scopedStudents = await this.studentAuth.listStudentsByScope(await this.teacherScope(req));
       const allowed = new Set((scopedStudents.students || []).map((s: any) => s.id));
       const filteredStudentIds = studentIds.filter((id: string) => allowed.has(id));
       const hasScopedRoster = Array.isArray(scopedStudents.students) && scopedStudents.students.length > 0;
