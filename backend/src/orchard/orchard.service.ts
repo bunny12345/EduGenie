@@ -147,49 +147,126 @@ export class OrchardService {
 
   // ─── class + school resolution ───────────────────────────────────────────────
   private async resolveStudentContext(studentId: string): Promise<{ schoolId: string; className: string }> {
-    let schoolId = '';
-    let className = '';
-    // 1) students table (real DB)
-    const rows = await this.selectRows('students', [['id', studentId]]);
-    const s = rows && rows[0];
-    if (s) {
-      className = String(s.class_name || s.class || s.className || '');
-      schoolId = String(s.school_id || s.schoolId || '');
-    }
-    // 2) local accounts file (covers dev/mock accounts)
-    if (!schoolId || !className) {
-      try {
-        const file = path.join(process.cwd(), 'local-data', 'student-accounts.json');
-        if (fs.existsSync(file)) {
-          const list = JSON.parse(fs.readFileSync(file, 'utf8'));
-          const acct = Array.isArray(list) ? list.find((a: any) => a.studentId === studentId) : null;
-          if (acct) {
-            if (!className) className = String(acct.className || '');
-            if (!schoolId) schoolId = String(acct.schoolId || '');
-          }
-        }
-      } catch {
-        /* ignore */
-      }
-    }
-    if (!className) className = DEFAULT_CLASS;
-    return { schoolId, className };
+    // Shared resolver (DB `students` + local account store) so newly-registered
+    // students resolve exactly like long-standing ones.
+    const profile = await this.studentAuth.resolveStudentProfile(studentId);
+    return { schoolId: profile.schoolId || '', className: profile.className || DEFAULT_CLASS };
   }
 
   private async resolveClassName(studentId: string): Promise<string> {
     return (await this.resolveStudentContext(studentId)).className;
   }
 
+  // Public accessor so other features (games, progress) scope their content to
+  // the same class/grade the orchard uses.
+  async resolveStudentClassName(studentId: string): Promise<string> {
+    return this.resolveClassName(studentId);
+  }
+
+  // ─── curriculum-driven chapters ─────────────────────────────────────────────
+  // Make sure a subject exists in the shared `orchard_subjects` catalog. Chapters
+  // reference this table, so dynamically-registered subjects (Biology, …) need a
+  // row before their chapters/trees can be stored.
+  private async ensureSubjectRegistered(subject: SubjectCatalogEntry): Promise<void> {
+    const existing = await this.selectRows('orchard_subjects', [['subject_key', subject.subject_key]]);
+    if (existing && existing.length) return;
+    await this.insertRow('orchard_subjects', {
+      subject_key: subject.subject_key,
+      display_name: subject.display_name,
+      tree_type: subject.tree_type,
+      fruit_type: subject.fruit_type,
+      fruit_emoji: subject.fruit_emoji,
+      tree_emoji: subject.tree_emoji,
+      accent_color: subject.accent_color,
+      order_index: subject.order_index,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    });
+  }
+
+  // The real chapters a student should see are the lessons the school/teacher
+  // uploaded for that subject AND that exact class. We mirror them into
+  // `orchard_chapters` (linked by lesson_id) so every uploaded chapter becomes a
+  // seed in the tree — for existing students and for anyone who registers later.
+  private async chaptersFromCurriculum(subjectKey: string, className: string): Promise<any[]> {
+    const lessons = await this.selectRows('lessons', []);
+    if (!lessons || !lessons.length) return [];
+
+    // Which lessons are published to this class?
+    const visibility = await this.selectRows('lesson_class_visibility', []);
+    const visibleLessonIds = new Set(
+      (visibility || [])
+        .filter((v) => String(v.class_name || '').trim().toLowerCase() === className.trim().toLowerCase() && v.is_visible !== false)
+        .map((v) => String(v.lesson_id)),
+    );
+
+    const matching = (lessons || [])
+      .filter((l) => normalizeSubjectKey(l.subject) === subjectKey)
+      .filter((l) => {
+        const lessonClass = String(l.class_name || '').trim().toLowerCase();
+        // Either the lesson is tagged with this class, or it was explicitly
+        // published to it through class visibility.
+        return (lessonClass && lessonClass === className.trim().toLowerCase()) || visibleLessonIds.has(String(l.id));
+      })
+      .sort((a, b) => Number(a.order_index || 0) - Number(b.order_index || 0)
+        || String(a.created_at || '').localeCompare(String(b.created_at || '')));
+
+    if (!matching.length) return [];
+
+    const existing = await this.selectRows('orchard_chapters', [
+      ['subject_key', subjectKey],
+      ['class_name', className],
+    ]);
+    const byLessonId = new Map((existing || []).filter((c) => c.lesson_id).map((c) => [String(c.lesson_id), c]));
+
+    const chapters: any[] = [];
+    let index = 0;
+    for (const lesson of matching) {
+      index += 1;
+      const found = byLessonId.get(String(lesson.id));
+      if (found) {
+        // Keep the title in sync if the school renamed the chapter.
+        if (String(found.title || '') !== String(lesson.title || '')) {
+          await this.updateRows('orchard_chapters', { title: lesson.title, order_index: index, chapter_number: index }, [['id', found.id]]);
+          found.title = lesson.title;
+        }
+        found.order_index = index;
+        found.chapter_number = index;
+        chapters.push(found);
+        continue;
+      }
+      chapters.push(
+        await this.insertRow('orchard_chapters', {
+          subject_key: subjectKey,
+          class_name: className,
+          chapter_number: index,
+          title: String(lesson.title || `Chapter ${index}`),
+          lesson_id: lesson.id,
+          order_index: index,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        }),
+      );
+    }
+    return chapters;
+  }
+
   // ─── ensure chapters (seeds) exist for a subject + class ─────────────────────
   private async ensureChapters(subjectKey: string, className: string): Promise<any[]> {
-    let chapters = await this.selectRows('orchard_chapters', [
+    // 1) Real uploaded curriculum always wins — these are the actual chapters.
+    const fromCurriculum = await this.chaptersFromCurriculum(subjectKey, className);
+    if (fromCurriculum.length) return fromCurriculum;
+
+    // 2) Otherwise reuse any chapters already stored for this subject + class.
+    const chapters = await this.selectRows('orchard_chapters', [
       ['subject_key', subjectKey],
       ['class_name', className],
     ]);
     if (chapters && chapters.length) {
       return chapters.sort((a, b) => Number(a.order_index || 0) - Number(b.order_index || 0));
     }
-    // Generate a default set of chapters for this subject + class.
+
+    // 3) Nothing uploaded yet → seed a starter set so the tree still exists.
     const created: any[] = [];
     for (let i = 1; i <= DEFAULT_CHAPTERS_PER_SUBJECT; i++) {
       const row = {
@@ -300,6 +377,9 @@ export class OrchardService {
       .sort((a, b) => a.order_index - b.order_index);
     await this.ensureProfile(studentId);
     for (const subject of catalog) {
+      // Dynamic subjects need a catalog row before their chapters/trees can be
+      // stored (orchard_chapters references orchard_subjects).
+      await this.ensureSubjectRegistered(subject);
       await this.ensureTree(studentId, subject, className);
     }
     return { className, catalog };
@@ -458,7 +538,7 @@ export class OrchardService {
 
   // ─── recompute a tree's aggregate state from its chapters + activity ─────────
   private async recomputeTree(studentId: string, subjectKey: string): Promise<any> {
-    const growth = await this.selectRows('chapter_growth', [
+    const allGrowth = await this.selectRows('chapter_growth', [
       ['student_id', studentId],
       ['subject_key', subjectKey],
     ]);
@@ -466,10 +546,15 @@ export class OrchardService {
       ['student_id', studentId],
       ['subject_key', subjectKey],
     ]);
-    const chapters = await this.selectRows('orchard_chapters', [['subject_key', subjectKey]]);
+    // Only the chapters that belong to THIS student's class count towards the
+    // tree, so a curriculum change (or another grade's chapters) can never skew
+    // the totals.
+    const className = await this.resolveClassName(studentId);
+    const chapters = await this.ensureChapters(subjectKey, className);
     const orderByChapter = new Map((chapters || []).map((c) => [String(c.id), Number(c.order_index || c.chapter_number || 0)]));
+    const growth = (allGrowth || []).filter((g) => orderByChapter.has(String(g.chapter_id)));
 
-    const total = growth.length || 0;
+    const total = chapters.length || growth.length || 0;
     let rootsSum = 0;
     let completed = 0;
 
@@ -803,7 +888,11 @@ export class OrchardService {
       ['subject_key', subjectKey],
     ]);
     const t = (treeRows && treeRows[0]) || {};
-    const chapterRows = await this.selectRows('orchard_chapters', [['subject_key', subjectKey]]);
+    // Chapters are per subject AND per class — never show another grade's
+    // chapters. This resolves them from the uploaded curriculum for the
+    // student's own class.
+    const className = await this.resolveClassName(studentId);
+    const chapterRows = await this.ensureChapters(subjectKey, className);
     const growthRows = await this.selectRows('chapter_growth', [
       ['student_id', studentId],
       ['subject_key', subjectKey],

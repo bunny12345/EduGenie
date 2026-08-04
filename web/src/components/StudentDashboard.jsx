@@ -822,9 +822,18 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
     };
   }, []);
 
-  const greetingName = dashboard?.greetingName || 'Student';
+  // Fall back to the login session so the profile chip always shows the real
+  // student (and their grade) even before/if the dashboard payload is thin.
+  const sessionProfile = useMemo(() => {
+    try {
+      return JSON.parse(window.localStorage.getItem('edugenie.session') || '{}') || {};
+    } catch {
+      return {};
+    }
+  }, []);
+  const greetingName = dashboard?.greetingName || sessionProfile?.name || 'Student';
   const classTeachers = Array.isArray(dashboard?.classTeachers) ? dashboard.classTeachers : [];
-  const className = dashboard?.className || '';
+  const className = dashboard?.className || sessionProfile?.className || '';
   const streak = dashboard?.streak || {};
   const streakDays = Number(streak.days || 0);
   const streakLongest = Number(streak.longest || 0);
@@ -2065,7 +2074,7 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
               <div className="eg-profile-avatar">🧑</div>
               <div className="eg-profile-meta">
                 <strong>Hi, {greetingName}</strong>
-                <span>Student</span>
+                <span>{className ? `Student · ${className}` : 'Student'}</span>
               </div>
               <span className="eg-profile-caret">▾</span>
             </div>

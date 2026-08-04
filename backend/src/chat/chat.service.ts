@@ -6,6 +6,7 @@ import fetch from 'node-fetch';
 import { LlmService } from '../llm/llm.service';
 import { SupabaseService } from '../supabase.service';
 import { EmbeddingsService } from '../embeddings/embeddings.service';
+import { StudentAuthService } from '../auth/student-auth.service';
 
 type ChatTurn = {
   role: 'user' | 'assistant';
@@ -232,7 +233,8 @@ export class ChatService {
   constructor(
     private readonly llm: LlmService,
     private readonly db: SupabaseService,
-    private readonly embeddings: EmbeddingsService
+    private readonly embeddings: EmbeddingsService,
+    private readonly studentAuth: StudentAuthService
   ) {}
 
   private getCacheKey(studentId: string, conversationId: string) {
@@ -537,13 +539,20 @@ export class ChatService {
           }
         }
       } else if (lessonSubject) {
-        const className = String(profileRow?.class_name || profileRow?.class || '').trim();
+        // Resolve the class from the DB row, falling back to the shared student
+        // profile so newly-registered students also get lesson-grounded answers.
+        let className = String(profileRow?.class_name || profileRow?.class || '').trim();
+        if (!className) {
+          try {
+            className = String((await this.studentAuth.resolveStudentProfile(studentId)).className || '').trim();
+          } catch { /* best effort */ }
+        }
         if (className) {
           const visibleRes = await this.db.client
-            .from('lesson_visibility')
+            .from('lesson_class_visibility')
             .select('lesson_id')
             .eq('class_name', className)
-            .eq('visible', true);
+            .eq('is_visible', true);
           const visibleRows = Array.isArray((visibleRes as any)?.data) ? (visibleRes as any).data : [];
           const visibleLessonIds = Array.from(new Set(visibleRows.map((row: any) => String(row?.lesson_id || '').trim()).filter(Boolean)));
 

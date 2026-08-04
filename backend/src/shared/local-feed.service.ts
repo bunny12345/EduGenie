@@ -80,6 +80,12 @@ export class LocalFeedService implements OnModuleInit {
     return next;
   }
 
+  getHomeworkById(id: string) {
+    const targetId = String(id || '').trim();
+    if (!targetId) return null;
+    return this.homeworkAssignments.find((h) => String(h?.id || '').trim() === targetId) || null;
+  }
+
   listHomeworkForStudent(studentId: string) {
     const id = String(studentId || '').trim();
     if (!id) return [];

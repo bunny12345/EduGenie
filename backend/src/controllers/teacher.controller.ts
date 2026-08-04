@@ -744,6 +744,31 @@ export class TeacherController {
         .order('created_at', { ascending: false })
         .limit(100);
       const attempts = Array.isArray((res as any)?.data) ? (res as any).data : [];
+      if (!attempts.length) {
+        // Homework assigned while the database was unavailable lives in the
+        // local feed, where the submission is recorded on the assignment row
+        // itself. Surface it so the teacher still sees the student's work.
+        const local = this.localFeed.getHomeworkById(hwId);
+        const submittedAt = local?.submitted_at || null;
+        if (local && submittedAt) {
+          const urls = Array.isArray(local.latest_attachment_urls) && local.latest_attachment_urls.length
+            ? local.latest_attachment_urls
+            : (local.latest_attachment_url ? [local.latest_attachment_url] : []);
+          return {
+            success: true,
+            homeworkId: hwId,
+            attempts: [{
+              id: `local-attempt-${hwId}`,
+              studentId: local.student_id || local.studentId || null,
+              submittedAt,
+              attachmentUrls: urls,
+              attachmentUrl: urls[0] || null,
+              score: local.score ?? null,
+              answers: local.latest_answer_text ? { text: local.latest_answer_text } : (local.answers || null),
+            }],
+          };
+        }
+      }
       return {
         success: true,
         homeworkId: hwId,

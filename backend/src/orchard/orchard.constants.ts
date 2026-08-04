@@ -180,18 +180,31 @@ export function prettifySubjectName(key?: string): string {
 }
 
 // Map free-text subject names (from homework/tests/curriculum) to a canonical
-// key. Base subjects map to the fixed catalog; anything else (Biology, Physics,
-// Chemistry, Sanskrit, …) becomes its own dynamic subject key so a teacher who
-// registers that subject shows up with every feature instead of being dropped.
+// key. Only true aliases of a base subject collapse onto it — a distinctly
+// named subject a teacher registers (Geography, Biology, Physics, Sanskrit, …)
+// keeps its own key so it shows up as its own subject with all features.
 export function normalizeSubjectKey(raw?: string): string | null {
-  const s = String(raw || '').trim().toLowerCase();
+  const s = String(raw || '').trim().toLowerCase().replace(/\s+/g, ' ');
   if (!s) return null;
-  if (/(math|maths|mathematics|algebra|geometry)/.test(s)) return 'mathematics';
-  if (/(english|language arts|grammar)/.test(s)) return 'english';
-  if (/(social|history|civics|geography|sst)/.test(s)) return 'social';
-  if (/(computer|coding|cs|informatics|it)/.test(s)) return 'computer';
-  if (/(hindi)/.test(s)) return 'hindi';
-  if (/(science|evs)/.test(s)) return 'science';
+  const ALIASES: Record<string, string> = {
+    math: 'mathematics',
+    maths: 'mathematics',
+    mathematics: 'mathematics',
+    'general science': 'science',
+    science: 'science',
+    evs: 'science',
+    english: 'english',
+    'english language': 'english',
+    social: 'social',
+    'social studies': 'social',
+    'social science': 'social',
+    sst: 'social',
+    computer: 'computer',
+    computers: 'computer',
+    'computer science': 'computer',
+    hindi: 'hindi',
+  };
+  if (ALIASES[s]) return ALIASES[s];
   if (SUBJECT_BY_KEY[s]) return s;
   return slugifySubject(s);
 }

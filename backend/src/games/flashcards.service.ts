@@ -87,6 +87,15 @@ export class FlashcardsService {
   }
 
   // ─── deck lifecycle ──────────────────────────────────────────────────────────
+  // A deck belongs to a student when it was published for their class. Decks
+  // saved before class tagging existed (class_name null) remain visible so no
+  // existing content disappears.
+  private deckMatchesClass(deck: any, className: string): boolean {
+    const deckClass = String(deck?.class_name || '').trim().toLowerCase();
+    if (!deckClass) return true;
+    return deckClass === String(className || '').trim().toLowerCase();
+  }
+
   private async findDeckByKey(key: string): Promise<any | null> {
     const rows = await this.selectRows('flashcard_decks', [['deck_key', key]]);
     return (rows && rows[0]) || null;
@@ -271,9 +280,18 @@ export class FlashcardsService {
     if (!subjectKey) return { success: false, reason: 'unknown-subject' };
 
     const chapterTitle = String(lesson.title || 'Chapter').trim();
+    // Tag the deck with the class it was published for. Without a class the
+    // deck would show up for every grade, so fall back to the lesson's class
+    // visibility when the lesson row itself has none.
+    let deckClassName = String(lesson.class_name || '').trim();
+    if (!deckClassName) {
+      const vis = await this.selectRows('lesson_class_visibility', [['lesson_id', lessonId]]);
+      const firstVisible = (vis || []).find((v) => v.is_visible !== false && v.class_name);
+      deckClassName = String(firstVisible?.class_name || '').trim();
+    }
     const deck = await this.ensureDeck({
       subjectKey,
-      className: lesson.class_name || null,
+      className: deckClassName || null,
       chapterTitle,
       chapterNumber: Number(lesson.order_index || 1),
       lessonId: lesson.id,
@@ -303,11 +321,15 @@ export class FlashcardsService {
   // ─── subject + chapter picker data ───────────────────────────────────────────
   async getFlashcardOverview(studentId: string): Promise<any> {
     const subjectKeys = await this.orchard.resolveStudentSubjectKeys(studentId);
+    const className = await this.orchard.resolveStudentClassName(studentId);
     const now = Date.now();
     const subjects: any[] = [];
 
     for (const subjectKey of subjectKeys) {
-      const decks = await this.selectRows('flashcard_decks', [['subject_key', subjectKey]]);
+      // Decks are per subject AND per class — a Class 8 student must never see
+      // Class 9 chapters. Legacy decks with no class recorded stay visible.
+      const decks = (await this.selectRows('flashcard_decks', [['subject_key', subjectKey]]))
+        .filter((d) => this.deckMatchesClass(d, className));
       const meta = this.subjectMeta(subjectKey);
       if (!decks || !decks.length) {
         // Subject the student takes but no chapters uploaded yet → still list it
@@ -395,7 +417,13 @@ export class FlashcardsService {
     if (params.deckId && params.scope !== 'all') {
       cards = await this.selectRows('flashcards', [['deck_id', params.deckId]]);
     } else {
-      cards = await this.selectRows('flashcards', [['subject_key', subjectKey]]);
+      // Restrict to decks published for this student's own class/grade.
+      const className = await this.orchard.resolveStudentClassName(studentId);
+      const decks = (await this.selectRows('flashcard_decks', [['subject_key', subjectKey]]))
+        .filter((d) => this.deckMatchesClass(d, className));
+      const deckIds = new Set(decks.map((d) => String(d.id)));
+      const all = await this.selectRows('flashcards', [['subject_key', subjectKey]]);
+      cards = (all || []).filter((c) => deckIds.has(String(c.deck_id)));
     }
     if (!cards || !cards.length) return { success: true, cards: [], mode, scope: params.scope || 'all' };
 

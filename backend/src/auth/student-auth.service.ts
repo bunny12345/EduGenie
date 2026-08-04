@@ -105,6 +105,10 @@ export class StudentAuthService implements OnModuleInit {
         }
       }
     } catch (_e) { /* corrupt/missing file */ }
+
+    // Reconcile the local store with the database so accounts registered while
+    // the DB was unavailable (or rejected by a constraint) still get their rows.
+    void this.backfillLocalAccountsToDb();
   }
 
   private persistStudentAccounts() {
@@ -121,6 +125,137 @@ export class StudentAuthService implements OnModuleInit {
       const list = Array.from(StudentAuthService.teacherAccounts.values());
       fs.writeFileSync(TEACHER_ACCOUNTS_FILE, JSON.stringify(list, null, 2), 'utf8');
     } catch (_e) { /* non-fatal */ }
+  }
+
+  // ─── keeping the DB in step with locally-registered accounts ────────────────
+  // The `students` row is what every class-scoped feature (homework, orchard,
+  // curriculum, games, progress) keys off. Registration can fail to write it —
+  // most often because `teacher_id` points at a teacher that only exists in the
+  // local store — which would leave the student invisible to those features.
+  // This guarantees the row exists, dropping only the optional columns that
+  // caused the rejection.
+  private async ensureStudentRowInDb(input: {
+    studentId: string;
+    name: string;
+    className: string;
+    schoolId?: string;
+    teacherId?: string;
+    createdBy?: string;
+  }): Promise<boolean> {
+    const id = String(input.studentId || '').trim();
+    if (!id) return false;
+    try {
+      const existing = await this.db.client.from('students').select('id').eq('id', id).limit(1);
+      if (Array.isArray((existing as any)?.data) && (existing as any).data.length) return true;
+    } catch (_e) {
+      return false;
+    }
+
+    // Try progressively simpler rows: full → without teacher_id → without
+    // created_by → the bare minimum that still carries school + class.
+    const candidates: Array<Record<string, any>> = [
+      { id, name: input.name, class_name: input.className, school_id: input.schoolId || null, teacher_id: input.teacherId || null, created_by: input.createdBy || null },
+      { id, name: input.name, class_name: input.className, school_id: input.schoolId || null, created_by: input.createdBy || null },
+      { id, name: input.name, class_name: input.className, school_id: input.schoolId || null },
+      { id, name: input.name, class_name: input.className },
+    ];
+    for (const row of candidates) {
+      try {
+        const res: any = await this.db.client.from('students').insert([row]);
+        if (!res || !res.error) return true;
+      } catch (_e) {
+        /* try the next, simpler shape */
+      }
+    }
+    // eslint-disable-next-line no-console
+    console.warn(`[auth] could not persist students row for ${id}; local store remains the fallback`);
+    return false;
+  }
+
+  private async ensureTeacherRowInDb(account: TeacherAccount): Promise<boolean> {
+    const id = String(account.teacherId || '').trim();
+    if (!id) return false;
+    try {
+      const existing = await this.db.client.from('teachers').select('id,grades').eq('id', id).limit(1);
+      const row = Array.isArray((existing as any)?.data) ? (existing as any).data[0] : null;
+      if (row) {
+        // Row exists — make sure the grades it teaches are in step with the
+        // local record, otherwise class rosters silently miss this teacher.
+        const localGrades = normalizeGrades(account.grades);
+        const dbGrades = normalizeGrades(row.grades);
+        if (localGrades.length && !dbGrades.length) {
+          try {
+            await this.db.client.from('teachers').update({ grades: localGrades }).eq('id', id);
+          } catch (_e) {
+            /* grades column may not be migrated yet */
+          }
+        }
+        return true;
+      }
+    } catch (_e) {
+      return false;
+    }
+    const base: Record<string, any> = {
+      id,
+      school_id: account.schoolId || null,
+      name: account.name || 'Teacher',
+      email: account.email || null,
+      subject: account.subject || 'General',
+      login_id: account.loginId,
+      password_salt: account.passwordSalt,
+      password_hash: account.passwordHash,
+      created_at: new Date().toISOString()
+    };
+    // Schools often reuse one contact address for several teachers, but the
+    // database keeps e-mail unique per school. Login is by login_id, so fall
+    // back to a per-teacher alias rather than leaving the teacher unsaved —
+    // an unsaved teacher breaks lesson uploads and student assignment.
+    const aliasEmail = (() => {
+      const raw = String(account.email || '').trim();
+      if (!raw.includes('@')) return `${account.loginId}@teachers.local`;
+      const [local, domain] = raw.split('@');
+      return `${local}+${account.loginId}@${domain}`;
+    })();
+    const grades = normalizeGrades(account.grades);
+    const candidates: Array<Record<string, any>> = [
+      { ...base, grades },
+      base,
+      { ...base, email: aliasEmail, grades },
+      { ...base, email: aliasEmail },
+    ];
+    for (const row of candidates) {
+      try {
+        const res: any = await this.db.client.from('teachers').insert([row]);
+        if (!res || !res.error) return true;
+      } catch (_e) {
+        /* try the next shape */
+      }
+    }
+    return false;
+  }
+
+  // Push any locally-registered accounts that never made it into the database
+  // into it on boot, so both long-standing and brand-new accounts behave the
+  // same across every feature. Teachers go first — students reference them.
+  private async backfillLocalAccountsToDb(): Promise<void> {
+    try {
+      for (const account of StudentAuthService.teacherAccounts.values()) {
+        if (!account.schoolId) continue;
+        await this.ensureTeacherRowInDb(account);
+      }
+      for (const account of StudentAuthService.localAccounts.values()) {
+        if (!account.schoolId || !account.className) continue;
+        await this.ensureStudentRowInDb({
+          studentId: account.studentId,
+          name: account.name || 'Student',
+          className: account.className,
+          schoolId: account.schoolId,
+          teacherId: account.teacherId
+        });
+      }
+    } catch (_e) {
+      /* best effort — local store still backs every read path */
+    }
   }
 
   private hashPassword(password: string, salt: string) {
@@ -145,6 +280,51 @@ export class StudentAuthService implements OnModuleInit {
 
   private findLocal(loginId: string) {
     return StudentAuthService.localAccounts.get(String(loginId || '').toLowerCase()) || null;
+  }
+
+  // ─── shared student profile resolution ──────────────────────────────────────
+  // Single source of truth for "who is this student" (name / class / school).
+  // Merges the real `students` table with the local account store so a student
+  // that only exists locally (e.g. the DB insert was rejected at registration)
+  // still gets a full, correct profile everywhere in the app. Every feature that
+  // needs the student's class or school must use this so new and existing
+  // accounts behave identically.
+  async resolveStudentProfile(studentId: string): Promise<{
+    id: string;
+    name: string;
+    className: string;
+    schoolId: string;
+    teacherId: string;
+  }> {
+    const id = String(studentId || '').trim();
+    const out = { id, name: '', className: '', schoolId: '', teacherId: '' };
+    if (!id) return out;
+
+    try {
+      const res = await this.db.client.from('students').select('*').eq('id', id).limit(1);
+      const row = Array.isArray((res as any)?.data) ? (res as any).data[0] : null;
+      if (row) {
+        out.name = String(row.name || '').trim();
+        out.className = String(row.class_name || row.class || '').trim();
+        out.schoolId = String(row.school_id || '').trim();
+        out.teacherId = String(row.teacher_id || '').trim();
+      }
+    } catch (_e) {
+      /* fall back to the local store below */
+    }
+
+    if (!out.name || !out.className || !out.schoolId) {
+      for (const account of StudentAuthService.localAccounts.values()) {
+        if (String(account.studentId || '').trim() !== id) continue;
+        if (!out.name) out.name = String(account.name || '').trim();
+        if (!out.className) out.className = String(account.className || '').trim();
+        if (!out.schoolId) out.schoolId = String(account.schoolId || '').trim();
+        if (!out.teacherId) out.teacherId = String(account.teacherId || '').trim();
+        break;
+      }
+    }
+
+    return out;
   }
 
   private rememberTeacher(account: TeacherAccount) {
@@ -417,6 +597,9 @@ export class StudentAuthService implements OnModuleInit {
         // fallback only.
       }
     }
+    // Confirm the row landed — students reference teachers, so a missing row
+    // would block student registration for this teacher's classes.
+    await this.ensureTeacherRowInDb(account);
 
     return {
       ok: true,
@@ -1467,6 +1650,18 @@ export class StudentAuthService implements OnModuleInit {
     } catch (e) {
       // Ignore if students table has constraints or is unavailable.
     }
+    // Supabase reports constraint problems as a returned error rather than a
+    // throw, so verify the row actually landed and repair it if it did not.
+    // Without this the student would exist only locally and would silently miss
+    // out on class-scoped content.
+    await this.ensureStudentRowInDb({
+      studentId,
+      name,
+      className,
+      schoolId: payload.schoolId,
+      teacherId: payload.teacherId,
+      createdBy: payload.createdBy
+    });
 
     try {
       await this.db.client

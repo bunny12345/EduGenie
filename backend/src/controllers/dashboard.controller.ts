@@ -24,8 +24,17 @@ export class DashboardController {
     if (cached && cached.expiresAt > now) return cached.value;
 
     try {
-      const s = await this.db.client.from('students').select('id,name,school_id,class_name,teacher_id').eq('id', id).limit(1);
-      const student = (s && (s as any).data && (s as any).data[0]) || null;
+      // Resolve the student's identity from the DB with a local-store fallback so
+      // newly-registered students (whose `students` row may not have landed) get
+      // their real name, class and school just like long-standing accounts.
+      const profile = await this.studentAuth.resolveStudentProfile(id);
+      const student = {
+        id,
+        name: profile.name || null,
+        class_name: profile.className || null,
+        school_id: profile.schoolId || null,
+        teacher_id: profile.teacherId || null,
+      };
 
       const hw = await this.db.client.from('homework').select('*').eq('student_id', id).order('due_at', { ascending: true }).limit(8);
       const homeworkRows = (hw && (hw as any).data) || [];

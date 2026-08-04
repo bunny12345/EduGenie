@@ -297,15 +297,27 @@ export default function SchoolDashboard({ session, onLogout }) {
     (students || []).map((s) => String(s?.className || '').trim()).filter(Boolean)
   )).sort((a, b) => a.localeCompare(b));
 
+  // The lesson an uploaded chapter will be attached to — surfaced in the UI so
+  // a PDF can never be filed against the wrong subject or grade unnoticed.
+  const selectedCurriculumLesson = (curriculumLessons || []).find(
+    (lesson) => String(lesson?.id || '') === String(curriculumSelectedLessonId || '')
+  ) || null;
+
   async function loadCurriculumPanel({ className = curriculumClassName, subject = curriculumSubject } = {}) {
     setCurriculumLoading(true);
     try {
       const res = await listCurriculumLessons({ className: className === 'all' ? '' : className, subject: subject || '' });
       const lessons = Array.isArray(res?.lessons) ? res.lessons : [];
       setCurriculumLessons(lessons);
-      if (!curriculumSelectedLessonId && lessons.length) {
-        setCurriculumSelectedLessonId(String(lessons[0].id || ''));
-      }
+      // Keep the chosen lesson in step with the current subject/class filter.
+      // Without this the previously selected lesson stays selected after the
+      // filter changes, and an uploaded chapter would be attached to a lesson
+      // from a different subject or grade.
+      setCurriculumSelectedLessonId((current) => {
+        const stillListed = lessons.some((lesson) => String(lesson.id || '') === String(current || ''));
+        if (current && stillListed) return current;
+        return lessons.length ? String(lessons[0].id || '') : '';
+      });
 
       const lessonIds = lessons.map((lesson) => String(lesson.id || '')).filter(Boolean).slice(0, 20);
       const docEntries = await Promise.all(lessonIds.map(async (lessonId) => {
@@ -887,7 +899,9 @@ export default function SchoolDashboard({ session, onLogout }) {
             >
               <option value="">Select lesson to upload/view documents</option>
               {curriculumLessons.map((lesson) => (
-                <option key={lesson.id} value={lesson.id}>{lesson.title} · {lesson.subject}</option>
+                <option key={lesson.id} value={lesson.id}>
+                  {lesson.title} · {lesson.subject} · {lesson.class_name || 'All classes'}
+                </option>
               ))}
             </select>
           </div>
@@ -898,6 +912,14 @@ export default function SchoolDashboard({ session, onLogout }) {
               {curriculumPdfUploading ? 'Uploading...' : 'Upload PDF to Lesson'}
             </button>
           </form>
+
+          {selectedCurriculumLesson && (
+            <p className="sd-hint" style={{ marginTop: 6 }}>
+              Uploading to: <strong>{selectedCurriculumLesson.title}</strong> ·{' '}
+              {selectedCurriculumLesson.subject} ·{' '}
+              {selectedCurriculumLesson.class_name || 'All classes'}
+            </p>
+          )}
 
           {curriculumSelectedLessonId ? (
             <ul className="sd-list" style={{ marginTop: 10 }}>

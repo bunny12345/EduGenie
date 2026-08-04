@@ -2,6 +2,7 @@ import { Body, Controller, ForbiddenException, Get, Param, Post, Query, Req, Use
 import { CurriculumService } from '../curriculum/curriculum.service';
 import { AuthGuard } from '../auth/auth.guard';
 import { SupabaseService } from '../supabase.service';
+import { StudentAuthService } from '../auth/student-auth.service';
 
 function isTeacher(role: any) {
   const raw = String(role || '').toLowerCase();
@@ -23,7 +24,8 @@ function isStudent(role: any) {
 export class CurriculumController {
   constructor(
     private readonly curriculum: CurriculumService,
-    private readonly supabase: SupabaseService
+    private readonly supabase: SupabaseService,
+    private readonly studentAuth: StudentAuthService
   ) {}
 
   private ensureTeacher(req: any) {
@@ -51,13 +53,11 @@ export class CurriculumController {
   private async studentClassNameFromReq(req: any) {
     const studentId = String(req?.actorId || req?.studentId || req?.user?.sub || '').trim();
     if (!studentId) return '';
-    const res = await this.supabase.client
-      .from('students')
-      .select('class_name')
-      .eq('id', studentId)
-      .limit(1);
-    const row = Array.isArray((res as any)?.data) ? (res as any).data[0] : null;
-    return String(row?.class_name || '').trim();
+    // Shared resolver: DB `students` row with a local-account fallback, so a
+    // newly-registered student still resolves to their real class and can see
+    // the chapters the school uploaded for that grade.
+    const profile = await this.studentAuth.resolveStudentProfile(studentId);
+    return String(profile.className || '').trim();
   }
 
   private buildPublicUrl(req: any, relativeUrl: string) {
