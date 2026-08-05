@@ -67,6 +67,104 @@
   outline-offset: 1px;
 }
 
+/* ── subject buttons ──────────────────────────────────────────────────────
+   One button per subject the selected class already has. The picked button
+   drives both the upload form and the lesson list further down. */
+
+.eg-cc-subjects {
+  margin-top: 16px;
+  padding: 14px 16px 16px;
+  border: 1px solid #e6ebfa;
+  border-radius: 14px;
+  background: #fff;
+}
+
+.eg-cc-subjects-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.eg-cc-subjects-label {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: #526092;
+}
+
+.eg-cc-subjects-hint {
+  font-size: 11.5px;
+  color: #98a1c0;
+}
+
+.eg-cc-subject-buttons {
+  margin-top: 11px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.eg-cc-subject-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid #dfe5f7;
+  border-radius: 999px;
+  background: #f8faff;
+  padding: 8px 8px 8px 14px;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  color: #3a4670;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s, color 0.15s, box-shadow 0.15s;
+}
+
+.eg-cc-subject-btn:hover {
+  border-color: #b9c8f2;
+  background: #eef3ff;
+  color: #2a66b4;
+}
+
+.eg-cc-subject-btn.is-active {
+  border-color: transparent;
+  background: linear-gradient(120deg, #2a66b4, #1f9fb3);
+  color: #fff;
+  box-shadow: 0 4px 14px rgba(42, 102, 180, 0.28);
+}
+
+.eg-cc-subject-btn.is-orphan {
+  border-style: dashed;
+  color: #a2683f;
+}
+
+.eg-cc-subject-btn.is-orphan.is-active {
+  background: linear-gradient(120deg, #b8763c, #d19a4e);
+  color: #fff;
+}
+
+.eg-cc-subject-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 22px;
+  height: 22px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: #e7edfb;
+  color: #45538a;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.eg-cc-subject-btn.is-active .eg-cc-subject-count {
+  background: rgba(255, 255, 255, 0.24);
+  color: #fff;
+}
+
 /* ── form ── */
 
 .eg-cc-form {
@@ -295,55 +393,6 @@
 .eg-cc-loading {
   font-size: 11px;
   color: #98a1c0;
-}
-
-.eg-cc-tabs {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-top: 12px;
-}
-
-.eg-cc-tab {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  border: 1px solid #dfe5f7;
-  background: #fff;
-  color: #526092;
-  border-radius: 999px;
-  padding: 7px 14px;
-  font-size: 12px;
-  font-weight: 700;
-  font-family: inherit;
-  cursor: pointer;
-  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
-}
-
-.eg-cc-tab:hover {
-  border-color: #b9c8ee;
-  background: #f6f9ff;
-}
-
-.eg-cc-tab.is-active {
-  background: linear-gradient(120deg, #2a66b4, #1f9fb3);
-  border-color: transparent;
-  color: #fff;
-}
-
-.eg-cc-tab-count {
-  min-width: 18px;
-  padding: 1px 5px;
-  border-radius: 999px;
-  background: #eef2fd;
-  color: #2a66b4;
-  font-size: 11px;
-  text-align: center;
-}
-
-.eg-cc-tab.is-active .eg-cc-tab-count {
-  background: rgba(255, 255, 255, 0.25);
-  color: #fff;
 }
 
 .eg-cc-lessons {

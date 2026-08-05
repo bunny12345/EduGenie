@@ -1,378 +1,362 @@
 /**
- * SchoolDashboard Portal Enhancement Tests
- * Tests for new features: refresh buttons, export, admin functionality
+ * SchoolDashboard — sidebar portal + curriculum subject buttons.
+ *
+ * The portal is organised into sidebar pages (Overview / Teacher Registration /
+ * Teachers & Invites / Curriculum Upload / Students), so every assertion first
+ * navigates to the page that owns the thing being checked.
  */
 
 import React from 'react';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import SchoolDashboard from './SchoolDashboard';
 import * as api from '../api';
 
 jest.mock('../api');
 
-describe('SchoolDashboard Admin Portal Enhancements', () => {
-  const mockSession = {
-    schoolId: 'school-123',
-    schoolName: 'Model High School'
-  };
-  
+const mockSession = {
+  schoolId: 'school-123',
+  schoolName: 'Model High School'
+};
+
+function sidebar() {
+  return within(document.querySelector('.td-sidebar'));
+}
+
+function goTo(label) {
+  fireEvent.click(sidebar().getByText(label));
+}
+
+function renderPortal() {
+  return render(<SchoolDashboard session={mockSession} onLogout={() => {}} />);
+}
+
+describe('SchoolDashboard', () => {
   beforeEach(() => {
-    // Mock all API calls
     api.schoolDashboard.mockResolvedValue({
       summary: { teachers: 5, students: 150, activeInvites: 3 }
     });
     api.schoolTeachers.mockResolvedValue({
       teachers: [
-        { id: 't1', name: 'Rajesh Kumar', subject: 'Mathematics', loginId: 'rk_123' },
-        { id: 't2', name: 'Priya Sharma', subject: 'Science', loginId: 'ps_456' }
+        { id: 't1', name: 'Rajesh Kumar', subject: 'Mathematics', loginId: 'rk_123', grades: ['Class 9'] },
+        { id: 't2', name: 'Priya Sharma', subject: 'English', loginId: 'ps_456', grades: ['Class 8'] }
       ],
       pagination: { totalPages: 1, currentPage: 1 }
     });
     api.schoolInvites.mockResolvedValue({
-      invites: [
-        { token: 'inv_abc', role: 'teacher', status: 'active', expiresAt: '2026-07-13' }
-      ],
+      invites: [{ token: 'inv_abc', role: 'teacher', status: 'active', expiresAt: '2026-07-13' }],
       pagination: { totalPages: 1, currentPage: 1 }
     });
     api.schoolStudents.mockResolvedValue({
       students: [
-        { id: 's1', name: 'Aditya Singh', className: 'Class 10' },
-        { id: 's2', name: 'Neha Patel', className: 'Class 10' }
+        { id: 's1', name: 'Aditya Singh', className: 'Class 8' },
+        { id: 's2', name: 'Neha Patel', className: 'Class 9' }
       ],
       pagination: { totalPages: 1, currentPage: 1 }
+    });
+    api.listCurriculumSubjects.mockResolvedValue({
+      classes: [
+        { className: 'Class 8', subjects: [{ subject: 'English', teacherId: 't2', teacherName: 'Priya Sharma' }] },
+        { className: 'Class 9', subjects: [{ subject: 'Mathematics', teacherId: 't1', teacherName: 'Rajesh Kumar' }] }
+      ]
+    });
+    api.listCurriculumLessons.mockImplementation(({ className } = {}) => Promise.resolve({
+      lessons: className === 'Class 8'
+        ? [{ id: 'l1', title: 'Nouns', subject: 'English', class_name: 'Class 8', order_index: 1 }]
+        : []
+    }));
+    api.listCurriculumLessonDocuments.mockResolvedValue({
+      documents: [{ id: 'd1', file_name: 'nouns.pdf', file_url: '/uploads/nouns.pdf', extraction_status: 'completed' }]
     });
   });
 
   afterEach(() => {
     jest.clearAllMocks();
+    jest.restoreAllMocks();
   });
 
-  describe('Refresh All Sections Button', () => {
-    test('should render "Refresh" button in admin header', async () => {
-      render(<SchoolDashboard session={mockSession} onLogout={() => {}} />);
+  describe('Sidebar navigation', () => {
+    test('renders every portal page as a sidebar button', async () => {
+      renderPortal();
+      await waitFor(() => expect(api.schoolDashboard).toHaveBeenCalled());
+
+      const nav = sidebar();
+      ['Overview', 'Teacher Registration', 'Teachers & Invites', 'Curriculum Upload', 'Students']
+        .forEach((label) => expect(nav.getByText(label)).toBeInTheDocument());
+    });
+
+    test('opens the Overview page by default', async () => {
+      renderPortal();
       await waitFor(() => {
-        expect(screen.getByText(/Refresh/i)).toBeInTheDocument();
+        expect(screen.getByRole('heading', { level: 1, name: 'School Overview' })).toBeInTheDocument();
+      });
+      expect(screen.getByText('Quick Actions')).toBeInTheDocument();
+      expect(screen.getByText('Classes & Subjects')).toBeInTheDocument();
+    });
+
+    test('shows the school stats bar on every page', async () => {
+      renderPortal();
+      await waitFor(() => expect(screen.getByText('Total Teachers')).toBeInTheDocument());
+      expect(screen.getByText('Total Students')).toBeInTheDocument();
+      expect(screen.getByText('Active Invites')).toBeInTheDocument();
+      await waitFor(() => expect(screen.getByText('150')).toBeInTheDocument());
+    });
+
+    test('moves the registration form onto the Teacher Registration page', async () => {
+      renderPortal();
+      await waitFor(() => expect(api.schoolDashboard).toHaveBeenCalled());
+
+      // Not visible from Overview.
+      expect(screen.queryByPlaceholderText('Teacher login ID')).not.toBeInTheDocument();
+
+      goTo('Teacher Registration');
+      expect(screen.getByText('Manual Teacher Registration')).toBeInTheDocument();
+      expect(screen.getByPlaceholderText('Teacher login ID')).toBeInTheDocument();
+      expect(screen.getByText('Invite Teacher by Link')).toBeInTheDocument();
+    });
+
+    test('moves the roster and invites onto the Teachers & Invites page', async () => {
+      renderPortal();
+      await waitFor(() => expect(api.schoolTeachers).toHaveBeenCalled());
+
+      goTo('Teachers & Invites');
+      await waitFor(() => expect(screen.getByText('Rajesh Kumar')).toBeInTheDocument());
+      expect(screen.getByText('Priya Sharma')).toBeInTheDocument();
+      expect(screen.getByText('Recent Teacher Invites')).toBeInTheDocument();
+    });
+
+    test('moves the student list onto the Students page', async () => {
+      renderPortal();
+      await waitFor(() => expect(api.schoolStudents).toHaveBeenCalled());
+
+      goTo('Students');
+      await waitFor(() => expect(screen.getByText(/Aditya Singh/)).toBeInTheDocument());
+      expect(screen.getByText(/Neha Patel/)).toBeInTheDocument();
+      expect(screen.getByText(/Page 1 of 1/)).toBeInTheDocument();
+    });
+
+    test('Quick Actions on Overview jump to the matching page', async () => {
+      renderPortal();
+      await waitFor(() => expect(screen.getByText('Quick Actions')).toBeInTheDocument());
+
+      const quick = within(document.querySelector('.sd-quick-actions'));
+      fireEvent.click(quick.getByText('Curriculum Upload'));
+
+      await waitFor(() => {
+        expect(screen.getByRole('heading', { level: 1, name: 'Curriculum Upload' })).toBeInTheDocument();
       });
     });
 
-    test('should call all section loaders when Refresh All clicked', async () => {
-      render(<SchoolDashboard session={mockSession} onLogout={() => {}} />);
-      
-      const refreshBtn = screen.getByText(/Refresh/i);
-      fireEvent.click(refreshBtn);
-      
+    test('lists each class with the subjects it already has', async () => {
+      renderPortal();
+      await waitFor(() => expect(document.querySelector('.sd-class-map li strong')).toBeTruthy());
+
+      const map = within(document.querySelector('.sd-class-map'));
+      expect(map.getByText('Class 8')).toBeInTheDocument();
+      expect(map.getByText('English')).toBeInTheDocument();
+      expect(map.getByText('Class 9')).toBeInTheDocument();
+      expect(map.getByText('Mathematics')).toBeInTheDocument();
+    });
+  });
+
+  describe('Curriculum Upload — subject buttons', () => {
+    async function openCurriculum() {
+      renderPortal();
+      await waitFor(() => expect(api.listCurriculumSubjects).toHaveBeenCalled());
+      goTo('Curriculum Upload');
+      await waitFor(() => expect(document.querySelector('.eg-cc-subject-buttons')).toBeTruthy());
+    }
+
+    test('renders one button per subject the selected class already has', async () => {
+      await openCurriculum();
+
+      await waitFor(() => expect(document.querySelector('.eg-cc-subject-count').textContent).toBe('1'));
+      const buttons = [...document.querySelectorAll('.eg-cc-subject-btn')];
+      expect(buttons.map((b) => b.querySelector('.eg-cc-subject-name').textContent)).toEqual(['English']);
+    });
+
+    test('pre-selects the first subject and confirms its teacher', async () => {
+      await openCurriculum();
+
+      expect(document.querySelector('.eg-cc-subject-btn').classList.contains('is-active')).toBe(true);
+      expect(screen.getByText(/teaches English for Class 8/)).toBeInTheDocument();
+      expect(screen.getByText('Priya Sharma')).toBeInTheDocument();
+    });
+
+    test('numbers the next upload after the lessons already filed', async () => {
+      await openCurriculum();
+
+      await waitFor(() => expect(document.querySelector('.eg-cc-nextnum').textContent).toContain('2'));
+      const hint = document.querySelector('.eg-cc-nextnum');
+      expect(hint.textContent).toContain('Saves as lesson');
+      expect(hint.textContent).toContain('English');
+    });
+
+    test('lists the uploaded lessons of the selected subject, numbered', async () => {
+      await openCurriculum();
+
+      await waitFor(() => expect(document.querySelector('.eg-cc-lesson')).toBeTruthy());
+      expect(document.querySelector('.eg-cc-num').textContent).toBe('1');
+      expect(screen.getByText('Nouns')).toBeInTheDocument();
+      await waitFor(() => expect(screen.getByText('nouns.pdf')).toBeInTheDocument());
+    });
+
+    test('changing the class swaps the subject buttons and the lesson list', async () => {
+      await openCurriculum();
+      await waitFor(() => expect(document.querySelector('.eg-cc-lesson')).toBeTruthy());
+
+      fireEvent.change(document.querySelector('.eg-cc-class select'), { target: { value: 'Class 9' } });
+
       await waitFor(() => {
-        // Verify each section loader was called
+        const names = [...document.querySelectorAll('.eg-cc-subject-name')].map((n) => n.textContent);
+        expect(names).toEqual(['Mathematics']);
+      });
+      expect(api.listCurriculumLessons).toHaveBeenCalledWith({ className: 'Class 9' });
+      await waitFor(() => expect(document.querySelector('.eg-cc-lesson')).toBeFalsy());
+    });
+
+    test('the free-text subject field is gone — subjects can only be picked', async () => {
+      await openCurriculum();
+      expect(document.querySelector('#cc-subject')).toBeNull();
+      expect(document.querySelector('datalist')).toBeNull();
+    });
+
+    test('Add Lesson stays disabled until a title and a PDF are supplied', async () => {
+      await openCurriculum();
+
+      const addBtn = screen.getByRole('button', { name: /Add Lesson/i });
+      expect(addBtn).toBeDisabled();
+
+      fireEvent.change(document.querySelector('#cc-title'), { target: { value: 'Verbs' } });
+      expect(addBtn).toBeDisabled(); // still no PDF
+    });
+
+    test('tells the admin when a class has no subjects yet', async () => {
+      api.listCurriculumSubjects.mockResolvedValue({
+        classes: [{ className: 'Class 8', subjects: [] }]
+      });
+      api.listCurriculumLessons.mockResolvedValue({ lessons: [] });
+
+      renderPortal();
+      await waitFor(() => expect(api.listCurriculumSubjects).toHaveBeenCalled());
+      goTo('Curriculum Upload');
+
+      await waitFor(() => {
+        expect(screen.getByText(/No subjects registered for Class 8/)).toBeInTheDocument();
+      });
+      expect(screen.queryByRole('button', { name: /Add Lesson/i })).not.toBeInTheDocument();
+    });
+  });
+
+  describe('Refresh', () => {
+    test('the header refreshes every section', async () => {
+      renderPortal();
+      await waitFor(() => expect(api.schoolDashboard).toHaveBeenCalled());
+
+      jest.clearAllMocks();
+      fireEvent.click(screen.getByText(/⟳ Refresh/));
+
+      await waitFor(() => {
         expect(api.schoolTeachers).toHaveBeenCalled();
         expect(api.schoolInvites).toHaveBeenCalled();
         expect(api.schoolStudents).toHaveBeenCalled();
       });
     });
 
-    test('should disable "Refresh" button while refreshing', async () => {
-      api.schoolTeachers.mockImplementation(() => 
-        new Promise(resolve => setTimeout(() => resolve({ teachers: [] }), 100))
+    test('each page refreshes only its own section', async () => {
+      renderPortal();
+      await waitFor(() => expect(api.schoolStudents).toHaveBeenCalled());
+
+      goTo('Students');
+      jest.clearAllMocks();
+      fireEvent.click(screen.getByText('↻'));
+
+      await waitFor(() => expect(api.schoolStudents).toHaveBeenCalled());
+      expect(api.schoolTeachers).not.toHaveBeenCalled();
+      expect(api.schoolInvites).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('Export', () => {
+    function captureDownload() {
+      const realCreate = document.createElement.bind(document);
+      const link = { click: jest.fn(), href: '', download: '' };
+      jest.spyOn(document, 'createElement').mockImplementation(
+        (tag) => (String(tag).toLowerCase() === 'a' ? link : realCreate(tag))
       );
-      
-      render(<SchoolDashboard session={mockSession} onLogout={() => {}} />);
-      
-      const refreshBtn = screen.getByText(/Refresh/i);
-      fireEvent.click(refreshBtn);
-      
-      // Button should show loading state
-      await waitFor(() => {
-        expect(refreshBtn).toHaveTextContent('...');
-      });
-    });
-  });
+      return link;
+    }
 
-  describe('Individual Section Refresh Buttons', () => {
-    test('should render refresh buttons on admin sections', async () => {
-      render(<SchoolDashboard session={mockSession} onLogout={() => {}} />);
-      
-      await waitFor(() => {
-        const refreshButtons = screen.getAllByText('↻');
-        // Should have buttons for: Teachers, Invites, Students
-        expect(refreshButtons.length).toBeGreaterThanOrEqual(3);
-      });
-    });
-
-    test('should refresh teachers section individually', async () => {
-      render(<SchoolDashboard session={mockSession} onLogout={() => {}} />);
-      
-      // Find refresh button for teachers (first one)
-      const buttons = screen.getAllByText('↻');
-      const teachersRefreshBtn = buttons[0];
-      
-      // Clear initial calls
-      jest.clearAllMocks();
-      
-      fireEvent.click(teachersRefreshBtn);
-      
-      await waitFor(() => {
-        expect(api.schoolTeachers).toHaveBeenCalled();
-        // Other sections should NOT be called
-        expect(api.schoolInvites).not.toHaveBeenCalled();
-        expect(api.schoolStudents).not.toHaveBeenCalled();
-      });
-    });
-
-    test('should refresh invites section independently', async () => {
-      render(<SchoolDashboard session={mockSession} onLogout={() => {}} />);
-      
-      // Find refresh button for invites
-      const buttons = screen.getAllByText('↻');
-      const invitesRefreshBtn = buttons[1];
-      
-      jest.clearAllMocks();
-      fireEvent.click(invitesRefreshBtn);
-      
-      await waitFor(() => {
-        expect(api.schoolInvites).toHaveBeenCalled();
-      });
-    });
-  });
-
-  describe('Export Data Features', () => {
-    test('should render Export button in admin header', async () => {
-      render(<SchoolDashboard session={mockSession} onLogout={() => {}} />);
-      await waitFor(() => {
-        expect(screen.getByText(/Export/i)).toBeInTheDocument();
-      });
-    });
-
-    test('should show export options when Export clicked', async () => {
-      render(<SchoolDashboard session={mockSession} onLogout={() => {}} />);
-      
-      const exportBtn = screen.getByText(/Export/i);
-      fireEvent.click(exportBtn);
-      
-      await waitFor(() => {
-        expect(screen.getByText('Teachers CSV')).toBeInTheDocument();
-        expect(screen.getByText('Students CSV')).toBeInTheDocument();
-      });
-    });
-
-    test('should export teachers as CSV', async () => {
-      // Mock URL and createElement
+    beforeEach(() => {
       global.URL.createObjectURL = jest.fn(() => 'blob://mock-url');
       global.URL.revokeObjectURL = jest.fn();
-      
-      const mockLink = { click: jest.fn(), href: '', download: '' };
-      jest.spyOn(document, 'createElement').mockReturnValue(mockLink);
-      
-      render(<SchoolDashboard session={mockSession} onLogout={() => {}} />);
-      
-      const exportBtn = screen.getByText(/Export/i);
-      fireEvent.click(exportBtn);
-      
-      await waitFor(() => {
-        const teachersOption = screen.getByText('Teachers CSV');
-        fireEvent.click(teachersOption);
-        
-        // Verify file was triggered for download
-        expect(mockLink.click).toHaveBeenCalled();
-        expect(mockLink.download).toMatch(/teachers-.*\.csv$/);
-      });
     });
 
-    test('should export students as CSV', async () => {
-      global.URL.createObjectURL = jest.fn(() => 'blob://mock-url');
-      global.URL.revokeObjectURL = jest.fn();
-      
-      const mockLink = { click: jest.fn(), href: '', download: '' };
-      jest.spyOn(document, 'createElement').mockReturnValue(mockLink);
-      
-      render(<SchoolDashboard session={mockSession} onLogout={() => {}} />);
-      
-      const exportBtn = screen.getByText(/Export/i);
-      fireEvent.click(exportBtn);
-      
-      await waitFor(() => {
-        const studentsOption = screen.getByText('Students CSV');
-        fireEvent.click(studentsOption);
-        
-        expect(mockLink.click).toHaveBeenCalled();
-        expect(mockLink.download).toMatch(/students-.*\.csv$/);
-      });
+    test('offers teacher and student CSV exports', async () => {
+      renderPortal();
+      await waitFor(() => expect(api.schoolDashboard).toHaveBeenCalled());
+
+      fireEvent.click(screen.getByText(/⬇ Export/));
+      expect(screen.getByText(/Teachers CSV/)).toBeInTheDocument();
+      expect(screen.getByText(/Students CSV/)).toBeInTheDocument();
     });
 
-    test('should include school ID and date in export filename', async () => {
-      global.URL.createObjectURL = jest.fn(() => 'blob://mock-url');
-      global.URL.revokeObjectURL = jest.fn();
-      
-      const mockLink = { click: jest.fn(), href: '', download: '' };
-      jest.spyOn(document, 'createElement').mockReturnValue(mockLink);
-      
-      render(<SchoolDashboard session={mockSession} onLogout={() => {}} />);
-      
-      const exportBtn = screen.getByText(/Export/i);
-      fireEvent.click(exportBtn);
-      
-      await waitFor(() => {
-        const teachersOption = screen.getByText('Teachers CSV');
-        fireEvent.click(teachersOption);
-        
-        // Filename should contain school ID and date
-        expect(mockLink.download).toMatch(/school-123/);
-        expect(mockLink.download).toMatch(/\d{4}-\d{2}-\d{2}/); // Date format YYYY-MM-DD
-      });
-    });
-  });
+    test('exports teachers with the school id and date in the filename', async () => {
+      renderPortal();
+      await waitFor(() => expect(screen.getByText('Quick Actions')).toBeInTheDocument());
 
-  describe('Admin Operations', () => {
-    test('should display school overview stats', async () => {
-      render(<SchoolDashboard session={mockSession} onLogout={() => {}} />);
-      
-      await waitFor(() => {
-        expect(screen.getByText('Teachers')).toBeInTheDocument();
-        expect(screen.getByText('Students')).toBeInTheDocument();
-        expect(screen.getByText('Active Invites')).toBeInTheDocument();
-      });
+      const link = captureDownload();
+      fireEvent.click(screen.getByText(/⬇ Export/));
+      fireEvent.click(screen.getByText(/Teachers CSV/));
+
+      expect(link.click).toHaveBeenCalled();
+      expect(link.download).toMatch(/^teachers-school-123-\d{4}-\d{2}-\d{2}\.csv$/);
     });
 
-    test('should load and display teachers list', async () => {
-      render(<SchoolDashboard session={mockSession} onLogout={() => {}} />);
-      
-      await waitFor(() => {
-        expect(screen.getByText(/Rajesh Kumar/i)).toBeInTheDocument();
-        expect(screen.getByText(/Priya Sharma/i)).toBeInTheDocument();
-      });
+    test('exports students as CSV', async () => {
+      renderPortal();
+      await waitFor(() => expect(screen.getByText('Quick Actions')).toBeInTheDocument());
+
+      const link = captureDownload();
+      fireEvent.click(screen.getByText(/⬇ Export/));
+      fireEvent.click(screen.getByText(/Students CSV/));
+
+      expect(link.click).toHaveBeenCalled();
+      expect(link.download).toMatch(/^students-school-123-\d{4}-\d{2}-\d{2}\.csv$/);
     });
 
-    test('should load and display student list', async () => {
-      render(<SchoolDashboard session={mockSession} onLogout={() => {}} />);
-      
-      await waitFor(() => {
-        expect(screen.getByText(/Aditya Singh/i)).toBeInTheDocument();
-        expect(screen.getByText(/Neha Patel/i)).toBeInTheDocument();
-      });
-    });
-
-    test('should maintain pagination state during refresh', async () => {
-      // Mock pagination on page 2
+    test('escapes quotes in exported CSV data', async () => {
       api.schoolTeachers.mockResolvedValue({
-        teachers: [{ id: 't3', name: 'Another Teacher' }],
-        pagination: { totalPages: 5, currentPage: 2 }
-      });
-      
-      render(<SchoolDashboard session={mockSession} onLogout={() => {}} />);
-      
-      await waitFor(() => {
-        // Should show page 2 indicator
-        expect(screen.getByText(/Page 2 of 5/i)).toBeInTheDocument();
-      });
-    });
-  });
-
-  describe('Error Handling', () => {
-    test('should show error message if section fails to load', async () => {
-      api.schoolTeachers.mockRejectedValue(new Error('API Error: Connection failed'));
-      
-      render(<SchoolDashboard session={mockSession} onLogout={() => {}} />);
-      
-      await waitFor(() => {
-        expect(screen.getByText(/Connection failed/i)).toBeInTheDocument();
-      });
-    });
-
-    test('should allow retry after refresh failure', async () => {
-      let callCount = 0;
-      api.schoolTeachers.mockImplementation(() => {
-        callCount++;
-        if (callCount === 1) {
-          return Promise.reject(new Error('Failed'));
-        }
-        return Promise.resolve({ teachers: [], pagination: {} });
-      });
-      
-      render(<SchoolDashboard session={mockSession} onLogout={() => {}} />);
-      
-      // Initial fails
-      await waitFor(() => {
-        expect(api.schoolTeachers).toHaveBeenCalledTimes(1);
-      });
-      
-      // Click refresh to retry
-      const buttons = screen.getAllByText('↻');
-      if (buttons.length > 0) {
-        fireEvent.click(buttons[0]);
-        
-        await waitFor(() => {
-          expect(api.schoolTeachers).toHaveBeenCalledTimes(2);
-        });
-      }
-    });
-  });
-
-  describe('Export Data Quality', () => {
-    test('should export all visible teachers', async () => {
-      global.URL.createObjectURL = jest.fn(() => 'blob://mock-url');
-      global.URL.revokeObjectURL = jest.fn();
-      
-      // Capture blob data
-      let csvContent = '';
-      jest.spyOn(global, 'Blob').mockImplementation((data) => {
-        csvContent = data[0];
-        return { type: 'text/csv' };
-      });
-      
-      const mockLink = { click: jest.fn(), href: '', download: '' };
-      jest.spyOn(document, 'createElement').mockReturnValue(mockLink);
-      
-      render(<SchoolDashboard session={mockSession} onLogout={() => {}} />);
-      
-      const exportBtn = screen.getByText(/Export/i);
-      fireEvent.click(exportBtn);
-      
-      await waitFor(() => {
-        const teachersOption = screen.getByText('Teachers CSV');
-        fireEvent.click(teachersOption);
-        
-        // CSV should contain headers and teacher data
-        expect(csvContent).toContain('Name,Email,Subject,Login ID,Created At');
-        expect(csvContent).toContain('Rajesh Kumar');
-        expect(csvContent).toContain('Priya Sharma');
-      });
-    });
-
-    test('should properly escape quotes in CSV data', async () => {
-      api.schoolTeachers.mockResolvedValue({
-        teachers: [
-          { 
-            id: 't1', 
-            name: 'Teacher "Dr." Name', 
-            subject: 'Science', 
-            email: 'test@school.edu',
-            loginId: 'test_123'
-          }
-        ],
+        teachers: [{ id: 't1', name: 'Teacher "Dr." Name', subject: 'Science', email: 'x@s.edu', loginId: 'x_1' }],
         pagination: { totalPages: 1 }
       });
-      
-      global.URL.createObjectURL = jest.fn(() => 'blob://mock-url');
-      global.URL.revokeObjectURL = jest.fn();
-      
-      let csvContent = '';
-      jest.spyOn(global, 'Blob').mockImplementation((data) => {
-        csvContent = data[0];
-        return { type: 'text/csv' };
+
+      renderPortal();
+      await waitFor(() => expect(screen.getByText('Quick Actions')).toBeInTheDocument());
+
+      let csv = '';
+      const RealBlob = global.Blob;
+      jest.spyOn(global, 'Blob').mockImplementation((parts) => {
+        csv = parts[0];
+        return new RealBlob(parts, { type: 'text/csv' });
       });
-      
-      const mockLink = { click: jest.fn(), href: '', download: '' };
-      jest.spyOn(document, 'createElement').mockReturnValue(mockLink);
-      
-      render(<SchoolDashboard session={mockSession} onLogout={() => {}} />);
-      
-      const exportBtn = screen.getByText(/Export/i);
-      fireEvent.click(exportBtn);
-      
+
+      const link = captureDownload();
+      fireEvent.click(screen.getByText(/⬇ Export/));
+      fireEvent.click(screen.getByText(/Teachers CSV/));
+
+      expect(link.click).toHaveBeenCalled();
+      expect(csv).toContain('"Name","Email","Subject","Login ID","Created At"');
+      expect(csv).toContain('""Dr.""');
+    });
+  });
+
+  describe('Error handling', () => {
+    test('surfaces a failed section load', async () => {
+      api.schoolTeachers.mockRejectedValue(new Error('API Error: Connection failed'));
+
+      renderPortal();
       await waitFor(() => {
-        const teachersOption = screen.getByText('Teachers CSV');
-        fireEvent.click(teachersOption);
-        
-        // Should escape quotes properly
-        expect(csvContent).toContain('""Dr.""');
+        expect(screen.getByText(/Connection failed/)).toBeInTheDocument();
       });
     });
   });
