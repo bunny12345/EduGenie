@@ -138,7 +138,7 @@ export default function OrchardTreeDetail({ studentId, subjectKey, initialTree, 
           </div>
 
           <div className="eg-tree-detail-stats">
-            <Stat label="Chapters fruited" value={`${fruited} / ${tree.totalChapters}`} />
+            <Stat label="Lessons fruited" value={`${fruited} / ${tree.totalChapters}`} />
             <Stat label="Golden fruits" value={golden} icon="✨" />
             <Stat label="Roots (understanding)" value={`${tree.rootsPct}%`} />
             <Stat label="Overall growth" value={`${tree.progressPct}%`} />
@@ -157,29 +157,40 @@ export default function OrchardTreeDetail({ studentId, subjectKey, initialTree, 
         </div>
       </div>
 
-      {/* Chapters as seeds/fruits */}
+      {/* Chapters as seeds/fruits — one per uploaded lesson, nothing fabricated */}
       <div className="eg-tree-detail-chapters-wrap">
         <div className="eg-tree-detail-chapters-head">
-          <h2>Chapters — every seed becomes a fruit</h2>
-          <p>Each chapter grows on its own. Care for it and it ripens over weeks.</p>
+          <h2>{detail.subject} lessons — every seed becomes a fruit</h2>
+          <p>Each uploaded lesson grows on its own. Care for it and it ripens over weeks.</p>
         </div>
-        <div className="eg-tree-detail-seedbed">
-          {chapters.map((ch) => (
-            <button
-              key={ch.chapterId}
-              className={`eg-seed ${activeChapterId === ch.chapterId ? 'active' : ''} ${ch.isGolden ? 'golden' : ''}`}
-              onClick={() => setActiveChapterId(ch.chapterId === activeChapterId ? '' : ch.chapterId)}
-              title={`${ch.title} · ${ch.stageLabel}`}
-            >
-              <span className="eg-seed-glyph">{chapterGlyph(ch, fruitEmoji)}</span>
-              <span className="eg-seed-num">Ch {ch.chapterNumber}</span>
-              <span className="eg-seed-stage">{ch.stageLabel}</span>
-              <span className="eg-seed-bar">
-                <span style={{ width: `${(ch.stageIndex / 7) * 100}%` }} />
-              </span>
-            </button>
-          ))}
-        </div>
+        {chapters.length === 0 ? (
+          <div className="eg-tree-detail-empty">
+            <span className="eg-tree-detail-empty-glyph">🌱</span>
+            <strong>No {detail.subject} lessons yet</strong>
+            <p>
+              Your school hasn’t uploaded any {detail.subject} lessons for your class yet.
+              As soon as they do, each lesson appears here as a seed you can grow.
+            </p>
+          </div>
+        ) : (
+          <div className="eg-tree-detail-seedbed">
+            {chapters.map((ch) => (
+              <button
+                key={ch.chapterId}
+                className={`eg-seed ${activeChapterId === ch.chapterId ? 'active' : ''} ${ch.isGolden ? 'golden' : ''}`}
+                onClick={() => setActiveChapterId(ch.chapterId === activeChapterId ? '' : ch.chapterId)}
+                title={`${ch.title} · ${ch.stageLabel}`}
+              >
+                <span className="eg-seed-glyph">{chapterGlyph(ch, fruitEmoji)}</span>
+                <span className="eg-seed-num">{ch.chapterNumber}. {ch.title}</span>
+                <span className="eg-seed-stage">{ch.stageLabel}</span>
+                <span className="eg-seed-bar">
+                  <span style={{ width: `${(ch.stageIndex / 7) * 100}%` }} />
+                </span>
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Selected chapter milestone checklist */}

@@ -1,4 +1,4 @@
-import { Body, Controller, ForbiddenException, Get, Param, Post, Query, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, ForbiddenException, Get, Param, Patch, Post, Query, Req, UseGuards } from '@nestjs/common';
 import { CurriculumService } from '../curriculum/curriculum.service';
 import { AuthGuard } from '../auth/auth.guard';
 import { SupabaseService } from '../supabase.service';
@@ -67,6 +67,56 @@ export class CurriculumController {
     return host ? `${protocol}://${host}${relativeUrl}` : relativeUrl;
   }
 
+  /**
+   * The subject/teacher map the admin curriculum panel is built on.
+   *
+   * A lesson may only be filed under a subject that already has a teacher for
+   * the chosen class, so the panel needs to know (a) which classes exist,
+   * (b) which subjects are taught in each, and (c) who teaches them — the
+   * teacher is shown back to the admin for confirmation before uploading.
+   */
+  @Get('subjects')
+  async listSubjectsForClass(@Req() req: any, @Query('className') className?: string) {
+    try {
+      this.ensureSchoolAdmin(req);
+      const schoolId = this.schoolIdFromReq(req);
+      const { teachers } = await this.studentAuth.listTeachersBySchool(schoolId);
+
+      const byClass = new Map<string, Array<{ subject: string; teacherId: string; teacherName: string }>>();
+      for (const t of teachers || []) {
+        const subject = String((t as any).subject || '').trim();
+        if (!subject || subject.toLowerCase() === 'general') continue;
+        for (const grade of (t as any).grades || []) {
+          const cls = String(grade || '').trim();
+          if (!cls) continue;
+          if (!byClass.has(cls)) byClass.set(cls, []);
+          const list = byClass.get(cls)!;
+          if (list.some((s) => s.subject.toLowerCase() === subject.toLowerCase())) continue;
+          list.push({ subject, teacherId: String((t as any).id || ''), teacherName: String((t as any).name || 'Teacher') });
+        }
+      }
+
+      const classes = Array.from(byClass.entries())
+        .map(([cls, subjects]) => ({
+          className: cls,
+          subjects: subjects.sort((a, b) => a.subject.localeCompare(b.subject))
+        }))
+        .sort((a, b) => a.className.localeCompare(b.className, undefined, { numeric: true }));
+
+      const wanted = String(className || '').trim();
+      return {
+        success: true,
+        classes,
+        className: wanted,
+        subjects: wanted
+          ? (classes.find((c) => c.className.toLowerCase() === wanted.toLowerCase())?.subjects || [])
+          : []
+      };
+    } catch (error: any) {
+      return { success: false, error: String(error?.message || error || 'Failed to list subjects') };
+    }
+  }
+
   @Post('lessons')
   async createLesson(@Req() req: any, @Body() body: any) {
     try {
@@ -85,6 +135,52 @@ export class CurriculumController {
       return { success: true, ...result };
     } catch (error: any) {
       return { success: false, error: String(error?.message || error || 'Failed to create lesson') };
+    }
+  }
+
+  @Patch('lessons/:lessonId')
+  async updateLesson(@Req() req: any, @Param('lessonId') lessonId: string, @Body() body: any) {
+    try {
+      this.ensureSchoolAdmin(req);
+      const result = await this.curriculum.updateLessonAsSchoolAdmin({
+        schoolId: this.schoolIdFromReq(req),
+        lessonId,
+        title: body?.title,
+        description: body?.description,
+        orderIndex: body?.orderIndex
+      });
+      return { success: true, ...result };
+    } catch (error: any) {
+      return { success: false, error: String(error?.message || error || 'Failed to update lesson') };
+    }
+  }
+
+  @Delete('lessons/:lessonId')
+  async deleteLesson(@Req() req: any, @Param('lessonId') lessonId: string) {
+    try {
+      this.ensureSchoolAdmin(req);
+      const result = await this.curriculum.deleteLessonAsSchoolAdmin({
+        schoolId: this.schoolIdFromReq(req),
+        lessonId
+      });
+      return { success: true, ...result };
+    } catch (error: any) {
+      return { success: false, error: String(error?.message || error || 'Failed to delete lesson') };
+    }
+  }
+
+  @Delete('lessons/:lessonId/documents/:documentId')
+  async deleteDocument(@Req() req: any, @Param('lessonId') lessonId: string, @Param('documentId') documentId: string) {
+    try {
+      this.ensureSchoolAdmin(req);
+      const result = await this.curriculum.deleteLessonDocumentAsSchoolAdmin({
+        schoolId: this.schoolIdFromReq(req),
+        lessonId,
+        documentId
+      });
+      return { success: true, ...result };
+    } catch (error: any) {
+      return { success: false, error: String(error?.message || error || 'Failed to delete document') };
     }
   }
 

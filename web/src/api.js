@@ -997,6 +997,43 @@ export async function listCurriculumLessonDocuments(lessonId) {
   return checkSuccess(data, 'listCurriculumLessonDocuments');
 }
 
+// Subjects that actually have a teacher for a class, with that teacher. The
+// admin curriculum panel refuses to file a lesson under anything else.
+export async function listCurriculumSubjects(className) {
+  const res = await fetch(withQuery('/curriculum/subjects', { className: className || '' }), {
+    headers: await authHeaders()
+  });
+  if (!res.ok) throw new Error(`listCurriculumSubjects failed: ${res.status}`);
+  const data = await res.json();
+  return checkSuccess(data, 'listCurriculumSubjects');
+}
+
+export async function updateCurriculumLesson(lessonId, payload) {
+  const headers = await authHeaders();
+  const res = await fetch(`${API_BASE}/curriculum/lessons/${encodeURIComponent(lessonId)}`, {
+    method: 'PATCH',
+    headers,
+    body: JSON.stringify(payload || {})
+  });
+  return res.json();
+}
+
+export async function deleteCurriculumLesson(lessonId) {
+  const res = await fetch(`${API_BASE}/curriculum/lessons/${encodeURIComponent(lessonId)}`, {
+    method: 'DELETE',
+    headers: await authHeaders()
+  });
+  return res.json();
+}
+
+export async function deleteCurriculumLessonDocument(lessonId, documentId) {
+  const res = await fetch(
+    `${API_BASE}/curriculum/lessons/${encodeURIComponent(lessonId)}/documents/${encodeURIComponent(documentId)}`,
+    { method: 'DELETE', headers: await authHeaders() }
+  );
+  return res.json();
+}
+
 const api = {
   sendChat,
   listMemories,
@@ -1053,6 +1090,10 @@ const api = {
   setCurriculumLessonVisibility,
   uploadCurriculumLessonDocument,
   listCurriculumLessonDocuments,
+  listCurriculumSubjects,
+  updateCurriculumLesson,
+  deleteCurriculumLesson,
+  deleteCurriculumLessonDocument,
   studentLogin,
   registerTeacherStudent,
   teacherLogin,

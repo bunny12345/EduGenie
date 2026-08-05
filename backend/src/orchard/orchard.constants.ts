@@ -125,7 +125,10 @@ export function seasonForDate(d: Date): 'spring' | 'summer' | 'autumn' | 'winter
 }
 
 // Default number of chapters (seeds) per subject tree when none are defined.
-export const DEFAULT_CHAPTERS_PER_SUBJECT = 18;
+// NOTE: there is deliberately no "default chapter count". Orchard chapters are
+// derived 1:1 from the lessons a school/teacher actually uploaded for a subject
+// + class. A subject with nothing uploaded shows an empty tree, never filler.
+
 
 // Subject catalog fallback (used when the DB catalog is empty, e.g. mock mode).
 export interface SubjectCatalogEntry {

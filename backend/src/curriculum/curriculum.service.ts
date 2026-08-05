@@ -163,6 +163,54 @@ export class CurriculumService {
     return lesson;
   }
 
+  /** Every teacher id belonging to a school — the scope for admin operations. */
+  private async schoolTeacherIds(schoolId: string): Promise<string[]> {
+    const res = await this.db.client.from('teachers').select('id').eq('school_id', String(schoolId || '').trim());
+    return (Array.isArray((res as any)?.data) ? (res as any).data : [])
+      .map((row: any) => String(row?.id || '').trim())
+      .filter(Boolean);
+  }
+
+  /**
+   * Lessons already filed under a subject + class for this school, ordered the
+   * way students see them. This is the list the admin panel numbers 1..N.
+   */
+  private async lessonsForSubjectClass(schoolId: string, subject: string, className: string) {
+    const teacherIds = await this.schoolTeacherIds(schoolId);
+    if (!teacherIds.length) return [] as any[];
+    const res = await this.db.client.from('lessons').select('*').in('teacher_id', teacherIds);
+    const rows: any[] = Array.isArray((res as any)?.data) ? (res as any).data : [];
+    const subj = String(subject || '').trim().toLowerCase();
+    const cls = String(className || '').trim().toLowerCase();
+    return rows
+      .filter((l) => String(l.subject || '').trim().toLowerCase() === subj)
+      .filter((l) => String(l.class_name || '').trim().toLowerCase() === cls)
+      .sort((a, b) => {
+        const byOrder = Number(a.order_index || 0) - Number(b.order_index || 0);
+        if (byOrder) return byOrder;
+        return String(a.created_at || '').localeCompare(String(b.created_at || ''));
+      });
+  }
+
+  /**
+   * Lesson numbering is automatic: the first PDF uploaded for a subject + class
+   * becomes lesson 1, the next becomes 2, and so on. Admins never type a number.
+   */
+  async nextOrderIndex(schoolId: string, subject: string, className: string): Promise<number> {
+    const existing = await this.lessonsForSubjectClass(schoolId, subject, className);
+    return existing.length + 1;
+  }
+
+  /** Close gaps after a delete so the list always reads 1, 2, 3, … */
+  private async resequenceSubjectClass(schoolId: string, subject: string, className: string) {
+    const existing = await this.lessonsForSubjectClass(schoolId, subject, className);
+    for (let i = 0; i < existing.length; i += 1) {
+      const expected = i + 1;
+      if (Number(existing[i].order_index || 0) === expected) continue;
+      await this.db.client.from('lessons').update({ order_index: expected }).eq('id', existing[i].id);
+    }
+  }
+
   async createLesson(input: LessonCreateInput) {
     const teacherId = String(input.teacherId || '').trim();
     const subject = String(input.subject || '').trim();
@@ -185,7 +233,10 @@ export class CurriculumService {
     const lesson = Array.isArray((created as any)?.data) ? (created as any).data[0] : null;
     if (!lesson) throw new Error((created as any)?.error?.message || 'Failed to create lesson');
 
-    const visibleClassNames = this.normalizeClassNames(input.visibleClassNames || input.className ? [input.className] : []);
+    const visibleClassNames = this.normalizeClassNames([
+      ...(Array.isArray(input.visibleClassNames) ? input.visibleClassNames : []),
+      input.className
+    ]);
     if (visibleClassNames.length) {
       await this.setLessonVisibility({ teacherId, lessonId: lesson.id, classNames: visibleClassNames, isVisible: true });
     }
@@ -199,16 +250,161 @@ export class CurriculumService {
     if (!schoolId) throw new Error('schoolId is required');
     if (!teacherId) throw new Error('teacherId is required');
     await this.assertTeacherInSchool(teacherId, schoolId);
+
+    const className = String(input.className || '').trim();
+    // Numbering is derived, not typed: lesson N is simply the Nth lesson filed
+    // under this subject + class. An explicit orderIndex still wins so existing
+    // callers (and the smoke tests) keep working.
+    const orderIndex = Number.isFinite(Number(input.orderIndex)) && Number(input.orderIndex) > 0
+      ? Number(input.orderIndex)
+      : await this.nextOrderIndex(schoolId, String(input.subject || ''), className);
+
     return this.createLesson({
       teacherId,
       subject: input.subject,
       title: input.title,
       description: input.description,
       className: input.className,
-      orderIndex: input.orderIndex,
+      orderIndex,
       isActive: input.isActive,
       visibleClassNames: input.visibleClassNames
     });
+  }
+
+  /** Rename / re-describe / re-order a lesson. Admin scoped. */
+  async updateLessonAsSchoolAdmin(input: {
+    schoolId: string;
+    lessonId: string;
+    title?: string;
+    description?: string | null;
+    orderIndex?: number;
+  }) {
+    const schoolId = String(input.schoolId || '').trim();
+    const lessonId = String(input.lessonId || '').trim();
+    if (!schoolId) throw new Error('schoolId is required');
+    if (!lessonId) throw new Error('lessonId is required');
+    const lesson = await this.assertLessonInSchool(lessonId, schoolId);
+
+    const changes: any = { updated_at: new Date().toISOString() };
+    if (input.title !== undefined) {
+      const title = String(input.title || '').trim();
+      if (!title) throw new Error('title cannot be empty');
+      changes.title = title;
+    }
+    if (input.description !== undefined) {
+      changes.description = String(input.description || '').trim() || null;
+    }
+    if (input.orderIndex !== undefined && Number.isFinite(Number(input.orderIndex))) {
+      changes.order_index = Number(input.orderIndex);
+    }
+
+    await this.db.client.from('lessons').update(changes).eq('id', lessonId);
+
+    // The orchard names chapters after the lesson, so a rename must follow
+    // through immediately rather than waiting for the next student visit.
+    if (changes.title) {
+      await this.db.client.from('orchard_chapters').update({ title: changes.title }).eq('lesson_id', lessonId);
+      await this.db.client.from('flashcard_decks').update({ chapter_title: changes.title }).eq('lesson_id', lessonId);
+    }
+
+    const updated = await this.findLessonById(lessonId);
+    return { lesson: updated || { ...lesson, ...changes } };
+  }
+
+  /**
+   * Delete a lesson and everything derived from it. `lesson_documents`,
+   * `lesson_chunks`, `lesson_class_visibility` and `student_lesson_progress`
+   * cascade in the DB; `orchard_chapters` and `flashcard_decks` hold soft
+   * references, so they are cleaned up here.
+   */
+  async deleteLessonAsSchoolAdmin(input: { schoolId: string; lessonId: string }) {
+    const schoolId = String(input.schoolId || '').trim();
+    const lessonId = String(input.lessonId || '').trim();
+    if (!schoolId) throw new Error('schoolId is required');
+    if (!lessonId) throw new Error('lessonId is required');
+    const lesson = await this.assertLessonInSchool(lessonId, schoolId);
+
+    const docs = await this.listLessonDocuments(lessonId);
+    for (const doc of docs.documents || []) this.removeStoredFile(doc?.file_url);
+
+    await this.purgeLessonDerivedData(lessonId);
+
+    // Explicit deletes keep this correct even where the cascade is not in place
+    // (e.g. the file-backed mock client used by the offline smoke tests).
+    await this.db.client.from('lesson_chunks').delete().eq('lesson_id', lessonId);
+    await this.db.client.from('lesson_documents').delete().eq('lesson_id', lessonId);
+    await this.db.client.from('lesson_class_visibility').delete().eq('lesson_id', lessonId);
+    await this.db.client.from('lessons').delete().eq('id', lessonId);
+
+    await this.resequenceSubjectClass(schoolId, String(lesson.subject || ''), String(lesson.class_name || ''));
+    return { lessonId, deleted: true };
+  }
+
+  /** Drop the orchard chapters and flashcard decks generated from a lesson. */
+  private async purgeLessonDerivedData(lessonId: string) {
+    const chaptersRes = await this.db.client.from('orchard_chapters').select('id').eq('lesson_id', lessonId);
+    const chapterIds = (Array.isArray((chaptersRes as any)?.data) ? (chaptersRes as any).data : [])
+      .map((row: any) => String(row?.id || ''))
+      .filter(Boolean);
+    for (const chapterId of chapterIds) {
+      await this.db.client.from('orchard_trees').update({ next_chapter_id: null }).eq('next_chapter_id', chapterId);
+      await this.db.client.from('chapter_growth').delete().eq('chapter_id', chapterId);
+      await this.db.client.from('orchard_reviews').delete().eq('chapter_id', chapterId);
+      await this.db.client.from('orchard_activity').update({ chapter_id: null }).eq('chapter_id', chapterId);
+      await this.db.client.from('orchard_chapters').delete().eq('id', chapterId);
+    }
+
+    const decksRes = await this.db.client.from('flashcard_decks').select('id').eq('lesson_id', lessonId);
+    const deckIds = (Array.isArray((decksRes as any)?.data) ? (decksRes as any).data : [])
+      .map((row: any) => String(row?.id || ''))
+      .filter(Boolean);
+    for (const deckId of deckIds) {
+      await this.db.client.from('flashcards').delete().eq('deck_id', deckId);
+      await this.db.client.from('flashcard_decks').delete().eq('id', deckId);
+    }
+  }
+
+  private removeStoredFile(fileUrl: any) {
+    const rel = String(fileUrl || '').trim();
+    if (!rel.startsWith('/uploads/')) return;
+    try {
+      const full = path.join(process.cwd(), 'local-data', rel.replace(/^\//, ''));
+      if (fs.existsSync(full)) fs.unlinkSync(full);
+    } catch {
+      /* the DB row is the source of truth; a stale file is harmless */
+    }
+  }
+
+  /**
+   * Remove one uploaded PDF. Its extracted chunks go with it, and the derived
+   * flashcards are rebuilt from whatever content is left so games and the AI
+   * tutor never answer from a document the school has taken down.
+   */
+  async deleteLessonDocumentAsSchoolAdmin(input: { schoolId: string; lessonId: string; documentId: string }) {
+    const schoolId = String(input.schoolId || '').trim();
+    const lessonId = String(input.lessonId || '').trim();
+    const documentId = String(input.documentId || '').trim();
+    if (!documentId) throw new Error('documentId is required');
+    await this.assertLessonInSchool(lessonId, schoolId);
+
+    const docRes = await this.db.client.from('lesson_documents').select('*').eq('id', documentId).limit(1);
+    const doc = Array.isArray((docRes as any)?.data) ? (docRes as any).data[0] : null;
+    if (!doc) throw new Error('Document not found');
+    if (String(doc.lesson_id || '') !== lessonId) throw new Error('Document does not belong to this lesson');
+
+    await this.db.client.from('lesson_chunks').delete().eq('document_id', documentId);
+    await this.db.client.from('lesson_documents').delete().eq('id', documentId);
+    this.removeStoredFile(doc.file_url);
+
+    // Rebuild the derived content from the remaining chunks (or clear it if the
+    // lesson now has none).
+    await this.purgeLessonDerivedData(lessonId);
+    const remaining = await this.db.client.from('lesson_chunks').select('id').eq('lesson_id', lessonId).limit(1);
+    if (Array.isArray((remaining as any)?.data) && (remaining as any).data.length) {
+      this.flashcards.generateForLesson(lessonId).catch(() => { /* best-effort */ });
+    }
+
+    return { lessonId, documentId, deleted: true };
   }
 
   async listLessons(params: { teacherId?: string; schoolId?: string; className?: string; subject?: string }) {

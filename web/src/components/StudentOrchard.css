@@ -644,8 +644,33 @@
 }
 .eg-tree-detail-seedbed {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(132px, 1fr));
   gap: 12px;
+}
+.eg-tree-detail-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 6px;
+  padding: 28px 18px;
+  border: 1px dashed #d7d4e8;
+  border-radius: 18px;
+  background: #fbfaff;
+}
+.eg-tree-detail-empty-glyph {
+  font-size: 34px;
+  line-height: 1;
+}
+.eg-tree-detail-empty strong {
+  font-size: 15px;
+  color: #2c2f45;
+}
+.eg-tree-detail-empty p {
+  margin: 0;
+  max-width: 460px;
+  font-size: 13px;
+  color: #6b7090;
 }
 .eg-seed {
   border: 2px solid transparent;
@@ -678,6 +703,13 @@
 .eg-seed-num {
   font-size: 12px;
   font-weight: 700;
+  text-align: center;
+  line-height: 1.25;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  overflow-wrap: anywhere;
 }
 .eg-seed-stage {
   font-size: 10px;

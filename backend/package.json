@@ -12,7 +12,11 @@
     "dev": "npm run start:dev",
     "dev:full": "concurrently \"npm run mock-llm\" \"npm run start:dev\"",
     "dev:full:voice": "concurrently \"npm run mock-llm\" \"npm run mock-tts\" \"npm run start:dev\"",
-    "smoke:rls-api": "bash scripts/rls_api_smoke.sh"
+    "smoke:rls-api": "bash scripts/rls_api_smoke.sh",
+    "smoke:orchard": "ts-node scripts/orchard_smoke.ts",
+    "smoke:orchard:live": "node scripts/orchard_live_smoke.js",
+    "smoke:curriculum": "node scripts/curriculum_admin_smoke.js",
+    "smoke": "npm run smoke:orchard"
   },
   "keywords": [],
   "author": "",

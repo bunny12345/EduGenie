@@ -1,0 +1,548 @@
+/* ── Curriculum Content (school admin) ───────────────────────────────────────
+   One panel: pick a class, name the subject (validated against the teacher
+   roster), attach a PDF, done. Uploaded lessons are grouped into subject tabs
+   below the form and numbered positionally. */
+
+.eg-cc {
+  grid-column: 1 / -1;
+  padding: 18px 20px 20px;
+  border-radius: 16px;
+  border: 1px solid #e3e8fa;
+  background: linear-gradient(180deg, #fbfcff 0%, #ffffff 42%);
+}
+
+.eg-cc-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.eg-cc-head h3 {
+  font-size: 1.05rem;
+  letter-spacing: -0.01em;
+}
+
+.eg-cc-head p {
+  margin: 5px 0 0;
+  max-width: 52ch;
+  color: #6b76a3;
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.eg-cc-class {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.eg-cc-class > span {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #7b86ad;
+}
+
+.eg-cc-class select {
+  border: 1px solid #d7def5;
+  background: #fff;
+  border-radius: 10px;
+  padding: 8px 12px;
+  font-size: 13px;
+  font-weight: 700;
+  color: #26324f;
+  font-family: inherit;
+  cursor: pointer;
+  min-width: 130px;
+}
+
+.eg-cc-class select:focus-visible,
+.eg-cc-form input:focus-visible,
+.eg-cc-form textarea:focus-visible {
+  outline: 2px solid #2a66b4;
+  outline-offset: 1px;
+}
+
+/* ── form ── */
+
+.eg-cc-form {
+  margin-top: 16px;
+  padding: 16px;
+  display: grid;
+  gap: 14px;
+  border: 1px solid #e6ebfa;
+  border-radius: 14px;
+  background: #fff;
+}
+
+.eg-cc-field {
+  display: grid;
+  gap: 6px;
+}
+
+.eg-cc-field > label {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: #526092;
+}
+
+.eg-cc-field > label em {
+  font-style: normal;
+  font-weight: 600;
+  text-transform: none;
+  letter-spacing: 0;
+  color: #98a1c0;
+}
+
+.eg-cc-field input[type='text'],
+.eg-cc-field input:not([type]),
+.eg-cc-field textarea {
+  width: 100%;
+  border: 1px solid #dfe5f7;
+  border-radius: 10px;
+  padding: 10px 12px;
+  font-size: 13px;
+  font-family: inherit;
+  color: #26324f;
+  background: #fff;
+  box-sizing: border-box;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.eg-cc-field textarea {
+  resize: vertical;
+  line-height: 1.5;
+}
+
+.eg-cc-field input.is-valid {
+  border-color: #4ca777;
+  box-shadow: 0 0 0 3px rgba(76, 167, 119, 0.12);
+}
+
+.eg-cc-field input.is-invalid {
+  border-color: #d9534f;
+  box-shadow: 0 0 0 3px rgba(217, 83, 79, 0.1);
+}
+
+.eg-cc-field input[type='file'] {
+  width: 100%;
+  border: 1px dashed #cfd8f0;
+  border-radius: 10px;
+  padding: 12px;
+  font-size: 12px;
+  background: #fafbff;
+  color: #6b76a3;
+  box-sizing: border-box;
+  cursor: pointer;
+}
+
+.eg-cc-field input[type='file']::file-selector-button {
+  border: 0;
+  margin-right: 10px;
+  padding: 7px 12px;
+  border-radius: 8px;
+  background: #eef2fd;
+  color: #2a66b4;
+  font-weight: 700;
+  font-family: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.eg-cc-msg {
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: #7b86ad;
+}
+
+.eg-cc-msg > span:first-child {
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+  margin-top: 1px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  font-size: 10px;
+  font-weight: 800;
+  color: #fff;
+}
+
+.eg-cc-msg.is-ok {
+  color: #2f7d55;
+}
+
+.eg-cc-msg.is-ok > span:first-child {
+  background: #4ca777;
+}
+
+.eg-cc-msg.is-error {
+  color: #b23c38;
+}
+
+.eg-cc-msg.is-error > span:first-child {
+  background: #d9534f;
+}
+
+.eg-cc-submit {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding-top: 2px;
+}
+
+.eg-cc-nextnum {
+  font-size: 12px;
+  color: #7b86ad;
+}
+
+.eg-cc-nextnum strong {
+  color: #2a66b4;
+}
+
+.eg-cc-primary,
+.eg-cc-ghost,
+.eg-cc-danger {
+  border-radius: 10px;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: filter 0.15s ease, background 0.15s ease, border-color 0.15s ease;
+}
+
+.eg-cc-primary {
+  border: 0;
+  min-height: 40px;
+  padding: 0 22px;
+  background: linear-gradient(120deg, #2a66b4, #1f9fb3);
+  color: #fff;
+}
+
+.eg-cc-primary:hover:not(:disabled) {
+  filter: brightness(1.06);
+}
+
+.eg-cc-primary:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.eg-cc-ghost {
+  border: 1px solid #dfe5f7;
+  background: #fff;
+  color: #526092;
+  padding: 7px 14px;
+}
+
+.eg-cc-ghost:hover:not(:disabled) {
+  background: #f4f7ff;
+  border-color: #c3cff0;
+}
+
+.eg-cc-ghost.is-danger {
+  color: #b23c38;
+  border-color: #f0d5d4;
+}
+
+.eg-cc-ghost.is-danger:hover:not(:disabled) {
+  background: #fdf3f3;
+  border-color: #e2b6b4;
+}
+
+.eg-cc-danger {
+  border: 0;
+  background: #d9534f;
+  color: #fff;
+  padding: 8px 14px;
+}
+
+.eg-cc-danger:hover:not(:disabled) {
+  filter: brightness(1.06);
+}
+
+/* ── uploaded lesson library ── */
+
+.eg-cc-library {
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px solid #e9edfa;
+}
+
+.eg-cc-library-head {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+
+.eg-cc-library-head h4 {
+  margin: 0;
+  font-size: 13px;
+  color: #26324f;
+}
+
+.eg-cc-loading {
+  font-size: 11px;
+  color: #98a1c0;
+}
+
+.eg-cc-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.eg-cc-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  border: 1px solid #dfe5f7;
+  background: #fff;
+  color: #526092;
+  border-radius: 999px;
+  padding: 7px 14px;
+  font-size: 12px;
+  font-weight: 700;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+
+.eg-cc-tab:hover {
+  border-color: #b9c8ee;
+  background: #f6f9ff;
+}
+
+.eg-cc-tab.is-active {
+  background: linear-gradient(120deg, #2a66b4, #1f9fb3);
+  border-color: transparent;
+  color: #fff;
+}
+
+.eg-cc-tab-count {
+  min-width: 18px;
+  padding: 1px 5px;
+  border-radius: 999px;
+  background: #eef2fd;
+  color: #2a66b4;
+  font-size: 11px;
+  text-align: center;
+}
+
+.eg-cc-tab.is-active .eg-cc-tab-count {
+  background: rgba(255, 255, 255, 0.25);
+  color: #fff;
+}
+
+.eg-cc-lessons {
+  list-style: none;
+  margin: 14px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 10px;
+}
+
+.eg-cc-lesson {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px 14px;
+  border: 1px solid #e9edfa;
+  border-radius: 12px;
+  background: #fff;
+}
+
+.eg-cc-num {
+  flex-shrink: 0;
+  width: 26px;
+  height: 26px;
+  display: grid;
+  place-items: center;
+  border-radius: 8px;
+  background: #eef2fd;
+  color: #2a66b4;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.eg-cc-lesson-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.eg-cc-lesson-title {
+  display: block;
+  font-size: 13px;
+  color: #26324f;
+  overflow-wrap: anywhere;
+}
+
+.eg-cc-lesson-desc {
+  margin: 3px 0 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: #7b86ad;
+}
+
+.eg-cc-docs {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.eg-cc-doc {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  color: #6b76a3;
+  overflow-wrap: anywhere;
+}
+
+.eg-cc-doc a {
+  color: #2a66b4;
+  text-decoration: none;
+  font-weight: 600;
+}
+
+.eg-cc-doc a:hover {
+  text-decoration: underline;
+}
+
+.eg-cc-doc-status {
+  flex-shrink: 0;
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: #eef2fd;
+  color: #526092;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: capitalize;
+}
+
+.eg-cc-doc.is-completed .eg-cc-doc-status {
+  background: #e6f5ed;
+  color: #2f7d55;
+}
+
+.eg-cc-doc.is-failed .eg-cc-doc-status {
+  background: #fdecec;
+  color: #b23c38;
+}
+
+.eg-cc-doc.is-missing {
+  color: #b23c38;
+  font-style: italic;
+}
+
+.eg-cc-actions {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.eg-cc-edit {
+  display: grid;
+  gap: 8px;
+}
+
+.eg-cc-edit input[type='text'],
+.eg-cc-edit input:not([type]),
+.eg-cc-edit textarea {
+  width: 100%;
+  border: 1px solid #dfe5f7;
+  border-radius: 9px;
+  padding: 8px 10px;
+  font-size: 12px;
+  font-family: inherit;
+  color: #26324f;
+  box-sizing: border-box;
+}
+
+.eg-cc-replace {
+  display: grid;
+  gap: 4px;
+}
+
+.eg-cc-replace > span {
+  font-size: 11px;
+  font-weight: 700;
+  color: #7b86ad;
+}
+
+.eg-cc-replace input[type='file'] {
+  font-size: 11px;
+  color: #6b76a3;
+}
+
+.eg-cc-edit-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.eg-cc-empty {
+  margin-top: 14px;
+  padding: 22px 18px;
+  border: 1px dashed #d7def5;
+  border-radius: 12px;
+  background: #fafbff;
+  text-align: center;
+}
+
+.eg-cc-empty strong {
+  display: block;
+  font-size: 13px;
+  color: #26324f;
+}
+
+.eg-cc-empty p {
+  margin: 5px 0 0;
+  font-size: 12px;
+  line-height: 1.55;
+  color: #7b86ad;
+}
+
+@media (max-width: 720px) {
+  .eg-cc {
+    padding: 14px;
+  }
+
+  .eg-cc-head {
+    flex-direction: column;
+  }
+
+  .eg-cc-class {
+    width: 100%;
+  }
+
+  .eg-cc-class select {
+    flex: 1;
+  }
+
+  .eg-cc-lesson {
+    flex-wrap: wrap;
+  }
+
+  .eg-cc-actions {
+    width: 100%;
+    justify-content: flex-start;
+  }
+}

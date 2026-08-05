@@ -312,7 +312,9 @@ export default function StudentOrchard({ studentId, greetingName = 'there' }) {
               </div>
               <div className="eg-orch-tree-foot">
                 <span className="eg-orch-tree-stage">{t.stageLabel}</span>
-                <span className="eg-orch-tree-chapters">{t.completedChapters} / {t.totalChapters} Chapters</span>
+                <span className="eg-orch-tree-chapters">
+                  {t.totalChapters ? `${t.completedChapters} / ${t.totalChapters} Lessons` : 'No lessons yet'}
+                </span>
               </div>
               <div className="eg-orch-tree-bar">
                 <span style={{ width: `${t.progressPct}%`, background: t.accentColor }} />
@@ -352,7 +354,9 @@ export default function StudentOrchard({ studentId, greetingName = 'there' }) {
                 <span>Level {selectedTree.level} of {selectedTree.maxLevel}</span>
               </div>
               <div className="eg-orch-detail-chapters">
-                {selectedTree.completedChapters} / {selectedTree.totalChapters} Chapters Completed
+                {selectedTree.totalChapters
+                  ? `${selectedTree.completedChapters} / ${selectedTree.totalChapters} Lessons Completed`
+                  : 'No lessons uploaded for your class yet'}
               </div>
 
               {/* Next chapter */}

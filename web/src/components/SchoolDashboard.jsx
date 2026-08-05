@@ -1,8 +1,11 @@
 import React, { useEffect, useState } from 'react';
 import {
   createCurriculumLesson,
+  deleteCurriculumLesson,
+  deleteCurriculumLessonDocument,
   listCurriculumLessonDocuments,
   listCurriculumLessons,
+  listCurriculumSubjects,
   resendSchoolTeacherInvite,
   revokeSchoolTeacherInvite,
   schoolDashboard,
@@ -14,8 +17,10 @@ import {
   schoolUpdateTeacher,
   schoolResetTeacherPassword,
   schoolDeleteTeacher,
+  updateCurriculumLesson,
   uploadCurriculumLessonDocument
 } from '../api';
+import './CurriculumContent.css';
 
 function inviteStatusLabel(invite) {
   const status = String(invite?.status || '').toLowerCase();
@@ -124,19 +129,22 @@ export default function SchoolDashboard({ session, onLogout }) {
   const [studentSearch, setStudentSearch] = useState('');
   const [studentPage, setStudentPage] = useState(1);
   const [studentTotalPages, setStudentTotalPages] = useState(1);
-  const [curriculumSubject, setCurriculumSubject] = useState('Mathematics');
-  const [curriculumClassName, setCurriculumClassName] = useState('all');
-  const [curriculumTeacherId, setCurriculumTeacherId] = useState('');
+  const [curriculumSubject, setCurriculumSubject] = useState('');
+  const [curriculumClassName, setCurriculumClassName] = useState('');
   const [curriculumLessonTitle, setCurriculumLessonTitle] = useState('');
   const [curriculumLessonDescription, setCurriculumLessonDescription] = useState('');
-  const [curriculumLessonOrder, setCurriculumLessonOrder] = useState(0);
-  const [curriculumVisibleClasses, setCurriculumVisibleClasses] = useState('');
   const [curriculumLessons, setCurriculumLessons] = useState([]);
   const [curriculumDocumentsByLesson, setCurriculumDocumentsByLesson] = useState({});
-  const [curriculumSelectedLessonId, setCurriculumSelectedLessonId] = useState('');
   const [curriculumLoading, setCurriculumLoading] = useState(false);
-  const [curriculumLessonSaving, setCurriculumLessonSaving] = useState(false);
   const [curriculumPdfUploading, setCurriculumPdfUploading] = useState(false);
+  // Subject → teacher map per class. A lesson can only be filed under a subject
+  // that already has a teacher for the selected class.
+  const [curriculumClassMap, setCurriculumClassMap] = useState([]);
+  const [curriculumPdfFile, setCurriculumPdfFile] = useState(null);
+  const [curriculumActiveSubject, setCurriculumActiveSubject] = useState('');
+  const [curriculumEditing, setCurriculumEditing] = useState(null);
+  const [curriculumRowBusy, setCurriculumRowBusy] = useState('');
+  const [curriculumConfirmDelete, setCurriculumConfirmDelete] = useState(null);
 
   // New: Section-specific loading and refresh states
   const [refreshing, setRefreshing] = useState('');
@@ -291,35 +299,92 @@ export default function SchoolDashboard({ session, onLogout }) {
       limit: TEACHERS_PER_PAGE
     });
     applyTeachers(Array.isArray(tRes?.teachers) ? tRes.teachers : [], tRes?.pagination || null);
+    // The roster decides which subjects a class may receive lessons for, so the
+    // curriculum panel has to follow every teacher add / edit / removal.
+    loadCurriculumSubjectMap();
   }
 
-  const classOptions = Array.from(new Set(
-    (students || []).map((s) => String(s?.className || '').trim()).filter(Boolean)
-  )).sort((a, b) => a.localeCompare(b));
+  const classOptions = Array.from(new Set([
+    ...(curriculumClassMap || []).map((entry) => String(entry?.className || '').trim()),
+    ...(students || []).map((s) => String(s?.className || '').trim())
+  ].filter(Boolean))).sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
 
-  // The lesson an uploaded chapter will be attached to — surfaced in the UI so
-  // a PDF can never be filed against the wrong subject or grade unnoticed.
-  const selectedCurriculumLesson = (curriculumLessons || []).find(
-    (lesson) => String(lesson?.id || '') === String(curriculumSelectedLessonId || '')
-  ) || null;
+  // Subjects that already have a teacher for the selected class. Typing anything
+  // else is rejected — the school must register that subject teacher first.
+  const curriculumSubjectsForClass = (
+    (curriculumClassMap || []).find(
+      (entry) => String(entry?.className || '').toLowerCase() === String(curriculumClassName || '').toLowerCase()
+    )?.subjects || []
+  );
 
-  async function loadCurriculumPanel({ className = curriculumClassName, subject = curriculumSubject } = {}) {
+  const curriculumSubjectTyped = String(curriculumSubject || '').trim();
+  const curriculumSubjectMatch = curriculumSubjectTyped
+    ? curriculumSubjectsForClass.find(
+        (s) => String(s.subject || '').toLowerCase() === curriculumSubjectTyped.toLowerCase()
+      ) || null
+    : null;
+  const curriculumSubjectUnknown = Boolean(curriculumSubjectTyped) && !curriculumSubjectMatch;
+
+  // Lessons already filed for the selected class, grouped into the subject tabs
+  // shown under the form. Numbering is positional: 1, 2, 3 … per subject.
+  const curriculumLessonsForClass = (curriculumLessons || []).filter(
+    (lesson) => String(lesson?.class_name || '').toLowerCase() === String(curriculumClassName || '').toLowerCase()
+  );
+
+  const curriculumSubjectGroups = (() => {
+    const groups = new Map();
+    for (const lesson of curriculumLessonsForClass) {
+      const subject = String(lesson?.subject || '').trim() || 'Unassigned';
+      if (!groups.has(subject)) groups.set(subject, []);
+      groups.get(subject).push(lesson);
+    }
+    return Array.from(groups.entries())
+      .map(([subject, lessons]) => ({
+        subject,
+        lessons: lessons.slice().sort((a, b) => {
+          const byOrder = Number(a.order_index || 0) - Number(b.order_index || 0);
+          if (byOrder) return byOrder;
+          return String(a.created_at || '').localeCompare(String(b.created_at || ''));
+        })
+      }))
+      .sort((a, b) => a.subject.localeCompare(b.subject));
+  })();
+
+  const curriculumVisibleGroup =
+    curriculumSubjectGroups.find((g) => g.subject === curriculumActiveSubject) || curriculumSubjectGroups[0] || null;
+
+  // What number the lesson about to be uploaded will get.
+  const curriculumNextNumber = curriculumSubjectMatch
+    ? (curriculumSubjectGroups.find(
+        (g) => g.subject.toLowerCase() === curriculumSubjectTyped.toLowerCase()
+      )?.lessons.length || 0) + 1
+    : null;
+
+  async function loadCurriculumSubjectMap() {
+    try {
+      const res = await listCurriculumSubjects();
+      const classes = Array.isArray(res?.classes) ? res.classes : [];
+      setCurriculumClassMap(classes);
+      return classes;
+    } catch {
+      setCurriculumClassMap([]);
+      return [];
+    }
+  }
+
+  async function loadCurriculumPanel({ className = curriculumClassName } = {}) {
+    if (!className) {
+      setCurriculumLessons([]);
+      setCurriculumDocumentsByLesson({});
+      return;
+    }
     setCurriculumLoading(true);
     try {
-      const res = await listCurriculumLessons({ className: className === 'all' ? '' : className, subject: subject || '' });
+      const res = await listCurriculumLessons({ className });
       const lessons = Array.isArray(res?.lessons) ? res.lessons : [];
       setCurriculumLessons(lessons);
-      // Keep the chosen lesson in step with the current subject/class filter.
-      // Without this the previously selected lesson stays selected after the
-      // filter changes, and an uploaded chapter would be attached to a lesson
-      // from a different subject or grade.
-      setCurriculumSelectedLessonId((current) => {
-        const stillListed = lessons.some((lesson) => String(lesson.id || '') === String(current || ''));
-        if (current && stillListed) return current;
-        return lessons.length ? String(lessons[0].id || '') : '';
-      });
 
-      const lessonIds = lessons.map((lesson) => String(lesson.id || '')).filter(Boolean).slice(0, 20);
+      const lessonIds = lessons.map((lesson) => String(lesson.id || '')).filter(Boolean);
       const docEntries = await Promise.all(lessonIds.map(async (lessonId) => {
         try {
           const docsRes = await listCurriculumLessonDocuments(lessonId);
@@ -338,85 +403,140 @@ export default function SchoolDashboard({ session, onLogout }) {
     }
   }
 
-  async function onCreateCurriculumLesson(e) {
-    e.preventDefault();
-    const selectedTeacherId = String(curriculumTeacherId || '').trim();
-    if (!selectedTeacherId) {
-      setNote('Select a teacher owner for this lesson.');
-      return;
-    }
-    if (!curriculumLessonTitle.trim() || !curriculumSubject.trim()) {
-      setNote('Subject and lesson title are required.');
-      return;
-    }
-
-    setCurriculumLessonSaving(true);
-    setNote('');
-    try {
-      const visibleClassNames = curriculumVisibleClasses
-        .split(',')
-        .map((v) => v.trim())
-        .filter(Boolean);
-      const res = await createCurriculumLesson({
-        teacherId: selectedTeacherId,
-        subject: curriculumSubject.trim(),
-        title: curriculumLessonTitle.trim(),
-        description: curriculumLessonDescription.trim() || null,
-        className: curriculumClassName !== 'all' ? curriculumClassName : null,
-        orderIndex: Number(curriculumLessonOrder) || 0,
-        isActive: true,
-        visibleClassNames: Array.from(new Set([...visibleClassNames, ...(curriculumClassName !== 'all' ? [curriculumClassName] : [])]))
-      });
-      if (res?.success === false) throw new Error(res?.error || 'Unable to create lesson');
-      setCurriculumLessonTitle('');
-      setCurriculumLessonDescription('');
-      setCurriculumLessonOrder(0);
-      setCurriculumVisibleClasses('');
-      setCurriculumSelectedLessonId(String(res?.lesson?.id || ''));
-      setNote(`Lesson "${res?.lesson?.title || 'Lesson'}" created.`);
-      await loadCurriculumPanel();
-    } catch (e2) {
-      setNote(e2?.message || 'Unable to create lesson.');
-    } finally {
-      setCurriculumLessonSaving(false);
-    }
+  function readFileAsDataUrl(file) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result || ''));
+      reader.onerror = () => reject(reader.error || new Error('Unable to read file'));
+      reader.readAsDataURL(file);
+    });
   }
 
-  async function onUploadCurriculumPdf(e) {
+  /**
+   * One action for the admin: create the lesson record and attach the PDF.
+   * Numbering, orchard chapters, flashcards and the tutor index all follow from
+   * this single upload, so there is no separate "create lesson" step.
+   */
+  async function onAddCurriculumLesson(e) {
     e.preventDefault();
-    if (!curriculumSelectedLessonId) {
-      setNote('Select a lesson first.');
+    if (!curriculumClassName) {
+      setNote('Select a class first.');
       return;
     }
-    const file = e.target?.pdf?.files?.[0];
-    if (!file) {
-      setNote('Choose a PDF file.');
+    if (!curriculumSubjectMatch) {
+      setNote(`No teacher is registered for "${curriculumSubjectTyped || 'that subject'}" in ${curriculumClassName}. Add the subject teacher for this class first, then upload the lesson.`);
+      return;
+    }
+    if (!curriculumLessonTitle.trim()) {
+      setNote('Enter a lesson name.');
+      return;
+    }
+    if (!curriculumPdfFile) {
+      setNote('Choose the lesson PDF to upload.');
       return;
     }
 
     setCurriculumPdfUploading(true);
     setNote('');
+    let createdLessonId = '';
     try {
-      const dataUrl = await new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => resolve(String(reader.result || ''));
-        reader.onerror = () => reject(reader.error || new Error('Unable to read file'));
-        reader.readAsDataURL(file);
-      });
+      const dataUrl = await readFileAsDataUrl(curriculumPdfFile);
 
-      const res = await uploadCurriculumLessonDocument(curriculumSelectedLessonId, {
-        fileName: file.name,
-        mimeType: file.type || 'application/pdf',
+      const created = await createCurriculumLesson({
+        teacherId: curriculumSubjectMatch.teacherId,
+        subject: curriculumSubjectMatch.subject,
+        title: curriculumLessonTitle.trim(),
+        description: curriculumLessonDescription.trim() || null,
+        className: curriculumClassName,
+        isActive: true,
+        visibleClassNames: [curriculumClassName]
+      });
+      if (created?.success === false) throw new Error(created?.error || 'Unable to create the lesson');
+      createdLessonId = String(created?.lesson?.id || '');
+      if (!createdLessonId) throw new Error('Lesson was created without an id');
+
+      const uploaded = await uploadCurriculumLessonDocument(createdLessonId, {
+        fileName: curriculumPdfFile.name,
+        mimeType: curriculumPdfFile.type || 'application/pdf',
         data: dataUrl
       });
-      if (res?.success === false) throw new Error(res?.error || 'Upload failed');
-      setNote(res?.error ? `Uploaded with warnings: ${res.error}` : 'PDF uploaded and extraction started.');
+      if (uploaded?.success === false) throw new Error(uploaded?.error || 'Upload failed');
+
+      const lessonNumber = created?.lesson?.order_index;
+      setNote(
+        uploaded?.error
+          ? `Lesson added with warnings: ${uploaded.error}`
+          : `Lesson ${lessonNumber || ''} "${curriculumLessonTitle.trim()}" added to ${curriculumSubjectMatch.subject} · ${curriculumClassName}.`.replace('  ', ' ')
+      );
+      setCurriculumLessonTitle('');
+      setCurriculumLessonDescription('');
+      setCurriculumPdfFile(null);
+      setCurriculumActiveSubject(curriculumSubjectMatch.subject);
       await loadCurriculumPanel();
-      e.target.reset();
     } catch (e2) {
-      setNote(e2?.message || 'Unable to upload PDF.');
+      // Never leave a lesson behind with no content — that would show up as an
+      // empty chapter in the orchard.
+      if (createdLessonId) {
+        try { await deleteCurriculumLesson(createdLessonId); } catch { /* best-effort */ }
+        await loadCurriculumPanel();
+      }
+      setNote(e2?.message || 'Unable to add the lesson.');
     } finally {
       setCurriculumPdfUploading(false);
+    }
+  }
+
+  async function onSaveCurriculumLessonEdit() {
+    const editing = curriculumEditing;
+    if (!editing?.lessonId) return;
+    if (!String(editing.title || '').trim()) {
+      setNote('Lesson name cannot be empty.');
+      return;
+    }
+    setCurriculumRowBusy(editing.lessonId);
+    try {
+      const res = await updateCurriculumLesson(editing.lessonId, {
+        title: editing.title.trim(),
+        description: String(editing.description || '').trim() || null
+      });
+      if (res?.success === false) throw new Error(res?.error || 'Unable to update the lesson');
+
+      if (editing.replacementFile) {
+        const dataUrl = await readFileAsDataUrl(editing.replacementFile);
+        for (const doc of curriculumDocumentsByLesson[String(editing.lessonId)] || []) {
+          await deleteCurriculumLessonDocument(editing.lessonId, doc.id);
+        }
+        const uploaded = await uploadCurriculumLessonDocument(editing.lessonId, {
+          fileName: editing.replacementFile.name,
+          mimeType: editing.replacementFile.type || 'application/pdf',
+          data: dataUrl
+        });
+        if (uploaded?.success === false) throw new Error(uploaded?.error || 'Replacement upload failed');
+      }
+
+      setNote(`Lesson "${editing.title.trim()}" updated.`);
+      setCurriculumEditing(null);
+      await loadCurriculumPanel();
+    } catch (e2) {
+      setNote(e2?.message || 'Unable to update the lesson.');
+    } finally {
+      setCurriculumRowBusy('');
+    }
+  }
+
+  async function onDeleteCurriculumLesson(lesson) {
+    if (!lesson?.id) return;
+    setCurriculumRowBusy(lesson.id);
+    try {
+      const res = await deleteCurriculumLesson(lesson.id);
+      if (res?.success === false) throw new Error(res?.error || 'Unable to delete the lesson');
+      setNote(`Lesson "${lesson.title}" deleted. Remaining lessons were renumbered.`);
+      setCurriculumConfirmDelete(null);
+      await loadCurriculumPanel();
+    } catch (e2) {
+      setNote(e2?.message || 'Unable to delete the lesson.');
+    } finally {
+      setCurriculumRowBusy('');
     }
   }
 
@@ -438,10 +558,14 @@ export default function SchoolDashboard({ session, onLogout }) {
         applyTeachers(loadedTeachers, tRes?.pagination || null);
         applyInvites(Array.isArray(iRes?.invites) ? iRes.invites : [], iRes?.pagination || null);
         applyStudents(Array.isArray(sRes?.students) ? sRes.students : [], sRes?.pagination || null);
-        if (!curriculumTeacherId && loadedTeachers[0]?.id) {
-          setCurriculumTeacherId(String(loadedTeachers[0].id));
-        }
-        await loadCurriculumPanel({ className: curriculumClassName, subject: curriculumSubject });
+        // Which subjects exist per class drives the whole curriculum panel, so
+        // it is loaded up front and the first class is pre-selected.
+        const classes = await loadCurriculumSubjectMap();
+        if (!active) return;
+        const firstClass = classes[0]?.className
+          || (Array.isArray(sRes?.students) ? sRes.students : []).map((s) => String(s?.className || '').trim()).filter(Boolean)[0]
+          || '';
+        if (firstClass) setCurriculumClassName(firstClass);
       } catch (e) {
         if (!active) return;
         setError(e?.message || 'Failed to load school dashboard data');
@@ -457,10 +581,14 @@ export default function SchoolDashboard({ session, onLogout }) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Switching class swaps the whole lesson list — and the subject tabs with it.
   useEffect(() => {
-    loadCurriculumPanel({ className: curriculumClassName, subject: curriculumSubject });
+    loadCurriculumPanel({ className: curriculumClassName });
+    setCurriculumActiveSubject('');
+    setCurriculumEditing(null);
+    setCurriculumConfirmDelete(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [curriculumClassName, curriculumSubject]);
+  }, [curriculumClassName]);
 
   useEffect(() => {
     let active = true;
@@ -849,90 +977,263 @@ export default function SchoolDashboard({ session, onLogout }) {
           ) : null}
         </article>
 
-        <article className="sd-card">
-          <h3>Curriculum Content (Admin)</h3>
-          <p>Create lesson records and upload lesson PDFs. Teachers can only manage visibility.</p>
-          <div className="invite-toolbar">
-            <input
-              className="invite-search"
-              value={curriculumSubject}
-              onChange={(e) => setCurriculumSubject(e.target.value)}
-              placeholder="Subject (e.g. Mathematics)"
-            />
-            <select
-              className="invite-filter"
-              value={curriculumClassName}
-              onChange={(e) => setCurriculumClassName(e.target.value)}
-            >
-              <option value="all">All classes</option>
-              {classOptions.map((className) => (
-                <option key={className} value={className}>{className}</option>
-              ))}
-            </select>
-            <button className="sd-inline-btn" type="button" onClick={() => loadCurriculumPanel()} disabled={curriculumLoading}>
-              {curriculumLoading ? 'Loading...' : 'Refresh'}
-            </button>
-          </div>
-
-          <form className="sd-form" onSubmit={onCreateCurriculumLesson}>
-            <select value={curriculumTeacherId} onChange={(e) => setCurriculumTeacherId(e.target.value)} required>
-              <option value="">Select lesson owner (teacher)</option>
-              {teachers.map((t) => (
-                <option key={t.id} value={t.id}>{t.name || t.email || t.loginId || t.id}</option>
-              ))}
-            </select>
-            <input value={curriculumLessonTitle} onChange={(e) => setCurriculumLessonTitle(e.target.value)} placeholder="Lesson title" required />
-            <textarea rows={3} value={curriculumLessonDescription} onChange={(e) => setCurriculumLessonDescription(e.target.value)} placeholder="Lesson description (optional)" />
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 140px', gap: 8 }}>
-              <input value={curriculumVisibleClasses} onChange={(e) => setCurriculumVisibleClasses(e.target.value)} placeholder="Visible classes (comma separated)" />
-              <input type="number" value={curriculumLessonOrder} onChange={(e) => setCurriculumLessonOrder(e.target.value)} placeholder="Order" />
+        <article className="sd-card eg-cc">
+          <div className="eg-cc-head">
+            <div>
+              <h3>Curriculum Content</h3>
+              <p>
+                Upload a lesson PDF and everything follows automatically — lesson numbering,
+                the student&apos;s orchard chapters, flashcard games and the AI tutor.
+              </p>
             </div>
-            <button type="submit" disabled={curriculumLessonSaving}>{curriculumLessonSaving ? 'Creating...' : 'Create Lesson'}</button>
-          </form>
-
-          <div style={{ marginTop: 12 }}>
-            <select
-              value={curriculumSelectedLessonId}
-              onChange={(e) => setCurriculumSelectedLessonId(e.target.value)}
-              className="invite-filter"
-              style={{ width: '100%' }}
-            >
-              <option value="">Select lesson to upload/view documents</option>
-              {curriculumLessons.map((lesson) => (
-                <option key={lesson.id} value={lesson.id}>
-                  {lesson.title} · {lesson.subject} · {lesson.class_name || 'All classes'}
-                </option>
-              ))}
-            </select>
+            <label className="eg-cc-class">
+              <span>Class</span>
+              <select
+                value={curriculumClassName}
+                onChange={(e) => setCurriculumClassName(e.target.value)}
+                disabled={!classOptions.length}
+              >
+                {!classOptions.length ? <option value="">No classes yet</option> : null}
+                {classOptions.map((className) => (
+                  <option key={className} value={className}>{className}</option>
+                ))}
+              </select>
+            </label>
           </div>
 
-          <form className="sd-form" onSubmit={onUploadCurriculumPdf} style={{ marginTop: 10 }}>
-            <input type="file" name="pdf" accept="application/pdf" />
-            <button type="submit" disabled={curriculumPdfUploading || !curriculumSelectedLessonId}>
-              {curriculumPdfUploading ? 'Uploading...' : 'Upload PDF to Lesson'}
-            </button>
-          </form>
+          {!classOptions.length ? (
+            <div className="eg-cc-empty">
+              <strong>No classes to work with yet</strong>
+              <p>Register a teacher and assign them the classes they handle. Those classes appear here.</p>
+            </div>
+          ) : (
+            <>
+              <form className="eg-cc-form" onSubmit={onAddCurriculumLesson}>
+                <div className="eg-cc-field">
+                  <label htmlFor="cc-subject">Subject</label>
+                  <input
+                    id="cc-subject"
+                    className={curriculumSubjectUnknown ? 'is-invalid' : (curriculumSubjectMatch ? 'is-valid' : '')}
+                    list="cc-subject-options"
+                    value={curriculumSubject}
+                    onChange={(e) => setCurriculumSubject(e.target.value)}
+                    placeholder={
+                      curriculumSubjectsForClass.length
+                        ? `e.g. ${curriculumSubjectsForClass[0].subject}`
+                        : 'No subjects registered for this class yet'
+                    }
+                    autoComplete="off"
+                  />
+                  <datalist id="cc-subject-options">
+                    {curriculumSubjectsForClass.map((s) => (
+                      <option key={s.subject} value={s.subject} />
+                    ))}
+                  </datalist>
 
-          {selectedCurriculumLesson && (
-            <p className="sd-hint" style={{ marginTop: 6 }}>
-              Uploading to: <strong>{selectedCurriculumLesson.title}</strong> ·{' '}
-              {selectedCurriculumLesson.subject} ·{' '}
-              {selectedCurriculumLesson.class_name || 'All classes'}
-            </p>
+                  {curriculumSubjectMatch ? (
+                    <p className="eg-cc-msg is-ok">
+                      <span aria-hidden="true">✓</span>
+                      <span>
+                        <strong>{curriculumSubjectMatch.teacherName}</strong> teaches {curriculumSubjectMatch.subject} for{' '}
+                        {curriculumClassName}. This lesson will be filed under them.
+                      </span>
+                    </p>
+                  ) : curriculumSubjectUnknown ? (
+                    <p className="eg-cc-msg is-error">
+                      <span aria-hidden="true">!</span>
+                      <span>
+                        No <strong>{curriculumSubjectTyped}</strong> teacher exists for {curriculumClassName}. Make sure the
+                        subject exists for that class first — register the subject teacher, then upload the lesson.
+                      </span>
+                    </p>
+                  ) : (
+                    <p className="eg-cc-msg">
+                      {curriculumSubjectsForClass.length ? (
+                        <>Available for {curriculumClassName}: {curriculumSubjectsForClass.map((s) => s.subject).join(', ')}</>
+                      ) : (
+                        <>No subjects are registered for {curriculumClassName} yet. Add a teacher for this class first.</>
+                      )}
+                    </p>
+                  )}
+                </div>
+
+                <div className="eg-cc-field">
+                  <label htmlFor="cc-title">Lesson name</label>
+                  <input
+                    id="cc-title"
+                    value={curriculumLessonTitle}
+                    onChange={(e) => setCurriculumLessonTitle(e.target.value)}
+                    placeholder="e.g. The Best Christmas Present in the World"
+                  />
+                </div>
+
+                <div className="eg-cc-field">
+                  <label htmlFor="cc-desc">Description <em>(optional)</em></label>
+                  <textarea
+                    id="cc-desc"
+                    rows={2}
+                    value={curriculumLessonDescription}
+                    onChange={(e) => setCurriculumLessonDescription(e.target.value)}
+                    placeholder="A short note for teachers about this lesson"
+                  />
+                </div>
+
+                <div className="eg-cc-field">
+                  <label htmlFor="cc-pdf">Lesson PDF</label>
+                  <input
+                    id="cc-pdf"
+                    type="file"
+                    accept="application/pdf"
+                    onChange={(e) => setCurriculumPdfFile(e.target.files?.[0] || null)}
+                  />
+                </div>
+
+                <div className="eg-cc-submit">
+                  <button
+                    type="submit"
+                    className="eg-cc-primary"
+                    disabled={curriculumPdfUploading || !curriculumSubjectMatch || !curriculumLessonTitle.trim() || !curriculumPdfFile}
+                  >
+                    {curriculumPdfUploading ? 'Adding lesson…' : 'Add Lesson'}
+                  </button>
+                  {curriculumNextNumber ? (
+                    <span className="eg-cc-nextnum">
+                      Saves as lesson <strong>{curriculumNextNumber}</strong> of {curriculumSubjectMatch.subject} · {curriculumClassName}
+                    </span>
+                  ) : null}
+                </div>
+              </form>
+
+              <div className="eg-cc-library">
+                <div className="eg-cc-library-head">
+                  <h4>Uploaded lessons · {curriculumClassName}</h4>
+                  {curriculumLoading ? <span className="eg-cc-loading">Loading…</span> : null}
+                </div>
+
+                {!curriculumSubjectGroups.length ? (
+                  <div className="eg-cc-empty">
+                    <strong>Nothing uploaded for {curriculumClassName} yet</strong>
+                    <p>Add the first lesson above and a subject tab will appear here.</p>
+                  </div>
+                ) : (
+                  <>
+                    <div className="eg-cc-tabs" role="tablist">
+                      {curriculumSubjectGroups.map((group) => {
+                        const active = curriculumVisibleGroup?.subject === group.subject;
+                        return (
+                          <button
+                            key={group.subject}
+                            type="button"
+                            role="tab"
+                            aria-selected={active}
+                            className={`eg-cc-tab ${active ? 'is-active' : ''}`}
+                            onClick={() => setCurriculumActiveSubject(group.subject)}
+                          >
+                            {group.subject}
+                            <span className="eg-cc-tab-count">{group.lessons.length}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+
+                    <ul className="eg-cc-lessons">
+                      {(curriculumVisibleGroup?.lessons || []).map((lesson, index) => {
+                        const docs = curriculumDocumentsByLesson[String(lesson.id)] || [];
+                        const isEditing = curriculumEditing?.lessonId === lesson.id;
+                        const isConfirming = curriculumConfirmDelete === lesson.id;
+                        const busyRow = curriculumRowBusy === lesson.id;
+                        return (
+                          <li key={lesson.id} className="eg-cc-lesson">
+                            <span className="eg-cc-num">{index + 1}</span>
+                            <div className="eg-cc-lesson-body">
+                              {isEditing ? (
+                                <div className="eg-cc-edit">
+                                  <input
+                                    value={curriculumEditing.title}
+                                    onChange={(e) => setCurriculumEditing((c) => ({ ...c, title: e.target.value }))}
+                                    placeholder="Lesson name"
+                                  />
+                                  <textarea
+                                    rows={2}
+                                    value={curriculumEditing.description}
+                                    onChange={(e) => setCurriculumEditing((c) => ({ ...c, description: e.target.value }))}
+                                    placeholder="Description (optional)"
+                                  />
+                                  <label className="eg-cc-replace">
+                                    <span>Replace PDF (optional)</span>
+                                    <input
+                                      type="file"
+                                      accept="application/pdf"
+                                      onChange={(e) => setCurriculumEditing((c) => ({ ...c, replacementFile: e.target.files?.[0] || null }))}
+                                    />
+                                  </label>
+                                  <div className="eg-cc-edit-actions">
+                                    <button type="button" className="eg-cc-primary" onClick={onSaveCurriculumLessonEdit} disabled={busyRow}>
+                                      {busyRow ? 'Saving…' : 'Save changes'}
+                                    </button>
+                                    <button type="button" className="eg-cc-ghost" onClick={() => setCurriculumEditing(null)} disabled={busyRow}>
+                                      Cancel
+                                    </button>
+                                  </div>
+                                </div>
+                              ) : (
+                                <>
+                                  <strong className="eg-cc-lesson-title">{lesson.title}</strong>
+                                  {lesson.description ? <p className="eg-cc-lesson-desc">{lesson.description}</p> : null}
+                                  <ul className="eg-cc-docs">
+                                    {docs.map((doc) => (
+                                      <li key={doc.id} className={`eg-cc-doc is-${doc.extraction_status || 'pending'}`}>
+                                        <a href={doc.file_url} target="_blank" rel="noreferrer">{doc.file_name}</a>
+                                        <span className="eg-cc-doc-status">{doc.extraction_status || 'pending'}</span>
+                                      </li>
+                                    ))}
+                                    {!docs.length ? <li className="eg-cc-doc is-missing">No PDF attached</li> : null}
+                                  </ul>
+                                </>
+                              )}
+                            </div>
+
+                            {!isEditing ? (
+                              <div className="eg-cc-actions">
+                                {isConfirming ? (
+                                  <>
+                                    <button type="button" className="eg-cc-danger" onClick={() => onDeleteCurriculumLesson(lesson)} disabled={busyRow}>
+                                      {busyRow ? 'Deleting…' : 'Confirm delete'}
+                                    </button>
+                                    <button type="button" className="eg-cc-ghost" onClick={() => setCurriculumConfirmDelete(null)} disabled={busyRow}>
+                                      Cancel
+                                    </button>
+                                  </>
+                                ) : (
+                                  <>
+                                    <button
+                                      type="button"
+                                      className="eg-cc-ghost"
+                                      onClick={() => setCurriculumEditing({
+                                        lessonId: lesson.id,
+                                        title: lesson.title || '',
+                                        description: lesson.description || '',
+                                        replacementFile: null
+                                      })}
+                                    >
+                                      Edit
+                                    </button>
+                                    <button type="button" className="eg-cc-ghost is-danger" onClick={() => setCurriculumConfirmDelete(lesson.id)}>
+                                      Delete
+                                    </button>
+                                  </>
+                                )}
+                              </div>
+                            ) : null}
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  </>
+                )}
+              </div>
+            </>
           )}
-
-          {curriculumSelectedLessonId ? (
-            <ul className="sd-list" style={{ marginTop: 10 }}>
-              {(curriculumDocumentsByLesson[String(curriculumSelectedLessonId)] || []).map((doc) => (
-                <li key={doc.id}>
-                  <strong>{doc.file_name}</strong> - {doc.extraction_status || 'pending'}
-                </li>
-              ))}
-              {!(curriculumDocumentsByLesson[String(curriculumSelectedLessonId)] || []).length ? (
-                <li>No documents uploaded for this lesson yet.</li>
-              ) : null}
-            </ul>
-          ) : null}
         </article>
 
         <article className="sd-card">

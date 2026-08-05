@@ -7,7 +7,6 @@ import {
   ACTIVITY_EFFECTS,
   clampPct,
   computeStage,
-  DEFAULT_CHAPTERS_PER_SUBJECT,
   healthFromWater,
   Milestones,
   seasonForDate,
@@ -19,6 +18,7 @@ import {
   SUBJECT_BY_KEY,
   treeStageFromCompletion,
   normalizeSubjectKey,
+  prettifySubjectName,
   subjectEntryFor,
 } from './orchard.constants';
 
@@ -64,6 +64,16 @@ export class OrchardService {
   private async updateRows(table: string, changes: any, eqs: Array<[string, any]>): Promise<void> {
     try {
       let q: any = this.db.client.from(table).update({ ...changes, updated_at: new Date().toISOString() });
+      for (const [k, v] of eqs) q = q.eq(k, v);
+      await q;
+    } catch {
+      /* non-fatal */
+    }
+  }
+
+  private async deleteRows(table: string, eqs: Array<[string, any]>): Promise<void> {
+    try {
+      let q: any = this.db.client.from(table).delete();
       for (const [k, v] of eqs) q = q.eq(k, v);
       await q;
     } catch {
@@ -190,7 +200,6 @@ export class OrchardService {
   // seed in the tree — for existing students and for anyone who registers later.
   private async chaptersFromCurriculum(subjectKey: string, className: string): Promise<any[]> {
     const lessons = await this.selectRows('lessons', []);
-    if (!lessons || !lessons.length) return [];
 
     // Which lessons are published to this class?
     const visibility = await this.selectRows('lesson_class_visibility', []);
@@ -211,24 +220,40 @@ export class OrchardService {
       .sort((a, b) => Number(a.order_index || 0) - Number(b.order_index || 0)
         || String(a.created_at || '').localeCompare(String(b.created_at || '')));
 
-    if (!matching.length) return [];
-
     const existing = await this.selectRows('orchard_chapters', [
       ['subject_key', subjectKey],
       ['class_name', className],
     ]);
     const byLessonId = new Map((existing || []).filter((c) => c.lesson_id).map((c) => [String(c.lesson_id), c]));
 
+    // Every chapter must be backed by a lesson that is still uploaded + visible.
+    // Anything else (legacy "Chapter N" filler, or a lesson that was deleted or
+    // unpublished from this class) is removed so the tree mirrors reality.
+    const liveLessonIds = new Set(matching.map((l) => String(l.id)));
+    for (const row of existing || []) {
+      if (row.lesson_id && liveLessonIds.has(String(row.lesson_id))) continue;
+      await this.updateRows('orchard_trees', { next_chapter_id: null }, [['next_chapter_id', row.id]]);
+      await this.deleteRows('chapter_growth', [['chapter_id', row.id]]);
+      await this.deleteRows('orchard_reviews', [['chapter_id', row.id]]);
+      await this.deleteRows('orchard_chapters', [['id', row.id]]);
+    }
+
+    if (!matching.length) return [];
+
+    // Titles come from the uploaded document/lesson. When a lesson has no title
+    // we fall back to "<Subject> <n>" (e.g. "Mathematics 3") — never "Chapter n".
+    const subjectLabel = prettifySubjectName(subjectKey);
     const chapters: any[] = [];
     let index = 0;
     for (const lesson of matching) {
       index += 1;
+      const title = String(lesson.title || '').trim() || `${subjectLabel} ${index}`;
       const found = byLessonId.get(String(lesson.id));
       if (found) {
-        // Keep the title in sync if the school renamed the chapter.
-        if (String(found.title || '') !== String(lesson.title || '')) {
-          await this.updateRows('orchard_chapters', { title: lesson.title, order_index: index, chapter_number: index }, [['id', found.id]]);
-          found.title = lesson.title;
+        // Keep the title/order in sync if the school renamed or reordered it.
+        if (String(found.title || '') !== title || Number(found.chapter_number || 0) !== index) {
+          await this.updateRows('orchard_chapters', { title, order_index: index, chapter_number: index }, [['id', found.id]]);
+          found.title = title;
         }
         found.order_index = index;
         found.chapter_number = index;
@@ -240,7 +265,7 @@ export class OrchardService {
           subject_key: subjectKey,
           class_name: className,
           chapter_number: index,
-          title: String(lesson.title || `Chapter ${index}`),
+          title,
           lesson_id: lesson.id,
           order_index: index,
           created_at: new Date().toISOString(),
@@ -251,36 +276,12 @@ export class OrchardService {
     return chapters;
   }
 
-  // ─── ensure chapters (seeds) exist for a subject + class ─────────────────────
+  // ─── chapters (seeds) for a subject + class ──────────────────────────────────
+  // Chapters are ALWAYS the uploaded curriculum — nothing more, nothing less.
+  // A subject with no uploaded lessons for this class legitimately has zero
+  // chapters and renders as an empty tree waiting for its first upload.
   private async ensureChapters(subjectKey: string, className: string): Promise<any[]> {
-    // 1) Real uploaded curriculum always wins — these are the actual chapters.
-    const fromCurriculum = await this.chaptersFromCurriculum(subjectKey, className);
-    if (fromCurriculum.length) return fromCurriculum;
-
-    // 2) Otherwise reuse any chapters already stored for this subject + class.
-    const chapters = await this.selectRows('orchard_chapters', [
-      ['subject_key', subjectKey],
-      ['class_name', className],
-    ]);
-    if (chapters && chapters.length) {
-      return chapters.sort((a, b) => Number(a.order_index || 0) - Number(b.order_index || 0));
-    }
-
-    // 3) Nothing uploaded yet → seed a starter set so the tree still exists.
-    const created: any[] = [];
-    for (let i = 1; i <= DEFAULT_CHAPTERS_PER_SUBJECT; i++) {
-      const row = {
-        subject_key: subjectKey,
-        class_name: className,
-        chapter_number: i,
-        title: `Chapter ${i}`,
-        order_index: i,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      };
-      created.push(await this.insertRow('orchard_chapters', row));
-    }
-    return created;
+    return this.chaptersFromCurriculum(subjectKey, className);
   }
 
   // ─── ensure per-student profile ──────────────────────────────────────────────
@@ -333,6 +334,20 @@ export class OrchardService {
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       });
+    }
+
+    // Curriculum changes (uploads, deletions) must be reflected on the existing
+    // tree too — otherwise a stale total keeps showing chapters that are gone.
+    if (tree && Number(tree.total_chapters || 0) !== chapters.length) {
+      const nextChapterId = chapters.some((c) => String(c.id) === String(tree.next_chapter_id))
+        ? tree.next_chapter_id
+        : (chapters[0] ? chapters[0].id : null);
+      await this.updateRows('orchard_trees', { total_chapters: chapters.length, next_chapter_id: nextChapterId }, [
+        ['student_id', studentId],
+        ['subject_key', subject.subject_key],
+      ]);
+      tree.total_chapters = chapters.length;
+      tree.next_chapter_id = nextChapterId;
     }
 
     // Ensure a chapter_growth row for every chapter.
@@ -554,7 +569,7 @@ export class OrchardService {
     const orderByChapter = new Map((chapters || []).map((c) => [String(c.id), Number(c.order_index || c.chapter_number || 0)]));
     const growth = (allGrowth || []).filter((g) => orderByChapter.has(String(g.chapter_id)));
 
-    const total = chapters.length || growth.length || 0;
+    const total = chapters.length;
     let rootsSum = 0;
     let completed = 0;
 
@@ -942,7 +957,9 @@ export class OrchardService {
         stageLabel: STAGE_LABEL[stage as keyof typeof STAGE_LABEL],
         level: t.level || 1,
         maxLevel: t.max_level || 7,
-        totalChapters: t.total_chapters || chapters.length,
+        // The uploaded curriculum is the single source of truth for the count —
+        // a subject with no uploaded lessons genuinely has 0 chapters.
+        totalChapters: chapters.length,
         completedChapters: t.completed_chapters || 0,
         progressPct: t.progress_pct || 0,
         rootsPct: t.roots_pct || 0,

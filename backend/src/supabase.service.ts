@@ -205,7 +205,27 @@ export class SupabaseService {
             };
             return builder;
           },
-          delete: async () => ({ data: null, error: null })
+          delete: () => {
+            ensureTable(table);
+            const builder: any = makeQueryBuilder(() => store[table] || []);
+            // Override then to remove the matched rows instead of returning them.
+            builder.then = (resolve: (v: any) => any) => {
+              const current = store[table] || [];
+              const applied = builder._apply(current);
+              const safeApplied = Array.isArray(applied) ? applied : [];
+              const matched = new Set(safeApplied.map((r: any) => String(r?.id ?? JSON.stringify(r))));
+              const removed: any[] = [];
+              store[table] = current.filter((r: any) => {
+                const key = String(r?.id ?? JSON.stringify(r));
+                if (!matched.has(key)) return true;
+                removed.push(r);
+                return false;
+              });
+              persistStore();
+              resolve({ data: removed, error: null });
+            };
+            return builder;
+          }
         }),
         rpc: async () => ({ data: null, error: null })
       };
