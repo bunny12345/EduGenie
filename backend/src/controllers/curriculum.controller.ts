@@ -70,36 +70,107 @@ export class CurriculumController {
   /**
    * The subject/teacher map the admin curriculum panel is built on.
    *
-   * A lesson may only be filed under a subject that already has a teacher for
-   * the chosen class, so the panel needs to know (a) which classes exist,
-   * (b) which subjects are taught in each, and (c) who teaches them — the
-   * teacher is shown back to the admin for confirmation before uploading.
+   * The list must match exactly what a student of that class sees in their own
+   * portal, so it is assembled from the same sources the student subject nav
+   * uses:
+   *   1. the subjects of the teachers registered for that class;
+   *   2. any subject that already has lessons filed for that class.
+   *
+   * There is no default baseline — a class with no registered teacher has no
+   * subjects at all, in the panel and in the student portal alike.
+   *
+   * A lesson still has to be filed under a real teacher, so each entry carries
+   * the teacher (when there is one) and a `canUpload` flag the panel uses to
+   * explain what is missing instead of hiding the subject.
    */
   @Get('subjects')
   async listSubjectsForClass(@Req() req: any, @Query('className') className?: string) {
     try {
       this.ensureSchoolAdmin(req);
       const schoolId = this.schoolIdFromReq(req);
-      const { teachers } = await this.studentAuth.listTeachersBySchool(schoolId);
+      const [{ teachers }, studentsRes, lessonPairs] = await Promise.all([
+        this.studentAuth.listTeachersBySchool(schoolId),
+        this.studentAuth.listStudentsByScope({ schoolId }),
+        this.curriculum.classSubjectsFromLessons(schoolId)
+      ]);
 
-      const byClass = new Map<string, Array<{ subject: string; teacherId: string; teacherName: string }>>();
+      type SubjectEntry = {
+        subject: string;
+        teacherId: string;
+        teacherName: string;
+        source: 'teacher' | 'lesson';
+        canUpload: boolean;
+      };
+      const byClass = new Map<string, Map<string, SubjectEntry>>();
+      const classFor = (raw: any) => {
+        const cls = String(raw || '').trim();
+        if (!cls) return null;
+        if (!byClass.has(cls)) byClass.set(cls, new Map());
+        return byClass.get(cls)!;
+      };
+
+      // (1) Every class the school knows about — from teacher assignments, from
+      // enrolled students and from already-uploaded lessons. A class starts out
+      // empty; only a registered teacher gives it a subject.
+      const knownClasses = new Set<string>();
+      for (const t of teachers || []) {
+        for (const g of (t as any).grades || []) {
+          const cls = String(g || '').trim();
+          if (cls) knownClasses.add(cls);
+        }
+      }
+      for (const s of (studentsRes as any)?.students || []) {
+        const cls = String((s as any).className || (s as any).class_name || '').trim();
+        if (cls) knownClasses.add(cls);
+      }
+      for (const pair of lessonPairs) knownClasses.add(pair.className);
+
+      for (const cls of knownClasses) classFor(cls);
+
+      // (2) Teacher-registered subjects — the only thing that makes a subject
+      // exist for a class, and the only thing that makes it uploadable.
+      const allSubjects: Array<{ subject: string; teacherId: string; teacherName: string; classes: string[] }> = [];
       for (const t of teachers || []) {
         const subject = String((t as any).subject || '').trim();
         if (!subject || subject.toLowerCase() === 'general') continue;
-        for (const grade of (t as any).grades || []) {
-          const cls = String(grade || '').trim();
-          if (!cls) continue;
-          if (!byClass.has(cls)) byClass.set(cls, []);
-          const list = byClass.get(cls)!;
-          if (list.some((s) => s.subject.toLowerCase() === subject.toLowerCase())) continue;
-          list.push({ subject, teacherId: String((t as any).id || ''), teacherName: String((t as any).name || 'Teacher') });
+        const teacherId = String((t as any).id || '');
+        const teacherName = String((t as any).name || 'Teacher');
+        const classes = ((t as any).grades || []).map((g: any) => String(g || '').trim()).filter(Boolean);
+        allSubjects.push({ subject, teacherId, teacherName, classes });
+        for (const cls of classes) {
+          const bucket = classFor(cls)!;
+          const key = subject.toLowerCase();
+          const existing = bucket.get(key);
+          if (existing?.canUpload) continue; // first registered teacher wins
+          bucket.set(key, {
+            subject: existing?.subject || subject,
+            teacherId,
+            teacherName,
+            source: 'teacher',
+            canUpload: true
+          });
         }
+      }
+
+      // (3) Subjects that only exist because lessons were uploaded for them
+      // (e.g. the teacher was later removed) — kept so those PDFs stay reachable.
+      for (const pair of lessonPairs) {
+        const bucket = classFor(pair.className)!;
+        const key = pair.subject.toLowerCase();
+        if (bucket.has(key)) continue;
+        bucket.set(key, {
+          subject: pair.subject,
+          teacherId: '',
+          teacherName: '',
+          source: 'lesson',
+          canUpload: false
+        });
       }
 
       const classes = Array.from(byClass.entries())
         .map(([cls, subjects]) => ({
           className: cls,
-          subjects: subjects.sort((a, b) => a.subject.localeCompare(b.subject))
+          subjects: Array.from(subjects.values()).sort((a, b) => a.subject.localeCompare(b.subject))
         }))
         .sort((a, b) => a.className.localeCompare(b.className, undefined, { numeric: true }));
 
@@ -107,6 +178,7 @@ export class CurriculumController {
       return {
         success: true,
         classes,
+        allSubjects: allSubjects.sort((a, b) => a.subject.localeCompare(b.subject)),
         className: wanted,
         subjects: wanted
           ? (classes.find((c) => c.className.toLowerCase() === wanted.toLowerCase())?.subjects || [])

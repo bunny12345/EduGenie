@@ -102,20 +102,21 @@ export class OrchardService {
   }
 
   // ─── which subjects does this student actually have? ─────────────────────────
-  // Mirrors the student portal's subject nav so the orchard only shows trees for
-  // subjects that are actually registered/present for the student. The portal
-  // (StudentDashboard) builds its subject list from a small default baseline plus
-  // whatever subjects appear in the student's homework, tests and progress — which
-  // are driven by the teacher(s) registered for their class. We resolve the same
-  // sources here and keep only canonical subjects that exist in the tree catalog.
+  // A subject only exists for a student once the school registers a teacher for
+  // it in that student's class. There is no default baseline: a class with no
+  // teachers has no subjects, and therefore no orchard trees, no flashcard
+  // decks, no tutor lessons and no progress rows. The student portal's subject
+  // nav resolves the same sources, so the two always agree.
   async resolveStudentSubjectKeys(studentId: string): Promise<string[]> {
-    // Baseline mirrors StudentDashboard DEFAULT_SUBJECTS = ['Science','Mathematics','Social'].
-    const names = new Set<string>(['Science', 'Mathematics', 'Social']);
+    const names = new Set<string>();
 
     // Subjects registered for the student's class via their teacher(s). This is
     // what makes a freshly-registered subject (e.g. English or Biology) appear
     // with every feature even before any homework/test exists for it yet — for
     // any student in the class the moment a teacher registers that subject.
+    // This is the ONLY source: leftover homework, test attempts or progress
+    // metrics must never resurrect a subject whose teacher is gone, otherwise a
+    // class could show a subject nobody teaches.
     try {
       const { schoolId, className } = await this.resolveStudentContext(studentId);
       if (schoolId && className) {
@@ -129,19 +130,6 @@ export class OrchardService {
       /* class-teacher lookup is best-effort */
     }
 
-    // Subjects seen in the student's own homework / tests / progress metrics.
-    for (const [table, field] of [
-      ['homework', 'subject'],
-      ['test_attempts', 'subject'],
-      ['progress_metrics', 'subject'],
-    ] as Array<[string, string]>) {
-      const rows = await this.selectRows(table, [['student_id', studentId]]);
-      for (const r of rows || []) {
-        const s = r[field] || r.metric_key;
-        if (s) names.add(String(s));
-      }
-    }
-
     // Normalize free-text names to canonical keys. Base subjects map to the
     // fixed catalog; any other registered subject becomes its own dynamic key
     // so it is represented everywhere (orchard, progress, games) too.
@@ -150,8 +138,8 @@ export class OrchardService {
       const k = normalizeSubjectKey(n);
       if (k) keys.add(k);
     }
-    // Safety net: never show an empty orchard — fall back to the portal defaults.
-    if (!keys.size) ['mathematics', 'science', 'social'].forEach((k) => keys.add(k));
+    // No fallback on purpose: an empty list means "this class has no subjects
+    // yet", which every caller renders as an empty state.
     return Array.from(keys);
   }
 

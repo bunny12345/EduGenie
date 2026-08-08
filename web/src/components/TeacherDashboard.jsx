@@ -10,7 +10,6 @@ import {
   resyncTeacherHomework,
   bulkUpdateTeacherStudentsClass,
   cloneTest,
-  createTeacherStudentInvite,
   createTest,
   deleteTest,
   getTeacherAnnouncements,
@@ -26,13 +25,9 @@ import {
   listCurriculumLessonDocuments,
   listCurriculumLessons,
   getTests,
-  listTeacherStudentInvites,
   listTestQuestions,
   postTeacherAnnouncement,
-  registerTeacherStudent,
   setCurriculumLessonVisibility,
-  resendTeacherStudentInvite,
-  revokeTeacherStudentInvite,
   updateTest,
   deleteTestQuestion,
   updateTestQuestion
@@ -43,16 +38,6 @@ function shortDate(value) {
   const dt = new Date(value);
   if (Number.isNaN(dt.getTime())) return 'TBD';
   return dt.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
-}
-
-function inviteStatusLabel(invite) {
-  const status = String(invite?.status || '').toLowerCase();
-  if (status) return status;
-  if (invite?.revoked) return 'revoked';
-  if (invite?.consumed) return 'used';
-  const expiresAt = invite?.expiresAt ? new Date(invite.expiresAt).getTime() : null;
-  if (expiresAt && Date.now() > expiresAt) return 'expired';
-  return 'active';
 }
 
 const emptyProgress = { subjectScores: [], timeline: [] };
@@ -151,7 +136,6 @@ export default function TeacherDashboard({ session, onLogout }) {
   const [panelLoading, setPanelLoading] = useState({
     summary: false,
     students: false,
-    invites: false,
     progress: false,
     delivery: false,
     activity: false,
@@ -165,7 +149,6 @@ export default function TeacherDashboard({ session, onLogout }) {
   const [panelError, setPanelError] = useState({
     summary: '',
     students: '',
-    invites: '',
     progress: '',
     delivery: '',
     activity: '',
@@ -197,20 +180,9 @@ export default function TeacherDashboard({ session, onLogout }) {
   const [announcementTitle, setAnnouncementTitle] = useState('');
   const [announcementMessage, setAnnouncementMessage] = useState('');
 
-  const [studentInvites, setStudentInvites] = useState([]);
-  const [studentInviteSearch, setStudentInviteSearch] = useState('');
-  const [studentInviteStatusFilter, setStudentInviteStatusFilter] = useState('all');
-  const [studentInvitePage, setStudentInvitePage] = useState(1);
-  const [studentInviteTotalPages, setStudentInviteTotalPages] = useState(1);
-
-  const [studentName, setStudentName] = useState('');
-  const [studentClassName, setStudentClassName] = useState('Class 8');
+  // Student accounts are created and managed by the school admin, so the
+  // teacher portal only reads the roster — no registration or invite state here.
   const [bulkClassName, setBulkClassName] = useState('Class 8');
-  const [studentLoginId, setStudentLoginId] = useState('');
-  const [studentPassword, setStudentPassword] = useState('');
-  const [latestCreatedAccount, setLatestCreatedAccount] = useState(null);
-
-  const [studentInviteLink, setStudentInviteLink] = useState('');
 
   const [assignTitle, setAssignTitle] = useState('');
   const [assignSubject, setAssignSubject] = useState(session?.subject || 'Mathematics');
@@ -294,8 +266,6 @@ export default function TeacherDashboard({ session, onLogout }) {
   const [curriculumSelectedLessonId, setCurriculumSelectedLessonId] = useState('');
   const [curriculumVisibilitySaving, setCurriculumVisibilitySaving] = useState('');
 
-  const STUDENT_INVITES_PER_PAGE = 5;
-
   const setPanelLoadingKey = (key, value) => {
     setPanelLoading((prev) => ({ ...prev, [key]: value }));
   };
@@ -355,28 +325,6 @@ export default function TeacherDashboard({ session, onLogout }) {
       setStudents([]);
     } finally {
       setPanelLoadingKey('students', false);
-    }
-  }
-
-  async function loadInvitesPanel(params) {
-    setPanelLoadingKey('invites', true);
-    setPanelErrorKey('invites', '');
-    try {
-      const invRes = await listTeacherStudentInvites(params || {
-        q: studentInviteSearch,
-        status: studentInviteStatusFilter,
-        page: studentInvitePage,
-        limit: STUDENT_INVITES_PER_PAGE
-      });
-      const loadedInvites = Array.isArray(invRes?.invites) ? invRes.invites : [];
-      setStudentInvites(loadedInvites);
-      setStudentInviteTotalPages(Math.max(1, Number(invRes?.pagination?.totalPages || 1)));
-    } catch (e) {
-      setPanelErrorKey('invites', e?.message || 'Unable to load student invites.');
-      setStudentInvites([]);
-      setStudentInviteTotalPages(1);
-    } finally {
-      setPanelLoadingKey('invites', false);
     }
   }
 
@@ -836,7 +784,6 @@ export default function TeacherDashboard({ session, onLogout }) {
       await Promise.all([
         loadSummaryPanel(),
         loadStudentsPanel(''),
-        loadInvitesPanel({ page: 1, limit: STUDENT_INVITES_PER_PAGE }),
         loadAnnouncementsPanel(),
         loadTestsPanel(),
         getTeacherProfile().then((res) => { if (active && res?.profile) setTeacherProfile(res.profile); }).catch(() => {}),
@@ -898,25 +845,9 @@ export default function TeacherDashboard({ session, onLogout }) {
   }, [historyReady]);
 
   useEffect(() => {
-    if (studentInvitePage > studentInviteTotalPages) {
-      setStudentInvitePage(studentInviteTotalPages);
-    }
-  }, [studentInvitePage, studentInviteTotalPages]);
-
-  useEffect(() => {
     loadStudentsPanel(studentSearch, studentClassFilter);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [studentSearch, studentClassFilter]);
-
-  useEffect(() => {
-    loadInvitesPanel({
-      q: studentInviteSearch,
-      status: studentInviteStatusFilter,
-      page: studentInvitePage,
-      limit: STUDENT_INVITES_PER_PAGE
-    });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [studentInviteSearch, studentInviteStatusFilter, studentInvitePage]);
 
   useEffect(() => {
     loadProgressPanel(selectedStudentId);
@@ -1756,118 +1687,6 @@ export default function TeacherDashboard({ session, onLogout }) {
     }
   }
 
-  async function onRegisterStudent(e) {
-    e.preventDefault();
-    if (!studentName.trim() || !studentLoginId.trim() || !studentPassword.trim()) {
-      setNote('Student name, login ID and password are required.');
-      return;
-    }
-
-    setBusy('register');
-    setNote('');
-    try {
-      const res = await registerTeacherStudent({
-        name: studentName,
-        className: studentClassName,
-        loginId: studentLoginId,
-        password: studentPassword
-      });
-      if (!res?.success || !res?.student) {
-        setNote(res?.error || 'Student registration failed.');
-        return;
-      }
-
-      setLatestCreatedAccount({
-        name: res.student.name,
-        className: res.student.className,
-        studentId: res.student.id,
-        loginId: res.student.loginId,
-        password: studentPassword
-      });
-
-      setStudentName('');
-      setStudentLoginId('');
-      setStudentPassword('');
-      setNote('Student account created. Share the login ID and password manually with the student.');
-      await Promise.all([loadStudentsPanel(studentSearch), loadSummaryPanel()]);
-    } catch (e2) {
-      setNote('Unable to register student right now.');
-    } finally {
-      setBusy('');
-    }
-  }
-
-  async function onCreateStudentInvite() {
-    setBusy('student-invite');
-    setNote('');
-    try {
-      const res = await createTeacherStudentInvite({ expiresHours: 72 });
-      if (!res?.success) {
-        setNote(res?.error || 'Could not create student invite.');
-        return;
-      }
-
-      setStudentInviteLink(res?.invite?.link || '');
-      setStudentInvitePage(1);
-      await Promise.all([
-        loadInvitesPanel({ q: studentInviteSearch, status: studentInviteStatusFilter, page: 1, limit: STUDENT_INVITES_PER_PAGE }),
-        loadSummaryPanel()
-      ]);
-      setNote('Student self-registration link created. Share it with student.');
-    } catch (e2) {
-      setNote('Unable to create student invite right now.');
-    } finally {
-      setBusy('');
-    }
-  }
-
-  async function onRevokeStudentInvite(token) {
-    if (!token) return;
-
-    setBusy(`student-revoke-${token}`);
-    setNote('');
-    try {
-      const res = await revokeTeacherStudentInvite(token);
-      if (!res?.success) {
-        setNote(res?.error || 'Could not revoke invite.');
-        return;
-      }
-
-      await Promise.all([loadInvitesPanel(), loadSummaryPanel()]);
-      setNote('Student invite revoked.');
-    } catch (e) {
-      setNote('Unable to revoke student invite right now.');
-    } finally {
-      setBusy('');
-    }
-  }
-
-  async function onResendStudentInvite(token) {
-    if (!token) return;
-
-    setBusy(`student-resend-${token}`);
-    setNote('');
-    try {
-      const res = await resendTeacherStudentInvite(token, { expiresHours: 72 });
-      if (!res?.success || !res?.invite) {
-        setNote(res?.error || 'Could not resend invite.');
-        return;
-      }
-
-      setStudentInviteLink(res.invite.link || '');
-      setStudentInvitePage(1);
-      await Promise.all([
-        loadInvitesPanel({ q: studentInviteSearch, status: studentInviteStatusFilter, page: 1, limit: STUDENT_INVITES_PER_PAGE }),
-        loadSummaryPanel()
-      ]);
-      setNote('New student invite generated. Previous link was revoked.');
-    } catch (e) {
-      setNote('Unable to resend student invite right now.');
-    } finally {
-      setBusy('');
-    }
-  }
-
   function exportCSV(filename, headers, rows) {
     const lines = [
       headers.join(','),
@@ -1903,8 +1722,7 @@ export default function TeacherDashboard({ session, onLogout }) {
   const navItems = [
     { key: 'teacher', label: 'Teacher', icon: '📋' },
     { key: 'curriculum', label: 'Curriculum', icon: '📚' },
-    { key: 'students', label: 'Students', icon: '👤' },
-    { key: 'registration', label: 'Registration', icon: '✏️' }
+    { key: 'students', label: 'Students', icon: '👤' }
   ];
 
   return (
@@ -3402,102 +3220,6 @@ export default function TeacherDashboard({ session, onLogout }) {
                   </table>
                 </div>
               ) : (!panelLoading.testAttempts ? <p className="td-empty">No test attempts recorded yet.</p> : null)}
-            </article>
-          </section>
-        )}
-
-        {/* ══════════ REGISTRATION SECTION ══════════ */}
-        {activeSection === 'registration' && (
-          <section className="td-grid">
-            <article className="td-card">
-              <h3>Register Student Account</h3>
-              <p>Only teachers can create student credentials. Share them manually with the student.</p>
-              <form className="td-form" onSubmit={onRegisterStudent}>
-                <input value={studentName} onChange={(e) => setStudentName(e.target.value)} placeholder="Student name" />
-                <input value={studentClassName} onChange={(e) => setStudentClassName(e.target.value)} placeholder="Class (ex: Class 8)" />
-                <input value={studentLoginId} onChange={(e) => setStudentLoginId(e.target.value)} placeholder="Login ID (ex: aarav.8a)" />
-                <input type="password" value={studentPassword} onChange={(e) => setStudentPassword(e.target.value)} placeholder="Temporary password" />
-                <button type="submit" disabled={busy === 'register'}>{busy === 'register' ? 'Creating...' : 'Create Student Login'}</button>
-              </form>
-              {latestCreatedAccount ? (
-                <div className="td-credential-box">
-                  <strong>Share these details with student:</strong>
-                  <p>Name: {latestCreatedAccount.name}</p>
-                  <p>Class: {latestCreatedAccount.className}</p>
-                  <p>Student ID: {latestCreatedAccount.studentId}</p>
-                  <p>Login ID: {latestCreatedAccount.loginId}</p>
-                  <p>Password: {latestCreatedAccount.password}</p>
-                </div>
-              ) : null}
-              <div className="td-invite-box">
-                <button className="td-form-invite-btn" onClick={onCreateStudentInvite} disabled={busy === 'student-invite'}>
-                  {busy === 'student-invite' ? 'Generating...' : 'Generate Student Invite Link'}
-                </button>
-                {studentInviteLink ? <p>{studentInviteLink}</p> : null}
-              </div>
-            </article>
-
-            <article className="td-card">
-              <h3>Student Invite History</h3>
-              <p>View, resend, or revoke self-registration links sent to students.</p>
-              <div className="invite-toolbar">
-                <input
-                  className="invite-search"
-                  value={studentInviteSearch}
-                  onChange={(e) => { setStudentInviteSearch(e.target.value); setStudentInvitePage(1); }}
-                  placeholder="Search by token or role"
-                />
-                <select
-                  className="invite-filter"
-                  value={studentInviteStatusFilter}
-                  onChange={(e) => { setStudentInviteStatusFilter(e.target.value); setStudentInvitePage(1); }}
-                >
-                  <option value="all">All statuses</option>
-                  <option value="active">Active</option>
-                  <option value="used">Used</option>
-                  <option value="revoked">Revoked</option>
-                  <option value="expired">Expired</option>
-                </select>
-              </div>
-              {panelLoading.invites ? <p className="td-empty">Loading invites...</p> : null}
-              {panelError.invites ? <p className="td-empty">{panelError.invites}</p> : null}
-              <ul className="td-announcements">
-                {(studentInvites || []).map((i) => (
-                  <li key={i.token}>
-                    <div className="td-invite-row">
-                      <div>
-                        <strong>{i.role} invite</strong>
-                        <p>Expires: {i.expiresAt ? shortDate(i.expiresAt) : 'TBD'}</p>
-                      </div>
-                      <span className={`invite-badge ${inviteStatusLabel(i)}`}>{inviteStatusLabel(i)}</span>
-                    </div>
-                    <div className="td-invite-actions">
-                      <button
-                        type="button"
-                        className="td-inline-btn"
-                        onClick={() => onResendStudentInvite(i.token)}
-                        disabled={busy === `student-resend-${i.token}` || inviteStatusLabel(i) === 'used'}
-                      >
-                        {busy === `student-resend-${i.token}` ? 'Resending...' : 'Resend'}
-                      </button>
-                      <button
-                        type="button"
-                        className="td-inline-btn danger"
-                        onClick={() => onRevokeStudentInvite(i.token)}
-                        disabled={busy === `student-revoke-${i.token}` || inviteStatusLabel(i) !== 'active'}
-                      >
-                        {busy === `student-revoke-${i.token}` ? 'Revoking...' : 'Revoke'}
-                      </button>
-                    </div>
-                  </li>
-                ))}
-                {!panelLoading.invites && !studentInvites.length ? <p className="td-empty">No student invites match the current filters.</p> : null}
-              </ul>
-              <div className="invite-pager">
-                <button type="button" className="td-inline-btn" onClick={() => setStudentInvitePage((p) => Math.max(1, p - 1))} disabled={studentInvitePage === 1}>Previous</button>
-                <span>Page {studentInvitePage} of {studentInviteTotalPages}</span>
-                <button type="button" className="td-inline-btn" onClick={() => setStudentInvitePage((p) => Math.min(studentInviteTotalPages, p + 1))} disabled={studentInvitePage >= studentInviteTotalPages}>Next</button>
-              </div>
             </article>
           </section>
         )}

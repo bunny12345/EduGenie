@@ -236,8 +236,6 @@ function Sparkline({ values }) {
   );
 }
 
-const DEFAULT_SUBJECTS = ['Science', 'Mathematics', 'Social'];
-
 export default function StudentDashboard({ studentId = 'test', onLogout }) {
   // Navigation state
   const [activeView, setActiveView] = useState('home'); // 'home' or subject name
@@ -282,7 +280,7 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
   const [learningTimeline, setLearningTimeline] = useState([]);
   const [settings, setSettings] = useState({ prefs: {} });
   const [chatHistory, setChatHistory] = useState([]);
-  const [tutorSubject, setTutorSubject] = useState('Science');
+  const [tutorSubject, setTutorSubject] = useState('');
   const [tutorLessons, setTutorLessons] = useState([]);
   const [selectedTutorLessonId, setSelectedTutorLessonId] = useState('');
   const [selectedTutorLesson, setSelectedTutorLesson] = useState(null);
@@ -319,7 +317,6 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
   const [chatReadAloudSpeed, setChatReadAloudSpeed] = useState(1);
   const [chatVoicePlayId, setChatVoicePlayId] = useState('');
   const [chatVoiceLoadingId, setChatVoiceLoadingId] = useState('');
-  const welcomedLessonsRef = React.useRef(new Set());
   const localVoiceCacheRef = React.useRef({});
   const localAudioRef = React.useRef(null);
   const localAudioUrlRef = React.useRef('');
@@ -466,20 +463,19 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
 
   // Get unique subject list
   const subjects = useMemo(() => {
-    const seen = new Set(DEFAULT_SUBJECTS);
-    // Subjects of the teachers assigned to this student's class. This makes any
-    // newly-registered subject (e.g. Biology, English) appear as a functional
-    // tab as soon as a teacher is registered for it — even before any homework
-    // has been assigned — mirroring how Mathematics/Science/Social behave.
+    // A subject exists for this student only because the school registered a
+    // teacher for it in their class — there is no default set. A class with no
+    // teachers therefore has no subjects, and no subject-scoped feature (tutor,
+    // orchard, games, progress) has anything to show. Leftover homework, tests
+    // or progress rows never add a subject back: that would show a subject the
+    // class no longer has a teacher for. The backend resolves the same source.
+    const seen = new Set();
     (Array.isArray(dashboard?.classTeachers) ? dashboard.classTeachers : []).forEach((t) => {
       const subj = String(t?.subject || '').trim();
       if (subj && subj.toLowerCase() !== 'general') seen.add(subj);
     });
-    homeworkBySubject.forEach((_, subj) => seen.add(subj));
-    testsBySubject.forEach((_, subj) => seen.add(subj));
-    progressBySubject.forEach((_, subj) => seen.add(subj));
     return Array.from(seen).sort();
-  }, [dashboard, homeworkBySubject, testsBySubject, progressBySubject]);
+  }, [dashboard]);
 
   // Calculate notification count for each subject
   const getSubjectNotifications = (subject) => {
@@ -703,6 +699,27 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
       : `conv-${studentId}:subject-${normalizedSubject}:all-lessons`;
   }
 
+  // Earlier builds auto-sent a scripted "welcome me and teach this lesson"
+  // prompt the moment a lesson was picked. That behaviour is gone, but the
+  // prompt and its reply are still stored in old conversations, so they are
+  // filtered out on load — the tutor now only answers what the student asks.
+  const AUTO_STARTER_RE = /^I selected the lesson ".*"( in .+)?\.\s*Please welcome me and teach in a very simple way\./i;
+
+  function withoutAutoStarters(messages) {
+    const rows = safeArray(messages);
+    const kept = [];
+    for (let i = 0; i < rows.length; i += 1) {
+      const text = String(rows[i]?.text || rows[i]?.message || '').trim();
+      if (rows[i]?.role !== 'ai' && AUTO_STARTER_RE.test(text)) {
+        // Drop the scripted prompt together with the answer it produced.
+        if (rows[i + 1] && rows[i + 1].role === 'ai') i += 1;
+        continue;
+      }
+      kept.push(rows[i]);
+    }
+    return kept;
+  }
+
   async function loadChatPanel(conversationIdOverride) {
     setPanelLoadingKey('chat', true);
     setPanelErrorKey('chat', '');
@@ -710,7 +727,7 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
       const fallbackConversationId = getCurrentTutorConversationId();
       const conversationId = String(conversationIdOverride || fallbackConversationId || `conv-${studentId}`);
       const res = await getChatHistory(studentId, conversationId);
-      setChatHistory(safeArray(res?.messages));
+      setChatHistory(withoutAutoStarters(res?.messages));
       setChatFollowups([]);
     } catch (e) {
       setPanelErrorKey('chat', e?.message || 'Unable to load chat history.');
@@ -752,9 +769,13 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
   }, [studentId, tutorSubject, selectedTutorLesson?.id]);
 
   useEffect(() => {
-    if (subjects.length && !subjects.includes(tutorSubject)) {
-      setTutorSubject(subjects[0] || 'Science');
+    // Follow the class's actual subjects: pick the first one, and clear the
+    // selection entirely when the class has none.
+    if (!subjects.length) {
+      if (tutorSubject) setTutorSubject('');
+      return;
     }
+    if (!subjects.includes(tutorSubject)) setTutorSubject(subjects[0]);
   }, [subjects, tutorSubject]);
 
   useEffect(() => {
@@ -769,13 +790,12 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
       loadDashboardPanel();
       loadHomeworkPanel();
       loadTestsPanel();
+      // Progress has to poll too, otherwise the subject score cards keep
+      // showing the numbers from page load while the student keeps studying.
+      loadProgressPanel();
     }, 20000);
     return () => clearInterval(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [studentId]);
-
-  useEffect(() => {
-    welcomedLessonsRef.current = new Set();
   }, [studentId]);
 
   useEffect(() => {
@@ -1600,9 +1620,8 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [chatHistory, chatLoading]);
 
-  async function onSendTutorMessage(overrideMsg, options = {}) {
+  async function onSendTutorMessage(overrideMsg) {
     const msg = (typeof overrideMsg === 'string' ? overrideMsg : chatInput).trim();
-    const silentUser = Boolean(options?.silentUser);
     if (!msg && !chatImages.length) return;
     setChatFollowups([]);
     setChatImageError('');
@@ -1615,7 +1634,7 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
       }))
       .filter((m) => m.content);
     // Optimistically add user message
-    const tempUserMsg = silentUser ? null : {
+    const tempUserMsg = {
       id: `tmp-u-${Date.now()}`,
       role: 'user',
       text: msg || (chatImages.length ? `Please explain these ${chatImages.length} image${chatImages.length === 1 ? '' : 's'}.` : ''),
@@ -1628,9 +1647,7 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
       lessonTitle: selectedTutorLesson?.title || '',
       lessonSubject: selectedTutorLesson?.subject || tutorSubject,
     };
-    if (tempUserMsg) {
-      setChatHistory((prev) => [...safeArray(prev), tempUserMsg]);
-    }
+    setChatHistory((prev) => [...safeArray(prev), tempUserMsg]);
 
     const abortController = typeof AbortController !== 'undefined' ? new AbortController() : null;
     chatRequestAbortRef.current = abortController;
@@ -1661,8 +1678,8 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
       // re-fetching from Supabase (which may return empty if persistence failed).
       const aiMsg = { id: `ai-${Date.now()}`, role: 'ai', text: res.reply || '…', ts: new Date().toISOString() };
       setChatHistory((prev) => [
-        ...safeArray(prev).filter((m) => !tempUserMsg || m.id !== tempUserMsg.id),
-        ...(tempUserMsg ? [{ ...tempUserMsg }] : []),
+        ...safeArray(prev).filter((m) => m.id !== tempUserMsg.id),
+        { ...tempUserMsg },
         aiMsg,
       ]);
       // Show follow-up suggestions if provided
@@ -1680,8 +1697,8 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
       // Show error inline as a bot message
       const errMsg = { id: `tmp-err-${Date.now()}`, role: 'ai', text: `⚠️ ${e?.message || 'Unable to reach AI tutor right now.'}`, ts: new Date().toISOString() };
       setChatHistory((prev) => [
-        ...safeArray(prev).filter((m) => !tempUserMsg || m.id !== tempUserMsg.id),
-        ...(tempUserMsg ? [tempUserMsg] : []),
+        ...safeArray(prev).filter((m) => m.id !== tempUserMsg.id),
+        tempUserMsg,
         errMsg
       ]);
       setPanelErrorKey('chat', e?.message || 'Unable to send chat message.');
@@ -1698,20 +1715,6 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
     setChatLoading(false);
     setPanelErrorKey('chat', '');
   }
-
-  useEffect(() => {
-    const lessonId = String(selectedTutorLesson?.id || '').trim();
-    if (!lessonId) return;
-    if (welcomedLessonsRef.current.has(lessonId)) return;
-    if (chatLoading) return;
-
-    welcomedLessonsRef.current.add(lessonId);
-    const lessonTitle = String(selectedTutorLesson?.title || 'this lesson').trim();
-    const lessonSubject = String(selectedTutorLesson?.subject || tutorSubject || '').trim();
-    const starter = `I selected the lesson "${lessonTitle}"${lessonSubject ? ` in ${lessonSubject}` : ''}. Please welcome me and teach in a very simple way. Give: 1) what this lesson means, 2) one real-life example, 3) three tiny steps we will cover, and 4) one easy check question.`;
-    onSendTutorMessage(starter, { silentUser: true });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedTutorLesson?.id]);
 
   async function onTutorImageSelected(files) {
     setChatImageError('');
@@ -1800,8 +1803,10 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
         </div>
         <div style={{ display: 'grid', gap: 8, marginBottom: 10 }}>
           <div style={{ display: 'grid', gap: 8, gridTemplateColumns: '1fr 1fr' }}>
-            <select value={tutorSubject} onChange={(e) => setTutorSubject(e.target.value)} className="eg-ai-topic-chip" style={{ width: '100%' }}>
-              {subjects.map((subject) => <option key={subject} value={subject}>{subject}</option>)}
+            <select value={tutorSubject} onChange={(e) => setTutorSubject(e.target.value)} className="eg-ai-topic-chip" style={{ width: '100%' }} disabled={!subjects.length}>
+              {subjects.length
+                ? subjects.map((subject) => <option key={subject} value={subject}>{subject}</option>)
+                : <option value="">No subjects yet</option>}
             </select>
             <select
               value={selectedTutorLessonId}
@@ -2140,6 +2145,11 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
               </button>
             );
           })}
+          {!safeArray(subjects).length ? (
+            <span style={{ color: '#777', fontSize: '13px', whiteSpace: 'nowrap' }}>
+              No subjects yet — they appear here as soon as your school registers a teacher for your class.
+            </span>
+          ) : null}
         </div>
         )}
 

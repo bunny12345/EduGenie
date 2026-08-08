@@ -3,6 +3,7 @@ import { SupabaseService } from '../supabase.service';
 import { AuthGuard } from '../auth/auth.guard';
 import { LocalFeedService } from '../shared/local-feed.service';
 import { StudentAuthService } from '../auth/student-auth.service';
+import { METRIC_ORDER_COLUMN, metricAt, metricScore } from '../progress/progress-metric.util';
 
 @Controller('dashboard')
 export class DashboardController {
@@ -18,7 +19,11 @@ export class DashboardController {
   @UseGuards(AuthGuard)
   async getDashboard(@Req() req: any, @Query('studentId') studentId: string) {
     const id = req.studentId || studentId;
-    const cacheKey = `dashboard:${id}`;
+    // The dashboard carries the class's teacher list, which is what the student
+    // portal builds its subject nav from. Keying the cache on the roster version
+    // means a newly registered (or removed) subject teacher is reflected on the
+    // next request instead of up to a TTL later.
+    const cacheKey = `dashboard:${id}:${StudentAuthService.rosterVersion}`;
     const now = Date.now();
     const cached = DashboardController.cache.get(cacheKey);
     if (cached && cached.expiresAt > now) return cached.value;
@@ -48,13 +53,13 @@ export class DashboardController {
         status: h.status || (h.graded ? 'completed' : 'pending')
       }));
 
-      const pm = await this.db.client.from('progress_metrics').select('*').eq('student_id', id).order('date', { ascending: false }).limit(10);
+      const pm = await this.db.client.from('progress_metrics').select('*').eq('student_id', id).order(METRIC_ORDER_COLUMN, { ascending: false }).limit(10);
       const progressRows = (pm && (pm as any).data) || [];
 
       const subjectsMap = new Map<string, { scoreSum: number; count: number }>();
       for (const r of Array.isArray(progressRows) ? progressRows : []) {
         const name = r.subject || r.metric_key || 'General';
-        const score = Number(r.score ?? r.metric_value ?? r.value ?? r?.details?.score ?? 0);
+        const score = metricScore(r);
         if (!Number.isFinite(score)) continue;
         const prev = subjectsMap.get(name) || { scoreSum: 0, count: 0 };
         prev.scoreSum += score;
@@ -124,6 +129,11 @@ export class DashboardController {
         ...dashboard
       };
 
+      // Roster changes mint new cache keys, so drop stale entries as we go
+      // instead of letting the map grow for the lifetime of the process.
+      for (const [key, entry] of DashboardController.cache) {
+        if (entry.expiresAt <= now) DashboardController.cache.delete(key);
+      }
       DashboardController.cache.set(cacheKey, { expiresAt: now + 10_000, value: response });
       return response;
     } catch (e) {
@@ -205,7 +215,7 @@ export class DashboardController {
 
     // 2) Progress metrics logged.
     for (const p of Array.isArray(progressRows) ? progressRows : []) {
-      add(p?.date || p?.created_at);
+      add(metricAt(p));
     }
 
     // 3) Test attempts.

@@ -81,6 +81,19 @@ export class StudentAuthService implements OnModuleInit {
   private static schoolAccounts = new Map<string, SchoolAccount>();
   private static invites = new Map<string, InviteRecord>();
 
+  // Bumped on every teacher add / edit / removal. Cached, teacher-derived
+  // responses (e.g. the student dashboard) key off this so a newly registered
+  // subject shows up immediately instead of after the cache TTL.
+  private static rosterVersionValue = 0;
+
+  static get rosterVersion() {
+    return StudentAuthService.rosterVersionValue;
+  }
+
+  private static bumpRosterVersion() {
+    StudentAuthService.rosterVersionValue += 1;
+  }
+
   constructor(private readonly db: SupabaseService) {}
 
   onModuleInit() {
@@ -329,6 +342,7 @@ export class StudentAuthService implements OnModuleInit {
 
   private rememberTeacher(account: TeacherAccount) {
     StudentAuthService.teacherAccounts.set(account.loginId.toLowerCase(), account);
+    StudentAuthService.bumpRosterVersion();
     this.persistTeacherAccounts();
   }
 
@@ -352,6 +366,7 @@ export class StudentAuthService implements OnModuleInit {
         StudentAuthService.teacherAccounts.delete(loginId);
       }
     }
+    StudentAuthService.bumpRosterVersion();
     this.persistTeacherAccounts();
   }
 
@@ -1173,6 +1188,18 @@ export class StudentAuthService implements OnModuleInit {
       return login;
     }
 
+    // A school-issued student invite carries no teacher, so the class picked at
+    // accept time decides which teacher the student is filed under.
+    let teacherId = rec.teacherId;
+    if (!teacherId) {
+      try {
+        const classTeachers = await this.listClassTeachers(rec.schoolId, String(details?.className || ''));
+        if (classTeachers.length) teacherId = String(classTeachers[0].id || '') || undefined;
+      } catch (_e) {
+        /* optional */
+      }
+    }
+
     const student = await this.registerByTeacher({
       loginId: details?.loginId,
       password: details?.password,
@@ -1180,7 +1207,7 @@ export class StudentAuthService implements OnModuleInit {
       className: details?.className,
       createdBy: rec.teacherId || rec.token,
       schoolId: rec.schoolId,
-      teacherId: rec.teacherId
+      teacherId
     });
     if (!student.ok) return student;
 
@@ -1398,9 +1425,17 @@ export class StudentAuthService implements OnModuleInit {
           teacherId: s.teacherId || null,
           name: s.name || 'Student',
           className: s.className || 'Class',
+          loginId: s.loginId || null,
           email: null,
           createdAt: null
         }));
+
+      // The login ID is what an admin has to hand back to a student after a
+      // password reset, so carry it through from whichever store holds it.
+      const localLoginById = new Map<string, string>();
+      for (const s of StudentAuthService.localAccounts.values()) {
+        localLoginById.set(String(s.studentId || ''), String(s.loginId || ''));
+      }
 
       const dbStudents = rows.map((r: any) => ({
         id: r.id,
@@ -1408,6 +1443,7 @@ export class StudentAuthService implements OnModuleInit {
         teacherId: r.teacher_id || null,
         name: r.name || r.full_name || 'Student',
         className: r.class_name || r.class || r.grade || 'Class',
+        loginId: localLoginById.get(String(r.id || '')) || null,
         email: r.email || null,
         createdAt: r.created_at || null
       }));
@@ -1416,6 +1452,23 @@ export class StudentAuthService implements OnModuleInit {
       const total = allStudents.length;
       const totalPages = Math.max(1, Math.ceil(total / limit));
       const paged = allStudents.slice(from, from + limit);
+
+      const missingLogin = paged.filter((s: any) => !s.loginId).map((s: any) => String(s.id || '')).filter(Boolean);
+      if (missingLogin.length) {
+        try {
+          const accRes = await this.db.client
+            .from('student_accounts')
+            .select('student_id, login_id')
+            .in('student_id', missingLogin);
+          for (const row of (Array.isArray((accRes as any)?.data) ? (accRes as any).data : [])) {
+            const target = paged.find((s: any) => String(s.id || '') === String(row.student_id || ''));
+            if (target) (target as any).loginId = row.login_id || null;
+          }
+        } catch (_e) {
+          /* login id is display-only here */
+        }
+      }
+
       return {
         students: paged,
         pagination: { page, limit, total, totalPages }
@@ -1441,6 +1494,7 @@ export class StudentAuthService implements OnModuleInit {
           teacherId: s.teacherId || null,
           name: s.name || 'Student',
           className: s.className || 'Class',
+          loginId: s.loginId || null,
           email: null,
           createdAt: null
         }));
@@ -1693,6 +1747,271 @@ export class StudentAuthService implements OnModuleInit {
         className
       }
     };
+  }
+
+  // ─── school-admin student management ────────────────────────────────────────
+  // Student accounts are owned by the school, not by an individual teacher, so
+  // these mirror the teacher-management methods above: register, edit, reset the
+  // password and delete, all scoped to the caller's school.
+
+  private findStudentById(studentId: string): StudentAccount | null {
+    const id = String(studentId || '').trim();
+    if (!id) return null;
+    for (const account of StudentAuthService.localAccounts.values()) {
+      if (String(account.studentId || '').trim() === id) return account;
+    }
+    return null;
+  }
+
+  private removeStudentAccount(studentId: string) {
+    const id = String(studentId || '').trim();
+    for (const [loginId, account] of StudentAuthService.localAccounts.entries()) {
+      if (String(account.studentId || '').trim() === id) {
+        StudentAuthService.localAccounts.delete(loginId);
+      }
+    }
+    this.persistStudentAccounts();
+  }
+
+  /**
+   * Resolve a student for admin operations from whichever store has them —
+   * the local account file, `student_accounts` or the `students` roster. A
+   * student created before the local store existed only has a `students` row,
+   * and must still be editable.
+   */
+  private async loadStudentForSchool(studentId: string, schoolId: string): Promise<{
+    id: string;
+    schoolId: string;
+    name: string;
+    className: string;
+    teacherId: string;
+    loginId: string;
+    local: StudentAccount | null;
+  } | null> {
+    const id = String(studentId || '').trim();
+    const sid = String(schoolId || '').trim();
+    if (!id || !sid) return null;
+
+    const local = this.findStudentById(id);
+    if (local && String(local.schoolId || '').trim() === sid) {
+      return {
+        id,
+        schoolId: sid,
+        name: local.name || 'Student',
+        className: local.className || '',
+        teacherId: local.teacherId || '',
+        loginId: local.loginId || '',
+        local
+      };
+    }
+
+    try {
+      const res = await this.db.client.from('students').select('*').eq('id', id).limit(1);
+      const row = Array.isArray((res as any)?.data) ? (res as any).data[0] : null;
+      if (row && String(row.school_id || '').trim() === sid) {
+        let loginId = local?.loginId || '';
+        if (!loginId) {
+          try {
+            const acc = await this.db.client.from('student_accounts').select('login_id').eq('student_id', id).limit(1);
+            loginId = String((Array.isArray((acc as any)?.data) ? (acc as any).data[0]?.login_id : '') || '');
+          } catch (_e) {
+            /* login id is display-only here */
+          }
+        }
+        return {
+          id,
+          schoolId: sid,
+          name: row.name || row.full_name || 'Student',
+          className: row.class_name || row.class || row.grade || '',
+          teacherId: row.teacher_id || '',
+          loginId,
+          local: local || null
+        };
+      }
+    } catch (_e) {
+      /* fall through to "not found" */
+    }
+    return null;
+  }
+
+  async registerStudentBySchool(payload: {
+    schoolId: string;
+    name: string;
+    className: string;
+    loginId: string;
+    password: string;
+    createdBy?: string;
+  }) {
+    const schoolId = String(payload.schoolId || '').trim();
+    const className = String(payload.className || '').trim();
+    if (!schoolId) return { ok: false, error: 'schoolId is required' };
+    if (!className) return { ok: false, error: 'Class is required' };
+    if (String(payload.password || '').length < 8) {
+      return { ok: false, error: 'Password must be at least 8 characters long' };
+    }
+
+    // File the student under the class teacher when there is exactly one, so
+    // teacher-scoped views keep working. The class is what actually drives the
+    // student's content, so no teacher is not an error.
+    let teacherId: string | undefined;
+    try {
+      const classTeachers = await this.listClassTeachers(schoolId, className);
+      if (classTeachers.length) teacherId = String(classTeachers[0].id || '') || undefined;
+    } catch (_e) {
+      /* optional */
+    }
+
+    return this.registerByTeacher({
+      loginId: payload.loginId,
+      password: payload.password,
+      name: payload.name,
+      className,
+      schoolId,
+      teacherId,
+      createdBy: payload.createdBy
+    });
+  }
+
+  async updateStudentBySchool(payload: {
+    schoolId: string;
+    studentId: string;
+    name?: string;
+    className?: string;
+  }) {
+    const schoolId = String(payload.schoolId || '').trim();
+    const studentId = String(payload.studentId || '').trim();
+    if (!schoolId || !studentId) return { ok: false, error: 'schoolId and studentId are required' };
+
+    const existing = await this.loadStudentForSchool(studentId, schoolId);
+    if (!existing) return { ok: false, error: 'Student not found in this school' };
+
+    const name = payload.name !== undefined ? String(payload.name || '').trim() : existing.name;
+    const className = payload.className !== undefined
+      ? String(payload.className || '').trim()
+      : existing.className;
+    if (!name) return { ok: false, error: 'Name is required' };
+    if (!className) return { ok: false, error: 'Class is required' };
+
+    // Moving a student to another class must re-point them at that class's
+    // teacher, otherwise teacher-scoped views keep the student in the old class.
+    let teacherId = existing.teacherId;
+    if (className.toLowerCase() !== String(existing.className || '').toLowerCase()) {
+      teacherId = '';
+      try {
+        const classTeachers = await this.listClassTeachers(schoolId, className);
+        if (classTeachers.length) teacherId = String(classTeachers[0].id || '');
+      } catch (_e) {
+        /* optional */
+      }
+    }
+
+    if (existing.local) {
+      this.remember({ ...existing.local, name, className, teacherId: teacherId || undefined });
+    }
+
+    try {
+      await this.db.client
+        .from('students')
+        .update({ name, class_name: className, teacher_id: teacherId || null })
+        .eq('id', studentId);
+    } catch (_e) {
+      /* local store remains the fallback */
+    }
+    try {
+      await this.db.client
+        .from('student_accounts')
+        .update({ name, class_name: className, teacher_id: teacherId || null })
+        .eq('student_id', studentId);
+    } catch (_e) {
+      /* optional table */
+    }
+
+    return {
+      ok: true,
+      student: { id: studentId, schoolId, name, className, teacherId: teacherId || null, loginId: existing.loginId }
+    };
+  }
+
+  async resetStudentPassword(payload: { schoolId: string; studentId: string; password: string }) {
+    const schoolId = String(payload.schoolId || '').trim();
+    const studentId = String(payload.studentId || '').trim();
+    const password = String(payload.password || '');
+    if (!schoolId || !studentId) return { ok: false, error: 'schoolId and studentId are required' };
+    if (password.length < 8) return { ok: false, error: 'Password must be at least 8 characters long' };
+
+    const existing = await this.loadStudentForSchool(studentId, schoolId);
+    if (!existing) return { ok: false, error: 'Student not found in this school' };
+    if (!existing.loginId) return { ok: false, error: 'This student has no login account to reset' };
+
+    const passwordSalt = randomBytes(12).toString('hex');
+    const passwordHash = this.hashPassword(password, passwordSalt);
+
+    if (existing.local) {
+      this.remember({ ...existing.local, passwordSalt, passwordHash });
+    } else {
+      this.remember({
+        studentId,
+        loginId: existing.loginId,
+        passwordSalt,
+        passwordHash,
+        name: existing.name,
+        className: existing.className,
+        schoolId,
+        teacherId: existing.teacherId || undefined
+      });
+    }
+
+    try {
+      await this.db.client
+        .from('student_accounts')
+        .update({ password_salt: passwordSalt, password_hash: passwordHash })
+        .eq('student_id', studentId);
+    } catch (_e) {
+      /* local store remains the fallback */
+    }
+
+    return { ok: true, student: { id: studentId, loginId: existing.loginId } };
+  }
+
+  async deleteStudentBySchool(payload: { schoolId: string; studentId: string }) {
+    const schoolId = String(payload.schoolId || '').trim();
+    const studentId = String(payload.studentId || '').trim();
+    if (!schoolId || !studentId) return { ok: false, error: 'schoolId and studentId are required' };
+
+    const existing = await this.loadStudentForSchool(studentId, schoolId);
+    if (!existing) return { ok: false, error: 'Student not found in this school' };
+
+    this.removeStudentAccount(studentId);
+
+    // Everything keyed off the student, removed newest-dependency first so no
+    // orphan rows are left pointing at a student that no longer exists.
+    const derived = [
+      'orchard_reviews',
+      'chapter_growth',
+      'orchard_activity',
+      'orchard_trees',
+      'orchard_profile',
+      'student_lesson_progress',
+      'messages',
+      'homework',
+      'test_attempts',
+      'progress_metrics',
+      'student_accounts'
+    ];
+    for (const table of derived) {
+      try {
+        await this.db.client.from(table).delete().eq('student_id', studentId);
+      } catch (_e) {
+        /* table may not exist in this deployment */
+      }
+    }
+    try {
+      await this.db.client.from('students').delete().eq('id', studentId);
+    } catch (_e) {
+      /* local store already dropped the account */
+    }
+
+    return { ok: true, student: { id: studentId, name: existing.name, className: existing.className } };
   }
 
   async loginStudent(loginIdRaw: string, passwordRaw: string) {

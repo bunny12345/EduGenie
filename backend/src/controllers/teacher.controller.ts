@@ -3,6 +3,7 @@ import { SupabaseService } from '../supabase.service';
 import { AuthGuard } from '../auth/auth.guard';
 import { StudentAuthService } from '../auth/student-auth.service';
 import { LocalFeedService } from '../shared/local-feed.service';
+import { METRIC_ORDER_COLUMN, metricAt, metricScore } from '../progress/progress-metric.util';
 
 function makeAssignmentGroupId() {
   return `asg-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
@@ -192,7 +193,7 @@ export class TeacherController {
 
       let progressRows: any[] = [];
       if (studentIds.length) {
-        const progressRes = await this.db.client.from('progress_metrics').select('*').in('student_id', studentIds).order('date', { ascending: false }).limit(1000);
+        const progressRes = await this.db.client.from('progress_metrics').select('*').in('student_id', studentIds).order(METRIC_ORDER_COLUMN, { ascending: false }).limit(1000);
         progressRows = Array.isArray((progressRes as any)?.data) ? (progressRes as any).data : [];
       }
 
@@ -208,7 +209,7 @@ export class TeacherController {
 
       const avgScore = progressRows.length
         ? Math.round(progressRows.reduce((acc: number, row: any) => {
-            const score = Number(row?.score ?? row?.metric_value ?? row?.value ?? 0);
+            const score = metricScore(row);
             return acc + (Number.isFinite(score) ? score : 0);
           }, 0) / progressRows.length)
         : 0;
@@ -458,14 +459,14 @@ export class TeacherController {
         .from('progress_metrics')
         .select('*')
         .eq('student_id', studentId)
-        .order('date', { ascending: false })
+        .order(METRIC_ORDER_COLUMN, { ascending: false })
         .limit(50);
       const rows = Array.isArray((res as any)?.data) ? (res as any).data : [];
 
       const bySubject = new Map<string, { sum: number; count: number }>();
       rows.forEach((r: any) => {
         const subject = r.subject || r.metric_key || 'General';
-        const score = Number(r?.score ?? r?.metric_value ?? r?.value ?? 0);
+        const score = metricScore(r);
         if (!Number.isFinite(score)) return;
         const prev = bySubject.get(subject) || { sum: 0, count: 0 };
         prev.sum += score;
@@ -478,31 +479,16 @@ export class TeacherController {
         avgScore: Math.round(v.sum / Math.max(v.count, 1))
       }));
 
-      if (!subjectScores.length) {
-        return {
-          success: true,
-          studentId,
-          subjectScores: [
-            { subject: 'Mathematics', avgScore: 78 },
-            { subject: 'Science', avgScore: 81 },
-            { subject: 'English', avgScore: 74 }
-          ],
-          timeline: [
-            { date: new Date().toISOString(), subject: 'Mathematics', score: 78 },
-            { date: new Date(Date.now() - 86400000).toISOString(), subject: 'Science', score: 82 },
-            { date: new Date(Date.now() - 172800000).toISOString(), subject: 'English', score: 74 }
-          ]
-        };
-      }
-
+      // No sample data on purpose: an empty list means this student has not
+      // logged any measured activity yet.
       return {
         success: true,
         studentId,
         subjectScores,
         timeline: rows.slice(0, 10).map((r: any) => ({
-          date: r.date || r.created_at || null,
+          date: metricAt(r),
           subject: r.subject || r.metric_key || 'General',
-          score: Number(r?.score ?? r?.metric_value ?? r?.value ?? 0) || 0
+          score: Number.isFinite(metricScore(r)) ? metricScore(r) : 0
         }))
       };
     } catch (e) {
@@ -510,11 +496,7 @@ export class TeacherController {
         success: false,
         error: String((e as any)?.message || e || 'student progress failed'),
         studentId,
-        subjectScores: [
-          { subject: 'Mathematics', avgScore: 76 },
-          { subject: 'Science', avgScore: 80 },
-          { subject: 'English', avgScore: 73 }
-        ],
+        subjectScores: [],
         timeline: []
       };
     }

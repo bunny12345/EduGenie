@@ -6,14 +6,21 @@ import {
   listCurriculumLessonDocuments,
   listCurriculumLessons,
   listCurriculumSubjects,
+  resendSchoolStudentInvite,
   resendSchoolTeacherInvite,
+  revokeSchoolStudentInvite,
   revokeSchoolTeacherInvite,
   schoolDashboard,
+  schoolDeleteStudent,
+  schoolInviteStudent,
   schoolInviteTeacher,
   schoolInvites,
+  schoolRegisterStudent,
   schoolRegisterTeacher,
+  schoolResetStudentPassword,
   schoolStudents,
   schoolTeachers,
+  schoolUpdateStudent,
   schoolUpdateTeacher,
   schoolResetTeacherPassword,
   schoolDeleteTeacher,
@@ -129,6 +136,27 @@ export default function SchoolDashboard({ session, onLogout }) {
   const [studentSearch, setStudentSearch] = useState('');
   const [studentPage, setStudentPage] = useState(1);
   const [studentTotalPages, setStudentTotalPages] = useState(1);
+  // Student registration (moved here from the teacher portal — student accounts
+  // belong to the school, not to whichever teacher happened to create them).
+  const [studentName, setStudentName] = useState('');
+  const [studentClassName, setStudentClassName] = useState('');
+  const [studentLoginId, setStudentLoginId] = useState('');
+  const [studentPassword, setStudentPassword] = useState('');
+  const [createdStudent, setCreatedStudent] = useState(null);
+  const [studentInviteLink, setStudentInviteLink] = useState('');
+  const [studentInvites, setStudentInvites] = useState([]);
+  const [studentInviteSearch, setStudentInviteSearch] = useState('');
+  const [studentInviteStatusFilter, setStudentInviteStatusFilter] = useState('all');
+  const [studentInvitePage, setStudentInvitePage] = useState(1);
+  const [studentInviteTotalPages, setStudentInviteTotalPages] = useState(1);
+  // Student management (edit / reset password / delete) — mirrors the teacher list.
+  const [editingStudentId, setEditingStudentId] = useState('');
+  const [editStudentForm, setEditStudentForm] = useState({ name: '', className: '' });
+  const [resetStudent, setResetStudent] = useState(null);
+  const [resetStudentPasswordValue, setResetStudentPasswordValue] = useState('');
+  const [deleteStudent, setDeleteStudent] = useState(null);
+  const [studentActionBusy, setStudentActionBusy] = useState('');
+  const [studentActionNote, setStudentActionNote] = useState('');
   const [curriculumSubject, setCurriculumSubject] = useState('');
   const [curriculumClassName, setCurriculumClassName] = useState('');
   const [curriculumLessonTitle, setCurriculumLessonTitle] = useState('');
@@ -140,6 +168,10 @@ export default function SchoolDashboard({ session, onLogout }) {
   // Subject → teacher map per class. A lesson can only be filed under a subject
   // that already has a teacher for the selected class.
   const [curriculumClassMap, setCurriculumClassMap] = useState([]);
+  // Every subject the school teaches, with the classes it is assigned to. Used
+  // to explain a subject that is registered but not attached to this class.
+  const [curriculumAllSubjects, setCurriculumAllSubjects] = useState([]);
+  const [curriculumLoadError, setCurriculumLoadError] = useState('');
   const [curriculumPdfFile, setCurriculumPdfFile] = useState(null);
   const [curriculumEditing, setCurriculumEditing] = useState(null);
   const [curriculumRowBusy, setCurriculumRowBusy] = useState('');
@@ -306,10 +338,30 @@ export default function SchoolDashboard({ session, onLogout }) {
     loadCurriculumSubjectMap();
   }
 
+  async function loadStudentInvites(params) {
+    const query = params || {
+      q: studentInviteSearch,
+      status: studentInviteStatusFilter,
+      page: studentInvitePage,
+      limit: INVITES_PER_PAGE
+    };
+    const res = await schoolInvites({ ...query, role: 'student' });
+    const list = Array.isArray(res?.invites) ? res.invites : [];
+    setStudentInvites(list);
+    setStudentInviteTotalPages(Math.max(1, Number(res?.pagination?.totalPages || 1)));
+  }
+
   const classOptions = Array.from(new Set([
     ...(curriculumClassMap || []).map((entry) => String(entry?.className || '').trim()),
     ...(students || []).map((s) => String(s?.className || '').trim())
   ].filter(Boolean))).sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+
+  // Registration must also offer classes nobody is enrolled in yet, otherwise
+  // the first student of a brand-new class could never be created.
+  const studentClassOptions = Array.from(new Set([
+    ...classOptions,
+    ...GRADE_OPTIONS.map((g) => `Class ${g}`)
+  ])).sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
 
   // Subjects that already have a teacher for the selected class. Typing anything
   // else is rejected — the school must register that subject teacher first.
@@ -344,10 +396,11 @@ export default function SchoolDashboard({ session, onLogout }) {
       .sort((a, b) => a.subject.localeCompare(b.subject));
   })();
 
-  // One button per subject the class actually has. A subject that still has a
-  // registered teacher for this class can receive uploads; a subject that only
-  // has legacy lessons (its teacher was removed) stays listed read-only so the
-  // already-uploaded PDFs remain reachable.
+  // One button per subject the class actually has — exactly the set a student
+  // of that class sees in their own portal. The backend supplies the core
+  // subjects every class has plus the teacher-registered ones; a subject that
+  // only survives through already-uploaded lessons is added here so those PDFs
+  // stay reachable. Only subjects with a teacher can receive new uploads.
   const curriculumSubjectButtons = (() => {
     const byKey = new Map();
     for (const entry of curriculumSubjectsForClass) {
@@ -355,9 +408,10 @@ export default function SchoolDashboard({ session, onLogout }) {
       if (!subject) continue;
       byKey.set(subject.toLowerCase(), {
         subject,
-        teacherId: entry.teacherId,
-        teacherName: entry.teacherName,
-        canUpload: true,
+        teacherId: entry.teacherId || '',
+        teacherName: entry.teacherName || '',
+        source: entry.source || (entry.teacherId ? 'teacher' : 'core'),
+        canUpload: entry.canUpload !== undefined ? !!entry.canUpload : !!entry.teacherId,
         lessonCount: 0
       });
     }
@@ -370,6 +424,7 @@ export default function SchoolDashboard({ session, onLogout }) {
           subject: group.subject,
           teacherId: '',
           teacherName: '',
+          source: 'lesson',
           canUpload: false,
           lessonCount: group.lessons.length
         });
@@ -378,13 +433,40 @@ export default function SchoolDashboard({ session, onLogout }) {
     return Array.from(byKey.values()).sort((a, b) => a.subject.localeCompare(b.subject));
   })();
 
+  // Subjects the school already teaches that this class has not been given yet.
+  // Listing them (with the reason) answers "why can't I see subject X here?"
+  // instead of silently leaving it out.
+  const curriculumMissingSubjects = (() => {
+    const present = new Set(curriculumSubjectButtons.map((b) => b.subject.toLowerCase()));
+    const byKey = new Map();
+    for (const entry of curriculumAllSubjects || []) {
+      const subject = String(entry?.subject || '').trim();
+      if (!subject || present.has(subject.toLowerCase())) continue;
+      const key = subject.toLowerCase();
+      if (!byKey.has(key)) {
+        byKey.set(key, { subject, teachers: [], hasAnyClass: false });
+      }
+      const row = byKey.get(key);
+      row.teachers.push(String(entry?.teacherName || 'Teacher'));
+      if ((entry?.classes || []).length) row.hasAnyClass = true;
+    }
+    return Array.from(byKey.values()).sort((a, b) => a.subject.localeCompare(b.subject));
+  })();
+
   // The picked subject drives both the upload form and the lesson list below.
-  // Falling back to the first button keeps a subject selected without an extra
-  // effect (and therefore without a render loop) when the class changes.
+  // Falling back to a sensible default keeps a subject selected without an extra
+  // effect (and therefore without a render loop) when the class changes: prefer
+  // a subject that already has lessons, then one that can accept uploads.
+  const curriculumDefaultSubject =
+    curriculumSubjectButtons.find((b) => b.lessonCount > 0) ||
+    curriculumSubjectButtons.find((b) => b.canUpload) ||
+    curriculumSubjectButtons[0] ||
+    null;
+
   const curriculumSelectedSubject =
     curriculumSubjectButtons.find(
       (b) => b.subject.toLowerCase() === String(curriculumSubject || '').trim().toLowerCase()
-    ) || curriculumSubjectButtons[0] || null;
+    ) || curriculumDefaultSubject;
 
   const curriculumSubjectMatch = curriculumSelectedSubject?.canUpload ? curriculumSelectedSubject : null;
 
@@ -404,9 +486,11 @@ export default function SchoolDashboard({ session, onLogout }) {
       const res = await listCurriculumSubjects();
       const classes = Array.isArray(res?.classes) ? res.classes : [];
       setCurriculumClassMap(classes);
+      setCurriculumAllSubjects(Array.isArray(res?.allSubjects) ? res.allSubjects : []);
       return classes;
     } catch {
       setCurriculumClassMap([]);
+      setCurriculumAllSubjects([]);
       return [];
     }
   }
@@ -418,6 +502,7 @@ export default function SchoolDashboard({ session, onLogout }) {
       return;
     }
     setCurriculumLoading(true);
+    setCurriculumLoadError('');
     try {
       const res = await listCurriculumLessons({ className });
       const lessons = Array.isArray(res?.lessons) ? res.lessons : [];
@@ -434,7 +519,9 @@ export default function SchoolDashboard({ session, onLogout }) {
       }));
       setCurriculumDocumentsByLesson(Object.fromEntries(docEntries));
     } catch (e) {
-      setNote(e?.message || 'Unable to load curriculum lessons.');
+      // Without this the panel silently shows every subject with 0 lessons,
+      // which reads as "the subjects are broken" rather than "the load failed".
+      setCurriculumLoadError(e?.message || 'Unable to load curriculum lessons.');
       setCurriculumLessons([]);
       setCurriculumDocumentsByLesson({});
     } finally {
@@ -625,11 +712,24 @@ export default function SchoolDashboard({ session, onLogout }) {
   // become the selected one.
   useEffect(() => {
     loadCurriculumPanel({ className: curriculumClassName });
+    // The subject buttons must follow the roster, so re-read the per-class
+    // subject map every time the class changes too.
+    loadCurriculumSubjectMap();
     setCurriculumSubject('');
     setCurriculumEditing(null);
     setCurriculumConfirmDelete(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [curriculumClassName]);
+
+  // A class disappears when its last teacher is removed. Without this the
+  // <select> silently falls back to its first option while the panel keeps
+  // rendering the vanished class, showing no subjects at all.
+  useEffect(() => {
+    if (!classOptions.length) return;
+    if (classOptions.includes(curriculumClassName)) return;
+    setCurriculumClassName(classOptions[0]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [classOptions.join('|'), curriculumClassName]);
 
   useEffect(() => {
     let active = true;
@@ -698,10 +798,51 @@ export default function SchoolDashboard({ session, onLogout }) {
     };
   }, [studentSearch, studentPage]);
 
+  useEffect(() => {
+    if (studentInvitePage > studentInviteTotalPages) {
+      setStudentInvitePage(studentInviteTotalPages);
+    }
+  }, [studentInvitePage, studentInviteTotalPages]);
+
+  useEffect(() => {
+    let active = true;
+    async function refreshStudentInvites() {
+      try {
+        const res = await schoolInvites({
+          q: studentInviteSearch,
+          status: studentInviteStatusFilter,
+          page: studentInvitePage,
+          limit: INVITES_PER_PAGE,
+          role: 'student'
+        });
+        if (!active) return;
+        setStudentInvites(Array.isArray(res?.invites) ? res.invites : []);
+        setStudentInviteTotalPages(Math.max(1, Number(res?.pagination?.totalPages || 1)));
+      } catch (e) {
+        if (!active) return;
+        setError(e?.message || 'Failed to refresh student invites');
+      }
+    }
+    refreshStudentInvites();
+    return () => {
+      active = false;
+    };
+  }, [studentInviteSearch, studentInviteStatusFilter, studentInvitePage]);
+
   async function onRegisterTeacher(e) {
     e.preventDefault();
     if (!teacherName.trim() || !teacherEmail.trim() || !teacherLoginId.trim() || !teacherPassword.trim()) {
       setNote('Name, email, login ID and password are required.');
+      return;
+    }
+    if (!teacherSubject.trim()) {
+      setNote('Subject is required — it becomes the subject button in Curriculum Upload.');
+      return;
+    }
+    // Without at least one class the teacher's subject belongs to no class and
+    // would never show up in the curriculum panel.
+    if (!teacherGrades.length) {
+      setNote('Pick at least one class — the subject only appears in Curriculum Upload for the classes you select.');
       return;
     }
     setBusy('manual');
@@ -767,6 +908,10 @@ export default function SchoolDashboard({ session, onLogout }) {
   async function onSaveTeacherEdit(teacherId) {
     if (!editTeacherForm.name.trim()) {
       setTeacherActionNote('Teacher name is required.');
+      return;
+    }
+    if (!editTeacherForm.grades.length) {
+      setTeacherActionNote('Pick at least one class — without it the subject disappears from Curriculum Upload.');
       return;
     }
     setTeacherActionBusy(`edit-${teacherId}`);
@@ -911,11 +1056,221 @@ export default function SchoolDashboard({ session, onLogout }) {
     }
   }
 
+  // ─── student accounts (owned by the school) ───────────────────────────────
+
+  async function onRegisterStudent(e) {
+    e.preventDefault();
+    if (!studentName.trim() || !studentLoginId.trim() || !studentPassword.trim()) {
+      setNote('Student name, login ID and password are required.');
+      return;
+    }
+    if (!studentClassName.trim()) {
+      setNote('Pick a class — it decides which subjects and lessons the student sees.');
+      return;
+    }
+    if (studentPassword.length < 8) {
+      setNote('Password must be at least 8 characters.');
+      return;
+    }
+    setBusy('student-manual');
+    setNote('');
+    try {
+      const res = await schoolRegisterStudent({
+        name: studentName,
+        className: studentClassName,
+        loginId: studentLoginId,
+        password: studentPassword
+      });
+      if (!res?.success) {
+        setNote(res?.error || 'Student registration failed.');
+        return;
+      }
+      setCreatedStudent({ ...res.student, className: studentClassName, password: studentPassword });
+      setDashboard((prev) => ({
+        ...prev,
+        summary: {
+          ...(prev.summary || {}),
+          students: Number(prev?.summary?.students || 0) + 1
+        }
+      }));
+      setStudentName('');
+      setStudentLoginId('');
+      setStudentPassword('');
+      setStudentPage(1);
+      await refreshStudentsSection();
+      setNote('Student account created. Share the login credentials with the student.');
+    } catch (e2) {
+      setNote('Unable to register student right now.');
+    } finally {
+      setBusy('');
+    }
+  }
+
+  function startEditStudent(s) {
+    setStudentActionNote('');
+    setEditingStudentId(s.id || '');
+    setEditStudentForm({ name: s.name || '', className: s.className || '' });
+  }
+
+  function cancelEditStudent() {
+    setEditingStudentId('');
+    setStudentActionNote('');
+  }
+
+  async function onSaveStudentEdit(studentId) {
+    if (!editStudentForm.name.trim()) {
+      setStudentActionNote('Student name is required.');
+      return;
+    }
+    if (!editStudentForm.className.trim()) {
+      setStudentActionNote('Pick a class — it decides which lessons the student sees.');
+      return;
+    }
+    setStudentActionBusy(`edit-${studentId}`);
+    setStudentActionNote('');
+    try {
+      const res = await schoolUpdateStudent(studentId, {
+        name: editStudentForm.name,
+        className: editStudentForm.className
+      });
+      if (!res?.success) {
+        setStudentActionNote(res?.error || 'Could not update student.');
+        return;
+      }
+      setEditingStudentId('');
+      await refreshStudentsSection();
+      setNote('Student details updated.');
+    } catch (e2) {
+      setStudentActionNote('Unable to update student right now.');
+    } finally {
+      setStudentActionBusy('');
+    }
+  }
+
+  async function onConfirmResetStudentPassword() {
+    if (!resetStudent) return;
+    if (!resetStudentPasswordValue || resetStudentPasswordValue.length < 8) {
+      setStudentActionNote('Password must be at least 8 characters.');
+      return;
+    }
+    setStudentActionBusy(`reset-${resetStudent.id}`);
+    setStudentActionNote('');
+    try {
+      const res = await schoolResetStudentPassword(resetStudent.id, resetStudentPasswordValue);
+      if (!res?.success) {
+        setStudentActionNote(res?.error || 'Could not reset password.');
+        return;
+      }
+      setCreatedStudent({
+        name: resetStudent.name,
+        className: resetStudent.className,
+        loginId: res?.student?.loginId || resetStudent.loginId,
+        password: resetStudentPasswordValue
+      });
+      setResetStudent(null);
+      setResetStudentPasswordValue('');
+      setNote('Password reset. Share the new credentials with the student.');
+    } catch (e2) {
+      setStudentActionNote('Unable to reset password right now.');
+    } finally {
+      setStudentActionBusy('');
+    }
+  }
+
+  async function onConfirmDeleteStudent() {
+    if (!deleteStudent) return;
+    setStudentActionBusy(`delete-${deleteStudent.id}`);
+    setStudentActionNote('');
+    try {
+      const res = await schoolDeleteStudent(deleteStudent.id);
+      if (!res?.success) {
+        setStudentActionNote(res?.error || 'Could not delete student.');
+        return;
+      }
+      setDeleteStudent(null);
+      setDashboard((prev) => ({
+        ...prev,
+        summary: {
+          ...(prev.summary || {}),
+          students: Math.max(0, Number(prev?.summary?.students || 0) - 1)
+        }
+      }));
+      setStudentPage(1);
+      await refreshStudentsSection();
+      setNote('Student account deleted.');
+    } catch (e2) {
+      setStudentActionNote('Unable to delete student right now.');
+    } finally {
+      setStudentActionBusy('');
+    }
+  }
+
+  async function onCreateStudentInvite() {
+    setBusy('student-invite');
+    setNote('');
+    try {
+      const res = await schoolInviteStudent({ expiresHours: 72 });
+      if (!res?.success) {
+        setNote(res?.error || 'Could not create student invite link.');
+        return;
+      }
+      setStudentInviteLink(res?.invite?.link || '');
+      await loadStudentInvites({ q: studentInviteSearch, status: studentInviteStatusFilter, page: 1, limit: INVITES_PER_PAGE });
+      setStudentInvitePage(1);
+      setNote('Student invite link generated. Share this link with the student.');
+    } catch (e2) {
+      setNote('Unable to create student invite link right now.');
+    } finally {
+      setBusy('');
+    }
+  }
+
+  async function onRevokeStudentInvite(token) {
+    if (!token) return;
+    setBusy(`student-revoke-${token}`);
+    setNote('');
+    try {
+      const res = await revokeSchoolStudentInvite(token);
+      if (!res?.success) {
+        setNote(res?.error || 'Could not revoke student invite.');
+        return;
+      }
+      await loadStudentInvites();
+      setNote('Student invite revoked. The old link can no longer be used.');
+    } catch (e) {
+      setNote('Unable to revoke student invite right now.');
+    } finally {
+      setBusy('');
+    }
+  }
+
+  async function onResendStudentInvite(token) {
+    if (!token) return;
+    setBusy(`student-resend-${token}`);
+    setNote('');
+    try {
+      const res = await resendSchoolStudentInvite(token, { expiresHours: 72 });
+      if (!res?.success || !res?.invite) {
+        setNote(res?.error || 'Could not resend student invite.');
+        return;
+      }
+      await loadStudentInvites({ q: studentInviteSearch, status: studentInviteStatusFilter, page: 1, limit: INVITES_PER_PAGE });
+      setStudentInvitePage(1);
+      setStudentInviteLink(res.invite.link || '');
+      setNote('New student invite generated. Previous link was revoked.');
+    } catch (e) {
+      setNote('Unable to resend student invite right now.');
+    } finally {
+      setBusy('');
+    }
+  }
+
   const navItems = [
     { key: 'overview', label: 'Overview', icon: '📊' },
     { key: 'registration', label: 'Teacher Registration', icon: '✏️' },
     { key: 'teachers', label: 'Teachers & Invites', icon: '👨‍🏫' },
     { key: 'curriculum', label: 'Curriculum Upload', icon: '📚' },
+    { key: 'studentRegistration', label: 'Student Registration', icon: '🧑‍🎓' },
     { key: 'students', label: 'Students', icon: '👥' }
   ];
 
@@ -936,9 +1291,13 @@ export default function SchoolDashboard({ session, onLogout }) {
       title: 'Curriculum Upload',
       subtitle: 'Pick a class, pick a subject, upload the lesson PDF. Everything else follows.'
     },
+    studentRegistration: {
+      title: 'Student Registration',
+      subtitle: 'Create student accounts manually or send a self-registration link.'
+    },
     students: {
       title: 'Students',
-      subtitle: 'Every student enrolled across the school.'
+      subtitle: 'Every student enrolled across the school — edit, reset passwords or remove accounts.'
     }
   };
 
@@ -1196,7 +1555,7 @@ export default function SchoolDashboard({ session, onLogout }) {
                           title={
                             entry.canUpload
                               ? `${entry.teacherName} teaches ${entry.subject} for ${curriculumClassName}`
-                              : `No teacher is registered for ${entry.subject} in ${curriculumClassName}`
+                              : `No ${entry.subject} teacher is registered for ${curriculumClassName} yet`
                           }
                         >
                           <span className="eg-cc-subject-name">{entry.subject}</span>
@@ -1214,6 +1573,46 @@ export default function SchoolDashboard({ session, onLogout }) {
                     </p>
                   </div>
                 )}
+
+                {curriculumMissingSubjects.length ? (
+                  <div className="eg-cc-missing">
+                    <span className="eg-cc-missing-label">Not in {curriculumClassName} yet</span>
+                    <div className="eg-cc-missing-list">
+                      {curriculumMissingSubjects.map((entry) => (
+                        <span key={entry.subject} className="eg-cc-missing-chip">
+                          <strong>{entry.subject}</strong>
+                          <em>
+                            {entry.hasAnyClass
+                              ? `${entry.teachers.join(', ')} — not assigned to ${curriculumClassName}`
+                              : `${entry.teachers.join(', ')} — no classes assigned`}
+                          </em>
+                        </span>
+                      ))}
+                    </div>
+                    <button
+                      type="button"
+                      className="eg-cc-missing-action"
+                      onClick={() => setActiveSection('teachers')}
+                    >
+                      Assign classes on Teachers &amp; Invites →
+                    </button>
+                  </div>
+                ) : null}
+
+                {curriculumLoadError ? (
+                  <div className="eg-cc-loaderr">
+                    <span>
+                      Lessons could not be loaded, so every subject shows 0. {curriculumLoadError}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => loadCurriculumPanel({ className: curriculumClassName })}
+                      disabled={curriculumLoading}
+                    >
+                      {curriculumLoading ? 'Retrying…' : 'Retry'}
+                    </button>
+                  </div>
+                ) : null}
               </div>
 
               {curriculumSelectedSubject ? (
@@ -1233,8 +1632,9 @@ export default function SchoolDashboard({ session, onLogout }) {
                     <p className="eg-cc-msg is-error">
                       <span aria-hidden="true">!</span>
                       <span>
-                        No <strong>{curriculumSelectedSubject.subject}</strong> teacher exists for {curriculumClassName}. Make
-                        sure the subject exists for that class first — register the subject teacher, then upload the lesson.
+                        Students in {curriculumClassName} see <strong>{curriculumSelectedSubject.subject}</strong>, but no{' '}
+                        {curriculumSelectedSubject.subject} teacher is registered for this class yet. Register the subject
+                        teacher for {curriculumClassName} first — then lessons can be uploaded here.
                       </span>
                     </p>
                   )}
@@ -1621,6 +2021,137 @@ export default function SchoolDashboard({ session, onLogout }) {
           </section>
         )}
 
+        {/* ══════════ STUDENT REGISTRATION ══════════ */}
+        {activeSection === 'studentRegistration' && (
+          <section className="sd-grid">
+            <article className="sd-card">
+              <h3>Manual Student Registration</h3>
+              <form className="sd-form" onSubmit={onRegisterStudent}>
+                <input value={studentName} onChange={(e) => setStudentName(e.target.value)} placeholder="Student name" />
+                <label className="sd-field-label">Class</label>
+                <select value={studentClassName} onChange={(e) => setStudentClassName(e.target.value)}>
+                  <option value="">Select class</option>
+                  {studentClassOptions.map((cls) => (
+                    <option key={cls} value={cls}>{cls}</option>
+                  ))}
+                </select>
+                <input value={studentLoginId} onChange={(e) => setStudentLoginId(e.target.value)} placeholder="Student login ID" />
+                <input
+                  type="password"
+                  value={studentPassword}
+                  onChange={(e) => setStudentPassword(e.target.value)}
+                  placeholder="Strong password (min 8 characters)"
+                />
+                <button type="submit" disabled={busy === 'student-manual'}>
+                  {busy === 'student-manual' ? 'Creating...' : 'Create Student Account'}
+                </button>
+              </form>
+              {createdStudent ? (
+                <div className="sd-credential-box">
+                  <strong>Share with student:</strong>
+                  <p>Name: {createdStudent.name}</p>
+                  <p>Class: {createdStudent.className}</p>
+                  <p>Login ID: {createdStudent.loginId}</p>
+                  <p>Password: {createdStudent.password}</p>
+                </div>
+              ) : null}
+            </article>
+
+            <article className="sd-card">
+              <h3>Invite Student by Link</h3>
+              <p>Student can self-register using the link below.</p>
+              <button className="sd-invite-btn" onClick={onCreateStudentInvite} disabled={busy === 'student-invite'}>
+                {busy === 'student-invite' ? 'Generating...' : 'Generate Student Invite Link'}
+              </button>
+              {studentInviteLink ? (
+                <div className="sd-link-box">
+                  <p>{studentInviteLink}</p>
+                </div>
+              ) : null}
+            </article>
+
+            <article className="sd-card">
+              <h3>Recent Student Invites</h3>
+              <div className="invite-toolbar">
+                <input
+                  className="invite-search"
+                  value={studentInviteSearch}
+                  onChange={(e) => {
+                    setStudentInviteSearch(e.target.value);
+                    setStudentInvitePage(1);
+                  }}
+                  placeholder="Search by token or role"
+                />
+                <select
+                  className="invite-filter"
+                  value={studentInviteStatusFilter}
+                  onChange={(e) => {
+                    setStudentInviteStatusFilter(e.target.value);
+                    setStudentInvitePage(1);
+                  }}
+                >
+                  <option value="all">All statuses</option>
+                  <option value="active">Active</option>
+                  <option value="used">Used</option>
+                  <option value="revoked">Revoked</option>
+                  <option value="expired">Expired</option>
+                </select>
+              </div>
+              <ul className="sd-invite-list">
+                {(studentInvites.length ? studentInvites : []).map((i) => (
+                  <li key={i.token}>
+                    <div className="sd-invite-row">
+                      <div>
+                        <strong>{i.role} invite</strong>
+                        <p>Expires: {shortDate(i.expiresAt)}</p>
+                      </div>
+                      <span className={`invite-badge ${inviteStatusLabel(i)}`}>{inviteStatusLabel(i)}</span>
+                    </div>
+                    <div className="sd-invite-actions">
+                      <button
+                        type="button"
+                        className="sd-inline-btn"
+                        onClick={() => onResendStudentInvite(i.token)}
+                        disabled={busy === `student-resend-${i.token}` || inviteStatusLabel(i) === 'used'}
+                      >
+                        {busy === `student-resend-${i.token}` ? 'Resending...' : 'Resend'}
+                      </button>
+                      <button
+                        type="button"
+                        className="sd-inline-btn danger"
+                        onClick={() => onRevokeStudentInvite(i.token)}
+                        disabled={busy === `student-revoke-${i.token}` || inviteStatusLabel(i) !== 'active'}
+                      >
+                        {busy === `student-revoke-${i.token}` ? 'Revoking...' : 'Revoke'}
+                      </button>
+                    </div>
+                  </li>
+                ))}
+                {!studentInvites.length ? <li>No student invites match the current filters.</li> : null}
+              </ul>
+              <div className="invite-pager">
+                <button
+                  type="button"
+                  className="sd-inline-btn"
+                  onClick={() => setStudentInvitePage((p) => Math.max(1, p - 1))}
+                  disabled={studentInvitePage === 1}
+                >
+                  Previous
+                </button>
+                <span>Page {studentInvitePage} of {studentInviteTotalPages}</span>
+                <button
+                  type="button"
+                  className="sd-inline-btn"
+                  onClick={() => setStudentInvitePage((p) => Math.min(studentInviteTotalPages, p + 1))}
+                  disabled={studentInvitePage >= studentInviteTotalPages}
+                >
+                  Next
+                </button>
+              </div>
+            </article>
+          </section>
+        )}
+
         {/* ══════════ STUDENTS ══════════ */}
         {activeSection === 'students' && (
           <section className="sd-grid">
@@ -1645,10 +2176,72 @@ export default function SchoolDashboard({ session, onLogout }) {
               placeholder="Search students by name/class"
             />
           </div>
-          <ul className="sd-list">
-            {(students.length ? students : []).map((s) => (
-              <li key={s.id}>{s.name || 'Student'} - {s.className || 'Class'}</li>
-            ))}
+          <ul className="sd-list sd-teacher-list">
+            {(students.length ? students : []).map((s) => {
+              const sid = s.id || s.loginId;
+              const isEditing = editingStudentId === sid;
+              return (
+                <li key={sid} className="sd-teacher-item">
+                  {isEditing ? (
+                    <div className="sd-teacher-edit">
+                      <input
+                        value={editStudentForm.name}
+                        onChange={(e) => setEditStudentForm((f) => ({ ...f, name: e.target.value }))}
+                        placeholder="Student name"
+                      />
+                      <select
+                        value={editStudentForm.className}
+                        onChange={(e) => setEditStudentForm((f) => ({ ...f, className: e.target.value }))}
+                        disabled={studentActionBusy === `edit-${sid}`}
+                      >
+                        <option value="">Select class</option>
+                        {studentClassOptions.map((cls) => (
+                          <option key={cls} value={cls}>{cls}</option>
+                        ))}
+                      </select>
+                      {studentActionNote ? <p className="sd-teacher-action-note">{studentActionNote}</p> : null}
+                      <div className="sd-teacher-edit-actions">
+                        <button
+                          type="button"
+                          className="sd-inline-btn primary"
+                          onClick={() => onSaveStudentEdit(sid)}
+                          disabled={studentActionBusy === `edit-${sid}`}
+                        >
+                          {studentActionBusy === `edit-${sid}` ? 'Saving...' : 'Save'}
+                        </button>
+                        <button type="button" className="sd-inline-btn" onClick={cancelEditStudent}>Cancel</button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="sd-teacher-row">
+                      <div className="sd-teacher-info">
+                        <strong>{s.name || 'Student'}</strong>
+                        {s.className ? (
+                          <span className="sd-teacher-meta">{s.className}</span>
+                        ) : (
+                          <span className="sd-teacher-grades sd-teacher-grades-none">No class assigned</span>
+                        )}
+                      </div>
+                      <div className="sd-teacher-actions">
+                        <button type="button" className="sd-icon-btn" title="Edit student" onClick={() => startEditStudent(s)}>✏️</button>
+                        <button
+                          type="button"
+                          className="sd-icon-btn"
+                          title="Reset password"
+                          onClick={() => { setResetStudent(s); setResetStudentPasswordValue(''); setStudentActionNote(''); }}
+                        >🔑</button>
+                        <button
+                          type="button"
+                          className="sd-icon-btn danger"
+                          title="Delete student"
+                          onClick={() => { setDeleteStudent(s); setStudentActionNote(''); }}
+                        >🗑️</button>
+                      </div>
+                    </div>
+                  )}
+                </li>
+              );
+            })}
             {!students.length ? <li>No students match the current search.</li> : null}
           </ul>
           <div className="invite-pager">
@@ -1722,6 +2315,59 @@ export default function SchoolDashboard({ session, onLogout }) {
                 disabled={teacherActionBusy === `delete-${deleteTeacher.id}`}
               >
                 {teacherActionBusy === `delete-${deleteTeacher.id}` ? 'Deleting...' : 'Delete teacher'}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {resetStudent ? (
+        <div className="sd-modal-overlay" onClick={() => { setResetStudent(null); setStudentActionNote(''); }}>
+          <div className="sd-modal" onClick={(e) => e.stopPropagation()}>
+            <h3>Reset password</h3>
+            <p>Set a new password for <strong>{resetStudent.name || 'this student'}</strong> (login ID: {resetStudent.loginId || '—'}).</p>
+            <input
+              type="text"
+              value={resetStudentPasswordValue}
+              onChange={(e) => setResetStudentPasswordValue(e.target.value)}
+              placeholder="New password (min 8 characters)"
+              autoFocus
+            />
+            {studentActionNote ? <p className="sd-teacher-action-note">{studentActionNote}</p> : null}
+            <div className="sd-modal-actions">
+              <button type="button" className="sd-inline-btn" onClick={() => { setResetStudent(null); setStudentActionNote(''); }}>Cancel</button>
+              <button
+                type="button"
+                className="sd-inline-btn primary"
+                onClick={onConfirmResetStudentPassword}
+                disabled={studentActionBusy === `reset-${resetStudent.id}`}
+              >
+                {studentActionBusy === `reset-${resetStudent.id}` ? 'Resetting...' : 'Reset password'}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {deleteStudent ? (
+        <div className="sd-modal-overlay" onClick={() => { setDeleteStudent(null); setStudentActionNote(''); }}>
+          <div className="sd-modal" onClick={(e) => e.stopPropagation()}>
+            <h3>Delete student?</h3>
+            <p className="sd-modal-warning">
+              ⚠️ This will permanently delete <strong>{deleteStudent.name || 'this student'}</strong>
+              {deleteStudent.className ? ` (${deleteStudent.className})` : ''} along with their login, progress and
+              orchard history. This action cannot be undone.
+            </p>
+            {studentActionNote ? <p className="sd-teacher-action-note">{studentActionNote}</p> : null}
+            <div className="sd-modal-actions">
+              <button type="button" className="sd-inline-btn" onClick={() => { setDeleteStudent(null); setStudentActionNote(''); }}>Cancel</button>
+              <button
+                type="button"
+                className="sd-inline-btn danger"
+                onClick={onConfirmDeleteStudent}
+                disabled={studentActionBusy === `delete-${deleteStudent.id}`}
+              >
+                {studentActionBusy === `delete-${deleteStudent.id}` ? 'Deleting...' : 'Delete student'}
               </button>
             </div>
           </div>

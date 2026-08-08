@@ -193,6 +193,26 @@ export class CurriculumService {
   }
 
   /**
+   * Every (class, subject) pair that already carries at least one lesson in
+   * this school. The admin panel needs these so a subject whose teacher was
+   * removed still shows a button — its uploaded PDFs must stay reachable.
+   */
+  async classSubjectsFromLessons(schoolId: string): Promise<Array<{ className: string; subject: string }>> {
+    const teacherIds = await this.schoolTeacherIds(schoolId);
+    if (!teacherIds.length) return [];
+    const res = await this.db.client.from('lessons').select('*').in('teacher_id', teacherIds);
+    const rows: any[] = Array.isArray((res as any)?.data) ? (res as any).data : [];
+    const seen = new Map<string, { className: string; subject: string }>();
+    for (const row of rows) {
+      const className = String(row?.class_name || '').trim();
+      const subject = String(row?.subject || '').trim();
+      if (!className || !subject) continue;
+      seen.set(`${className.toLowerCase()}::${subject.toLowerCase()}`, { className, subject });
+    }
+    return Array.from(seen.values());
+  }
+
+  /**
    * Lesson numbering is automatic: the first PDF uploaded for a subject + class
    * becomes lesson 1, the next becomes 2, and so on. Admins never type a number.
    */

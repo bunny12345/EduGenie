@@ -16,6 +16,7 @@
     "smoke:orchard": "ts-node scripts/orchard_smoke.ts",
     "smoke:orchard:live": "node scripts/orchard_live_smoke.js",
     "smoke:curriculum": "node scripts/curriculum_admin_smoke.js",
+    "smoke:progress": "node scripts/progress_smoke.js",
     "smoke": "npm run smoke:orchard"
   },
   "keywords": [],

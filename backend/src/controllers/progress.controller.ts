@@ -2,12 +2,16 @@ import { Controller, Get, Post, Query, Body, UseGuards, Req } from '@nestjs/comm
 import { SupabaseService } from '../supabase.service';
 import { AuthGuard } from '../auth/auth.guard';
 import { LearningScoreService } from '../progress/learning-score.service';
+import { OrchardService } from '../orchard/orchard.service';
+import { normalizeSubjectKey } from '../orchard/orchard.constants';
+import { METRIC_ORDER_COLUMN, metricMinutes, metricRow, metricScore } from '../progress/progress-metric.util';
 
 @Controller('progress')
 export class ProgressController {
   constructor(
     private readonly db: SupabaseService,
     private readonly learningScore: LearningScoreService,
+    private readonly orchard: OrchardService,
   ) {}
 
   // Rich "Learning Score" (credit-score style /1000) with 9 dimensions, a month
@@ -29,16 +33,23 @@ export class ProgressController {
   async getProgress(@Req() req: any, @Query('studentId') studentId: string, @Query('period') period: string) {
     const id = req.studentId || studentId;
     try {
-      const res = await this.db.client.from('progress_metrics').select('*').eq('student_id', id).order('date', { ascending: false }).limit(50);
+      const res = await this.db.client.from('progress_metrics').select('*').eq('student_id', id).order(METRIC_ORDER_COLUMN, { ascending: false }).limit(50);
+      if ((res as any)?.error) throw new Error((res as any).error.message);
       const rows = (res && (res as any).data) || [];
+
+      // Only report subjects the student actually has — i.e. ones the school
+      // registered a teacher for in their class. Metrics left behind by a
+      // subject that no longer has a teacher must not reappear as a card.
+      const allowed = new Set(await this.orchard.resolveStudentSubjectKeys(id).catch(() => [] as string[]));
+
       const bySubject = new Map<string, number[]>();
       let timeSpent = 0;
 
       for (const r of Array.isArray(rows) ? rows : []) {
         const s = r.subject || r.metric_key || 'General';
-        const score = Number(r.score ?? r.metric_value ?? r.value);
-        const minutes = Number(r.minutes || r.time_spent || 0);
-        if (Number.isFinite(minutes)) timeSpent += minutes;
+        if (!allowed.has(normalizeSubjectKey(s))) continue;
+        const score = metricScore(r);
+        timeSpent += metricMinutes(r);
         if (!Number.isFinite(score)) continue;
         const arr = bySubject.get(s) || [];
         arr.push(score);
@@ -70,23 +81,23 @@ export class ProgressController {
     const score = Math.max(0, Math.min(100, Number(body.score ?? 0)));
     const minutes = Math.max(0, Number(body.minutes || body.timeSpent || 0));
     const metricKey = String(body.metricKey || subject);
-    const date = body.date ? String(body.date) : new Date().toISOString().split('T')[0];
+    // `date` is accepted as a plain day for backwards compatibility, but the
+    // table stores a timestamp in recorded_at.
+    const recordedAt = body.date ? new Date(String(body.date)).toISOString() : new Date().toISOString();
     try {
-      const row = {
-        student_id: sid,
+      const row = metricRow({
+        studentId: sid,
         subject,
-        metric_key: metricKey,
+        metricKey,
         score,
-        metric_value: score,
         minutes,
-        time_spent: minutes,
-        date,
         source: String(body.source || 'activity').slice(0, 50),
-        created_at: new Date().toISOString()
-      };
+        recordedAt,
+      });
       const res = await this.db.client.from('progress_metrics').insert([row]).select();
+      if ((res as any)?.error) throw new Error((res as any).error.message);
       const inserted = (res as any)?.data?.[0] || row;
-      return { success: true, metric: { id: inserted.id || null, subject: inserted.subject, score: inserted.score, date: inserted.date } };
+      return { success: true, metric: { id: inserted.id || null, subject: inserted.subject, score, minutes, recordedAt: inserted.recorded_at || recordedAt } };
     } catch (e) {
       return { success: false, error: String((e as any)?.message || e || 'progress record failed') };
     }

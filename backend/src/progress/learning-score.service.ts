@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { SupabaseService } from '../supabase.service';
 import { OrchardService } from '../orchard/orchard.service';
 import { normalizeSubjectKey, subjectEntryFor } from '../orchard/orchard.constants';
+import { metricAt, metricMinutes } from './progress-metric.util';
 
 /**
  * LearningScoreService — turns a student's raw activity across the whole portal
@@ -261,8 +262,8 @@ export class LearningScoreService {
     ).size;
     const minutes =
       ctx.pmetrics
-        .filter((r: any) => within(LearningScoreService.ts(r.date, r.created_at, r.recorded_at)))
-        .reduce((s: number, r: any) => s + Number(r.minutes || r.time_spent || 0), 0) +
+        .filter((r: any) => within(LearningScoreService.ts(metricAt(r))))
+        .reduce((s: number, r: any) => s + metricMinutes(r), 0) +
       sessions.reduce((s: number, r: any) => s + Number(r.duration_ms || 0) / 60000, 0);
     const coins = rewards
       .filter((r: any) => String(r.reward_type || 'coin') === 'coin')
@@ -336,7 +337,7 @@ export class LearningScoreService {
         this.rows('messages', studentId),
         this.rows('progress_metrics', studentId),
         this.rows('orchard_activity', studentId),
-        this.orchard.resolveStudentSubjectKeys(studentId).catch(() => ['mathematics', 'science', 'social']),
+        this.orchard.resolveStudentSubjectKeys(studentId).catch(() => [] as string[]),
         this.studentRecord(studentId),
       ]);
 
@@ -469,7 +470,7 @@ export class LearningScoreService {
     const msgs = ctx.msgs.filter((r: any) => inWin(LearningScoreService.ts(r.created_at)));
     const rewards = ctx.rewards.filter((r: any) => inWin(LearningScoreService.ts(r.created_at, r.awarded_at)));
     const activity = ctx.activity.filter((r: any) => inWin(LearningScoreService.ts(r.occurred_at, r.created_at)));
-    const pmetrics = ctx.pmetrics.filter((r: any) => inWin(LearningScoreService.ts(r.date, r.created_at, r.recorded_at)));
+    const pmetrics = ctx.pmetrics.filter((r: any) => inWin(LearningScoreService.ts(metricAt(r))));
     const totalEventCount = attempts.length + hwAttempts.length + sessions.length + msgs.length + rewards.length + activity.length;
     return {
       ...ctx, attempts, hwAttempts, sessions, fcProgress, msgs, rewards, activity, pmetrics, totalEventCount,

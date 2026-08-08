@@ -68,13 +68,17 @@ export class SchoolController {
     @Query('q') q?: string,
     @Query('status') status?: 'all' | 'active' | 'used' | 'revoked' | 'expired',
     @Query('page') page?: string,
-    @Query('limit') limit?: string
+    @Query('limit') limit?: string,
+    @Query('role') role?: string
   ) {
     this.ensureSchoolAdmin(req);
     const schoolId = req?.user?.schoolId || req?.user?.sub || 'school-local';
+    // Teacher invites stay the default so existing callers are unaffected; the
+    // school's student registration page asks for role=student.
+    const scopedRole = String(role || '').trim().toLowerCase() === 'student' ? 'student' : 'teacher';
     const invitesRes = await this.authFlow.listInvitesByScope({
       schoolId,
-      role: 'teacher',
+      role: scopedRole,
       q,
       status,
       page: page ? Number(page) : undefined,
@@ -103,6 +107,98 @@ export class SchoolController {
       students: studentsRes.students || [],
       pagination: studentsRes.pagination || null
     };
+  }
+
+  @Post('students/register')
+  async registerStudent(@Req() req: any, @Body() body: any) {
+    this.ensureSchoolAdmin(req);
+    const schoolId = req?.user?.schoolId || req?.user?.sub;
+    const res = await this.authFlow.registerStudentBySchool({
+      schoolId,
+      name: body?.name,
+      className: body?.className,
+      loginId: body?.loginId,
+      password: body?.password,
+      createdBy: req?.user?.sub || null
+    });
+    if (!res.ok) return { success: false, error: res.error };
+    return { success: true, student: res.student };
+  }
+
+  @Patch('students/:id')
+  async updateStudent(@Req() req: any, @Param('id') id: string, @Body() body: any) {
+    this.ensureSchoolAdmin(req);
+    const schoolId = req?.user?.schoolId || req?.user?.sub;
+    const res = await this.authFlow.updateStudentBySchool({
+      schoolId,
+      studentId: id,
+      name: body?.name,
+      className: body?.className
+    });
+    if (!res.ok) return { success: false, error: res.error };
+    return { success: true, student: res.student };
+  }
+
+  @Post('students/:id/reset-password')
+  async resetStudentPassword(@Req() req: any, @Param('id') id: string, @Body() body: any) {
+    this.ensureSchoolAdmin(req);
+    const schoolId = req?.user?.schoolId || req?.user?.sub;
+    const res = await this.authFlow.resetStudentPassword({
+      schoolId,
+      studentId: id,
+      password: body?.password
+    });
+    if (!res.ok) return { success: false, error: res.error };
+    return { success: true, student: res.student };
+  }
+
+  @Delete('students/:id')
+  async deleteStudent(@Req() req: any, @Param('id') id: string) {
+    this.ensureSchoolAdmin(req);
+    const schoolId = req?.user?.schoolId || req?.user?.sub;
+    const res = await this.authFlow.deleteStudentBySchool({ schoolId, studentId: id });
+    if (!res.ok) return { success: false, error: res.error };
+    return { success: true, student: res.student };
+  }
+
+  @Post('invites/student')
+  async inviteStudent(@Req() req: any, @Body() body: any) {
+    this.ensureSchoolAdmin(req);
+    const schoolId = req?.user?.schoolId || req?.user?.sub || 'school-local';
+    const inv = await this.authFlow.createInvite({
+      role: 'student',
+      schoolId,
+      createdBy: req?.user?.sub || 'school-admin',
+      expiresHours: body?.expiresHours || 72
+    });
+    if (!inv.ok) return { success: false, error: (inv as any).error || 'Could not create invite' };
+    return { success: true, invite: (inv as any).invite };
+  }
+
+  @Post('invites/student/:token/revoke')
+  async revokeStudentInvite(@Req() req: any, @Param('token') token: string) {
+    this.ensureSchoolAdmin(req);
+    const schoolId = req?.user?.schoolId || req?.user?.sub || 'school-local';
+    const inviteRes = await this.authFlow.listInvitesByScope({ schoolId, role: 'student' });
+    const found = (inviteRes.invites || []).find((i: any) => i.token === token);
+    if (!found) return { success: false, error: 'Invite not found in school scope' };
+
+    const revoked = await this.authFlow.revokeInvite(token, req?.user?.sub || 'school-admin');
+    if (!revoked.ok) return { success: false, error: (revoked as any).error || 'Could not revoke invite' };
+    return { success: true, invite: (revoked as any).invite };
+  }
+
+  @Post('invites/student/:token/resend')
+  async resendStudentInvite(@Req() req: any, @Param('token') token: string, @Body() body: any) {
+    this.ensureSchoolAdmin(req);
+    const schoolId = req?.user?.schoolId || req?.user?.sub || 'school-local';
+    const inviteRes = await this.authFlow.listInvitesByScope({ schoolId, role: 'student' });
+    const found = (inviteRes.invites || []).find((i: any) => i.token === token);
+    if (!found) return { success: false, error: 'Invite not found in school scope' };
+
+    const resent = await this.authFlow.resendInvite(token, req?.user?.sub || 'school-admin', body?.expiresHours || 72);
+    if (!resent.ok) return { success: false, error: (resent as any).error || 'Could not resend invite' };
+    return { success: true, invite: (resent as any).invite };
   }
 
   @Post('teachers/register')

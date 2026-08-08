@@ -165,6 +165,101 @@
   color: #fff;
 }
 
+/* ── subjects the school has but this class does not ── */
+
+.eg-cc-missing {
+  margin-top: 12px;
+  padding: 10px 12px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  border: 1px dashed #d9c39a;
+  border-radius: 12px;
+  background: #fdf8ef;
+}
+
+.eg-cc-missing-label {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #8a6d3b;
+}
+
+.eg-cc-missing-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.eg-cc-missing-chip {
+  display: inline-flex;
+  flex-direction: column;
+  padding: 5px 10px;
+  border-radius: 10px;
+  background: #fff;
+  border: 1px solid #ecdcbe;
+}
+
+.eg-cc-missing-chip strong {
+  font-size: 12px;
+  color: #6b5424;
+}
+
+.eg-cc-missing-chip em {
+  font-style: normal;
+  font-size: 11px;
+  color: #9a8459;
+}
+
+.eg-cc-missing-action {
+  margin-left: auto;
+  padding: 6px 12px;
+  border: 1px solid #d9c39a;
+  border-radius: 999px;
+  background: #fff;
+  color: #8a6d3b;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.eg-cc-missing-action:hover {
+  background: #f6ecd9;
+}
+
+/* ── lesson load failure ── */
+
+.eg-cc-loaderr {
+  margin-top: 12px;
+  padding: 10px 12px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  border: 1px solid #f0c2c2;
+  border-radius: 12px;
+  background: #fdf1f1;
+  color: #96313a;
+  font-size: 12.5px;
+}
+
+.eg-cc-loaderr button {
+  margin-left: auto;
+  padding: 6px 14px;
+  border: 1px solid #e2a3a3;
+  border-radius: 999px;
+  background: #fff;
+  color: #96313a;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.eg-cc-loaderr button:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
 /* ── form ── */
 
 .eg-cc-form {

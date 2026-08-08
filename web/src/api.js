@@ -697,64 +697,6 @@ export async function gradeTeacherHomework(hwId, payload) {
   return res.json();
 }
 
-export async function registerTeacherStudent(payload) {
-  const headers = await authHeaders();
-  const url = `${API_BASE}/teacher/students/register`;
-  const res = await fetch(url, {
-    method: 'POST',
-    headers,
-    body: JSON.stringify(payload || {})
-  });
-  return res.json();
-}
-
-export async function createTeacherStudentInvite(payload) {
-  const headers = await authHeaders();
-  const url = `${API_BASE}/teacher/invites/student`;
-  const res = await fetch(url, {
-    method: 'POST',
-    headers,
-    body: JSON.stringify(payload || {})
-  });
-  return res.json();
-}
-
-export async function listTeacherStudentInvites(params) {
-  const qp = new URLSearchParams();
-  if (params?.q) qp.set('q', String(params.q));
-  if (params?.status && String(params.status) !== 'all') qp.set('status', String(params.status));
-  if (params?.page) qp.set('page', String(params.page));
-  if (params?.limit) qp.set('limit', String(params.limit));
-  const query = qp.toString();
-  const url = query
-    ? `${API_BASE}/teacher/invites/student?${query}`
-    : `${API_BASE}/teacher/invites/student`;
-  const res = await fetch(url, {
-    headers: await authHeaders()
-  });
-  if (!res.ok) throw new Error(`listTeacherStudentInvites failed: ${res.status}`);
-  const data = await res.json();
-  return checkSuccess(data, 'listTeacherStudentInvites');
-}
-
-export async function revokeTeacherStudentInvite(token) {
-  const headers = await authHeaders();
-  const url = `${API_BASE}/teacher/invites/student/${encodeURIComponent(token)}/revoke`;
-  const res = await fetch(url, { method: 'POST', headers, body: JSON.stringify({}) });
-  return res.json();
-}
-
-export async function resendTeacherStudentInvite(token, payload) {
-  const headers = await authHeaders();
-  const url = `${API_BASE}/teacher/invites/student/${encodeURIComponent(token)}/resend`;
-  const res = await fetch(url, {
-    method: 'POST',
-    headers,
-    body: JSON.stringify(payload || {})
-  });
-  return res.json();
-}
-
 export async function schoolDashboard() {
   const res = await fetch(withQuery('/school/dashboard'), {
     headers: await authHeaders()
@@ -854,6 +796,75 @@ export async function revokeSchoolTeacherInvite(token) {
 export async function resendSchoolTeacherInvite(token, payload) {
   const headers = await authHeaders();
   const url = `${API_BASE}/school/invites/teacher/${encodeURIComponent(token)}/resend`;
+  const res = await fetch(url, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify(payload || {})
+  });
+  return res.json();
+}
+
+export async function schoolRegisterStudent(payload) {
+  const headers = await authHeaders();
+  const url = `${API_BASE}/school/students/register`;
+  const res = await fetch(url, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify(payload || {})
+  });
+  return res.json();
+}
+
+export async function schoolUpdateStudent(studentId, payload) {
+  const headers = await authHeaders();
+  const url = `${API_BASE}/school/students/${encodeURIComponent(studentId)}`;
+  const res = await fetch(url, {
+    method: 'PATCH',
+    headers,
+    body: JSON.stringify(payload || {})
+  });
+  return res.json();
+}
+
+export async function schoolResetStudentPassword(studentId, password) {
+  const headers = await authHeaders();
+  const url = `${API_BASE}/school/students/${encodeURIComponent(studentId)}/reset-password`;
+  const res = await fetch(url, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({ password })
+  });
+  return res.json();
+}
+
+export async function schoolDeleteStudent(studentId) {
+  const headers = await authHeaders();
+  const url = `${API_BASE}/school/students/${encodeURIComponent(studentId)}`;
+  const res = await fetch(url, { method: 'DELETE', headers });
+  return res.json();
+}
+
+export async function schoolInviteStudent(payload) {
+  const headers = await authHeaders();
+  const url = `${API_BASE}/school/invites/student`;
+  const res = await fetch(url, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify(payload || {})
+  });
+  return res.json();
+}
+
+export async function revokeSchoolStudentInvite(token) {
+  const headers = await authHeaders();
+  const url = `${API_BASE}/school/invites/student/${encodeURIComponent(token)}/revoke`;
+  const res = await fetch(url, { method: 'POST', headers, body: JSON.stringify({}) });
+  return res.json();
+}
+
+export async function resendSchoolStudentInvite(token, payload) {
+  const headers = await authHeaders();
+  const url = `${API_BASE}/school/invites/student/${encodeURIComponent(token)}/resend`;
   const res = await fetch(url, {
     method: 'POST',
     headers,
@@ -1095,14 +1106,11 @@ const api = {
   deleteCurriculumLesson,
   deleteCurriculumLessonDocument,
   studentLogin,
-  registerTeacherStudent,
   teacherLogin,
   schoolRegister,
   schoolLogin,
   getInviteInfo,
   acceptInvite,
-  createTeacherStudentInvite,
-  listTeacherStudentInvites,
   schoolDashboard,
   schoolTeachers,
   schoolInvites,
@@ -1111,6 +1119,13 @@ const api = {
   schoolInviteTeacher,
   schoolUpdateTeacher,
   schoolResetTeacherPassword,
-  schoolDeleteTeacher
+  schoolDeleteTeacher,
+  schoolRegisterStudent,
+  schoolUpdateStudent,
+  schoolResetStudentPassword,
+  schoolDeleteStudent,
+  schoolInviteStudent,
+  revokeSchoolStudentInvite,
+  resendSchoolStudentInvite
 };
 export default api;
