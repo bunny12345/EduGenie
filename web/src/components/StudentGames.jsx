@@ -47,9 +47,8 @@ export default function StudentGames({ studentId, greetingName, onAskTutor, onCo
         <p>{greetingName ? `${greetingName}, pick` : 'Pick'} a game and turn study time into play time.</p>
       </header>
 
-      {games === null ? (
-        <div className="eg-games-loading"><span className="eg-fc-spinner" /> Loading games…</div>
-      ) : (
+      {/* The catalog arrives in the background — the grid simply appears. */}
+      {games === null ? null : (
         <div className="eg-games-grid">
           {games.map((g) => (
             <button

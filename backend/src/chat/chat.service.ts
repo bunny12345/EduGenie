@@ -602,19 +602,18 @@ export class ChatService {
       console.warn('lesson context lookup failed', e?.message || e);
     }
 
-    // Persist the student message
-    try {
-      await this.db.client.from('messages').insert([{
+    // Persist the student message in the background — it is not needed to build
+    // the prompt, so awaiting it here only adds a DB round-trip to the reply latency.
+    void Promise.resolve(
+      this.db.client.from('messages').insert([{
         student_id: studentId,
         role: 'user',
         message,
         message_metadata: this.buildMessageMetadata(userTurn),
         conversation_id: convId,
         embedding: emb
-      }]);
-    } catch (e) {
-      console.warn('Supabase message insert failed', e?.message || e);
-    }
+      }])
+    ).catch((e: any) => console.warn('Supabase message insert failed', e?.message || e));
 
     // ── Fetch student profile ──────────────────────────────────────────────
     let studentName: string | null = null;
@@ -628,10 +627,27 @@ export class ChatService {
       }
     } catch (e) { /* ignore */ }
 
+    // Kick off the independent DB reads together so their network round-trips
+    // overlap instead of running one-after-another on the reply's critical path.
+    // Supabase query builders are lazy, so Promise.resolve() forces them to start.
+    const memoriesPromise = Promise.resolve(
+      this.db.client.from('memories').select('*').eq('student_id', studentId)
+    );
+    const historyPromise = Promise.resolve(
+      this.db.client
+        .from('messages')
+        .select('role,message,created_at,message_metadata')
+        .eq('conversation_id', convId)
+        .eq('student_id', studentId)
+        .order('created_at', { ascending: false })
+        .limit(40)
+    );
+    const snapshotPromise = this.loadSnapshotHistory(studentId, convId);
+
     // ── Fetch recent memories (top-3 by cosine similarity) ────────────────
     let relevantMemories: string[] = [];
     try {
-      const res = await this.db.client.from('memories').select('*').eq('student_id', studentId);
+      const res = await memoriesPromise;
       memRows = (res && (res as any).data) || (Array.isArray(res) ? res : []);
       if (Array.isArray(memRows) && memRows.length > 0) {
         // Fallback name/class from memories if not in students table
@@ -658,14 +674,7 @@ export class ChatService {
     // ── Fetch recent conversation history (conversation-scoped) ───────────
     let recentHistory: Array<{ role: string; content: string }> = [];
     try {
-      const hq = this.db.client
-        .from('messages')
-        .select('role,message,created_at,message_metadata')
-        .eq('conversation_id', convId)
-        .eq('student_id', studentId)
-        .order('created_at', { ascending: false })
-        .limit(40);
-      const hres = await hq;
+      const hres = await historyPromise;
       const hrows = (hres && hres.data) || (Array.isArray(hres) ? hres : []);
       if (Array.isArray(hrows)) {
         recentHistory = hrows
@@ -681,7 +690,7 @@ export class ChatService {
       }
     } catch (e) { /* ignore */ }
 
-    const snapshotHistory = this.toContextMessages(await this.loadSnapshotHistory(studentId, convId));
+    const snapshotHistory = this.toContextMessages(await snapshotPromise);
 
     const cacheHistory = this.toContextMessages(this.getCacheHistory(studentId, convId));
 
@@ -777,40 +786,51 @@ export class ChatService {
     };
     this.appendCacheTurn(studentId, convId, assistantTurn);
 
-    const snapshotTurns = await this.loadSnapshotHistory(studentId, convId);
-    const baseTurns: ChatTurn[] = snapshotTurns.length
-      ? snapshotTurns
-      : recentHistory.map((m) => ({
-          role: (m.role === 'assistant' ? 'assistant' : 'user') as 'user' | 'assistant',
-          content: m.content,
-          ts: new Date().toISOString(),
-        }));
-    const persistedTurns: ChatTurn[] = [...baseTurns, userTurn, assistantTurn].slice(-60);
-    await this.persistSnapshotHistory(studentId, convId, persistedTurns);
-
-    // Persist AI reply
-    try {
-      await this.db.client.from('messages').insert([{
-        student_id: studentId,
-        role: 'ai',
-        message: reply,
-        message_metadata: this.buildMessageMetadata(assistantTurn),
-        conversation_id: convId,
-        embedding: await this.embeddings.embed(reply)
-      }]);
-    } catch (e) { /* ignore */ }
-
-    if (lessonId) {
-      await this.upsertLessonMasteryRecord({
-        studentId,
-        lessonId,
-        conversationId: convId,
-        understandingSignals,
-        recentHistory: [...recentHistory, { role: 'user', content: message }, { role: 'assistant', content: reply }],
-      });
-    }
-
     const followups = this.buildFollowups(message, lessonTitle || '', lessonSubject || '');
+
+    // Everything below (snapshot persistence, the reply embedding round-trip, the
+    // AI-message insert, and the lesson-mastery upsert) is not needed to return
+    // the reply. Run it in the background so the student sees the answer as soon
+    // as the model responds instead of waiting on extra DB writes and embeddings.
+    void (async () => {
+      try {
+        const snapshotTurns = await this.loadSnapshotHistory(studentId, convId);
+        const baseTurns: ChatTurn[] = snapshotTurns.length
+          ? snapshotTurns
+          : recentHistory.map((m) => ({
+              role: (m.role === 'assistant' ? 'assistant' : 'user') as 'user' | 'assistant',
+              content: m.content,
+              ts: new Date().toISOString(),
+            }));
+        const persistedTurns: ChatTurn[] = [...baseTurns, userTurn, assistantTurn].slice(-60);
+        await this.persistSnapshotHistory(studentId, convId, persistedTurns);
+
+        // Persist AI reply
+        try {
+          await this.db.client.from('messages').insert([{
+            student_id: studentId,
+            role: 'ai',
+            message: reply,
+            message_metadata: this.buildMessageMetadata(assistantTurn),
+            conversation_id: convId,
+            embedding: await this.embeddings.embed(reply)
+          }]);
+        } catch (e) { /* ignore */ }
+
+        if (lessonId) {
+          await this.upsertLessonMasteryRecord({
+            studentId,
+            lessonId,
+            conversationId: convId,
+            understandingSignals,
+            recentHistory: [...recentHistory, { role: 'user', content: message }, { role: 'assistant', content: reply }],
+          });
+        }
+      } catch (e) {
+        console.warn('background chat persistence failed', (e as any)?.message || e);
+      }
+    })();
+
     return {
       reply,
       followups,

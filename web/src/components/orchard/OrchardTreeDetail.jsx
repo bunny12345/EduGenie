@@ -104,7 +104,9 @@ export default function OrchardTreeDetail({ studentId, subjectKey, initialTree, 
   const golden = chapters.filter((c) => c.isGolden).length;
 
   if (loading && !detail) {
-    return <div className="eg-orch-loading">🌱 Loading your tree…</div>;
+    // The tree loads silently in the background. Nothing is rendered while the
+    // fetch is in flight so the "could not load" message can't flash first.
+    return null;
   }
   if (!detail) {
     return (

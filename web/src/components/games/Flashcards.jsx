@@ -191,9 +191,9 @@ export default function Flashcards({ studentId, onAskTutor, onCoinsEarned }) {
   const progressPct = totalToStudy ? Math.min(100, Math.round((studied / totalToStudy) * 100)) : 0;
 
   // ── render ────────────────────────────────────────────────────────────────
-  if (phase === 'loading') {
-    return <div className="eg-fc-loading"><span className="eg-fc-spinner" /> Loading flashcards…</div>;
-  }
+  // Cards are fetched in the background — nothing announces the wait, the deck
+  // just appears once it is ready.
+  if (phase === 'loading') return null;
 
   if (phase === 'empty') {
     return (

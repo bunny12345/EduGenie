@@ -16,7 +16,7 @@ import {
   SubjectCatalogEntry,
   SUBJECT_CATALOG,
   SUBJECT_BY_KEY,
-  treeStageFromCompletion,
+  treeStageFromGrowth,
   normalizeSubjectKey,
   prettifySubjectName,
   subjectEntryFor,
@@ -560,10 +560,12 @@ export class OrchardService {
     const total = chapters.length;
     let rootsSum = 0;
     let completed = 0;
+    const stageIndexes: number[] = [];
 
     for (const g of growth) {
       const idx = Number(g.stage_index || 0);
       rootsSum += Number(g.roots_pct || 0);
+      stageIndexes.push(idx);
       if (idx >= STAGE_INDEX['fruit']) completed += 1;
     }
 
@@ -579,10 +581,10 @@ export class OrchardService {
     if (inProgress.length) nextChapterId = inProgress[0].g.chapter_id;
     else if (seeds.length) nextChapterId = seeds[0].g.chapter_id;
 
-    // Tree stage is driven by how many chapters the student has FINISHED
-    // (reached fruit) out of the subject's total, independent of chapter count.
-    // Golden fruit appears only when every chapter is finished.
-    const { stage: treeStage, index: roundedIdx } = treeStageFromCompletion(completed, total);
+    // Tree stage follows the growth of EVERY chapter, not just the finished
+    // ones, so the artwork moves as soon as the student unlocks a milestone.
+    // Golden fruit still requires every chapter to be fully golden.
+    const { stage: treeStage, index: roundedIdx } = treeStageFromGrowth(stageIndexes, total);
     const progressPct = clampPct(total ? (completed / total) * 100 : 0);
     const rootsPct = clampPct(total ? rootsSum / total : 0);
     const level = Math.max(1, Math.min(7, roundedIdx + 1));

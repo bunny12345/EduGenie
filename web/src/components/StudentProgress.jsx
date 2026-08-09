@@ -61,38 +61,35 @@ function valueColor(v) {
 
 export default function StudentProgress({ studentId, greetingName }) {
   const [data, setData] = useState(null);
-  const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [trendView, setTrendView] = useState('daily'); // 'daily' | 'monthly'
   const [subjView, setSubjView] = useState('daily'); // 'daily' | 'monthly'
   const [openSubject, setOpenSubject] = useState(null); // subject object or null
 
+  // The report loads in the background: nothing on screen says "loading". The
+  // page simply stays blank for the moment it takes to arrive, then fills in.
+  // A refresh keeps the current report visible until the new one replaces it.
   const load = useCallback(async () => {
-    setLoading(true);
     setError(null);
     try {
       const res = await getLearningScore(studentId);
       setData(res || null);
     } catch (e) {
       setError('Could not load your progress right now.');
-    } finally {
-      setLoading(false);
     }
   }, [studentId]);
 
   useEffect(() => { load(); }, [load]);
 
-  if (loading) {
-    return <div className="eg-pg-loading"><span className="eg-pg-spinner" /> Getting your learning report ready…</div>;
-  }
-  if (error || !data) {
+  if (error) {
     return (
       <div className="eg-pg-error">
-        <p>{error || 'No progress data yet.'}</p>
+        <p>{error}</p>
         <button className="eg-pg-btn" onClick={load}>Try again</button>
       </div>
     );
   }
+  if (!data) return null;
 
   const {
     score = 0, maxScore = 1000, color, momentumDelta = 0, dimensions = [],

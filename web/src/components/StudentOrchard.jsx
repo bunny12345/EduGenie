@@ -121,16 +121,16 @@ function WeekStrip({ activeDates = [] }) {
 
 export default function StudentOrchard({ studentId, greetingName = 'there' }) {
   const [data, setData] = useState(null);
-  const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [selectedKey, setSelectedKey] = useState('');
   const [detail, setDetail] = useState(null);
-  const [detailLoading, setDetailLoading] = useState(false);
   const [openKey, setOpenKey] = useState('');
 
+  // The orchard loads quietly in the background — no "growing your orchard"
+  // screen. It renders as soon as the data lands, and later refreshes swap the
+  // trees in place without blanking what is already on screen.
   const loadOrchard = useCallback(async () => {
     if (!studentId) return;
-    setLoading(true);
     setError('');
     try {
       const res = await getOrchard(studentId);
@@ -139,8 +139,6 @@ export default function StudentOrchard({ studentId, greetingName = 'there' }) {
       setSelectedKey((prev) => prev || first);
     } catch (e) {
       setError(String(e?.message || e || 'Failed to load orchard'));
-    } finally {
-      setLoading(false);
     }
   }, [studentId]);
 
@@ -152,14 +150,11 @@ export default function StudentOrchard({ studentId, greetingName = 'there' }) {
     let cancelled = false;
     async function loadDetail() {
       if (!studentId || !selectedKey) return;
-      setDetailLoading(true);
       try {
         const res = await getOrchardTree(studentId, selectedKey);
         if (!cancelled) setDetail(res);
       } catch {
         if (!cancelled) setDetail(null);
-      } finally {
-        if (!cancelled) setDetailLoading(false);
       }
     }
     loadDetail();
@@ -188,9 +183,6 @@ export default function StudentOrchard({ studentId, greetingName = 'there' }) {
   const hasMature = trees.some((t) => STAGE_ORDER.indexOf(t.stage) >= STAGE_ORDER.indexOf('mature_tree'));
   const seasonMeta = SEASON_META[season] || SEASON_META.spring;
 
-  if (loading) {
-    return <div className="eg-orch-loading">🌱 Growing your orchard…</div>;
-  }
   if (error) {
     return (
       <div className="eg-orch-error">
@@ -390,7 +382,6 @@ export default function StudentOrchard({ studentId, greetingName = 'there' }) {
           ) : (
             <div className="eg-orch-detail-empty">Select a tree to see details</div>
           )}
-          {detailLoading && <div className="eg-orch-detail-loading">Updating…</div>}
         </aside>
       </div>
 

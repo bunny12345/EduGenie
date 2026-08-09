@@ -152,9 +152,60 @@ textarea {
   font-weight: 600;
 }
 
+/* Logout lives at the bottom of the sidebar, matching the school portal. */
+.eg-side-logout {
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.05);
+  color: #ffb4b4;
+  min-height: 36px;
+  padding: 8px 10px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+  transition: background 0.18s ease, color 0.18s ease, border-color 0.18s ease;
+}
+
+.eg-side-logout:hover {
+  background: rgba(255, 107, 107, 0.18);
+  border-color: rgba(255, 107, 107, 0.4);
+  color: #fff;
+}
+
 .eg-main {
   display: grid;
   gap: 10px;
+}
+
+/* Full-bleed AI Tutor: the main column becomes a viewport-height flex stack so
+   the tutor panel fills everything under the topbar with no dead space. */
+.eg-main.eg-main-ai {
+  display: flex;
+  flex-direction: column;
+  height: calc(100vh - 28px);
+  height: calc(100dvh - 28px);
+  min-height: 0;
+}
+
+.eg-main.eg-main-ai > .eg-view-shell {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+}
+
+.eg-main.eg-main-ai > .eg-view-shell > .eg-ai-panel {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* The chat is the only flexible row, so it must be allowed to shrink below its
+   min-height instead of pushing the composer off screen. */
+.eg-main.eg-main-ai .eg-ai-chat-screen {
+  min-height: 0;
 }
 
 .eg-view-shell {
@@ -873,8 +924,8 @@ textarea {
 }
 
 .eg-ai-screen {
-  min-height: calc(100vh - 160px);
-  max-height: calc(100vh - 120px);
+  min-height: 0;
+  height: 100%;
   padding: 16px;
   width: 100%;
   max-width: 100%;
@@ -990,14 +1041,77 @@ textarea {
   outline-offset: 2px;
 }
 
+.eg-ai-context {
+  display: grid;
+  gap: 8px;
+}
+
+.eg-ai-context-row {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr);
+}
+
+.eg-ai-select {
+  width: 100%;
+  min-width: 0;
+  border-radius: 11px;
+  border: 1px solid rgba(197, 214, 255, 0.28);
+  background: rgba(14, 29, 96, 0.62);
+  color: #f2f6ff;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 9px 11px;
+  cursor: pointer;
+  transition: border-color 0.18s ease, background 0.18s ease, box-shadow 0.18s ease;
+}
+
+.eg-ai-select:hover:enabled {
+  border-color: rgba(222, 232, 255, 0.5);
+}
+
+.eg-ai-select:focus {
+  outline: none;
+  border-color: #a8beff;
+  box-shadow: 0 0 0 3px rgba(111, 139, 243, 0.22);
+}
+
+.eg-ai-select:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.eg-ai-select option {
+  color: #10153a;
+}
+
+.eg-ai-scope-note {
+  font-size: 11.5px;
+  color: rgba(212, 225, 255, 0.7);
+}
+
+.eg-ai-lesson-chip {
+  font-size: 12px;
+  color: #e8efff;
+  background: rgba(120, 145, 255, 0.14);
+  border: 1px solid rgba(180, 200, 255, 0.26);
+  border-radius: 10px;
+  padding: 8px 11px;
+}
+
 .eg-ai-chat {
   border: 1px solid rgba(220, 230, 255, 0.18);
   border-radius: 14px;
   background:
     linear-gradient(180deg, rgba(10, 20, 72, 0.84), rgba(8, 16, 62, 0.88));
-  padding: 12px;
-  display: grid;
-  gap: 9px;
+  padding: 14px;
+  /* Flex (not grid): grid stretched every auto row to fill the panel, which is
+     what produced the tall empty bubbles. Flex lets each bubble hug its text. */
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: flex-start;
+  gap: 10px;
   box-shadow: inset 0 0 0 1px rgba(161, 183, 255, 0.06);
 }
 
@@ -1010,6 +1124,12 @@ textarea {
   scrollbar-color: rgba(160, 182, 255, 0.42) transparent;
 }
 
+/* Keeps the conversation resting on the composer while it is short, and turns
+   into a normal top-to-bottom scroll once it overflows. */
+.eg-ai-chat-screen > *:first-child {
+  margin-top: auto;
+}
+
 .eg-ai-chat-screen::-webkit-scrollbar {
   width: 9px;
 }
@@ -1020,26 +1140,45 @@ textarea {
 }
 
 .ai-msg {
-  border-radius: 12px;
-  padding: 11px 13px;
+  border-radius: 14px;
+  padding: 11px 14px;
   font-size: 14px;
   line-height: 1.68;
-  max-width: min(96%, 1100px);
+  width: fit-content;
+  max-width: min(78%, 900px);
+  flex: 0 0 auto;
+  align-self: flex-start;
   letter-spacing: 0.01em;
+  animation: egAiMsgIn 200ms ease both;
+}
+
+@keyframes egAiMsgIn {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .ai-msg.bot {
   background: linear-gradient(180deg, rgba(240, 246, 255, 0.12), rgba(229, 239, 255, 0.08));
   border: 1px solid rgba(198, 214, 255, 0.24);
+  border-bottom-left-radius: 5px;
   color: #e6eeff;
 }
 
 .ai-msg.user {
   background: linear-gradient(140deg, #6c72ff, #5d63f1 48%, #7d72fb);
   border: 1px solid rgba(213, 206, 255, 0.34);
+  border-bottom-right-radius: 5px;
+  align-self: flex-end;
   justify-self: end;
+  box-shadow: 0 8px 20px rgba(66, 74, 214, 0.28);
   color: #ffffff;
-  max-width: min(82%, 960px);
+  max-width: min(72%, 760px);
 }
 
 .eg-ai-msg-text {
@@ -1363,23 +1502,154 @@ textarea {
 
 .eg-bottom-grid {
   display: grid;
-  grid-template-columns: repeat(6, minmax(0, 1fr));
-  column-gap: 8px;
-  row-gap: 8px;
+  grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+  grid-auto-flow: row dense;
+  column-gap: 14px;
+  row-gap: 14px;
+  align-items: start;
+}
+
+/* Quiet label that introduces the tile grid on Home. */
+.eg-section-title {
+  margin: 6px 2px 2px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #8a8fae;
+}
+
+/* Subject switcher — soft pills instead of a hard grey toolbar. */
+.eg-subject-nav {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 4px 2px;
+  overflow-x: auto;
+}
+
+.eg-subject-pill {
+  position: relative;
+  border: 1px solid rgba(31, 35, 64, 0.07);
+  border-radius: 999px;
+  padding: 8px 16px;
+  background: #fff;
+  color: #3d4674;
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(31, 35, 64, 0.05);
+  transition: transform 0.16s ease, box-shadow 0.16s ease, background 0.16s ease, color 0.16s ease;
+}
+
+.eg-subject-pill:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 16px rgba(31, 35, 64, 0.09);
+}
+
+.eg-subject-pill.active {
+  background: linear-gradient(120deg, #5b47ff, #6e78ff);
+  border-color: transparent;
+  color: #fff;
+  box-shadow: 0 6px 18px rgba(91, 71, 255, 0.28);
+}
+
+.eg-subject-pill-badge {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: #ff6b6b;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.eg-subject-nav-empty {
+  color: #8a8fae;
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+/* Library / Calendar / Rewards / Settings pages. */
+.eg-utility {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  padding: 18px 22px 40px;
+  color: #1f2340;
+}
+
+.eg-utility-head {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.eg-utility-icon {
+  font-size: 30px;
+  width: 56px;
+  height: 56px;
+  border-radius: 18px;
+  display: grid;
+  place-items: center;
+  background: linear-gradient(120deg, #f4f0ff 0%, #eefaf1 100%);
+}
+
+.eg-utility-head h1 {
+  margin: 0;
+  font-size: 26px;
+  font-weight: 800;
+}
+
+.eg-utility-head p {
+  margin: 4px 0 0;
+  color: #6b7090;
+  font-size: 13px;
+}
+
+.eg-utility-card {
+  border-radius: 20px;
+  padding: 22px;
+  display: grid;
+  gap: 14px;
+  max-width: 760px;
+  box-shadow: 0 4px 16px rgba(31, 35, 64, 0.06);
+}
+
+.eg-utility-card .mini-list {
+  font-size: 13px;
+  gap: 8px;
 }
 
 .eg-mini-card {
-  padding: 8px;
-  min-height: 158px;
+  padding: 16px 18px;
+  min-height: 172px;
   line-height: var(--lh-base);
+  border-radius: 18px;
+  border-color: rgba(31, 35, 64, 0.06);
+  box-shadow: 0 4px 16px rgba(31, 35, 64, 0.06);
+  transition: transform 0.18s ease, box-shadow 0.18s ease;
+}
+
+.eg-mini-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 12px 26px rgba(31, 35, 64, 0.1);
 }
 
 .eg-mini-card h4 {
-  margin: 0 0 8px;
-  font-size: 11px;
+  margin: 0 0 10px;
+  font-size: 12px;
   color: #3d4674;
   text-transform: uppercase;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.05em;
   line-height: var(--lh-tight);
 }
 
@@ -1387,9 +1657,9 @@ textarea {
   margin: 0;
   padding-left: 16px;
   color: #555f8c;
-  font-size: 11px;
+  font-size: 12px;
   display: grid;
-  gap: 5px;
+  gap: 6px;
 }
 
 .eg-list-with-action {
@@ -1472,6 +1742,10 @@ textarea {
 .eg-timeline-card {
   display: grid;
   gap: 10px;
+  grid-column: span 2;
+  align-content: start;
+  max-height: 340px;
+  overflow-y: auto;
 }
 
 .eg-timeline-list {
@@ -3368,11 +3642,8 @@ textarea {
 }
 
 @media (max-width: 1300px) {
-  .eg-bottom-grid {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-  }
-
-  .eg-progress-card {
+  .eg-progress-card,
+  .eg-timeline-card {
     grid-column: span 1;
   }
 }
@@ -3393,6 +3664,18 @@ textarea {
   .eg-ai-screen {
     min-height: auto;
     max-height: none;
+  }
+
+  .eg-ai-context-row {
+    grid-template-columns: 1fr;
+  }
+
+  .ai-msg {
+    max-width: min(88%, 900px);
+  }
+
+  .ai-msg.user {
+    max-width: min(86%, 760px);
   }
 
   .eg-ai-chat-screen {
@@ -3464,6 +3747,11 @@ textarea {
 
   .eg-ai-screen {
     padding: 12px;
+  }
+
+  .eg-main.eg-main-ai {
+    height: auto;
+    min-height: calc(100dvh - 20px);
   }
 
   .ai-msg {

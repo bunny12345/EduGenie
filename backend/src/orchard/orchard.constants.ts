@@ -287,6 +287,27 @@ export function treeStageFromCompletion(completed: number, total: number): { sta
   return { stage: STAGES[idx], index: idx };
 }
 
+// Tree-level growth, but counting PARTIAL chapter progress too.
+//
+// treeStageFromCompletion() only moves when a whole chapter reaches fruit, so a
+// student could work through five chapter stages and still stare at a seed.
+// Here every chapter contributes its own stage index (0..7), so the subject
+// tree grows a little with each milestone the student unlocks. Finishing every
+// chapter completely still is the only way to reach golden fruit.
+export function treeStageFromGrowth(stageIndexes: number[], total: number): { stage: StageKey; index: number } {
+  if (!total || total <= 0) return { stage: 'seed', index: 0 };
+  const maxIndex = STAGE_INDEX['golden_fruit']; // 7 — a fully golden chapter
+  const points = (stageIndexes || []).reduce((sum, i) => sum + Math.max(0, Math.min(maxIndex, Number(i) || 0)), 0);
+  if (points <= 0) return { stage: 'seed', index: 0 };
+  const maxPoints = total * maxIndex;
+  if (points >= maxPoints) return { stage: 'golden_fruit', index: maxIndex };
+  // Spread the middle of the journey across sprout → fruit so all six of those
+  // drawings are reachable no matter how many chapters the subject has.
+  const fraction = points / maxPoints; // 0 < fraction < 1
+  const idx = Math.min(STAGE_INDEX['fruit'], Math.max(1, Math.ceil(fraction * maxIndex)));
+  return { stage: STAGES[idx], index: idx };
+}
+
 export function clampPct(n: number): number {
   if (!Number.isFinite(n)) return 0;
   return Math.max(0, Math.min(100, Math.round(n)));

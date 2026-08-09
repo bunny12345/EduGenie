@@ -236,12 +236,20 @@ function Sparkline({ values }) {
   );
 }
 
+// Sidebar tabs that used to be small cards on the Home screen. They now open as
+// their own focused page so Home can stay a clean overview.
+const UTILITY_TABS = {
+  Library: { icon: '📚', title: 'Library', sub: 'Extra reading and practice material picked for you.' },
+  Calendar: { icon: '📅', title: 'Calendar', sub: 'Plan your study sessions and keep track of what is coming up.' },
+  Rewards: { icon: '🏅', title: 'Rewards', sub: 'Coins and badges you have collected so far.' },
+  Settings: { icon: '⚙️', title: 'Settings', sub: 'Account, privacy and appearance preferences.' },
+};
+
 export default function StudentDashboard({ studentId = 'test', onLogout }) {
   // Navigation state
   const [activeView, setActiveView] = useState('home'); // 'home' or subject name
   const [activeSidebarTab, setActiveSidebarTab] = useState('Home');
 
-  const [loading, setLoading] = useState(true);
   const [panelLoading, setPanelLoading] = useState({
     dashboard: false,
     homework: false,
@@ -284,7 +292,6 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
   const [tutorLessons, setTutorLessons] = useState([]);
   const [selectedTutorLessonId, setSelectedTutorLessonId] = useState('');
   const [selectedTutorLesson, setSelectedTutorLesson] = useState(null);
-  const [tutorLoadingLessons, setTutorLoadingLessons] = useState(false);
 
   const [startingTestId, setStartingTestId] = useState('');
   const [startingHomeworkId, setStartingHomeworkId] = useState('');
@@ -340,8 +347,16 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
   const [rewardsNote, setRewardsNote] = useState('');
   const [rewardsEarning, setRewardsEarning] = useState(false);
 
+  // Panels load silently — nothing on screen ever announces "loading". The flag
+  // below is kept only for the *first* fetch of each panel, so an empty-state
+  // line ("No homework tasks assigned.") can't flash before the data has had a
+  // chance to arrive. Once a panel has loaded once, every later refresh (the
+  // 20s poll, a manual retry) swaps the content in place without flicker.
+  const panelLoadedOnceRef = useRef({});
   const setPanelLoadingKey = (key, value) => {
-    setPanelLoading((prev) => ({ ...prev, [key]: value }));
+    if (value && panelLoadedOnceRef.current[key]) return;
+    if (!value) panelLoadedOnceRef.current[key] = true;
+    setPanelLoading((prev) => (prev[key] === value ? prev : { ...prev, [key]: value }));
   };
 
   const setPanelErrorKey = (key, value) => {
@@ -526,7 +541,6 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
       return [];
     }
 
-    setTutorLoadingLessons(true);
     try {
       const res = await listCurriculumLessons({ className, subject });
       const lessons = Array.isArray(res?.lessons) ? res.lessons : [];
@@ -543,8 +557,6 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
       setSelectedTutorLessonId('');
       setSelectedTutorLesson(null);
       return [];
-    } finally {
-      setTutorLoadingLessons(false);
     }
   }
 
@@ -740,7 +752,6 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
   useEffect(() => {
     let active = true;
     async function loadAll() {
-      setLoading(true);
       await Promise.all([
         loadStudentProfilePanel(),
         loadDashboardPanel(),
@@ -754,9 +765,8 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
         loadSettingsPanel(),
         loadChatPanel()
       ]);
-      if (active) setLoading(false);
     }
-    loadAll();
+    if (active) loadAll();
     return () => {
       active = false;
     };
@@ -931,7 +941,9 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
       ? 'orchard-view'
       : activeSidebarTab === 'Games'
         ? 'games-view'
-        : (activeView === 'home' ? 'home-view' : `subject-view-${activeView}`);
+        : UTILITY_TABS[activeSidebarTab]
+          ? `utility-view-${activeSidebarTab}`
+          : (activeView === 'home' ? 'home-view' : `subject-view-${activeView}`);
 
   function onSidebarNavClick(item) {
     setActiveSidebarTab(item);
@@ -952,6 +964,12 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
       .replace(/\*\*/g, '')
       .replace(/`/g, '')
       .replace(/\[(.*?)\]\((.*?)\)/g, '$1')
+      // Strip emojis and pictographic symbols so voice playback reads only the
+      // content instead of announcing emoji names (e.g. "pizza", "seedling").
+      .replace(
+        /[\u{1F000}-\u{1FAFF}\u{2600}-\u{27BF}\u{2B00}-\u{2BFF}\u{1F1E6}-\u{1F1FF}\u{FE00}-\u{FE0F}\u{200D}\u{20E3}\u{2190}-\u{21FF}\u{2300}-\u{23FF}\u{2B05}-\u{2B07}\u{2934}\u{2935}]/gu,
+        ' '
+      )
       .replace(/[•●▪]/g, ', ')
       .replace(/\s*\n+\s*/g, '. ')
       .replace(/\s+/g, ' ')
@@ -1801,9 +1819,9 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
             </div>
           </div>
         </div>
-        <div style={{ display: 'grid', gap: 8, marginBottom: 10 }}>
-          <div style={{ display: 'grid', gap: 8, gridTemplateColumns: '1fr 1fr' }}>
-            <select value={tutorSubject} onChange={(e) => setTutorSubject(e.target.value)} className="eg-ai-topic-chip" style={{ width: '100%' }} disabled={!subjects.length}>
+        <div className="eg-ai-context">
+          <div className="eg-ai-context-row">
+            <select value={tutorSubject} onChange={(e) => setTutorSubject(e.target.value)} className="eg-ai-select" disabled={!subjects.length}>
               {subjects.length
                 ? subjects.map((subject) => <option key={subject} value={subject}>{subject}</option>)
                 : <option value="">No subjects yet</option>}
@@ -1815,21 +1833,19 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
                 setSelectedTutorLessonId(nextId);
                 setSelectedTutorLesson(tutorLessons.find((lesson) => String(lesson.id || '') === String(nextId)) || null);
               }}
-              disabled={tutorLoadingLessons}
-              className="eg-ai-topic-chip"
-              style={{ width: '100%' }}
+              className="eg-ai-select"
             >
-              <option value="">{tutorLoadingLessons ? 'Loading lessons...' : 'Select a lesson'}</option>
+              <option value="">Select a lesson</option>
               {tutorLessons.map((lesson) => <option key={lesson.id} value={lesson.id}>{lesson.title}</option>)}
             </select>
           </div>
-          <small style={{ color: '#6b7280' }}>
+          <small className="eg-ai-scope-note">
             {studentProfile?.className || studentProfile?.class_name
               ? `Visible lessons for ${studentProfile?.className || studentProfile?.class_name}`
               : 'Your class profile is loading.'}
           </small>
           {selectedTutorLesson ? (
-            <div style={{ fontSize: 12, color: '#334155', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 8, padding: '8px 10px' }}>
+            <div className="eg-ai-lesson-chip">
               Teaching: <strong>{selectedTutorLesson.title}</strong> · {selectedTutorLesson.subject}
             </div>
           ) : null}
@@ -1847,7 +1863,6 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
           ))}
         </div>
       </div>
-      {panelLoading.chat ? <p className="eg-loading">Loading chat...</p> : null}
       {panelError.chat ? <p className="eg-loading" style={{ color: '#dc2626' }}>{panelError.chat}</p> : null}
       <div className="eg-ai-chat eg-ai-chat-screen">
         {safeArray(chatHistory).map((m, idx) => {
@@ -2003,6 +2018,99 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
     );
   }
 
+  // Library / Calendar / Rewards / Settings each get their own page instead of a
+  // cramped tile on Home.
+  const utilityMeta = UTILITY_TABS[activeSidebarTab];
+  const utilityPanel = utilityMeta ? (
+    <section className="eg-utility">
+      <header className="eg-utility-head">
+        <span className="eg-utility-icon" aria-hidden="true">{utilityMeta.icon}</span>
+        <div>
+          <h1>{utilityMeta.title}</h1>
+          <p>{utilityMeta.sub}</p>
+        </div>
+      </header>
+
+      {activeSidebarTab === 'Library' ? (
+        <article className="cardish eg-utility-card">
+          {panelError.library ? <p className="eg-loading">{panelError.library}</p> : null}
+          <ul className="mini-list bullets">
+            {safeArray(libraryTop).map((r) => (
+              <li key={r.id}>
+                <button className="eg-link-btn" onClick={() => onOpenResource(r.id)}>📚 {r.title || r.summary || 'Learning resource'}</button>
+              </li>
+            ))}
+            {!panelLoading.library && !libraryTop.length ? <li>No resources available.</li> : null}
+          </ul>
+          {selectedResource ? <p className="eg-inline-note">Opened: {selectedResource.title || 'Resource'}</p> : null}
+        </article>
+      ) : null}
+
+      {activeSidebarTab === 'Calendar' ? (
+        <article className="cardish eg-utility-card">
+          {panelError.calendar ? <p className="eg-loading">{panelError.calendar}</p> : null}
+          <ul className="mini-list">
+            {safeArray(eventsTop).map((e) => (
+              <li key={e.id}>{e.title || e.event_type || 'Study Session'} - {fmtDate(e.starts_at || e.start || e.created_at)}</li>
+            ))}
+            {!panelLoading.calendar && !eventsTop.length ? <li>No events scheduled.</li> : null}
+          </ul>
+          <form className="eg-inline-form" onSubmit={onAddCalendarEvent}>
+            <input
+              className="eg-inline-input"
+              value={newEventTitle}
+              onChange={(e) => setNewEventTitle(e.target.value)}
+              placeholder="Event title"
+              required
+            />
+            <input
+              className="eg-inline-input"
+              type="date"
+              value={newEventDate}
+              onChange={(e) => setNewEventDate(e.target.value)}
+              required
+            />
+            <button className="eg-inline-btn" type="submit" disabled={calendarAdding}>
+              {calendarAdding ? 'Adding...' : 'Add Event'}
+            </button>
+          </form>
+          {calendarNote ? <p className="eg-inline-note">{calendarNote}</p> : null}
+        </article>
+      ) : null}
+
+      {activeSidebarTab === 'Rewards' ? (
+        <article className="cardish eg-utility-card">
+          {panelError.rewards ? <p className="eg-loading">{panelError.rewards}</p> : null}
+          <p className="eg-reward-big">{coins} Coins</p>
+          <p>{badges} badges earned</p>
+          <div className="eg-inline-actions">
+            <button className="eg-mini-btn" onClick={onEarnReward} disabled={rewardsEarning}>
+              {rewardsEarning ? 'Earning...' : 'Check-in (+10 coins)'}
+            </button>
+          </div>
+          {rewardsNote ? <p className="eg-inline-note">{rewardsNote}</p> : null}
+        </article>
+      ) : null}
+
+      {activeSidebarTab === 'Settings' ? (
+        <article className="cardish eg-utility-card">
+          {panelError.settings ? <p className="eg-loading">{panelError.settings}</p> : null}
+          <ul className="mini-list">
+            <li>⚙️ Account Settings</li>
+            <li>🔒 Privacy & Security</li>
+            <li>🌐 Language: {currentLanguage}</li>
+            <li>🎨 Theme: {currentTheme}</li>
+          </ul>
+          <div className="eg-inline-actions">
+            <button className="eg-inline-btn" disabled={settingsSaving} onClick={() => onSaveTheme(currentTheme === 'Dark' ? 'Light' : 'Dark')}>
+              {settingsSaving ? 'Saving...' : 'Toggle Theme'}
+            </button>
+          </div>
+        </article>
+      ) : null}
+    </section>
+  ) : null;
+
   return (
     <div className="eg-shell">
       <aside className="eg-sidebar">
@@ -2028,9 +2136,14 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
           <p>Upgrade to Premium</p>
           <button>Go Premium</button>
         </div>
+
+        <button type="button" className="eg-side-logout" onClick={onLogout}>
+          <span className="eg-nav-icon" aria-hidden="true">🚪</span>
+          Logout
+        </button>
       </aside>
 
-      <div className="eg-main">
+      <div className={`eg-main ${activeSidebarTab === 'AI Tutor' ? 'eg-main-ai' : ''}`}>
         <header className="eg-topbar cardish">
           <div className="eg-search">Search for topics, tests, books...</div>
           <div className="eg-top-actions">
@@ -2087,20 +2200,11 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
         </header>
 
         {/* Subject Navigation */}
-        {activeSidebarTab !== 'My Orchard' && activeSidebarTab !== 'Games' && activeSidebarTab !== 'Progress' && (
-        <div style={{ display: 'flex', gap: '8px', padding: '12px 20px', backgroundColor: '#f5f5f5', borderBottom: '1px solid #e0e0e0', overflowX: 'auto', alignItems: 'center' }}>
-          <button 
+        {activeSidebarTab !== 'My Orchard' && activeSidebarTab !== 'Games' && activeSidebarTab !== 'Progress' && activeSidebarTab !== 'AI Tutor' && !UTILITY_TABS[activeSidebarTab] && (
+        <div className="eg-subject-nav">
+          <button
+            className={`eg-subject-pill ${activeView === 'home' ? 'active' : ''}`}
             onClick={() => setActiveView('home')}
-            style={{
-              padding: '8px 16px',
-              border: 'none',
-              borderRadius: '20px',
-              backgroundColor: activeView === 'home' ? '#5b47ff' : '#fff',
-              color: activeView === 'home' ? '#fff' : '#333',
-              cursor: 'pointer',
-              fontWeight: 'bold',
-              whiteSpace: 'nowrap'
-            }}
           >
             🏠 Home
           </button>
@@ -2109,44 +2213,18 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
             return (
               <button
                 key={subject}
+                className={`eg-subject-pill ${activeView === subject ? 'active' : ''}`}
                 onClick={() => setActiveView(subject)}
-                style={{
-                  padding: '8px 16px',
-                  border: 'none',
-                  borderRadius: '20px',
-                  backgroundColor: activeView === subject ? '#5b47ff' : '#fff',
-                  color: activeView === subject ? '#fff' : '#333',
-                  cursor: 'pointer',
-                  fontWeight: 'bold',
-                  whiteSpace: 'nowrap',
-                  position: 'relative'
-                }}
               >
                 {subject}
                 {notifyCount > 0 && (
-                  <span style={{
-                    position: 'absolute',
-                    top: '-8px',
-                    right: '-8px',
-                    backgroundColor: '#ff6b6b',
-                    color: '#fff',
-                    borderRadius: '50%',
-                    width: '20px',
-                    height: '20px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    fontSize: '12px',
-                    fontWeight: 'bold'
-                  }}>
-                    {notifyCount}
-                  </span>
+                  <span className="eg-subject-pill-badge">{notifyCount}</span>
                 )}
               </button>
             );
           })}
           {!safeArray(subjects).length ? (
-            <span style={{ color: '#777', fontSize: '13px', whiteSpace: 'nowrap' }}>
+            <span className="eg-subject-nav-empty">
               No subjects yet — they appear here as soon as your school registers a teacher for your class.
             </span>
           ) : null}
@@ -2164,6 +2242,8 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
           <StudentGames studentId={studentId} greetingName={greetingName} onAskTutor={onAskTutorFromGame} onCoinsEarned={onGameCoinsEarned} />
         ) : activeSidebarTab === 'Progress' ? (
           <StudentProgress studentId={studentId} greetingName={greetingName} />
+        ) : utilityPanel ? (
+          utilityPanel
         ) : activeView === 'home' ? (
           <>
             <section className="eg-main-grid eg-main-grid-home">
@@ -2182,7 +2262,6 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
 
                 <div className="eg-plan-box">
                   <h3>Today's Plan</h3>
-                  {panelLoading.homework ? <p className="eg-loading">Loading homework...</p> : null}
                   {panelError.homework ? <p className="eg-loading">{panelError.homework}</p> : null}
                   <ul>
                     {/* Show only unique subject names — click to go to subject page */}
@@ -2257,7 +2336,6 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
             </section>
 
             <section className="eg-subject-row">
-              {panelLoading.progress ? <p className="eg-loading">Loading progress...</p> : null}
               {panelError.progress ? <p className="eg-loading">{panelError.progress}</p> : null}
               {safeArray(progressSummary).map((s) => (
                 <article key={s.subject} className="cardish eg-subject-card">
@@ -2293,7 +2371,6 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
                 <h3>AI Recommends for You</h3>
                 <p>Based on your current progress and library data.</p>
               </div>
-              {panelLoading.library ? <p className="eg-loading">Loading recommendations...</p> : null}
               {panelError.library ? <p className="eg-loading">{panelError.library}</p> : null}
               <div className="eg-tag-row">
                 {safeArray(libraryTop).slice(0, 4).map((t) => (
@@ -2305,6 +2382,7 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
           </div>
         </section>
 
+        <p className="eg-section-title">Your day at a glance</p>
         <section className="eg-bottom-grid">
           <article className="cardish eg-mini-card eg-grad-soft">
             <h4>Daily Focus</h4>
@@ -2326,7 +2404,6 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
 
           <article className="cardish eg-mini-card eg-grad-soft eg-timeline-card">
             <h4>Lesson Timeline</h4>
-            {panelLoading.timeline ? <p className="eg-loading">Loading lesson progress...</p> : null}
             {panelError.timeline ? <p className="eg-loading">{panelError.timeline}</p> : null}
             {!panelLoading.timeline && !panelError.timeline && !recentLessonTimeline.length && !recentSubjectTimeline.length ? (
               <p className="eg-inline-note">Your lesson and subject learning threads will appear here after you start chatting with EduGenie.</p>
@@ -2371,7 +2448,6 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
 
           <article className="cardish eg-mini-card eg-grad-soft">
             <h4>📝 Homework</h4>
-            {panelLoading.homework ? <p className="eg-loading">Loading homework...</p> : null}
             {panelError.homework ? <p className="eg-loading">{panelError.homework}</p> : null}
             <ul className="mini-list">
               {/* Home page: show subject name only — tap to go to subject page */}
@@ -2396,7 +2472,6 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
 
           <article className="cardish eg-mini-card eg-grad-soft">
             <h4>Announcements</h4>
-            {panelLoading.dashboard ? <p className="eg-loading">Loading announcements...</p> : null}
             {panelError.dashboard ? <p className="eg-loading">{panelError.dashboard}</p> : null}
             <ul className="mini-list bullets">
               {safeArray(announcementsTop).map((a) => (
@@ -2410,7 +2485,6 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
 
           <article className="cardish eg-mini-card eg-grad-soft">
             <h4>Mock Tests</h4>
-            {panelLoading.tests ? <p className="eg-loading">Loading tests...</p> : null}
             {panelError.tests ? <p className="eg-loading">{panelError.tests}</p> : null}
             <ul className="mini-list">
               {safeArray(testsTop).map((t) => (
@@ -2428,7 +2502,6 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
 
           <article className="cardish eg-mini-card eg-progress-card eg-grad-progress">
             <h4>Progress Dashboard</h4>
-            {panelLoading.progress ? <p className="eg-loading">Loading progress...</p> : null}
             {panelError.progress ? <p className="eg-loading">{panelError.progress}</p> : null}
             {trend.length > 1 ? <Sparkline values={trend} /> : <p className="eg-loading">Not enough points for trend chart.</p>}
             <div className="eg-bars">
@@ -2442,96 +2515,11 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
             </div>
           </article>
 
-          <article className="cardish eg-mini-card eg-grad-soft">
-            <h4>Extra Highlights</h4>
-            {panelLoading.library ? <p className="eg-loading">Loading library...</p> : null}
-            {panelError.library ? <p className="eg-loading">{panelError.library}</p> : null}
-            <ul className="mini-list bullets">
-              {safeArray(libraryTop).map((r) => (
-                <li key={r.id}>
-                  <button className="eg-link-btn" onClick={() => onOpenResource(r.id)}>📚 {r.title || r.summary || 'Learning resource'}</button>
-                </li>
-              ))}
-              {!panelLoading.library && !libraryTop.length ? <li>No resources available.</li> : null}
-            </ul>
-            {selectedResource ? <p className="eg-inline-note">Opened: {selectedResource.title || 'Resource'}</p> : null}
-          </article>
-
-          <article className="cardish eg-mini-card eg-grad-soft">
-            <h4>Calendar</h4>
-            {panelLoading.calendar ? <p className="eg-loading">Loading calendar...</p> : null}
-            {panelError.calendar ? <p className="eg-loading">{panelError.calendar}</p> : null}
-            <ul className="mini-list">
-              {safeArray(eventsTop).map((e) => (
-                <li key={e.id}>{e.title || e.event_type || 'Study Session'} - {fmtDate(e.starts_at || e.start || e.created_at)}</li>
-              ))}
-              {!panelLoading.calendar && !eventsTop.length ? <li>No events scheduled.</li> : null}
-            </ul>
-            <form className="eg-inline-form" onSubmit={onAddCalendarEvent}>
-              <input
-                className="eg-inline-input"
-                value={newEventTitle}
-                onChange={(e) => setNewEventTitle(e.target.value)}
-                placeholder="Event title"
-                required
-              />
-              <input
-                className="eg-inline-input"
-                type="date"
-                value={newEventDate}
-                onChange={(e) => setNewEventDate(e.target.value)}
-                required
-              />
-              <button className="eg-inline-btn" type="submit" disabled={calendarAdding}>
-                {calendarAdding ? 'Adding...' : 'Add Event'}
-              </button>
-            </form>
-            {calendarNote ? <p className="eg-inline-note">{calendarNote}</p> : null}
-          </article>
-
-          <article className="cardish eg-mini-card eg-grad-soft">
-            <h4>Rewards</h4>
-            {panelLoading.rewards ? <p className="eg-loading">Loading rewards...</p> : null}
-            {panelError.rewards ? <p className="eg-loading">{panelError.rewards}</p> : null}
-            <p className="eg-reward-big">{coins} Coins</p>
-            <p>{badges} badges earned</p>
-            <div className="eg-inline-actions">
-              <button className="eg-mini-btn" onClick={onEarnReward} disabled={rewardsEarning}>
-                {rewardsEarning ? 'Earning...' : 'Check-in (+10 coins)'}
-              </button>
-            </div>
-            {rewardsNote ? <p className="eg-inline-note">{rewardsNote}</p> : null}
-          </article>
-
           <article className="cardish eg-mini-card eg-voice-card eg-grad-voice">
             <h4>AI Voice Assistant</h4>
             <div className="eg-mic">🎤</div>
             <p>How can I help you today?</p>
             <button className="eg-mini-btn">Tap to Speak</button>
-          </article>
-
-          <article className="cardish eg-mini-card eg-grad-soft">
-            <h4>Settings</h4>
-            {panelLoading.settings ? <p className="eg-loading">Loading settings...</p> : null}
-            {panelError.settings ? <p className="eg-loading">{panelError.settings}</p> : null}
-            <ul className="mini-list">
-              <li>⚙️ Account Settings</li>
-              <li>🔒 Privacy & Security</li>
-              <li>🌐 Language: {currentLanguage}</li>
-              <li>🎨 Theme: {currentTheme}</li>
-            </ul>
-            <div className="eg-inline-actions">
-              <button className="eg-inline-btn" disabled={settingsSaving} onClick={() => onSaveTheme(currentTheme === 'Dark' ? 'Light' : 'Dark')}>
-                {settingsSaving ? 'Saving...' : 'Toggle Theme'}
-              </button>
-            </div>
-          </article>
-
-          <article className="cardish eg-mini-card eg-grad-soft">
-            <h4>Profile</h4>
-            <p>{greetingName}</p>
-            <p>Student</p>
-            <button className="eg-mini-btn danger" onClick={onLogout}>Logout</button>
           </article>
         </section>
         </>
@@ -2569,7 +2557,6 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
                   {showHomeworkHistory ? 'Hide history' : 'Open history'}
                 </button>
               </div>
-              {panelLoading.homework ? <p className="eg-loading">Loading homework...</p> : null}
               {panelError.homework ? <p className="eg-loading">{panelError.homework}</p> : null}
               {(() => {
                 const allHomework = homeworkBySubject.get(activeView) || [];
@@ -3163,7 +3150,6 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
               }}
             >
               <h4>🧪 {activeView} Mock Tests</h4>
-              {panelLoading.tests ? <p className="eg-loading">Loading tests...</p> : null}
               {panelError.tests ? <p className="eg-loading">{panelError.tests}</p> : null}
               <ul className="mini-list">
                 {(testsBySubject.get(activeView) || []).map((t) => (
@@ -3192,8 +3178,6 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
           </section>
         )}
         </div>
-
-        {loading ? <p className="eg-loading">Loading dashboard data...</p> : null}
       </div>
 
       {/* Lightbox — full-screen image viewer */}

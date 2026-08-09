@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   addTestQuestion,
   askTeacherAi,
@@ -130,7 +130,6 @@ function isInTargetClass(item, targetClass) {
 }
 
 export default function TeacherDashboard({ session, onLogout }) {
-  const [loading, setLoading] = useState(true);
   const [teacherProfile, setTeacherProfile] = useState(null);
 
   const [panelLoading, setPanelLoading] = useState({
@@ -266,8 +265,16 @@ export default function TeacherDashboard({ session, onLogout }) {
   const [curriculumSelectedLessonId, setCurriculumSelectedLessonId] = useState('');
   const [curriculumVisibilitySaving, setCurriculumVisibilitySaving] = useState('');
 
+  // Panels load silently — nothing on screen ever announces "loading". The flag
+  // below is kept only for the *first* fetch of each panel, so an empty-state
+  // line ("No students available yet.") can't flash before the data has had a
+  // chance to arrive. Once a panel has loaded once, every later refresh updates
+  // it in place without flicker.
+  const panelLoadedOnceRef = useRef({});
   const setPanelLoadingKey = (key, value) => {
-    setPanelLoading((prev) => ({ ...prev, [key]: value }));
+    if (value && panelLoadedOnceRef.current[key]) return;
+    if (!value) panelLoadedOnceRef.current[key] = true;
+    setPanelLoading((prev) => (prev[key] === value ? prev : { ...prev, [key]: value }));
   };
 
   const setPanelErrorKey = (key, value) => {
@@ -780,7 +787,6 @@ export default function TeacherDashboard({ session, onLogout }) {
   useEffect(() => {
     let active = true;
     async function bootstrap() {
-      setLoading(true);
       await Promise.all([
         loadSummaryPanel(),
         loadStudentsPanel(''),
@@ -789,7 +795,6 @@ export default function TeacherDashboard({ session, onLogout }) {
         getTeacherProfile().then((res) => { if (active && res?.profile) setTeacherProfile(res.profile); }).catch(() => {}),
         loadHomeworkHistory()
       ]);
-      if (active) setLoading(false);
     }
     bootstrap();
     return () => { active = false; };
@@ -877,11 +882,13 @@ export default function TeacherDashboard({ session, onLogout }) {
 
   const topStats = useMemo(() => {
     const s = dashboard?.summary || {};
+    // Blank until the first load lands, so the tiles fill in quietly instead of
+    // showing a "..." placeholder or a misleading zero.
     return [
-      { label: 'Students', value: panelLoading.summary ? '...' : (s.studentsCount ?? 0) },
-      { label: 'Active Homework', value: panelLoading.summary ? '...' : (s.activeHomework ?? 0) },
-      { label: 'Average Score', value: panelLoading.summary ? '...' : `${s.avgScore ?? 0}%` },
-      { label: 'Announcements', value: panelLoading.summary ? '...' : (s.announcementsCount ?? 0) }
+      { label: 'Students', value: panelLoading.summary ? '' : (s.studentsCount ?? 0) },
+      { label: 'Active Homework', value: panelLoading.summary ? '' : (s.activeHomework ?? 0) },
+      { label: 'Average Score', value: panelLoading.summary ? '' : `${s.avgScore ?? 0}%` },
+      { label: 'Announcements', value: panelLoading.summary ? '' : (s.announcementsCount ?? 0) }
     ];
   }, [dashboard, panelLoading.summary]);
 
@@ -1804,7 +1811,6 @@ export default function TeacherDashboard({ session, onLogout }) {
           ))}
         </section>
 
-        {loading ? <p className="td-loading">Loading teacher workspace...</p> : null}
         {note ? <p className="td-note">{note}</p> : null}
 
         {/* ══════════ TEACHER SECTION ══════════ */}
@@ -1844,7 +1850,6 @@ export default function TeacherDashboard({ session, onLogout }) {
                   {busy === 'announce' ? 'Posting...' : teacherTargetClass === 'all' ? 'Select a class first' : `Post to ${teacherTargetClass}`}
                 </button>
               </form>
-              {panelLoading.announcements ? <p className="td-empty">Loading announcements...</p> : null}
               {panelError.announcements ? <p className="td-empty">{panelError.announcements}</p> : null}
               <ul className="td-announcements">
                 {classScopedAnnouncements.slice(0, 5).map((a) => (
@@ -2434,7 +2439,6 @@ export default function TeacherDashboard({ session, onLogout }) {
             <article className="td-card td-card-wide">
               <h3>Mock Tests</h3>
               <p>Create tests and add questions for your students.</p>
-              {panelLoading.tests ? <p className="td-empty">Loading tests...</p> : null}
               {panelError.tests ? <p className="td-empty">{panelError.tests}</p> : null}
 
               {classScopedTests.length ? (
@@ -2594,7 +2598,6 @@ export default function TeacherDashboard({ session, onLogout }) {
 
             <article className="td-card">
               <h3>Lessons</h3>
-              {panelLoading.curriculum ? <p className="td-empty">Loading lessons...</p> : null}
               {panelError.curriculum ? <p className="td-empty">{panelError.curriculum}</p> : null}
               <div className="td-student-list" style={{ maxHeight: 520, overflowY: 'auto' }}>
                 {curriculumLessons.map((lesson) => {
@@ -2713,7 +2716,6 @@ export default function TeacherDashboard({ session, onLogout }) {
                   {busy === 'bulk-class' ? 'Updating...' : `Update Class for ${selectedStudentIds.length} Selected`}
                 </button>
               </form>
-              {panelLoading.students ? <p className="td-empty">Loading students...</p> : null}
               {panelError.students ? <p className="td-empty">{panelError.students}</p> : null}
               <div className="td-student-list">
                 {classScopedStudents.map((s) => (
@@ -2760,7 +2762,6 @@ export default function TeacherDashboard({ session, onLogout }) {
                   </button>
                 )}
               </div>
-              {panelLoading.progress ? <p className="td-empty">Loading progress...</p> : null}
               {panelError.progress ? <p className="td-empty">{panelError.progress}</p> : null}
 
               {/* Subject score bars */}
@@ -2802,7 +2803,6 @@ export default function TeacherDashboard({ session, onLogout }) {
             <article className="td-card">
               <h3>Delivery Status</h3>
               <p>{selectedStudentId ? `What ${selectedStudentName} can currently see.` : 'Select a student to inspect delivery.'}</p>
-              {panelLoading.delivery ? <p className="td-empty">Loading delivery status...</p> : null}
               {panelError.delivery ? <p className="td-empty">{panelError.delivery}</p> : null}
               <div className="td-delivery-chips">
                 <div className="td-delivery-chip">
@@ -2875,7 +2875,6 @@ export default function TeacherDashboard({ session, onLogout }) {
                   </button>
                 ))}
               </div>
-              {panelLoading.activity ? <p className="td-empty">Loading activity...</p> : null}
               {panelError.activity ? <p className="td-empty">{panelError.activity}</p> : null}
               <ul className="td-activity-list">
                 {filteredActivity.slice(0, 10).map((item) => (
@@ -2938,7 +2937,6 @@ export default function TeacherDashboard({ session, onLogout }) {
                   </button>
                 </div>
               ) : null}
-              {panelLoading.homework ? <p className="td-empty">Loading homework...</p> : null}
               {panelError.homework ? <p className="td-empty">{panelError.homework}</p> : null}
               {classScopedSelectedHomework.length > 0 ? (
                 filteredSelectedHomework.length > 0 ? (
@@ -3186,7 +3184,6 @@ export default function TeacherDashboard({ session, onLogout }) {
                   </button>
                 )}
               </div>
-              {panelLoading.testAttempts ? <p className="td-empty">Loading test attempts...</p> : null}
               {panelError.testAttempts ? <p className="td-empty">{panelError.testAttempts}</p> : null}
               {classScopedSelectedTestAttempts.length > 0 ? (
                 <div className="td-hw-table-wrap">

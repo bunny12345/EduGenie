@@ -102,7 +102,6 @@ function GradeMultiSelect({ selected, onChange, disabled }) {
 }
 
 export default function SchoolDashboard({ session, onLogout }) {
-  const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [teacherName, setTeacherName] = useState('');
   const [teacherEmail, setTeacherEmail] = useState('');
@@ -668,8 +667,9 @@ export default function SchoolDashboard({ session, onLogout }) {
 
   useEffect(() => {
     let active = true;
+    // The dashboard loads silently in the background: nothing on screen
+    // announces the fetch, the panels simply fill in once the data arrives.
     async function load() {
-      setLoading(true);
       setError('');
       try {
         const [dashRes, tRes, iRes, sRes] = await Promise.all([
@@ -695,9 +695,6 @@ export default function SchoolDashboard({ session, onLogout }) {
       } catch (e) {
         if (!active) return;
         setError(e?.message || 'Failed to load school dashboard data');
-      } finally {
-        if (!active) return;
-        setLoading(false);
       }
     }
     load();
@@ -1380,7 +1377,6 @@ export default function SchoolDashboard({ session, onLogout }) {
           </div>
         </header>
 
-        {loading ? <p className="sd-note">Loading school data...</p> : null}
         {error ? <p className="sd-note">{error}</p> : null}
 
         <section className="td-stats">
@@ -1694,7 +1690,6 @@ export default function SchoolDashboard({ session, onLogout }) {
                       ? `${curriculumSelectedSubject.subject} lessons · ${curriculumClassName}`
                       : `Uploaded lessons · ${curriculumClassName}`}
                   </h4>
-                  {curriculumLoading ? <span className="eg-cc-loading">Loading…</span> : null}
                 </div>
 
                 {!(curriculumVisibleGroup?.lessons || []).length ? (
