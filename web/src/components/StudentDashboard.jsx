@@ -23,7 +23,13 @@ import {
   submitHomework,
   generateLocalTtsAudio,
   uploadHomeworkImage,
-  submitTestAttempt
+  submitTestAttempt,
+  generateCheckQuestion,
+  answerCheckQuestion,
+  evaluateExplainBack,
+  generateQuizRush,
+  submitQuizRush,
+  getDueReviewNudge
 } from '../api';
 import StudentOrchard from './StudentOrchard';
 import StudentGames from './StudentGames';
@@ -332,6 +338,24 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
   const speechVoicesRef = React.useRef([]);
   const chatRequestAbortRef = React.useRef(null);
   const chatEndRef = React.useRef(null);
+
+  // ── Interactive Learning State ─────────────────────────────────────────
+  const [checkQuestion, setCheckQuestion] = useState(null); // inline MCQ in chat
+  const [checkQuestionLoading, setCheckQuestionLoading] = useState(false);
+  const [checkQuestionResult, setCheckQuestionResult] = useState(null); // { correct, explanation }
+  const [quizRushActive, setQuizRushActive] = useState(false);
+  const [quizRushData, setQuizRushData] = useState(null); // { questions, timePerQuestion, ... }
+  const [quizRushCurrentIndex, setQuizRushCurrentIndex] = useState(0);
+  const [quizRushAnswers, setQuizRushAnswers] = useState([]);
+  const [quizRushResult, setQuizRushResult] = useState(null);
+  const [quizRushLoading, setQuizRushLoading] = useState(false);
+  const [explainBackActive, setExplainBackActive] = useState(false);
+  const [explainBackTopic, setExplainBackTopic] = useState('');
+  const [explainBackInput, setExplainBackInput] = useState('');
+  const [explainBackLoading, setExplainBackLoading] = useState(false);
+  const [explainBackResult, setExplainBackResult] = useState(null);
+  const [dueReviewNudge, setDueReviewNudge] = useState(null);
+
   const [testResult, setTestResult] = useState(null);
   const [homeworkInfo, setHomeworkInfo] = useState('');
   const [selectedResource, setSelectedResource] = useState(null);
@@ -1734,6 +1758,187 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
     setPanelErrorKey('chat', '');
   }
 
+  // ── Interactive Learning Handlers ───────────────────────────────────────
+
+  async function onRequestCheckQuestion() {
+    if (checkQuestionLoading) return;
+    setCheckQuestion(null);
+    setCheckQuestionResult(null);
+    setCheckQuestionLoading(true);
+    try {
+      const conversationId = getCurrentTutorConversationId();
+      const res = await generateCheckQuestion(
+        studentId,
+        conversationId,
+        selectedTutorLesson?.id,
+        selectedTutorLesson?.title,
+        selectedTutorLesson?.subject || tutorSubject
+      );
+      if (res?.checkQuestion) {
+        setCheckQuestion(res.checkQuestion);
+      }
+    } catch (e) {
+      console.warn('check question generation failed', e);
+    } finally {
+      setCheckQuestionLoading(false);
+    }
+  }
+
+  async function onAnswerCheckQuestion(selectedIndex) {
+    if (!checkQuestion) return;
+    const correct = selectedIndex === checkQuestion.correctIndex;
+    setCheckQuestionResult({ correct, explanation: checkQuestion.explanation, selectedIndex });
+    // Record the answer → grows orchard
+    try {
+      await answerCheckQuestion(studentId, {
+        questionId: checkQuestion.id,
+        selectedIndex,
+        correctIndex: checkQuestion.correctIndex,
+        question: checkQuestion.question,
+        correctAnswer: checkQuestion.options[checkQuestion.correctIndex] || '',
+        explanation: checkQuestion.explanation,
+        lessonId: selectedTutorLesson?.id,
+        subject: selectedTutorLesson?.subject || tutorSubject,
+      });
+    } catch { /* best-effort */ }
+    // Add the result as a chat message for context
+    const resultText = correct
+      ? `✅ Correct! ${checkQuestion.explanation || 'Great job!'}`
+      : `❌ Not quite. The answer is ${checkQuestion.options[checkQuestion.correctIndex]}. ${checkQuestion.explanation || ''}`;
+    setChatHistory((prev) => [...safeArray(prev), {
+      id: `cq-result-${Date.now()}`,
+      role: 'ai',
+      text: resultText,
+      ts: new Date().toISOString(),
+    }]);
+  }
+
+  function onDismissCheckQuestion() {
+    setCheckQuestion(null);
+    setCheckQuestionResult(null);
+  }
+
+  async function onStartQuizRush() {
+    if (quizRushLoading) return;
+    setQuizRushLoading(true);
+    setQuizRushResult(null);
+    setQuizRushAnswers([]);
+    setQuizRushCurrentIndex(0);
+    try {
+      const res = await generateQuizRush(studentId, {
+        lessonId: selectedTutorLesson?.id,
+        lessonTitle: selectedTutorLesson?.title,
+        subject: selectedTutorLesson?.subject || tutorSubject,
+        count: 5,
+      });
+      if (res?.questions?.length) {
+        setQuizRushData(res);
+        setQuizRushActive(true);
+      }
+    } catch (e) {
+      console.warn('quiz rush generation failed', e);
+    } finally {
+      setQuizRushLoading(false);
+    }
+  }
+
+  function onQuizRushAnswer(selectedIndex) {
+    if (!quizRushData) return;
+    const question = quizRushData.questions[quizRushCurrentIndex];
+    if (!question) return;
+    const correct = selectedIndex === question.correctIndex;
+    const answer = { questionId: question.id, selectedIndex, correct, question: question.question, correctAnswer: question.options[question.correctIndex] || '', explanation: question.explanation };
+    setQuizRushAnswers((prev) => [...prev, answer]);
+    if (quizRushCurrentIndex < quizRushData.questions.length - 1) {
+      setQuizRushCurrentIndex((prev) => prev + 1);
+    } else {
+      // Quiz done — submit results
+      const allAnswers = [...quizRushAnswers, answer];
+      const score = allAnswers.filter((a) => a.correct).length;
+      const total = allAnswers.length;
+      setQuizRushResult({ score, total, answers: allAnswers });
+      // Submit to backend → orchard growth
+      submitQuizRush(studentId, {
+        quizId: quizRushData.quizId,
+        subject: quizRushData.subject || selectedTutorLesson?.subject || tutorSubject,
+        lessonId: quizRushData.lessonId || selectedTutorLesson?.id,
+        score,
+        total,
+        results: allAnswers.map((a) => ({
+          question: a.question,
+          correctAnswer: a.correctAnswer,
+          selectedIndex: a.selectedIndex,
+          correctIndex: quizRushData.questions.find((q) => q.id === a.questionId)?.correctIndex || 0,
+          correct: a.correct,
+          explanation: a.explanation,
+        })),
+      }).catch(() => {});
+    }
+  }
+
+  function onCloseQuizRush() {
+    setQuizRushActive(false);
+    setQuizRushData(null);
+    setQuizRushResult(null);
+    setQuizRushAnswers([]);
+    setQuizRushCurrentIndex(0);
+  }
+
+  function onStartExplainBack(topic) {
+    setExplainBackActive(true);
+    setExplainBackTopic(topic || selectedTutorLesson?.title || 'what we just covered');
+    setExplainBackInput('');
+    setExplainBackResult(null);
+  }
+
+  async function onSubmitExplainBack() {
+    if (!explainBackInput.trim() || explainBackLoading) return;
+    setExplainBackLoading(true);
+    try {
+      const res = await evaluateExplainBack(studentId, {
+        explanation: explainBackInput.trim(),
+        topic: explainBackTopic,
+        conversationId: getCurrentTutorConversationId(),
+        lessonId: selectedTutorLesson?.id,
+        subject: selectedTutorLesson?.subject || tutorSubject,
+      });
+      if (res?.evaluation) {
+        setExplainBackResult(res.evaluation);
+        // Add result to chat
+        const emoji = res.evaluation.passedCheck ? '🌟' : '💪';
+        const feedbackMsg = `${emoji} **Explain Back Result**: ${res.evaluation.feedback}\nStrengths: ${(res.evaluation.strengths || []).join(', ') || 'N/A'}\nAreas to work on: ${(res.evaluation.gaps || []).join(', ') || 'None!'}`;
+        setChatHistory((prev) => [...safeArray(prev), {
+          id: `eb-result-${Date.now()}`,
+          role: 'ai',
+          text: feedbackMsg,
+          ts: new Date().toISOString(),
+        }]);
+      }
+    } catch (e) {
+      console.warn('explain back failed', e);
+    } finally {
+      setExplainBackLoading(false);
+    }
+  }
+
+  function onCloseExplainBack() {
+    setExplainBackActive(false);
+    setExplainBackResult(null);
+    setExplainBackInput('');
+  }
+
+  // Load due review nudge when tutor opens
+  React.useEffect(() => {
+    if (activeSidebarTab === 'AI Tutor' && studentId) {
+      getDueReviewNudge(studentId, selectedTutorLesson?.subject || tutorSubject)
+        .then((res) => {
+          if (res?.nudgeMessage) setDueReviewNudge(res);
+          else setDueReviewNudge(null);
+        })
+        .catch(() => {});
+    }
+  }, [activeSidebarTab, studentId, tutorSubject, selectedTutorLesson?.id]);
+
   async function onTutorImageSelected(files) {
     setChatImageError('');
     const picked = Array.isArray(files) ? files.filter(Boolean) : [];
@@ -1950,6 +2155,171 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
           ))}
         </div>
       ) : null}
+
+      {/* ── Interactive Learning Actions ──────────────────────────────── */}
+      {!chatLoading && chatHistory.length > 0 && !quizRushActive && !explainBackActive ? (
+        <div className="eg-ai-interactive-actions">
+          <button
+            type="button"
+            className="eg-ai-action-btn eg-ai-action-quiz"
+            onClick={onRequestCheckQuestion}
+            disabled={checkQuestionLoading}
+          >
+            {checkQuestionLoading ? '⏳ Generating...' : '🧠 Quiz Me'}
+          </button>
+          <button
+            type="button"
+            className="eg-ai-action-btn eg-ai-action-explain"
+            onClick={() => onStartExplainBack()}
+          >
+            🗣️ Explain Back
+          </button>
+          <button
+            type="button"
+            className="eg-ai-action-btn eg-ai-action-rush"
+            onClick={onStartQuizRush}
+            disabled={quizRushLoading}
+          >
+            {quizRushLoading ? '⏳ Loading...' : '⚡ Quiz Rush'}
+          </button>
+        </div>
+      ) : null}
+
+      {/* ── Due Review Nudge ─────────────────────────────────────────── */}
+      {dueReviewNudge?.nudgeMessage && !chatLoading ? (
+        <div className="eg-ai-nudge">
+          <span>📋 {dueReviewNudge.nudgeMessage}</span>
+          <button type="button" className="eg-ai-nudge-btn" onClick={() => { setDueReviewNudge(null); onSendTutorMessage('Review my due flashcards'); }}>
+            Start Review
+          </button>
+          <button type="button" className="eg-ai-nudge-dismiss" onClick={() => setDueReviewNudge(null)}>✕</button>
+        </div>
+      ) : null}
+
+      {/* ── Inline Check Question Card ───────────────────────────────── */}
+      {checkQuestion && !checkQuestionResult ? (
+        <div className="eg-ai-check-card">
+          <div className="eg-ai-check-header">
+            <span>🧠 Quick Check</span>
+            <button type="button" className="eg-ai-check-dismiss" onClick={onDismissCheckQuestion}>✕</button>
+          </div>
+          <p className="eg-ai-check-question">{checkQuestion.question}</p>
+          <div className="eg-ai-check-options">
+            {checkQuestion.options.map((opt, i) => (
+              <button
+                key={i}
+                type="button"
+                className="eg-ai-check-option"
+                onClick={() => onAnswerCheckQuestion(i)}
+              >
+                {opt}
+              </button>
+            ))}
+          </div>
+        </div>
+      ) : null}
+      {checkQuestion && checkQuestionResult ? (
+        <div className={`eg-ai-check-card ${checkQuestionResult.correct ? 'eg-check-correct' : 'eg-check-wrong'}`}>
+          <div className="eg-ai-check-header">
+            <span>{checkQuestionResult.correct ? '✅ Correct!' : '❌ Not quite'}</span>
+            <button type="button" className="eg-ai-check-dismiss" onClick={onDismissCheckQuestion}>✕</button>
+          </div>
+          <p className="eg-ai-check-explanation">{checkQuestionResult.explanation}</p>
+          {!checkQuestionResult.correct ? (
+            <p className="eg-ai-check-note">A flashcard was auto-created for review 📚</p>
+          ) : null}
+        </div>
+      ) : null}
+
+      {/* ── Explain Back Panel ───────────────────────────────────────── */}
+      {explainBackActive ? (
+        <div className="eg-ai-explain-back-panel">
+          <div className="eg-ai-check-header">
+            <span>🗣️ Explain Back: <strong>{explainBackTopic}</strong></span>
+            <button type="button" className="eg-ai-check-dismiss" onClick={onCloseExplainBack}>✕</button>
+          </div>
+          <p className="eg-ai-explain-prompt">Explain in your own words what you learned about this topic. The AI will evaluate your understanding!</p>
+          {!explainBackResult ? (
+            <>
+              <textarea
+                className="eg-ai-explain-textarea"
+                value={explainBackInput}
+                onChange={(e) => setExplainBackInput(e.target.value)}
+                placeholder="Type your explanation here..."
+                rows={4}
+              />
+              <button
+                type="button"
+                className="eg-ai-action-btn eg-ai-action-explain"
+                onClick={onSubmitExplainBack}
+                disabled={!explainBackInput.trim() || explainBackLoading}
+              >
+                {explainBackLoading ? '⏳ Evaluating...' : '📤 Submit Explanation'}
+              </button>
+            </>
+          ) : (
+            <div className="eg-ai-explain-result">
+              <div className="eg-ai-explain-score">
+                <strong>Score: {explainBackResult.score}/5</strong>
+                <span>{explainBackResult.passedCheck ? '🌳 Orchard watered!' : '💪 Keep trying!'}</span>
+              </div>
+              <p>{explainBackResult.feedback}</p>
+              {explainBackResult.strengths?.length ? <p className="eg-ai-explain-strengths">✅ {explainBackResult.strengths.join(', ')}</p> : null}
+              {explainBackResult.gaps?.length ? <p className="eg-ai-explain-gaps">📝 Work on: {explainBackResult.gaps.join(', ')}</p> : null}
+              <button type="button" className="eg-ai-action-btn" onClick={onCloseExplainBack}>Done</button>
+            </div>
+          )}
+        </div>
+      ) : null}
+
+      {/* ── Quiz Rush Modal ──────────────────────────────────────────── */}
+      {quizRushActive && quizRushData ? (
+        <div className="eg-ai-quiz-rush-panel">
+          <div className="eg-ai-check-header">
+            <span>⚡ Quiz Rush — {quizRushData.subject || 'General'}</span>
+            <button type="button" className="eg-ai-check-dismiss" onClick={onCloseQuizRush}>✕</button>
+          </div>
+          {!quizRushResult ? (
+            <div className="eg-ai-quiz-rush-body">
+              <div className="eg-ai-quiz-progress">
+                Question {quizRushCurrentIndex + 1} of {quizRushData.questions.length}
+              </div>
+              <p className="eg-ai-check-question">
+                {quizRushData.questions[quizRushCurrentIndex]?.question}
+              </p>
+              <div className="eg-ai-check-options">
+                {(quizRushData.questions[quizRushCurrentIndex]?.options || []).map((opt, i) => (
+                  <button
+                    key={i}
+                    type="button"
+                    className="eg-ai-check-option"
+                    onClick={() => onQuizRushAnswer(i)}
+                  >
+                    {opt}
+                  </button>
+                ))}
+              </div>
+            </div>
+          ) : (
+            <div className="eg-ai-quiz-rush-result">
+              <div className="eg-ai-quiz-score">
+                <strong>{quizRushResult.score}/{quizRushResult.total}</strong>
+                <span>{quizRushResult.score >= Math.ceil(quizRushResult.total / 2) ? '🎉 Passed! Orchard watered!' : '💪 Keep practicing!'}</span>
+              </div>
+              <div className="eg-ai-quiz-answers">
+                {quizRushResult.answers.map((a, i) => (
+                  <div key={i} className={`eg-ai-quiz-answer-row ${a.correct ? 'correct' : 'wrong'}`}>
+                    <span>{a.correct ? '✅' : '❌'}</span>
+                    <span className="eg-ai-quiz-answer-q">{a.question}</span>
+                  </div>
+                ))}
+              </div>
+              <button type="button" className="eg-ai-action-btn" onClick={onCloseQuizRush}>Done</button>
+            </div>
+          )}
+        </div>
+      ) : null}
+
       {chatImages.length ? (
         <div className="eg-ai-image-preview-wrap">
           <div className="eg-ai-image-preview-grid">

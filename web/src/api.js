@@ -1045,6 +1045,66 @@ export async function deleteCurriculumLessonDocument(lessonId, documentId) {
   return res.json();
 }
 
+// ═══════════════════════════════════════════════════════════════════════════════
+// INTERACTIVE LEARNING APIs
+// ═══════════════════════════════════════════════════════════════════════════════
+
+export async function generateCheckQuestion(studentId, conversationId, lessonId, lessonTitle, lessonSubject) {
+  const headers = await authHeaders();
+  const res = await fetch(`${API_BASE}/chat/check-question`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({ studentId, conversationId, lessonId, lessonTitle, lessonSubject })
+  });
+  return res.json();
+}
+
+export async function answerCheckQuestion(studentId, payload) {
+  const headers = await authHeaders();
+  const res = await fetch(`${API_BASE}/chat/answer-check`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({ studentId, ...payload })
+  });
+  return res.json();
+}
+
+export async function evaluateExplainBack(studentId, payload) {
+  const headers = await authHeaders();
+  const res = await fetch(`${API_BASE}/chat/explain-back`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({ studentId, ...payload })
+  });
+  return res.json();
+}
+
+export async function generateQuizRush(studentId, opts) {
+  const headers = await authHeaders();
+  const res = await fetch(`${API_BASE}/chat/quiz-rush/generate`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({ studentId, ...opts })
+  });
+  return res.json();
+}
+
+export async function submitQuizRush(studentId, payload) {
+  const headers = await authHeaders();
+  const res = await fetch(`${API_BASE}/chat/quiz-rush/submit`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({ studentId, ...payload })
+  });
+  return res.json();
+}
+
+export async function getDueReviewNudge(studentId, subject) {
+  let url = `${API_BASE}/chat/due-review?studentId=${encodeURIComponent(studentId)}`;
+  if (subject) url += `&subject=${encodeURIComponent(subject)}`;
+  return getJsonChecked(url, 'getDueReviewNudge');
+}
+
 const api = {
   sendChat,
   listMemories,
@@ -1126,6 +1186,12 @@ const api = {
   schoolDeleteStudent,
   schoolInviteStudent,
   revokeSchoolStudentInvite,
-  resendSchoolStudentInvite
+  resendSchoolStudentInvite,
+  generateCheckQuestion,
+  answerCheckQuestion,
+  evaluateExplainBack,
+  generateQuizRush,
+  submitQuizRush,
+  getDueReviewNudge
 };
 export default api;

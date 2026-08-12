@@ -7,6 +7,7 @@ import { LlmService } from '../llm/llm.service';
 import { SupabaseService } from '../supabase.service';
 import { EmbeddingsService } from '../embeddings/embeddings.service';
 import { StudentAuthService } from '../auth/student-auth.service';
+import { OrchardService } from '../orchard/orchard.service';
 
 type ChatTurn = {
   role: 'user' | 'assistant';
@@ -234,7 +235,8 @@ export class ChatService {
     private readonly llm: LlmService,
     private readonly db: SupabaseService,
     private readonly embeddings: EmbeddingsService,
-    private readonly studentAuth: StudentAuthService
+    private readonly studentAuth: StudentAuthService,
+    private readonly orchard: OrchardService
   ) {}
 
   private getCacheKey(studentId: string, conversationId: string) {
@@ -738,6 +740,17 @@ export class ChatService {
       (lessonTitle ? ` Stay focused on the selected lesson: ${lessonTitle}${lessonSubject ? ` (${lessonSubject})` : ''}.` : '') +
       ` Always give clear, step-by-step explanations suited to a school student.` +
       ` Use simple language, examples, and analogies. If asked for practice questions, provide them.` +
+
+      // ── Socratic Teaching Loop ──────────────────────────────────────────
+      ` IMPORTANT — Follow a Socratic teaching cycle in every interaction:` +
+      ` 1) TEACH: Explain ONE small concept clearly with a real-life example (2-4 sentences max).` +
+      ` 2) CHECK: End EVERY teaching reply with exactly ONE short question that tests whether the student understood what you just explained. Frame it naturally like "Can you tell me..." or "What do you think would happen if..." or present a mini MCQ.` +
+      ` 3) FEEDBACK: When the student answers your check question, give immediate feedback — praise if correct, gently correct if wrong with a simpler re-explanation, then move to the next micro-concept.` +
+      ` 4) PROGRESS: After 2-3 successful checks in a row, congratulate the student on their progress and suggest they try "Explain Back" or "Quiz Rush" to lock in the knowledge (the student has buttons for these).` +
+      ` Never dump multiple concepts without checking understanding. One concept → one check → feedback → next concept.` +
+      ` If the student answers incorrectly twice on the same concept, break it down into an even simpler step and use a different analogy.` +
+      ` When the student demonstrates mastery (correct answers with confidence), tell them their understanding is growing strong and encourage them to test themselves.` +
+
       ` Keep the teaching load light: explain one concept at a time, then ask one short check question before moving ahead.` +
       ` Prefer short, friendly outputs with tiny steps and practical real-life examples.` +
       ` You may use a small number of simple, school-friendly emojis to make examples feel lively and encouraging.` +
@@ -1629,6 +1642,535 @@ export class ChatService {
       return { success: true, duplicates, perStudentCounts, totalMemories: rows.length };
     } catch (e) {
       return { success: false, error: String(e) };
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════════
+  // INTERACTIVE LEARNING FEATURES
+  // ═══════════════════════════════════════════════════════════════════════════════
+
+  /**
+   * Generate an inline MCQ check-question based on the current conversation context.
+   * Returns a structured question object (not just text) so the frontend can render
+   * tappable option buttons and report the result back.
+   */
+  async generateCheckQuestion(
+    studentId: string,
+    opts: { conversationId?: string; lessonId?: string; lessonTitle?: string; lessonSubject?: string }
+  ) {
+    const convId = opts.conversationId || `conv-${studentId}`;
+    const history = this.toContextMessages(await this.loadSnapshotHistory(studentId, convId));
+    const recentContext = history.slice(-10).map((m) => `${m.role}: ${m.content}`).join('\n');
+    const lessonLabel = opts.lessonTitle || opts.lessonSubject || 'current topic';
+
+    const prompt = [
+      { role: 'system', content:
+        `You are a quiz generator for a school student. Based on the recent tutoring conversation below, ` +
+        `generate exactly ONE multiple-choice question (MCQ) that tests the student's understanding of ` +
+        `what was just taught. The question should be appropriate for their level.\n\n` +
+        `Return ONLY valid JSON with this exact structure (no markdown, no code fences):\n` +
+        `{"question":"...","options":["A)...","B)...","C)...","D)..."],"correctIndex":0,"explanation":"..."}\n\n` +
+        `Rules:\n- 4 options labeled A) B) C) D)\n- correctIndex is 0-based (0=A, 1=B, 2=C, 3=D)\n` +
+        `- explanation should be 1-2 sentences explaining why the correct answer is right\n` +
+        `- Keep language simple and school-friendly\n- Topic: ${lessonLabel}`
+      },
+      { role: 'user', content: `Recent conversation:\n${recentContext}\n\nGenerate one check question now.` }
+    ];
+
+    const raw = await this.llm.query(prompt);
+    try {
+      const cleaned = raw.replace(/```json\s*/gi, '').replace(/```/g, '').trim();
+      const parsed = JSON.parse(cleaned);
+      if (parsed.question && Array.isArray(parsed.options) && parsed.options.length >= 2) {
+        return {
+          success: true,
+          checkQuestion: {
+            id: `cq-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+            question: String(parsed.question),
+            options: parsed.options.map((o: any) => String(o)),
+            correctIndex: Number(parsed.correctIndex) || 0,
+            explanation: String(parsed.explanation || ''),
+            lessonId: opts.lessonId || null,
+            subject: opts.lessonSubject || null,
+          }
+        };
+      }
+    } catch { /* parse failed */ }
+
+    // Fallback: return a simple recall question from the reply text
+    return {
+      success: true,
+      checkQuestion: {
+        id: `cq-${Date.now()}`,
+        question: 'Can you explain in your own words what we just learned?',
+        options: [],
+        correctIndex: -1,
+        explanation: '',
+        lessonId: opts.lessonId || null,
+        subject: opts.lessonSubject || null,
+        type: 'open-ended',
+      }
+    };
+  }
+
+  /**
+   * Student answers an inline check-question. This method:
+   * 1. Validates the answer
+   * 2. Records an `active_recall` activity → grows the orchard tree
+   * 3. If wrong, auto-creates a flashcard for the weak spot
+   * Returns { correct, explanation, orchardGrowth }
+   */
+  async answerCheckQuestion(
+    studentId: string,
+    body: {
+      questionId: string;
+      selectedIndex: number;
+      correctIndex: number;
+      question: string;
+      correctAnswer: string;
+      explanation: string;
+      lessonId?: string;
+      subject?: string;
+    }
+  ) {
+    const correct = body.selectedIndex === body.correctIndex;
+    const subjectKey = String(body.subject || '').trim().toLowerCase().replace(/\s+/g, '-') || undefined;
+
+    // Record active recall activity → orchard growth
+    let orchardGrowth: any = null;
+    if (subjectKey) {
+      try {
+        orchardGrowth = await this.orchard.recordActivity(studentId, {
+          subjectKey,
+          activityType: 'active_recall',
+          correct,
+        });
+      } catch { /* best-effort */ }
+    }
+
+    // If the student got it wrong, auto-create a flashcard for this weak spot
+    if (!correct && body.question && body.correctAnswer) {
+      void this.autoCreateFlashcard(studentId, {
+        question: body.question,
+        answer: `${body.correctAnswer}. ${body.explanation || ''}`.trim(),
+        subject: body.subject,
+        lessonId: body.lessonId,
+      });
+    }
+
+    return {
+      success: true,
+      correct,
+      explanation: body.explanation || (correct ? 'Well done! You got it right.' : 'Not quite — review the explanation above.'),
+      orchardGrowth: orchardGrowth ? { watered: true } : null,
+    };
+  }
+
+  /**
+   * "Explain it back" Socratic check — student explains a concept in their own words,
+   * the AI evaluates their understanding, and we record an `explain_back` activity
+   * (the highest-value growth activity in the orchard system: 💧x4, roots +8).
+   */
+  async evaluateExplainBack(
+    studentId: string,
+    body: {
+      explanation: string;
+      topic: string;
+      conversationId?: string;
+      lessonId?: string;
+      subject?: string;
+    }
+  ) {
+    const studentExplanation = String(body.explanation || '').trim();
+    if (!studentExplanation) return { success: false, error: 'No explanation provided' };
+
+    const prompt = [
+      { role: 'system', content:
+        `You are an AI tutor evaluating a student's self-explanation of "${body.topic}". ` +
+        `Rate their understanding and give brief feedback.\n\n` +
+        `Return ONLY valid JSON (no markdown):\n` +
+        `{"score":1-5,"feedback":"...","strengths":["..."],"gaps":["..."],"passedCheck":true/false}\n\n` +
+        `- score: 1=very wrong, 3=partially correct, 5=excellent understanding\n` +
+        `- passedCheck: true if score >= 3\n` +
+        `- Keep feedback encouraging and concise (1-2 sentences)\n` +
+        `- strengths/gaps: 1-2 bullet points each, short`
+      },
+      { role: 'user', content: `Student's explanation of "${body.topic}":\n"${studentExplanation}"` }
+    ];
+
+    const raw = await this.llm.query(prompt);
+    let evaluation = { score: 3, feedback: 'Good effort!', strengths: [] as string[], gaps: [] as string[], passedCheck: true };
+    try {
+      const cleaned = raw.replace(/```json\s*/gi, '').replace(/```/g, '').trim();
+      const parsed = JSON.parse(cleaned);
+      if (parsed.score) evaluation = { ...evaluation, ...parsed };
+    } catch { /* use defaults */ }
+
+    const subjectKey = String(body.subject || '').trim().toLowerCase().replace(/\s+/g, '-') || undefined;
+
+    // Record explain_back activity → orchard (highest-value growth!)
+    let orchardGrowth: any = null;
+    if (subjectKey && evaluation.passedCheck) {
+      try {
+        orchardGrowth = await this.orchard.recordActivity(studentId, {
+          subjectKey,
+          activityType: 'explain_back',
+          correct: evaluation.passedCheck,
+        });
+      } catch { /* best-effort */ }
+    }
+
+    // If they failed, create a flashcard for the gap
+    if (!evaluation.passedCheck && body.topic) {
+      void this.autoCreateFlashcard(studentId, {
+        question: `Explain: ${body.topic}`,
+        answer: evaluation.gaps.length ? evaluation.gaps.join('. ') : `Review "${body.topic}" concept again.`,
+        subject: body.subject,
+        lessonId: body.lessonId,
+      });
+    }
+
+    return {
+      success: true,
+      evaluation,
+      orchardGrowth: orchardGrowth ? { watered: true, activityType: 'explain_back' } : null,
+    };
+  }
+
+  /**
+   * Quiz Rush — generate a timed set of rapid-fire MCQs for a subject/lesson.
+   * Wired to orchard with activityType: 'quiz'.
+   */
+  async generateQuizRush(
+    studentId: string,
+    opts: { lessonId?: string; lessonTitle?: string; subject?: string; count?: number }
+  ) {
+    const count = Math.max(3, Math.min(10, Number(opts.count || 5)));
+    const subjectLabel = opts.lessonTitle || opts.subject || 'General Knowledge';
+
+    // Try to pull context from lesson chunks if a lessonId is provided
+    let lessonContext = '';
+    if (opts.lessonId) {
+      try {
+        const chunksRes = await this.db.client
+          .from('lesson_chunks')
+          .select('chunk_text')
+          .eq('lesson_id', opts.lessonId)
+          .order('created_at', { ascending: true })
+          .limit(8);
+        const chunks = Array.isArray((chunksRes as any)?.data) ? (chunksRes as any).data : [];
+        lessonContext = chunks.map((c: any) => String(c?.chunk_text || '').trim()).filter(Boolean).join('\n').slice(0, 3000);
+      } catch { /* ignore */ }
+    }
+
+    // Also use recent chat context when no lesson chunks are available
+    if (!lessonContext) {
+      const history = this.toContextMessages(await this.loadSnapshotHistory(studentId, `conv-${studentId}`));
+      lessonContext = history.slice(-6).map(m => `${m.role}: ${m.content}`).join('\n').slice(0, 2000);
+    }
+
+    const prompt = [
+      { role: 'system', content:
+        `You are a quiz generator for school students. Generate exactly ${count} multiple-choice questions ` +
+        `for the topic: "${subjectLabel}".\n\n` +
+        (lessonContext ? `Use this lesson content as the source:\n${lessonContext}\n\n` : '') +
+        `Return ONLY a valid JSON array (no markdown, no code fences):\n` +
+        `[{"question":"...","options":["A)...","B)...","C)...","D)..."],"correctIndex":0,"explanation":"...","difficulty":"easy|medium|hard"}]\n\n` +
+        `Rules:\n- ${count} questions, mix of easy/medium/hard\n` +
+        `- 4 options each\n- correctIndex is 0-based\n- Keep language simple and school-friendly\n` +
+        `- Questions should test understanding, not just recall`
+      },
+      { role: 'user', content: `Generate ${count} quiz questions for "${subjectLabel}" now.` }
+    ];
+
+    const raw = await this.llm.query(prompt);
+    let questions: any[] = [];
+    try {
+      const cleaned = raw.replace(/```json\s*/gi, '').replace(/```/g, '').trim();
+      questions = JSON.parse(cleaned);
+      if (!Array.isArray(questions)) {
+        // Maybe the LLM wrapped it: { questions: [...] }
+        if (Array.isArray((questions as any)?.questions)) {
+          questions = (questions as any).questions;
+        } else {
+          questions = [];
+        }
+      }
+    } catch {
+      // Fallback: try to extract a JSON array from within the text
+      const arrayMatch = raw.match(/\[\s*\{[\s\S]*?\}\s*\]/);
+      if (arrayMatch) {
+        try { questions = JSON.parse(arrayMatch[0]); } catch { /* still failed */ }
+      }
+    }
+
+    // Validate structure
+    questions = questions.filter((q: any) =>
+      q && q.question && Array.isArray(q.options) && q.options.length >= 2
+    ).slice(0, count).map((q: any, i: number) => ({
+      id: `qr-${Date.now()}-${i}`,
+      question: String(q.question),
+      options: q.options.map((o: any) => String(o)),
+      correctIndex: Number(q.correctIndex) || 0,
+      explanation: String(q.explanation || ''),
+      difficulty: String(q.difficulty || 'medium'),
+    }));
+
+    // If LLM failed to produce questions, generate a minimal fallback from chat context
+    if (questions.length === 0) {
+      const history = this.toContextMessages(await this.loadSnapshotHistory(studentId, `conv-${studentId}`));
+      const topic = opts.lessonTitle || opts.subject || 'the topic';
+      const fallbackPrompt = [
+        { role: 'system', content:
+          `Generate exactly 1 multiple-choice question about "${topic}" for a school student. ` +
+          `Return ONLY: {"question":"...","options":["A)...","B)...","C)...","D)..."],"correctIndex":0,"explanation":"..."}`
+        },
+        { role: 'user', content: history.slice(-4).map(m => `${m.role}: ${m.content}`).join('\n').slice(0, 1500) || `Ask about ${topic}` }
+      ];
+      try {
+        const fbRaw = await this.llm.query(fallbackPrompt);
+        const fbCleaned = fbRaw.replace(/```json\s*/gi, '').replace(/```/g, '').trim();
+        const fbParsed = JSON.parse(fbCleaned);
+        if (fbParsed?.question && Array.isArray(fbParsed?.options)) {
+          questions = [{ id: `qr-${Date.now()}-0`, question: String(fbParsed.question), options: fbParsed.options.map((o: any) => String(o)), correctIndex: Number(fbParsed.correctIndex) || 0, explanation: String(fbParsed.explanation || ''), difficulty: 'medium' }];
+        }
+      } catch { /* fallback also failed */ }
+    }
+
+    return {
+      success: true,
+      quizId: `quiz-${Date.now()}`,
+      subject: opts.subject || null,
+      lessonId: opts.lessonId || null,
+      lessonTitle: opts.lessonTitle || null,
+      questions,
+      timePerQuestion: 20, // seconds
+    };
+  }
+
+  /**
+   * Submit completed Quiz Rush results → record `quiz` activity for orchard growth.
+   */
+  async submitQuizRush(
+    studentId: string,
+    body: {
+      quizId: string;
+      subject?: string;
+      lessonId?: string;
+      score: number;
+      total: number;
+      durationMs?: number;
+      answers?: Array<{ questionId: string; selectedIndex: number; correct: boolean }>;
+    }
+  ) {
+    const subjectKey = String(body.subject || '').trim().toLowerCase().replace(/\s+/g, '-') || undefined;
+    const score = Math.max(0, Number(body.score || 0));
+    const total = Math.max(1, Number(body.total || 1));
+    const percentage = Math.round((score / total) * 100);
+
+    // Record quiz activity → orchard growth
+    let orchardGrowth: any = null;
+    if (subjectKey) {
+      try {
+        orchardGrowth = await this.orchard.recordActivity(studentId, {
+          subjectKey,
+          activityType: 'quiz',
+          correct: score >= Math.ceil(total / 2),
+        });
+      } catch { /* best-effort */ }
+    }
+
+    // Log game session
+    try {
+      await this.db.client.from('game_sessions').insert([{
+        student_id: studentId,
+        game_key: 'quiz_rush',
+        subject_key: subjectKey || null,
+        chapter_id: body.lessonId || null,
+        score,
+        total,
+        duration_ms: body.durationMs || null,
+        meta: { answers: body.answers || [] },
+        started_at: new Date(Date.now() - (Number(body.durationMs) || 0)).toISOString(),
+        ended_at: new Date().toISOString(),
+        created_at: new Date().toISOString(),
+      }]);
+    } catch { /* ignore */ }
+
+    // Auto-create flashcards for wrong answers
+    if (Array.isArray(body.answers)) {
+      const wrongOnes = body.answers.filter((a) => !a.correct);
+      for (const wrong of wrongOnes.slice(0, 3)) {
+        // We don't have the full question text here, so we just note the ID
+        // The frontend should send question text if it wants flashcard creation
+      }
+    }
+
+    return {
+      success: true,
+      score,
+      total,
+      percentage,
+      passed: score >= Math.ceil(total / 2),
+      orchardGrowth: orchardGrowth ? { watered: true, activityType: 'quiz' } : null,
+    };
+  }
+
+  /**
+   * Submit Quiz Rush with full question data for auto-flashcard generation.
+   */
+  async submitQuizRushWithDetails(
+    studentId: string,
+    body: {
+      quizId: string;
+      subject?: string;
+      lessonId?: string;
+      score: number;
+      total: number;
+      durationMs?: number;
+      results: Array<{
+        question: string;
+        correctAnswer: string;
+        selectedIndex: number;
+        correctIndex: number;
+        correct: boolean;
+        explanation?: string;
+      }>;
+    }
+  ) {
+    const baseResult = await this.submitQuizRush(studentId, {
+      quizId: body.quizId,
+      subject: body.subject,
+      lessonId: body.lessonId,
+      score: body.score,
+      total: body.total,
+      durationMs: body.durationMs,
+    });
+
+    // Auto-create flashcards for wrong answers (up to 3)
+    if (Array.isArray(body.results)) {
+      const wrongOnes = body.results.filter((r) => !r.correct);
+      for (const wrong of wrongOnes.slice(0, 3)) {
+        if (wrong.question && wrong.correctAnswer) {
+          void this.autoCreateFlashcard(studentId, {
+            question: wrong.question,
+            answer: `${wrong.correctAnswer}${wrong.explanation ? '. ' + wrong.explanation : ''}`,
+            subject: body.subject,
+            lessonId: body.lessonId,
+          });
+        }
+      }
+    }
+
+    return { ...baseResult, flashcardsCreated: Math.min(3, (body.results || []).filter((r) => !r.correct).length) };
+  }
+
+  /**
+   * Internal: auto-create a flashcard from a weak spot detected in chat or quiz.
+   * This bridges the chat/quiz system to the flashcard spaced-repetition system.
+   */
+  private async autoCreateFlashcard(
+    studentId: string,
+    card: { question: string; answer: string; subject?: string; lessonId?: string }
+  ) {
+    try {
+      const subjectKey = String(card.subject || '').trim().toLowerCase().replace(/\s+/g, '-') || 'general';
+      // Find or create a deck for this subject + "weak spots" chapter
+      const deckKey = `${subjectKey}::weak-spots-auto`;
+      let deckRow: any = null;
+      try {
+        const res = await this.db.client.from('flashcard_decks').select('*').eq('deck_key', deckKey).limit(1);
+        deckRow = Array.isArray((res as any)?.data) ? (res as any).data[0] : null;
+      } catch { /* ignore */ }
+
+      if (!deckRow) {
+        try {
+          const res = await this.db.client.from('flashcard_decks').insert([{
+            deck_key: deckKey,
+            subject_key: subjectKey,
+            class_name: null,
+            chapter_id: card.lessonId || null,
+            lesson_id: card.lessonId || null,
+            chapter_number: 99,
+            chapter_title: 'Weak Spots (Auto-generated)',
+            source: 'auto-chat',
+            card_count: 0,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          }]).select();
+          deckRow = Array.isArray((res as any)?.data) ? (res as any).data[0] : null;
+        } catch { /* ignore */ }
+      }
+
+      if (!deckRow?.id) return;
+
+      // Insert the flashcard
+      await this.db.client.from('flashcards').insert([{
+        deck_id: deckRow.id,
+        student_id: studentId,
+        front: card.question,
+        back: card.answer,
+        source: 'auto-weak-spot',
+        srs_box: 0,
+        interval_days: 0,
+        due_at: new Date().toISOString(),
+        streak: 0,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      }]);
+
+      // Bump deck card count
+      try {
+        await this.db.client
+          .from('flashcard_decks')
+          .update({ card_count: (deckRow.card_count || 0) + 1, updated_at: new Date().toISOString() })
+          .eq('id', deckRow.id);
+      } catch { /* ignore */ }
+    } catch (e) {
+      console.warn('autoCreateFlashcard failed', (e as any)?.message || e);
+    }
+  }
+
+  /**
+   * Get "due for review" items for the student — surfaces flashcards that are due
+   * so the tutor can nudge the student proactively.
+   */
+  async getDueReviewNudge(studentId: string, subject?: string) {
+    try {
+      let query = this.db.client
+        .from('flashcards')
+        .select('id,front,back,deck_id,srs_box,due_at')
+        .eq('student_id', studentId)
+        .lte('due_at', new Date().toISOString())
+        .order('due_at', { ascending: true })
+        .limit(10);
+
+      const res = await query;
+      let dueCards = Array.isArray((res as any)?.data) ? (res as any).data : [];
+
+      // If subject filter, resolve deck→subject mapping
+      if (subject && dueCards.length) {
+        const deckIds = Array.from(new Set(dueCards.map((c: any) => c.deck_id)));
+        const decksRes = await this.db.client
+          .from('flashcard_decks')
+          .select('id,subject_key')
+          .in('id', deckIds);
+        const decks = Array.isArray((decksRes as any)?.data) ? (decksRes as any).data : [];
+        const subjectKey = subject.toLowerCase().replace(/\s+/g, '-');
+        const matchingDeckIds = new Set(decks.filter((d: any) => d.subject_key === subjectKey).map((d: any) => d.id));
+        dueCards = dueCards.filter((c: any) => matchingDeckIds.has(c.deck_id));
+      }
+
+      return {
+        success: true,
+        dueCount: dueCards.length,
+        nudgeMessage: dueCards.length > 0
+          ? `You have ${dueCards.length} card${dueCards.length === 1 ? '' : 's'} due for review${subject ? ` in ${subject}` : ''}. Want a quick 2-minute review?`
+          : null,
+        cards: dueCards.slice(0, 5),
+      };
+    } catch {
+      return { success: true, dueCount: 0, nudgeMessage: null, cards: [] };
     }
   }
 }

@@ -207,4 +207,163 @@ export class ChatController {
     const res = await this.chatService.getStats();
     return res;
   }
+
+  // ═══════════════════════════════════════════════════════════════════════════════
+  // INTERACTIVE LEARNING ENDPOINTS
+  // ═══════════════════════════════════════════════════════════════════════════════
+
+  @Post('check-question')
+  @UseGuards(AuthGuard)
+  async generateCheckQuestion(
+    @Req() req: any,
+    @Body() payload: { studentId?: string; conversationId?: string; lessonId?: string; lessonTitle?: string; lessonSubject?: string }
+  ) {
+    const studentId = req.studentId || payload.studentId || 'anon';
+    return this.chatService.generateCheckQuestion(studentId, {
+      conversationId: payload.conversationId,
+      lessonId: payload.lessonId,
+      lessonTitle: payload.lessonTitle,
+      lessonSubject: payload.lessonSubject,
+    });
+  }
+
+  @Post('answer-check')
+  @UseGuards(AuthGuard)
+  async answerCheckQuestion(
+    @Req() req: any,
+    @Body() payload: {
+      studentId?: string;
+      questionId: string;
+      selectedIndex: number;
+      correctIndex: number;
+      question: string;
+      correctAnswer: string;
+      explanation?: string;
+      lessonId?: string;
+      subject?: string;
+    }
+  ) {
+    const studentId = req.studentId || payload.studentId || 'anon';
+    this.localFeed.logStudentActivity(studentId, {
+      type: 'quiz',
+      action: 'answer-check',
+      title: 'Check Question Answered',
+      details: payload.selectedIndex === payload.correctIndex ? 'correct' : 'incorrect',
+      meta: { questionId: payload.questionId, subject: payload.subject }
+    });
+    return this.chatService.answerCheckQuestion(studentId, {
+      questionId: payload.questionId,
+      selectedIndex: payload.selectedIndex,
+      correctIndex: payload.correctIndex,
+      question: payload.question,
+      correctAnswer: payload.correctAnswer,
+      explanation: payload.explanation || '',
+      lessonId: payload.lessonId,
+      subject: payload.subject,
+    });
+  }
+
+  @Post('explain-back')
+  @UseGuards(AuthGuard)
+  async evaluateExplainBack(
+    @Req() req: any,
+    @Body() payload: {
+      studentId?: string;
+      explanation: string;
+      topic: string;
+      conversationId?: string;
+      lessonId?: string;
+      subject?: string;
+    }
+  ) {
+    const studentId = req.studentId || payload.studentId || 'anon';
+    this.localFeed.logStudentActivity(studentId, {
+      type: 'learning',
+      action: 'explain-back',
+      title: 'Explain Back Challenge',
+      details: String(payload.topic || '').slice(0, 100),
+      meta: { subject: payload.subject }
+    });
+    return this.chatService.evaluateExplainBack(studentId, {
+      explanation: payload.explanation,
+      topic: payload.topic,
+      conversationId: payload.conversationId,
+      lessonId: payload.lessonId,
+      subject: payload.subject,
+    });
+  }
+
+  @Post('quiz-rush/generate')
+  @UseGuards(AuthGuard)
+  async generateQuizRush(
+    @Req() req: any,
+    @Body() payload: { studentId?: string; lessonId?: string; lessonTitle?: string; subject?: string; count?: number }
+  ) {
+    const studentId = req.studentId || payload.studentId || 'anon';
+    return this.chatService.generateQuizRush(studentId, {
+      lessonId: payload.lessonId,
+      lessonTitle: payload.lessonTitle,
+      subject: payload.subject,
+      count: payload.count,
+    });
+  }
+
+  @Post('quiz-rush/submit')
+  @UseGuards(AuthGuard)
+  async submitQuizRush(
+    @Req() req: any,
+    @Body() payload: {
+      studentId?: string;
+      quizId: string;
+      subject?: string;
+      lessonId?: string;
+      score: number;
+      total: number;
+      durationMs?: number;
+      results?: Array<{
+        question: string;
+        correctAnswer: string;
+        selectedIndex: number;
+        correctIndex: number;
+        correct: boolean;
+        explanation?: string;
+      }>;
+    }
+  ) {
+    const studentId = req.studentId || payload.studentId || 'anon';
+    this.localFeed.logStudentActivity(studentId, {
+      type: 'game',
+      action: 'quiz-rush-complete',
+      title: 'Quiz Rush Completed',
+      details: `${payload.score}/${payload.total}`,
+      meta: { quizId: payload.quizId, subject: payload.subject }
+    });
+
+    if (Array.isArray(payload.results) && payload.results.length) {
+      return this.chatService.submitQuizRushWithDetails(studentId, {
+        quizId: payload.quizId,
+        subject: payload.subject,
+        lessonId: payload.lessonId,
+        score: payload.score,
+        total: payload.total,
+        durationMs: payload.durationMs,
+        results: payload.results,
+      });
+    }
+    return this.chatService.submitQuizRush(studentId, {
+      quizId: payload.quizId,
+      subject: payload.subject,
+      lessonId: payload.lessonId,
+      score: payload.score,
+      total: payload.total,
+      durationMs: payload.durationMs,
+    });
+  }
+
+  @Get('due-review')
+  @UseGuards(AuthGuard)
+  async dueReview(@Req() req: any, @Query('studentId') studentId?: string, @Query('subject') subject?: string) {
+    const id = req.studentId || studentId || 'anon';
+    return this.chatService.getDueReviewNudge(id, subject);
+  }
 }

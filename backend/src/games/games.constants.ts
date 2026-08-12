@@ -34,7 +34,7 @@ export const GAME_CATALOG: GameCatalogEntry[] = [
     tagline: 'Beat the clock with rapid-fire questions.',
     icon: '⚡',
     accent: '#f59e0b',
-    status: 'soon',
+    status: 'live',
     order: 2,
   },
   {
