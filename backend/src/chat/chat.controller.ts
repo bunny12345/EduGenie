@@ -89,7 +89,7 @@ export class ChatController {
     if (!tts?.audioBase64) {
       return {
         success: false,
-        error: 'Local TTS is unavailable. Start your self-hosted TTS service and set TTS_SERVICE_URL.'
+        error: 'TTS is unavailable. Ensure OPENAI_API_KEY is set.'
       };
     }
 
@@ -102,6 +102,41 @@ export class ChatController {
     });
 
     return { success: true, ...tts };
+  }
+
+  @Post('transcribe')
+  @UseGuards(AuthGuard)
+  async transcribeAudio(
+    @Req() req: any,
+    @Body() payload: {
+      studentId?: string;
+      audioBase64: string;
+      mimeType?: string;
+      lessonId?: string;
+      lessonTitle?: string;
+      lessonSubject?: string;
+      conversationId?: string;
+    }
+  ) {
+    const id = req.studentId || payload.studentId || 'anon';
+    const result = await this.chatService.transcribeAudio(payload?.audioBase64, payload?.mimeType);
+
+    if (result?.success && result?.text) {
+      this.localFeed.logStudentActivity(id, {
+        type: 'chat',
+        action: 'voice-transcribed',
+        title: 'Talk to Sam',
+        details: String(result.text || '').slice(0, 120),
+        meta: {
+          lessonId: payload?.lessonId || null,
+          lessonTitle: payload?.lessonTitle || null,
+          lessonSubject: payload?.lessonSubject || null,
+          conversationId: payload?.conversationId || null,
+        }
+      });
+    }
+
+    return result;
   }
 
   @Get('seed')

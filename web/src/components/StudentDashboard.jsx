@@ -19,6 +19,7 @@ import {
   recordProgress,
   saveSettings,
   sendChat,
+  transcribeTutorAudio,
   startTest,
   submitHomework,
   generateLocalTtsAudio,
@@ -330,9 +331,27 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
   const [chatReadAloudSpeed, setChatReadAloudSpeed] = useState(1);
   const [chatVoicePlayId, setChatVoicePlayId] = useState('');
   const [chatVoiceLoadingId, setChatVoiceLoadingId] = useState('');
+  const [talkToSamOpen, setTalkToSamOpen] = useState(false);
+  const [talkToSamRecording, setTalkToSamRecording] = useState(false);
+  const [talkToSamBusy, setTalkToSamBusy] = useState(false);
+  const [talkToSamTranscript, setTalkToSamTranscript] = useState('');
+  const [talkToSamError, setTalkToSamError] = useState('');
+  const [talkToSamSpeaking, setTalkToSamSpeaking] = useState(false);
+  const [talkToSamAutoSpeak, setTalkToSamAutoSpeak] = useState(true);
+  const [samSessionActive, setSamSessionActive] = useState(false);
+  const samSessionActiveRef = React.useRef(false);
+  const talkToSamAudioRef = React.useRef(null);
+  const talkToSamAudioUrlRef = React.useRef('');
+  const samSpeakQueueRef = React.useRef([]);
   const localVoiceCacheRef = React.useRef({});
   const localAudioRef = React.useRef(null);
   const localAudioUrlRef = React.useRef('');
+  const talkMediaRecorderRef = React.useRef(null);
+  const talkMediaStreamRef = React.useRef(null);
+  const talkAudioChunksRef = React.useRef([]);
+  const talkMimeTypeRef = React.useRef('audio/webm');
+  const talkSilenceTimerRef = React.useRef(null);
+  const talkAudioContextRef = React.useRef(null);
   const currentReadAloudRef = React.useRef({ messageId: '', text: '', languageCode: '' });
   const speechSessionRef = React.useRef(0);
   const speechVoicesRef = React.useRef([]);
@@ -861,6 +880,15 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
 
   useEffect(() => {
     return () => {
+      if (talkMediaRecorderRef.current && talkMediaRecorderRef.current.state !== 'inactive') {
+        try { talkMediaRecorderRef.current.stop(); } catch { /* ignore */ }
+      }
+      if (talkMediaStreamRef.current) {
+        talkMediaStreamRef.current.getTracks().forEach((track) => {
+          try { track.stop(); } catch { /* ignore */ }
+        });
+        talkMediaStreamRef.current = null;
+      }
       if (chatRequestAbortRef.current) {
         chatRequestAbortRef.current.abort();
         chatRequestAbortRef.current = null;
@@ -1662,9 +1690,9 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [chatHistory, chatLoading]);
 
-  async function onSendTutorMessage(overrideMsg) {
+  async function onSendTutorMessage(overrideMsg, opts = {}) {
     const msg = (typeof overrideMsg === 'string' ? overrideMsg : chatInput).trim();
-    if (!msg && !chatImages.length) return;
+    if (!msg && !chatImages.length) return null;
     setChatFollowups([]);
     setChatImageError('');
     const conversationId = getCurrentTutorConversationId();
@@ -1675,7 +1703,7 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
         content: String(m?.text || m?.message || '').trim(),
       }))
       .filter((m) => m.content);
-    // Optimistically add user message
+    // Optimistically add user message (skip if hidden — e.g. auto-tutor prompt)
     const tempUserMsg = {
       id: `tmp-u-${Date.now()}`,
       role: 'user',
@@ -1688,8 +1716,12 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
       lessonId: selectedTutorLesson?.id || '',
       lessonTitle: selectedTutorLesson?.title || '',
       lessonSubject: selectedTutorLesson?.subject || tutorSubject,
+      fromVoice: Boolean(opts?.fromVoice),
+      hidden: Boolean(opts?.hidden),
     };
-    setChatHistory((prev) => [...safeArray(prev), tempUserMsg]);
+    if (!opts?.hidden) {
+      setChatHistory((prev) => [...safeArray(prev), tempUserMsg]);
+    }
 
     const abortController = typeof AbortController !== 'undefined' ? new AbortController() : null;
     chatRequestAbortRef.current = abortController;
@@ -1718,23 +1750,33 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
       }
       // Use the reply directly from the response — much more reliable than
       // re-fetching from Supabase (which may return empty if persistence failed).
-      const aiMsg = { id: `ai-${Date.now()}`, role: 'ai', text: res.reply || '…', ts: new Date().toISOString() };
-      setChatHistory((prev) => [
-        ...safeArray(prev).filter((m) => m.id !== tempUserMsg.id),
-        { ...tempUserMsg },
-        aiMsg,
-      ]);
+      const aiMsg = { id: `ai-${Date.now()}`, role: 'ai', text: res.reply || '…', ts: new Date().toISOString(), fromVoice: Boolean(opts?.fromVoice) };
+      if (opts?.hidden) {
+        // Hidden prompt (auto-tutor) — only show the AI reply, not the user prompt
+        setChatHistory((prev) => [...safeArray(prev), aiMsg]);
+      } else {
+        setChatHistory((prev) => [
+          ...safeArray(prev).filter((m) => m.id !== tempUserMsg.id),
+          { ...tempUserMsg },
+          aiMsg,
+        ]);
+      }
+      // Auto-speak when Sam session is active (use ref to avoid stale closure)
+      if ((samSessionActiveRef.current || opts?.speak) && res.reply) {
+        speakSamResponse(res.reply, { autoListen: true });
+      }
       // Show follow-up suggestions if provided
       if (Array.isArray(res?.followups) && res.followups.length) {
         setChatFollowups(res.followups);
       }
       setChatImages([]);
       loadLearningTimelinePanel();
+      return { aiMsg, reply: res.reply };
     } catch (e) {
       const isAborted = e?.name === 'AbortError' || String(e?.message || '').toLowerCase().includes('aborted');
       if (isAborted) {
         setPanelErrorKey('chat', '');
-        return;
+        return null;
       }
       // Show error inline as a bot message
       const errMsg = { id: `tmp-err-${Date.now()}`, role: 'ai', text: `⚠️ ${e?.message || 'Unable to reach AI tutor right now.'}`, ts: new Date().toISOString() };
@@ -1744,6 +1786,7 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
         errMsg
       ]);
       setPanelErrorKey('chat', e?.message || 'Unable to send chat message.');
+      return null;
     } finally {
       chatRequestAbortRef.current = null;
       setChatLoading(false);
@@ -1756,6 +1799,328 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
     chatRequestAbortRef.current = null;
     setChatLoading(false);
     setPanelErrorKey('chat', '');
+  }
+
+  async function blobToBase64(blob) {
+    const dataUrl = await new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result || ''));
+      reader.onerror = () => reject(reader.error || new Error('Unable to read audio blob'));
+      reader.readAsDataURL(blob);
+    });
+    return String(dataUrl).split(',')[1] || '';
+  }
+
+  async function onStartTalkToSamRecording() {
+    if (talkToSamRecording || talkToSamBusy) return;
+    setTalkToSamError('');
+    setTalkToSamTranscript('');
+
+    if (typeof window === 'undefined' || !window.navigator?.mediaDevices?.getUserMedia || typeof window.MediaRecorder === 'undefined') {
+      setTalkToSamError('Voice recording is not supported on this browser.');
+      return;
+    }
+
+    try {
+      const stream = await window.navigator.mediaDevices.getUserMedia({ audio: true });
+      talkMediaStreamRef.current = stream;
+
+      const supportedTypes = [
+        'audio/webm;codecs=opus',
+        'audio/webm',
+        'audio/mp4',
+      ];
+      const mimeType = supportedTypes.find((type) => window.MediaRecorder.isTypeSupported(type)) || '';
+      const recorder = new window.MediaRecorder(stream, mimeType ? { mimeType } : undefined);
+      talkMimeTypeRef.current = mimeType || 'audio/webm';
+      talkAudioChunksRef.current = [];
+
+      recorder.ondataavailable = (event) => {
+        if (event?.data && event.data.size > 0) talkAudioChunksRef.current.push(event.data);
+      };
+      recorder.onerror = () => {
+        setTalkToSamError('Microphone recording failed. Please try again.');
+        setTalkToSamRecording(false);
+        cleanupSilenceDetection();
+      };
+      recorder.start(250); // collect data every 250ms for faster processing
+      talkMediaRecorderRef.current = recorder;
+      setTalkToSamRecording(true);
+
+      // ── Silence detection using Web Audio API ──
+      try {
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        talkAudioContextRef.current = audioCtx;
+        const source = audioCtx.createMediaStreamSource(stream);
+        const analyser = audioCtx.createAnalyser();
+        analyser.fftSize = 512;
+        analyser.smoothingTimeConstant = 0.3;
+        source.connect(analyser);
+
+        const dataArray = new Uint8Array(analyser.frequencyBinCount);
+        const SILENCE_THRESHOLD = 15; // audio level below this = silence
+        const SILENCE_DURATION = 1800; // ms of silence before auto-stop
+        const MIN_SPEECH_DURATION = 600; // must have at least 600ms of speech before silence can trigger
+        let silenceStart = null;
+        let hasSpeechStarted = false;
+        let speechStartTime = null;
+
+        const checkSilence = () => {
+          if (!talkMediaRecorderRef.current || talkMediaRecorderRef.current.state === 'inactive') return;
+          analyser.getByteFrequencyData(dataArray);
+          const avg = dataArray.reduce((sum, val) => sum + val, 0) / dataArray.length;
+
+          if (avg > SILENCE_THRESHOLD) {
+            // Speech detected
+            silenceStart = null;
+            if (!hasSpeechStarted) {
+              hasSpeechStarted = true;
+              speechStartTime = Date.now();
+            }
+          } else if (hasSpeechStarted) {
+            // Silence after speech
+            const speechDuration = Date.now() - (speechStartTime || Date.now());
+            if (speechDuration >= MIN_SPEECH_DURATION) {
+              if (!silenceStart) {
+                silenceStart = Date.now();
+              } else if (Date.now() - silenceStart >= SILENCE_DURATION) {
+                // Auto-stop: enough silence after speech
+                cleanupSilenceDetection();
+                onStopTalkToSamRecording();
+                return;
+              }
+            }
+          }
+
+          talkSilenceTimerRef.current = requestAnimationFrame(checkSilence);
+        };
+        talkSilenceTimerRef.current = requestAnimationFrame(checkSilence);
+      } catch { /* silence detection is optional enhancement */ }
+    } catch {
+      setTalkToSamError('Microphone permission denied or unavailable.');
+      setTalkToSamRecording(false);
+    }
+  }
+
+  function cleanupSilenceDetection() {
+    if (talkSilenceTimerRef.current) {
+      cancelAnimationFrame(talkSilenceTimerRef.current);
+      talkSilenceTimerRef.current = null;
+    }
+    if (talkAudioContextRef.current) {
+      try { talkAudioContextRef.current.close(); } catch { /* ignore */ }
+      talkAudioContextRef.current = null;
+    }
+  }
+
+  // Stop any current Sam speaking audio (non-blocking — doesn't prevent input)
+  function stopTalkToSamSpeaking() {
+    if (talkToSamAudioRef.current) {
+      try { talkToSamAudioRef.current.pause(); } catch { /* ignore */ }
+      talkToSamAudioRef.current = null;
+    }
+    if (talkToSamAudioUrlRef.current) {
+      URL.revokeObjectURL(talkToSamAudioUrlRef.current);
+      talkToSamAudioUrlRef.current = '';
+    }
+    if (typeof window !== 'undefined' && window.speechSynthesis) {
+      try { window.speechSynthesis.cancel(); } catch { /* ignore */ }
+    }
+    samSpeakQueueRef.current = [];
+    cleanupSilenceDetection();
+    setTalkToSamSpeaking(false);
+  }
+
+  // Speak Sam's response — runs in background, auto-listens after done
+  async function speakSamResponse(text, opts = {}) {
+    if (!text) return;
+    const cleanText = getReadAloudText(text);
+    if (!cleanText) return;
+
+    // If already speaking, queue it
+    if (talkToSamAudioRef.current || (typeof window !== 'undefined' && window.speechSynthesis && window.speechSynthesis.speaking)) {
+      samSpeakQueueRef.current.push({ text: cleanText, autoListen: opts.autoListen !== false });
+      return;
+    }
+
+    async function playNext(speechText, autoListen) {
+      if (!speechText) {
+        setTalkToSamSpeaking(false);
+        // Auto-listen after Sam finishes speaking (voice-loop)
+        if (autoListen && samSessionActiveRef.current) {
+          setTimeout(() => {
+            if (samSessionActiveRef.current && !talkToSamBusy) {
+              onStartTalkToSamRecording();
+            }
+          }, 400);
+        }
+        return;
+      }
+      setTalkToSamSpeaking(true);
+
+      const onDone = () => {
+        talkToSamAudioRef.current = null;
+        const next = samSpeakQueueRef.current.shift();
+        if (next) playNext(next.text, next.autoListen);
+        else {
+          setTalkToSamSpeaking(false);
+          if (autoListen && samSessionActiveRef.current) {
+            setTimeout(() => {
+              if (samSessionActiveRef.current && !talkToSamBusy) {
+                onStartTalkToSamRecording();
+              }
+            }, 400);
+          }
+        }
+      };
+
+      let played = false;
+      try {
+        const tts = await generateLocalTtsAudio(speechText, 'en-US', studentId, 'ash', 1.15);
+        const audioBase64 = String(tts?.audioBase64 || '').trim();
+        if (audioBase64) {
+          const blob = base64ToBlob(audioBase64, tts?.mimeType || 'audio/mpeg');
+          const url = URL.createObjectURL(blob);
+          const audio = new Audio(url);
+          audio.preload = 'auto';
+          audio.playbackRate = clampSpeed(chatReadAloudSpeed);
+          audio.onended = () => {
+            URL.revokeObjectURL(url);
+            talkToSamAudioUrlRef.current = '';
+            onDone();
+          };
+          audio.onerror = () => onDone();
+          talkToSamAudioRef.current = audio;
+          talkToSamAudioUrlRef.current = url;
+          await audio.play();
+          played = true;
+        }
+      } catch { /* fallback below */ }
+
+      // Browser SpeechSynthesis fallback
+      if (!played && typeof window !== 'undefined' && window.speechSynthesis) {
+        const utterance = new window.SpeechSynthesisUtterance(speechText);
+        utterance.lang = 'en-US';
+        utterance.rate = clampSpeed(chatReadAloudSpeed) * 1.1;
+        utterance.pitch = 1.3;
+        utterance.onend = () => onDone();
+        utterance.onerror = () => onDone();
+        window.speechSynthesis.cancel();
+        window.speechSynthesis.speak(utterance);
+        played = true;
+      }
+
+      if (!played) {
+        onDone();
+      }
+    }
+
+    await playNext(cleanText, opts.autoListen !== false);
+  }
+
+  // Send a message as Sam's voice input — does NOT block, Sam speaks reply in background
+  async function onSamSendMessage(text, opts = {}) {
+    const msg = String(text || '').trim();
+    if (!msg) return;
+    setTalkToSamError('');
+
+    const result = await onSendTutorMessage(msg, { fromVoice: true, speak: true, ...opts });
+    return result;
+  }
+
+  // Voice recording for Sam — continuous flow
+  async function onStopTalkToSamRecording() {
+    const recorder = talkMediaRecorderRef.current;
+    if (!recorder || recorder.state === 'inactive') return;
+
+    cleanupSilenceDetection();
+    setTalkToSamBusy(true);
+
+    try {
+      const audioBlob = await new Promise((resolve) => {
+        recorder.onstop = () => {
+          const blob = new Blob(talkAudioChunksRef.current, { type: talkMimeTypeRef.current || 'audio/webm' });
+          resolve(blob);
+        };
+        recorder.stop();
+      });
+
+      const stream = talkMediaStreamRef.current;
+      if (stream) {
+        stream.getTracks().forEach((track) => {
+          try { track.stop(); } catch { /* ignore */ }
+        });
+      }
+      talkMediaStreamRef.current = null;
+      talkMediaRecorderRef.current = null;
+      setTalkToSamRecording(false);
+
+      const base64 = await blobToBase64(audioBlob);
+      if (!base64) throw new Error('Empty audio recording');
+
+      const conversationId = getCurrentTutorConversationId();
+      const transcription = await transcribeTutorAudio(studentId, {
+        audioBase64: base64,
+        mimeType: talkMimeTypeRef.current || 'audio/webm',
+        lessonId: selectedTutorLesson?.id || undefined,
+        lessonTitle: selectedTutorLesson?.title || undefined,
+        lessonSubject: selectedTutorLesson?.subject || tutorSubject || undefined,
+        conversationId,
+      });
+
+      const recognized = String(transcription?.text || '').trim();
+      if (!recognized) {
+        setTalkToSamError('I could not catch that. Try again!');
+        return;
+      }
+
+      setTalkToSamTranscript(recognized);
+      await onSamSendMessage(recognized);
+    } catch (e) {
+      setTalkToSamError(e?.message || 'Voice input failed. Please try again.');
+    } finally {
+      setTalkToSamBusy(false);
+    }
+  }
+
+  // Toggle popup — ChatGPT voice assistant style:
+  // Open → greet → auto-listen → student speaks → reply + speak → auto-listen → loop
+  function onToggleTalkToSamPopup() {
+    const wasOpen = talkToSamOpen;
+    setTalkToSamOpen((prev) => !prev);
+    setTalkToSamError('');
+    setTalkToSamTranscript('');
+
+    if (wasOpen) {
+      stopTalkToSamSpeaking();
+      setSamSessionActive(false);
+      samSessionActiveRef.current = false;
+    } else {
+      setSamSessionActive(true);
+      samSessionActiveRef.current = true;
+
+      // Greet the student — just voice, no chat message generated
+      const studentName = localStorage.getItem('studentName') || 'there';
+      const topic = selectedTutorLesson?.title || '';
+      let greeting;
+      if (topic) {
+        greeting = `Hey ${studentName}! Ready to continue with ${topic}? Ask me anything or just say "teach me" and I'll start!`;
+      } else {
+        greeting = `Hey ${studentName}! I'm Sam, your study buddy. What would you like to learn today?`;
+      }
+      // Speak greeting, then auto-start listening when done
+      setTimeout(() => speakSamResponse(greeting, { autoListen: true }), 300);
+    }
+  }
+
+  // Mic toggle — press to start, press again to stop & send
+  async function onTalkToSamPrimaryAction() {
+    if (talkToSamBusy) return;
+    if (talkToSamRecording) {
+      await onStopTalkToSamRecording();
+      return;
+    }
+    await onStartTalkToSamRecording();
   }
 
   // ── Interactive Learning Handlers ───────────────────────────────────────
@@ -2008,7 +2373,7 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
           <h3>🤖 AI Tutor</h3>
           <div className="eg-ai-head-controls">
             <span className="eg-ai-head-hint">Quick prompts</span>
-            <div className="eg-ai-speed-control" title={`Read aloud speed: ${getSpeedLabel(chatReadAloudSpeed)}`}>
+            <div className="eg-ai-speed-control" title={`Voice speed: ${getSpeedLabel(chatReadAloudSpeed)}`}>
               <label htmlFor="eg-ai-speed-range">Speed</label>
               <input
                 id="eg-ai-speed-range"
@@ -2018,7 +2383,7 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
                 step="0.1"
                 value={chatReadAloudSpeed}
                 onChange={(e) => setChatReadAloudSpeed(clampSpeed(e.target.value))}
-                aria-label="Read aloud speed"
+                aria-label="Voice speed"
               />
               <span>{chatReadAloudSpeed.toFixed(1)}×</span>
             </div>
@@ -2070,11 +2435,10 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
       </div>
       {panelError.chat ? <p className="eg-loading" style={{ color: '#dc2626' }}>{panelError.chat}</p> : null}
       <div className="eg-ai-chat eg-ai-chat-screen">
-        {safeArray(chatHistory).map((m, idx) => {
+        {safeArray(chatHistory).filter((m) => !m?.hidden).map((m, idx) => {
           const messageId = String(m?.id || m?.ts || `msg-${idx}`);
           const messageText = m?.text || m?.message || '';
           const isBot = m?.role !== 'user';
-          const isSpeaking = chatReadAloudId === messageId;
           const isVoicePlaying = chatVoicePlayId === messageId;
           const isVoiceLoading = chatVoiceLoadingId === messageId;
           return (
@@ -2112,15 +2476,6 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
                   title="Play local server-generated voice audio"
                 >
                   {isVoiceLoading ? 'Generating Voice...' : (isVoicePlaying ? 'Stop Voice' : 'Play Voice')}
-                </button>
-                <button
-                  type="button"
-                  className="eg-ai-read-btn"
-                  onClick={() => onToggleReadAloud(messageId, messageText)}
-                  disabled={!chatReadAloudSupported}
-                  title={chatReadAloudSupported ? 'Read this response aloud' : 'Read aloud is not supported on this browser'}
-                >
-                  {isSpeaking ? 'Stop Audio' : 'Read Aloud'}
                 </button>
               </div>
             ) : null}
@@ -2358,11 +2713,105 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
           style={{ display: 'none' }}
           onChange={(e) => {
             onTutorImageSelected(Array.from(e.target.files || []));
-            // Allow choosing the same file again (browser otherwise may not fire onChange).
             e.target.value = '';
           }}
           disabled={chatLoading}
         />
+        {/* Talk to Sam floating bubble */}
+        <div className={`eg-talk-sam-wrap ${talkToSamOpen ? 'open' : ''} ${talkToSamRecording ? 'recording' : ''} ${talkToSamSpeaking ? 'speaking' : ''}`}>
+          <button
+            type="button"
+            className={`eg-talk-sam-mic ${talkToSamRecording ? 'recording' : ''} ${talkToSamSpeaking ? 'speaking' : ''} ${talkToSamOpen ? 'active' : ''}`}
+            onClick={onToggleTalkToSamPopup}
+            aria-expanded={talkToSamOpen}
+            aria-label="Talk to Sam"
+            title="Talk to Sam"
+          >
+            <svg className="eg-talk-sam-mic-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M12 1a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
+              <path d="M19 10v1a7 7 0 0 1-14 0v-1"/>
+              <line x1="12" y1="19" x2="12" y2="23"/>
+              <line x1="8" y1="23" x2="16" y2="23"/>
+            </svg>
+            {(talkToSamRecording || talkToSamSpeaking) && (
+              <div className="eg-talk-sam-waveform">
+                <span className="eg-wave-bar" style={{ animationDelay: '0ms' }}></span>
+                <span className="eg-wave-bar" style={{ animationDelay: '120ms' }}></span>
+                <span className="eg-wave-bar" style={{ animationDelay: '240ms' }}></span>
+                <span className="eg-wave-bar" style={{ animationDelay: '360ms' }}></span>
+                <span className="eg-wave-bar" style={{ animationDelay: '480ms' }}></span>
+              </div>
+            )}
+            <span className="eg-talk-sam-label">Sam</span>
+          </button>
+          {/* Sam Interactive Panel */}
+          {talkToSamOpen && (
+            <div className="eg-talk-sam-pop" role="dialog" aria-label="Talk to Sam">
+              <div className="eg-talk-sam-header">
+                <div className="eg-talk-sam-avatar-ring">
+                  <span className="eg-talk-sam-avatar">🎓</span>
+                </div>
+                <div className="eg-talk-sam-header-text">
+                  <p className="eg-talk-sam-title">Sam</p>
+                  <p className="eg-talk-sam-sub">
+                    {selectedTutorLesson
+                      ? `Teaching: ${selectedTutorLesson.title}`
+                      : tutorSubject || 'Your AI Study Buddy'}
+                  </p>
+                </div>
+                <div className="eg-talk-sam-header-actions">
+                  {talkToSamSpeaking && (
+                    <button type="button" className="eg-talk-sam-mute" onClick={stopTalkToSamSpeaking} title="Mute Sam">
+                      🔇
+                    </button>
+                  )}
+                  <button type="button" className="eg-talk-sam-close" onClick={onToggleTalkToSamPopup} aria-label="Close">×</button>
+                </div>
+              </div>
+              {/* Status bar — shows what Sam/student is doing */}
+              <div className={`eg-talk-sam-status-bar ${talkToSamRecording ? 'recording' : ''} ${talkToSamSpeaking ? 'speaking' : ''} ${talkToSamBusy ? 'thinking' : ''}`}>
+                <div className="eg-talk-sam-status-waves">
+                  {Array.from({ length: 12 }).map((_, i) => (
+                    <span key={i} className="eg-talk-sam-wave-line" style={{ animationDelay: `${i * 50}ms` }}></span>
+                  ))}
+                </div>
+                <span className="eg-talk-sam-status-label">
+                  {talkToSamRecording ? '🎙️ Listening... (speak, I\'ll auto-detect when you stop)'
+                    : talkToSamSpeaking ? '🔊 Sam is talking...'
+                    : (talkToSamBusy || chatLoading) ? '💭 Sam is thinking...'
+                    : samSessionActive ? '✨ Sam is ready'
+                    : '🎤 Start a conversation'}
+                </span>
+              </div>
+              {/* Transcript of last voice input */}
+              {talkToSamTranscript && (
+                <div className="eg-talk-sam-transcript">
+                  <span className="eg-talk-sam-transcript-label">You said:</span>
+                  <span className="eg-talk-sam-transcript-text">"{talkToSamTranscript}"</span>
+                </div>
+              )}
+              {talkToSamError && <p className="eg-talk-sam-error">{talkToSamError}</p>}
+              {/* Voice control — use main chat input for text replies */}
+              <div className="eg-talk-sam-input-area">
+                <p className="eg-talk-sam-hint">
+                  {talkToSamRecording
+                    ? 'Speak now — I\'ll hear when you\'re done'
+                    : 'Sam will listen automatically after speaking'}
+                </p>
+                {talkToSamRecording && (
+                  <button
+                    type="button"
+                    className="eg-talk-sam-voice-btn-large recording"
+                    onClick={onTalkToSamPrimaryAction}
+                    title="Stop & send now"
+                  >
+                    ⏹️ Send Now
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
         <button
           className={`eg-ai-send-btn ${chatLoading ? 'eg-ai-stop-btn' : ''}`}
           onClick={() => (chatLoading ? onStopTutorMessageSend() : onSendTutorMessage())}

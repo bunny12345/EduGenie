@@ -199,6 +199,17 @@ export async function generateLocalTtsAudio(text, targetLanguage = 'en-US', stud
   return checkSuccess(data, 'generateLocalTtsAudio');
 }
 
+export async function transcribeTutorAudio(studentId, payload) {
+  const headers = await authHeaders();
+  const res = await fetch(`${API_BASE}/chat/transcribe`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({ studentId, ...(payload || {}) })
+  });
+  const data = await res.json();
+  return checkSuccess(data, 'transcribeTutorAudio');
+}
+
 export async function listMemories(studentId) {
   // Backend exposes GET /chat/memories which returns { memories: [...] }
   const url = `${API_BASE}/chat/memories?studentId=${encodeURIComponent(studentId)}`;

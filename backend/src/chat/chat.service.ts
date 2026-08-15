@@ -535,9 +535,9 @@ export class ChatService {
               .sort((a: any, b: any) => b.score - a.score)
               .slice(0, 8);
 
-            lessonContextSection = `\n\nSelected lesson context: ${lessonTitle || 'Untitled lesson'}${lessonSubject ? ` (${lessonSubject})` : ''}\n${scored.map(({ chunk }, idx) => `${idx + 1}. ${String(chunk?.chunk_text || '').trim()}`).filter(Boolean).join('\n')}`;
+            lessonContextSection = `\n\n--- LESSON DOCUMENT CONTENT (from the uploaded PDF for "${lessonTitle || 'this lesson'}") ---\nUse the following lesson content as your PRIMARY source of truth when teaching. Your explanations, examples, and questions MUST be grounded in this content. Do not invent facts that contradict this material.\n${scored.map(({ chunk }, idx) => `${idx + 1}. ${String(chunk?.chunk_text || '').trim()}`).filter(Boolean).join('\n')}\n--- END LESSON CONTENT ---`;
           } else {
-            lessonContextSection = `\n\nSelected lesson context: ${lessonTitle || 'Untitled lesson'}${lessonSubject ? ` (${lessonSubject})` : ''}`;
+            lessonContextSection = `\n\nSelected lesson: ${lessonTitle || 'Untitled lesson'}${lessonSubject ? ` (${lessonSubject})` : ''} — No lesson document content available. Teach from general knowledge but stay on the topic of "${lessonTitle}".`;
           }
         }
       } else if (lessonSubject) {
@@ -774,7 +774,15 @@ export class ChatService {
       ` If the image is unclear, say what is uncertain and ask for a clearer image.` +
       ` Be explicit about what evidence you used from the conversation, and if evidence is thin, say that clearly instead of claiming no memory.` +
       ` Be warm, patient, and encouraging.` +
-      (lessonTitle ? ` Current lesson progress summary from this lesson thread: ${lessonProgressSummary}.` : '') +
+      (lessonTitle
+        ? ` CRITICAL TOPIC BOUNDARY: The student is currently studying the lesson "${lessonTitle}"${lessonSubject ? ` in ${lessonSubject}` : ''}.` +
+          ` You MUST stay strictly within this lesson's scope at all times.` +
+          ` If you give an example from outside this lesson, always bring the conversation back to the current lesson immediately.` +
+          ` Do NOT teach concepts from other chapters, other subjects, or advanced topics beyond this lesson.` +
+          ` After every explanation or example, reconnect to the specific lesson topic.` +
+          ` If the student asks something unrelated, politely say "That's a great question, but let's focus on our lesson about ${lessonTitle} right now!" and redirect back.` +
+          ` Current lesson progress summary: ${lessonProgressSummary}.`
+        : '') +
       memoriesSection +
       understandingSection +
       lessonContextSection;
@@ -800,6 +808,9 @@ export class ChatService {
     this.appendCacheTurn(studentId, convId, assistantTurn);
 
     const followups = this.buildFollowups(message, lessonTitle || '', lessonSubject || '');
+    const orchardSubjectKey = String(lessonSubject || opts?.lessonSubject || '').trim().toLowerCase().replace(/\s+/g, '-');
+    const userMsgTrimmed = String(message || '').trim();
+    const looksLikeQuestion = /[?]|^(what|why|how|when|where|which|can|could|is|are|do|does|explain|teach|help)\b/i.test(userMsgTrimmed);
 
     // Everything below (snapshot persistence, the reply embedding round-trip, the
     // AI-message insert, and the lesson-mastery upsert) is not needed to return
@@ -807,6 +818,18 @@ export class ChatService {
     // as the model responds instead of waiting on extra DB writes and embeddings.
     void (async () => {
       try {
+        if (orchardSubjectKey && userMsgTrimmed.length >= 8 && looksLikeQuestion) {
+          try {
+            await this.orchard.recordActivity(studentId, {
+              subjectKey: orchardSubjectKey,
+              activityType: 'question',
+              correct: true,
+            });
+          } catch {
+            /* orchard growth is best-effort */
+          }
+        }
+
         const snapshotTurns = await this.loadSnapshotHistory(studentId, convId);
         const baseTurns: ChatTurn[] = snapshotTurns.length
           ? snapshotTurns
@@ -1195,71 +1218,123 @@ export class ChatService {
     const sourceText = String(text || '').trim();
     if (!sourceText) return null;
 
-    const serviceBase = String(process.env.TTS_SERVICE_URL || 'http://localhost:5005').trim();
-    const servicePath = String(process.env.TTS_SERVICE_PATH || '/tts').trim() || '/tts';
-    const serviceUrl = `${serviceBase.replace(/\/$/, '')}${servicePath.startsWith('/') ? servicePath : `/${servicePath}`}`;
-    const target = String(targetLanguage || 'en-US').trim() || 'en-US';
-    const preferredVoice = String(voice || process.env.TTS_SERVICE_VOICE || '').trim();
-
     // Keep request payload bounded to avoid oversized TTS calls.
     const spokenText = sourceText.slice(0, 2200);
+    const ttsVoice = String(voice || process.env.OPENAI_TTS_VOICE || 'ash').trim();
+    const ttsModel = String(process.env.OPENAI_TTS_MODEL || 'tts-1').trim();
+    const ttsSpeed = Number.isFinite(Number(speed)) ? Math.max(0.25, Math.min(4, Number(speed))) : 1.15;
+
+    const apiKey = String(process.env.OPENAI_API_KEY || '').trim();
+    if (!apiKey) {
+      console.warn('generateLocalTtsAudio: OPENAI_API_KEY not set');
+      return null;
+    }
 
     try {
-      const res = await fetch(serviceUrl, {
+      const res = await fetch('https://api.openai.com/v1/audio/speech', {
         method: 'POST',
         headers: {
+          'Authorization': `Bearer ${apiKey}`,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          text: spokenText,
-          language: target,
-          voice: preferredVoice || undefined,
-          speed: Number.isFinite(Number(speed)) ? Number(speed) : 1,
-          format: 'mp3',
+          model: ttsModel,
+          input: spokenText,
+          voice: ttsVoice,
+          speed: ttsSpeed,
+          response_format: 'mp3',
         })
       });
 
       if (!res.ok) {
         const errText = await res.text().catch(() => '');
-        console.warn('generateLocalTtsAudio failed', res.status, errText || 'unknown error');
+        console.warn('generateLocalTtsAudio (OpenAI TTS) failed', res.status, errText || 'unknown error');
         return null;
       }
 
-      const contentType = String(res.headers.get('content-type') || '').toLowerCase();
-      if (contentType.includes('audio/')) {
-        const audioBuffer = Buffer.from(await res.arrayBuffer());
-        if (!audioBuffer.length) return null;
-        return {
-          audioBase64: audioBuffer.toString('base64'),
-          mimeType: contentType.split(';')[0] || 'audio/mpeg',
-          provider: 'local-tts',
-          voice: preferredVoice || null,
-          text: spokenText,
-          targetLanguage: target,
-        };
-      }
+      const audioBuffer = Buffer.from(await res.arrayBuffer());
+      if (!audioBuffer.length) return null;
 
-      const json: any = await res.json().catch(() => null);
-      const audioBase64 = String(
-        json?.audioBase64
-        || json?.audio_base64
-        || json?.data
-        || ''
-      ).trim();
-      if (!audioBase64) return null;
-
-      const mimeType = String(json?.mimeType || json?.mime_type || 'audio/mpeg').trim() || 'audio/mpeg';
       return {
-        audioBase64,
-        mimeType,
-        provider: 'local-tts',
-        voice: preferredVoice || String(json?.voice || '').trim() || null,
+        audioBase64: audioBuffer.toString('base64'),
+        mimeType: 'audio/mpeg',
+        provider: 'openai-tts',
+        voice: ttsVoice,
         text: spokenText,
-        targetLanguage: target,
+        targetLanguage: String(targetLanguage || 'en-US').trim(),
       };
     } catch (e) {
       console.warn('generateLocalTtsAudio error', e?.message || e);
       return null;
+    }
+  }
+
+  async transcribeAudio(audioBase64: string, mimeType?: string) {
+    const source = String(audioBase64 || '').trim();
+    if (!source) return { success: false, error: 'No audio payload provided.' };
+    if (!process.env.OPENAI_API_KEY) return { success: false, error: 'OpenAI API key is not configured on server.' };
+
+    const cleanBase64 = source.includes(',') ? source.split(',').pop() || '' : source;
+    let audioBuffer: Buffer;
+    try {
+      audioBuffer = Buffer.from(cleanBase64, 'base64');
+    } catch {
+      return { success: false, error: 'Invalid base64 audio payload.' };
+    }
+    if (!audioBuffer?.length) return { success: false, error: 'Audio payload is empty.' };
+    if (audioBuffer.length > 12 * 1024 * 1024) return { success: false, error: 'Audio payload is too large.' };
+
+    const safeMime = String(mimeType || 'audio/webm').trim().toLowerCase() || 'audio/webm';
+    const extByMime: Record<string, string> = {
+      'audio/webm': 'webm',
+      'audio/mp4': 'm4a',
+      'audio/m4a': 'm4a',
+      'audio/mpeg': 'mp3',
+      'audio/mp3': 'mp3',
+      'audio/wav': 'wav',
+      'audio/x-wav': 'wav',
+      'audio/ogg': 'ogg',
+      'audio/ogg;codecs=opus': 'ogg',
+    };
+    const fileExt = extByMime[safeMime] || 'webm';
+    const model = String(process.env.OPENAI_STT_MODEL || 'gpt-4o-mini-transcribe').trim();
+    const boundary = `----EduGenieBoundary${Date.now()}${Math.random().toString(16).slice(2)}`;
+
+    const chunks: Buffer[] = [];
+    const pushText = (text: string) => chunks.push(Buffer.from(text, 'utf8'));
+    pushText(`--${boundary}\r\n`);
+    pushText('Content-Disposition: form-data; name="model"\r\n\r\n');
+    pushText(`${model}\r\n`);
+    pushText(`--${boundary}\r\n`);
+    pushText(`Content-Disposition: form-data; name="file"; filename="student-voice.${fileExt}"\r\n`);
+    pushText(`Content-Type: ${safeMime}\r\n\r\n`);
+    chunks.push(audioBuffer);
+    pushText('\r\n');
+    pushText(`--${boundary}--\r\n`);
+
+    try {
+      const res = await fetch('https://api.openai.com/v1/audio/transcriptions', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+          'Content-Type': `multipart/form-data; boundary=${boundary}`,
+        },
+        body: Buffer.concat(chunks),
+      });
+
+      if (!res.ok) {
+        const errText = await res.text().catch(() => '');
+        console.warn('OpenAI transcription failed', res.status, errText || 'unknown error');
+        return { success: false, error: 'Voice transcription failed.' };
+      }
+
+      const data: any = await res.json().catch(() => null);
+      const text = String(data?.text || '').trim();
+      if (!text) return { success: false, error: 'Could not recognize speech clearly. Try speaking again.' };
+      return { success: true, text };
+    } catch (e) {
+      console.warn('OpenAI transcription error', e?.message || e);
+      return { success: false, error: 'Voice transcription service is unavailable right now.' };
     }
   }
 
@@ -1650,6 +1725,43 @@ export class ChatService {
   // ═══════════════════════════════════════════════════════════════════════════════
 
   /**
+   * Normalises `correctIndex` from raw LLM output and cross-checks it against the
+   * option letter labels (A), B), C), D)) that the LLM was instructed to use.
+   *
+   * Handles two common LLM errors:
+   *  1. `correctIndex` returned as a letter string ("A"/"B"/"C"/"D") instead of 0–3.
+   *  2. `correctIndex` points to an option whose label letter doesn't match the
+   *     index position (e.g. LLM used 1-based counting, or reordered options).
+   */
+  private sanitizeCorrectIndex(rawIndex: any, options: string[]): number {
+    // --- resolve letter strings to numeric index ---
+    const raw = typeof rawIndex === 'string' ? rawIndex.trim() : String(rawIndex ?? '');
+    let idx: number;
+    if (/^[A-Da-d]$/.test(raw)) {
+      idx = raw.toUpperCase().charCodeAt(0) - 65; // 'A'→0, 'B'→1, 'C'→2, 'D'→3
+    } else {
+      const n = Number(raw);
+      idx = Number.isFinite(n) ? Math.round(n) : 0;
+    }
+
+    // --- clamp to valid range ---
+    if (idx < 0 || idx >= options.length) idx = 0;
+
+    // --- verify the option at idx carries the expected letter prefix ---
+    const expectedLetter = String.fromCharCode(65 + idx); // 0→'A', 1→'B', …
+    if (!options[idx]?.trimStart().toUpperCase().startsWith(expectedLetter + ')')) {
+      // Mismatch: scan for the option whose own letter label matches
+      const recovered = options.findIndex((o) =>
+        o.trimStart().toUpperCase().startsWith(expectedLetter + ')')
+      );
+      if (recovered !== -1) return recovered;
+      // No labelled match found — keep the clamped index
+    }
+
+    return idx;
+  }
+
+  /**
    * Generate an inline MCQ check-question based on the current conversation context.
    * Returns a structured question object (not just text) so the frontend can render
    * tappable option buttons and report the result back.
@@ -1688,7 +1800,7 @@ export class ChatService {
             id: `cq-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
             question: String(parsed.question),
             options: parsed.options.map((o: any) => String(o)),
-            correctIndex: Number(parsed.correctIndex) || 0,
+            correctIndex: this.sanitizeCorrectIndex(parsed.correctIndex, parsed.options.map((o: any) => String(o))),
             explanation: String(parsed.explanation || ''),
             lessonId: opts.lessonId || null,
             subject: opts.lessonSubject || null,
@@ -1911,7 +2023,7 @@ export class ChatService {
       id: `qr-${Date.now()}-${i}`,
       question: String(q.question),
       options: q.options.map((o: any) => String(o)),
-      correctIndex: Number(q.correctIndex) || 0,
+      correctIndex: this.sanitizeCorrectIndex(q.correctIndex, q.options.map((o: any) => String(o))),
       explanation: String(q.explanation || ''),
       difficulty: String(q.difficulty || 'medium'),
     }));
@@ -1932,7 +2044,8 @@ export class ChatService {
         const fbCleaned = fbRaw.replace(/```json\s*/gi, '').replace(/```/g, '').trim();
         const fbParsed = JSON.parse(fbCleaned);
         if (fbParsed?.question && Array.isArray(fbParsed?.options)) {
-          questions = [{ id: `qr-${Date.now()}-0`, question: String(fbParsed.question), options: fbParsed.options.map((o: any) => String(o)), correctIndex: Number(fbParsed.correctIndex) || 0, explanation: String(fbParsed.explanation || ''), difficulty: 'medium' }];
+          const fbOptions = fbParsed.options.map((o: any) => String(o));
+          questions = [{ id: `qr-${Date.now()}-0`, question: String(fbParsed.question), options: fbOptions, correctIndex: this.sanitizeCorrectIndex(fbParsed.correctIndex, fbOptions), explanation: String(fbParsed.explanation || ''), difficulty: 'medium' }];
         }
       } catch { /* fallback also failed */ }
     }

@@ -1298,8 +1298,8 @@ textarea {
 
 .eg-ai-input-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto auto auto;
-  gap: 10px;
+  grid-template-columns: minmax(0, 1fr) auto auto auto auto;
+  gap: 12px;
   align-items: center;
   width: 100%;
   max-width: 100%;
@@ -1373,7 +1373,8 @@ textarea {
 
 .eg-ai-send-btn,
 .eg-ai-attach-btn {
-  min-width: 88px;
+  min-width: 0;
+  white-space: nowrap;
 }
 
 .eg-ai-image-preview-wrap {
@@ -2508,6 +2509,410 @@ textarea {
   color: #fff;
   min-height: 42px;
   font-weight: 700;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   TALK TO SAM – Circular Mic Button with Voice Waveform
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.eg-talk-sam-wrap {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Circular Mic Button - Floating Bubble */
+.eg-talk-sam-mic {
+  width: 52px;
+  height: 52px;
+  border: 2.5px solid rgba(120, 160, 255, 0.7);
+  border-radius: 50%;
+  background: linear-gradient(145deg, #4a7cf7, #2d5fd4);
+  box-shadow: 
+    0 6px 20px rgba(30, 60, 150, 0.5),
+    0 0 0 4px rgba(100, 140, 255, 0.18),
+    inset 0 2px 4px rgba(255, 255, 255, 0.2);
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  position: relative;
+  overflow: visible;
+  padding: 0;
+  flex-shrink: 0;
+}
+
+.eg-talk-sam-mic:hover:not(:disabled) {
+  transform: scale(1.1);
+  box-shadow: 
+    0 8px 28px rgba(30, 60, 150, 0.6),
+    0 0 0 5px rgba(100, 140, 255, 0.28),
+    inset 0 2px 4px rgba(255, 255, 255, 0.25);
+  border-color: rgba(140, 180, 255, 0.85);
+}
+
+.eg-talk-sam-mic.active {
+  border-color: rgba(180, 200, 255, 0.9);
+  background: linear-gradient(145deg, #5b8cff, #3a6ee0);
+}
+
+.eg-talk-sam-mic:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.eg-talk-sam-mic-icon {
+  width: 20px;
+  height: 20px;
+  color: #fff;
+  z-index: 2;
+  flex-shrink: 0;
+}
+
+/* "Sam" label below the mic icon */
+.eg-talk-sam-label {
+  font-size: 8px;
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.9);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-top: 1px;
+  z-index: 2;
+}
+
+/* Recording state - Red pulsing */
+.eg-talk-sam-mic.recording {
+  border-color: rgba(255, 100, 100, 0.8);
+  background: linear-gradient(145deg, rgba(220, 60, 80, 0.95), rgba(180, 40, 60, 0.98));
+  animation: egMicPulse 1.2s ease-in-out infinite;
+}
+
+/* Speaking state - Green pulsing */
+.eg-talk-sam-mic.speaking {
+  border-color: rgba(100, 220, 150, 0.8);
+  background: linear-gradient(145deg, rgba(40, 180, 100, 0.95), rgba(30, 140, 80, 0.98));
+  animation: egMicPulse 1.2s ease-in-out infinite;
+}
+
+@keyframes egMicPulse {
+  0%, 100% { 
+    box-shadow: 
+      0 4px 16px rgba(220, 60, 80, 0.4),
+      0 0 0 3px rgba(255, 100, 100, 0.2);
+  }
+  50% { 
+    box-shadow: 
+      0 4px 24px rgba(220, 60, 80, 0.6),
+      0 0 0 6px rgba(255, 100, 100, 0.3);
+  }
+}
+
+/* Waveform bars on mic button */
+.eg-talk-sam-waveform {
+  position: absolute;
+  bottom: -8px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 2px;
+  align-items: flex-end;
+  height: 12px;
+  z-index: 5;
+}
+
+.eg-wave-bar {
+  width: 3px;
+  background: #fff;
+  border-radius: 2px;
+  animation: egWaveBarBounce 0.7s ease-in-out infinite alternate;
+}
+
+@keyframes egWaveBarBounce {
+  0% { height: 4px; opacity: 0.6; }
+  100% { height: 12px; opacity: 1; }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   TALK TO SAM POPUP
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.eg-talk-sam-pop {
+  position: absolute;
+  bottom: calc(100% + 16px);
+  right: -40px;
+  width: 320px;
+  border: 1px solid rgba(120, 160, 255, 0.35);
+  border-radius: 18px;
+  background: linear-gradient(165deg, rgba(18, 30, 85, 0.98), rgba(12, 22, 65, 0.99));
+  padding: 0;
+  box-shadow: 
+    0 24px 48px rgba(8, 18, 50, 0.6),
+    0 0 0 1px rgba(255, 255, 255, 0.05);
+  z-index: 100;
+  animation: egTalkSamLift 220ms ease;
+  overflow: hidden;
+}
+
+@keyframes egTalkSamLift {
+  from {
+    opacity: 0;
+    transform: translateY(12px) scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+/* Header section */
+.eg-talk-sam-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 16px;
+  border-bottom: 1px solid rgba(100, 140, 255, 0.15);
+  background: linear-gradient(180deg, rgba(40, 70, 140, 0.3), transparent);
+}
+
+.eg-talk-sam-avatar-ring {
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  padding: 2px;
+  background: linear-gradient(135deg, #6c8cff, #4ecdc4);
+  flex-shrink: 0;
+}
+
+.eg-talk-sam-avatar {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  background: linear-gradient(145deg, #1e2d6d, #0f1a4a);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 20px;
+}
+
+.eg-talk-sam-header-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.eg-talk-sam-title {
+  margin: 0;
+  color: #f4f8ff;
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 0.2px;
+}
+
+.eg-talk-sam-sub {
+  margin: 2px 0 0;
+  font-size: 11.5px;
+  color: rgba(200, 220, 255, 0.75);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.eg-talk-sam-close {
+  width: 28px;
+  height: 28px;
+  border: none;
+  border-radius: 50%;
+  background: rgba(255, 100, 100, 0.15);
+  color: rgba(255, 180, 180, 0.9);
+  font-size: 18px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s ease;
+  flex-shrink: 0;
+}
+
+.eg-talk-sam-close:hover {
+  background: rgba(255, 100, 100, 0.3);
+  color: #fff;
+}
+
+/* Header actions (mute + close) */
+.eg-talk-sam-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.eg-talk-sam-mute {
+  width: 28px;
+  height: 28px;
+  border: none;
+  border-radius: 50%;
+  background: rgba(255, 180, 60, 0.2);
+  font-size: 14px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s ease;
+}
+
+.eg-talk-sam-mute:hover {
+  background: rgba(255, 180, 60, 0.4);
+}
+
+/* Status bar — compact waveform + label */
+.eg-talk-sam-status-bar {
+  padding: 10px 16px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: linear-gradient(180deg, rgba(30, 50, 120, 0.2), transparent);
+  min-height: 36px;
+}
+
+.eg-talk-sam-status-waves {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  height: 20px;
+}
+
+.eg-talk-sam-wave-line {
+  width: 3px;
+  height: 6px;
+  background: rgba(120, 160, 255, 0.35);
+  border-radius: 3px;
+  transition: all 0.15s ease;
+}
+
+.eg-talk-sam-status-bar.recording .eg-talk-sam-wave-line {
+  background: linear-gradient(180deg, rgba(255, 120, 140, 0.9), rgba(220, 80, 100, 0.7));
+  animation: egPopupWave 0.5s ease-in-out infinite alternate;
+}
+
+.eg-talk-sam-status-bar.speaking .eg-talk-sam-wave-line {
+  background: linear-gradient(180deg, rgba(100, 220, 160, 0.9), rgba(60, 180, 120, 0.7));
+  animation: egPopupWave 0.5s ease-in-out infinite alternate;
+}
+
+.eg-talk-sam-status-bar.thinking .eg-talk-sam-wave-line {
+  background: rgba(200, 180, 255, 0.5);
+  animation: egPopupWave 0.8s ease-in-out infinite alternate;
+}
+
+@keyframes egPopupWave {
+  0% { height: 6px; }
+  100% { height: 20px; }
+}
+
+.eg-talk-sam-status-label {
+  font-size: 12px;
+  color: rgba(200, 220, 255, 0.85);
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.eg-talk-sam-status-bar.recording .eg-talk-sam-status-label {
+  color: rgba(255, 180, 190, 0.95);
+}
+
+.eg-talk-sam-status-bar.speaking .eg-talk-sam-status-label {
+  color: rgba(150, 255, 190, 0.95);
+}
+
+/* Interactive input area — voice only, hint to use main chat */
+.eg-talk-sam-input-area {
+  padding: 12px 14px 14px;
+  border-top: 1px solid rgba(100, 140, 255, 0.12);
+  background: rgba(15, 25, 60, 0.5);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+}
+
+.eg-talk-sam-hint {
+  margin: 0;
+  font-size: 11px;
+  color: rgba(180, 200, 240, 0.7);
+  text-align: center;
+}
+
+.eg-talk-sam-voice-btn-large {
+  width: 100%;
+  border: 1.5px solid rgba(120, 160, 255, 0.4);
+  border-radius: 10px;
+  padding: 10px 16px;
+  background: rgba(30, 50, 120, 0.4);
+  color: #f0f6ff;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  transition: all 0.15s ease;
+}
+
+.eg-talk-sam-voice-btn-large:hover:not(:disabled) {
+  background: rgba(40, 65, 150, 0.6);
+  border-color: rgba(140, 180, 255, 0.6);
+}
+
+.eg-talk-sam-voice-btn-large.recording {
+  border-color: rgba(255, 100, 100, 0.7);
+  background: rgba(220, 60, 80, 0.4);
+  color: #ffb0c0;
+  animation: egMicPulse 1.2s ease-in-out infinite;
+}
+
+.eg-talk-sam-voice-btn-large:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* Transcript display */
+.eg-talk-sam-transcript {
+  padding: 12px 16px;
+  margin: 0;
+  border-top: 1px solid rgba(100, 140, 255, 0.12);
+  background: rgba(20, 40, 100, 0.2);
+}
+
+.eg-talk-sam-transcript-label {
+  display: block;
+  font-size: 10px;
+  color: rgba(160, 190, 255, 0.7);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 4px;
+}
+
+.eg-talk-sam-transcript-text {
+  display: block;
+  font-size: 13px;
+  color: rgba(220, 235, 255, 0.95);
+  line-height: 1.5;
+  font-style: italic;
+}
+
+.eg-talk-sam-error {
+  margin: 0;
+  padding: 10px 16px;
+  font-size: 12px;
+  color: #ffb0c0;
+  background: rgba(200, 50, 80, 0.15);
+  border-top: 1px solid rgba(255, 100, 120, 0.2);
 }
 
 .rg-error {
@@ -4037,12 +4442,11 @@ textarea {
   }
 
   .eg-ai-input-row {
-    grid-template-columns: minmax(0, 1fr) auto auto;
+    grid-template-columns: minmax(0, 1fr) auto auto auto;
   }
 
   .eg-ai-selected-pill {
-    grid-column: 1 / -1;
-    justify-self: start;
+    display: none;
   }
 
   .td-stats,
@@ -4114,20 +4518,32 @@ textarea {
   }
 
   .eg-ai-input-row {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr) auto auto auto;
+    gap: 8px;
   }
 
   .eg-ai-selected-pill {
-    justify-self: start;
+    display: none;
+  }
+
+  .eg-talk-sam-mic {
+    width: 42px;
+    height: 42px;
+  }
+
+  .eg-talk-sam-pop {
+    right: 0;
+    width: calc(100vw - 40px);
+    max-width: 300px;
   }
 
   .eg-ai-attach-btn {
-    width: 100%;
-    justify-content: center;
+    padding: 8px 10px;
+    font-size: 11px;
   }
 
   .eg-ai-send-btn {
-    width: 100%;
+    padding: 8px 12px;
   }
 
   .rg-shell,
