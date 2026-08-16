@@ -2420,18 +2420,6 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
             </div>
           ) : null}
         </div>
-        <div className="eg-ai-topic-list">
-          {tutorQuickPrompts.map((t) => (
-            <button
-              key={t}
-              type="button"
-              className="eg-ai-topic-chip"
-              onClick={() => onSendTutorMessage(t)}
-            >
-              {t}
-            </button>
-          ))}
-        </div>
       </div>
       {panelError.chat ? <p className="eg-loading" style={{ color: '#dc2626' }}>{panelError.chat}</p> : null}
       <div className="eg-ai-chat eg-ai-chat-screen">
