@@ -2820,7 +2820,7 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
                     onClick={() => { setTalkToSamError(''); onStartTalkToSamRecording(); }}
                     disabled={talkToSamBusy || talkToSamRecording}
                   >
-                    🎤 Try Again
+                     Try Again
                   </button>
                 </div>
               )}
