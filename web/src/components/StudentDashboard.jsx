@@ -2010,6 +2010,8 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
       let played = false;
       try {
         const tts = await generateLocalTtsAudio(speechText, 'en-US', studentId, 'ash', 1.15);
+        // If Sam was closed while awaiting TTS, abort playback
+        if (!samSessionActiveRef.current) { setTalkToSamSpeaking(false); return; }
         const audioBase64 = String(tts?.audioBase64 || '').trim();
         if (audioBase64) {
           const blob = base64ToBlob(audioBase64, tts?.mimeType || 'audio/mpeg');
@@ -2125,9 +2127,21 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
     setTalkToSamTranscript('');
 
     if (wasOpen) {
-      stopTalkToSamSpeaking();
+      // Deactivate session FIRST so in-flight TTS requests abort
       setSamSessionActive(false);
       samSessionActiveRef.current = false;
+      stopTalkToSamSpeaking();
+      // Stop active recording & release mic
+      if (talkMediaRecorderRef.current && talkMediaRecorderRef.current.state !== 'inactive') {
+        try { talkMediaRecorderRef.current.stop(); } catch { /* ignore */ }
+      }
+      talkMediaRecorderRef.current = null;
+      if (talkMediaStreamRef.current) {
+        talkMediaStreamRef.current.getTracks().forEach((t) => { try { t.stop(); } catch { /* ignore */ } });
+        talkMediaStreamRef.current = null;
+      }
+      setTalkToSamRecording(false);
+      setTalkToSamBusy(false);
     } else {
       setSamSessionActive(true);
       samSessionActiveRef.current = true;
