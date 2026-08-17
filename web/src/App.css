@@ -2906,13 +2906,45 @@ textarea {
   font-style: italic;
 }
 
+.eg-talk-sam-error-wrap {
+  border-top: 1px solid rgba(255, 100, 120, 0.2);
+  background: rgba(200, 50, 80, 0.1);
+  padding: 10px 14px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
 .eg-talk-sam-error {
   margin: 0;
-  padding: 10px 16px;
   font-size: 12px;
   color: #ffb0c0;
-  background: rgba(200, 50, 80, 0.15);
-  border-top: 1px solid rgba(255, 100, 120, 0.2);
+  flex: 1;
+}
+
+.eg-talk-sam-retry-btn {
+  border: 1.5px solid rgba(120, 180, 255, 0.5);
+  border-radius: 8px;
+  padding: 6px 14px;
+  background: linear-gradient(145deg, rgba(50, 90, 180, 0.8), rgba(40, 70, 150, 0.9));
+  color: #f0f6ff;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.15s ease;
+  flex-shrink: 0;
+}
+
+.eg-talk-sam-retry-btn:hover:not(:disabled) {
+  transform: scale(1.04);
+  border-color: rgba(140, 200, 255, 0.7);
+  box-shadow: 0 2px 8px rgba(50, 100, 200, 0.3);
+}
+
+.eg-talk-sam-retry-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
 }
 
 .rg-error {

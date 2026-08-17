@@ -782,8 +782,41 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
       const fallbackConversationId = getCurrentTutorConversationId();
       const conversationId = String(conversationIdOverride || fallbackConversationId || `conv-${studentId}`);
       const res = await getChatHistory(studentId, conversationId);
-      setChatHistory(withoutAutoStarters(res?.messages));
+      const history = withoutAutoStarters(res?.messages);
+      setChatHistory(history);
       setChatFollowups([]);
+
+      // Auto-greeting logic: once per day per conversation
+      const lesson = selectedTutorLesson;
+      if (lesson?.title) {
+        const todayKey = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+        const storageKey = `sam-autogreeted:${conversationId}`;
+        const lastGreeted = localStorage.getItem(storageKey) || '';
+
+        if (lastGreeted !== todayKey) {
+          localStorage.setItem(storageKey, todayKey);
+          const hasHistory = history.length > 0;
+
+          if (!hasHistory) {
+            // First time ever — introduce the lesson
+            setTimeout(() => {
+              onSamSendMessage(
+                `The student just opened the lesson "${lesson.title}" in ${lesson.subject || tutorSubject || 'this subject'} for the first time. You are Sam. Give a brief, exciting 2-3 sentence introduction of what this lesson covers and what they'll learn. Then ask if they're ready to start or if they have any specific questions. Keep it short and friendly.`,
+                { hidden: true, speak: true }
+              );
+            }, 500);
+          } else {
+            // Returning on a new day — progress check
+            setTimeout(() => {
+              onSamSendMessage(
+                `The student is back to continue "${lesson.title}" in ${lesson.subject || tutorSubject || 'this subject'}. You are Sam. Based on the conversation history, briefly remind them where they left off (1 sentence), then either ask a quick recall question to test their memory from last time OR ask what they'd like to focus on today. Keep it short — max 3 sentences.`,
+                { hidden: true, speak: true }
+              );
+            }, 500);
+          }
+        }
+        // Same day return — no auto message
+      }
     } catch (e) {
       setPanelErrorKey('chat', e?.message || 'Unable to load chat history.');
       setChatHistory([]);
@@ -2778,7 +2811,19 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
                   <span className="eg-talk-sam-transcript-text">"{talkToSamTranscript}"</span>
                 </div>
               )}
-              {talkToSamError && <p className="eg-talk-sam-error">{talkToSamError}</p>}
+              {talkToSamError && (
+                <div className="eg-talk-sam-error-wrap">
+                  <p className="eg-talk-sam-error">{talkToSamError}</p>
+                  <button
+                    type="button"
+                    className="eg-talk-sam-retry-btn"
+                    onClick={() => { setTalkToSamError(''); onStartTalkToSamRecording(); }}
+                    disabled={talkToSamBusy || talkToSamRecording}
+                  >
+                    🎤 Try Again
+                  </button>
+                </div>
+              )}
               {/* Voice control — use main chat input for text replies */}
               <div className="eg-talk-sam-input-area">
                 <p className="eg-talk-sam-hint">
