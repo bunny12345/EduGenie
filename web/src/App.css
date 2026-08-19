@@ -789,23 +789,35 @@ textarea {
 .eg-streak-next small { font-size: 9px; color: #7f86ae; font-weight: 600; }
 
 .eg-goal-ring {
-  margin-top: 4px;
-  width: 86px;
-  height: 86px;
+  margin-top: 8px;
+  width: 96px;
+  height: 96px;
   border-radius: 50%;
-  border: 8px solid #e8ebff;
-  border-top-color: var(--brand);
+  display: grid;
+  place-items: center;
+  padding: 6px;
+  transition: background 0.4s ease;
+}
+
+.eg-goal-ring-inner {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  background: #fff;
   display: grid;
   place-items: center;
   color: var(--brand);
-  font-size: 13px;
+  font-size: 15px;
   font-weight: 700;
+  line-height: 1.2;
+  text-align: center;
 }
 
 .eg-goal-ring small {
   font-size: 9px;
   color: #7f86ae;
   font-weight: 500;
+  display: block;
 }
 
 .eg-subject-row {
@@ -2247,15 +2259,15 @@ textarea {
 }
 
 .eg-mic {
-  width: 74px;
-  height: 74px;
+  width: 86px;
+  height: 86px;
   border-radius: 50%;
-  margin: 8px auto;
+  margin: 10px auto;
   display: grid;
   place-items: center;
   font-size: 30px;
-  background: radial-gradient(circle, #8b80ff 0%, #3a3385 65%);
-  box-shadow: 0 0 0 10px rgba(139, 128, 255, 0.18), 0 0 20px rgba(136, 118, 255, 0.35);
+  background: radial-gradient(circle, #6e5fff 0%, #3a2fa0 50%, #1e1555 100%);
+  box-shadow: 0 0 0 8px rgba(139, 128, 255, 0.15), 0 0 30px rgba(110, 95, 255, 0.4), inset 0 2px 8px rgba(0,0,0,0.3);
 }
 
 .eg-voice-card p {
@@ -2650,12 +2662,61 @@ textarea {
   border-radius: 18px;
   background: linear-gradient(165deg, rgba(18, 30, 85, 0.98), rgba(12, 22, 65, 0.99));
   padding: 0;
+  padding-top: 0;
   box-shadow: 
     0 24px 48px rgba(8, 18, 50, 0.6),
     0 0 0 1px rgba(255, 255, 255, 0.05);
   z-index: 100;
   animation: egTalkSamLift 220ms ease;
-  overflow: hidden;
+  overflow: visible;
+}
+
+/* ── Sam Anime Avatar ─────────────────────────────────────────────────── */
+.eg-sam-avatar-container {
+  display: none; /* disabled for now — re-enable when final images are ready */
+  position: absolute;
+  top: -120px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 160px;
+  height: 140px;
+  z-index: 102;
+  pointer-events: none;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  filter: drop-shadow(0 4px 16px rgba(80, 120, 255, 0.25));
+  transition: filter 0.3s ease;
+}
+
+.eg-sam-avatar-container.speaking {
+  animation: samAvatarBounce 0.7s ease-in-out infinite;
+  filter: drop-shadow(0 4px 24px rgba(80, 160, 255, 0.45));
+}
+
+.eg-sam-avatar-container.thinking {
+  animation: samAvatarThink 2s ease-in-out infinite;
+  filter: drop-shadow(0 4px 20px rgba(255, 180, 60, 0.35));
+}
+
+.eg-sam-avatar-img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  object-position: bottom center;
+  transition: opacity 0.15s ease;
+}
+
+@keyframes samAvatarBounce {
+  0%, 100% { transform: translateX(-50%) translateY(0); }
+  25% { transform: translateX(-50%) translateY(-4px) rotate(1deg); }
+  50% { transform: translateX(-50%) translateY(-2px); }
+  75% { transform: translateX(-50%) translateY(-5px) rotate(-1deg); }
+}
+
+@keyframes samAvatarThink {
+  0%, 100% { transform: translateX(-50%) translateY(0); }
+  50% { transform: translateX(-50%) translateY(-3px); }
 }
 
 @keyframes egTalkSamLift {
@@ -4567,6 +4628,12 @@ textarea {
     right: 0;
     width: calc(100vw - 40px);
     max-width: 300px;
+  }
+
+  .eg-sam-avatar-container {
+    width: 130px;
+    height: 115px;
+    top: -100px;
   }
 
   .eg-ai-attach-btn {

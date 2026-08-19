@@ -340,6 +340,8 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
   const [talkToSamAutoSpeak, setTalkToSamAutoSpeak] = useState(true);
   const [samSessionActive, setSamSessionActive] = useState(false);
   const samSessionActiveRef = React.useRef(false);
+  const [samGesture, setSamGesture] = useState('wave');
+  const samGestureTimerRef = React.useRef(null);
   const talkToSamAudioRef = React.useRef(null);
   const talkToSamAudioUrlRef = React.useRef('');
   const samSpeakQueueRef = React.useRef([]);
@@ -1006,7 +1008,7 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
       'Ask me one easy quiz question',
     ];
   }, [selectedTutorLesson]);
-  const weeklyGoalPct = 75;
+  const weeklyGoalPct = Math.round((Math.min(streakDays, 7) / 7) * 100);
   const sidebarItems = [
     ['🏠', 'Home'],
     ['🌳', 'My Orchard'],
@@ -1946,6 +1948,50 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
     }
   }
 
+  // Sam avatar gesture images
+  const SAM_GESTURES = {
+    wave: '/assets/sam/sam-wave.png',
+    explain1: '/assets/sam/sam-explain1.png',
+    explain2: '/assets/sam/sam-explain2.png',
+    point: '/assets/sam/sam-point.png',
+    excited: '/assets/sam/sam-excited.png',
+    present: '/assets/sam/sam-present.png',
+    gentle: '/assets/sam/sam-gentle.png',
+    think: '/assets/sam/sam-think.png',
+  };
+  const SAM_TALKING_GESTURES = ['explain1', 'point', 'explain2', 'excited', 'present', 'explain1', 'point'];
+
+  // Cycle through talking gestures while Sam is speaking
+  React.useEffect(() => {
+    if (talkToSamSpeaking) {
+      let idx = 0;
+      setSamGesture(SAM_TALKING_GESTURES[0]);
+      samGestureTimerRef.current = setInterval(() => {
+        idx = (idx + 1) % SAM_TALKING_GESTURES.length;
+        setSamGesture(SAM_TALKING_GESTURES[idx]);
+      }, 700);
+    } else {
+      if (samGestureTimerRef.current) {
+        clearInterval(samGestureTimerRef.current);
+        samGestureTimerRef.current = null;
+      }
+      if (talkToSamBusy || chatLoading) {
+        setSamGesture('think');
+      } else if (talkToSamRecording) {
+        setSamGesture('gentle');
+      } else if (talkToSamOpen) {
+        setSamGesture('wave');
+      }
+    }
+    return () => {
+      if (samGestureTimerRef.current) {
+        clearInterval(samGestureTimerRef.current);
+        samGestureTimerRef.current = null;
+      }
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [talkToSamSpeaking, talkToSamBusy, chatLoading, talkToSamRecording, talkToSamOpen]);
+
   // Stop any current Sam speaking audio (non-blocking — doesn't prevent input)
   function stopTalkToSamSpeaking() {
     if (talkToSamAudioRef.current) {
@@ -2782,6 +2828,15 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
           {/* Sam Interactive Panel */}
           {talkToSamOpen && (
             <div className="eg-talk-sam-pop" role="dialog" aria-label="Talk to Sam">
+              {/* Sam anime avatar — sits on top edge of popup */}
+              <div className={`eg-sam-avatar-container ${talkToSamSpeaking ? 'speaking' : ''} ${(talkToSamBusy || chatLoading) ? 'thinking' : ''}`}>
+                <img
+                  src={SAM_GESTURES[samGesture] || SAM_GESTURES.wave}
+                  alt="Sam"
+                  className="eg-sam-avatar-img"
+                  draggable={false}
+                />
+              </div>
               <div className="eg-talk-sam-header">
                 <div className="eg-talk-sam-avatar-ring">
                   <span className="eg-talk-sam-avatar">🎓</span>
@@ -3193,9 +3248,11 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
 
                   {streakLongest > 0 && <div className="eg-streak-sub"><small>🏆 Best: {streakLongest} day{streakLongest === 1 ? '' : 's'}</small></div>}
 
-                  <div className="eg-goal-ring">
-                    <div>{weeklyGoalPct}%</div>
-                    <small>Weekly Goal</small>
+                  <div className="eg-goal-ring" style={{ background: `conic-gradient(var(--brand) ${weeklyGoalPct * 3.6}deg, #e8ebff ${weeklyGoalPct * 3.6}deg)` }}>
+                    <div className="eg-goal-ring-inner">
+                      <div>{weeklyGoalPct}%</div>
+                      <small>Weekly Goal</small>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -3383,7 +3440,45 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
 
           <article className="cardish eg-mini-card eg-voice-card eg-grad-voice">
             <h4>AI Voice Assistant</h4>
-            <div className="eg-mic">🎤</div>
+            <div className="eg-mic">
+              <svg viewBox="0 0 64 64" width="42" height="42" xmlns="http://www.w3.org/2000/svg">
+                <defs>
+                  <radialGradient id="micHead" cx="50%" cy="40%" r="50%">
+                    <stop offset="0%" stopColor="#e8e8e8"/>
+                    <stop offset="60%" stopColor="#c0c0c0"/>
+                    <stop offset="100%" stopColor="#808080"/>
+                  </radialGradient>
+                  <linearGradient id="micStand" x1="0%" y1="0%" x2="100%" y2="0%">
+                    <stop offset="0%" stopColor="#999"/>
+                    <stop offset="30%" stopColor="#ddd"/>
+                    <stop offset="50%" stopColor="#f5f5f5"/>
+                    <stop offset="70%" stopColor="#ddd"/>
+                    <stop offset="100%" stopColor="#999"/>
+                  </linearGradient>
+                </defs>
+                {/* Mic head - round mesh grille */}
+                <circle cx="32" cy="22" r="14" fill="url(#micHead)" stroke="#666" strokeWidth="0.8"/>
+                {/* Mesh pattern - horizontal */}
+                <path d="M20 18 Q32 16 44 18" fill="none" stroke="#777" strokeWidth="0.4" opacity="0.7"/>
+                <path d="M19 22 Q32 20 45 22" fill="none" stroke="#777" strokeWidth="0.4" opacity="0.7"/>
+                <path d="M20 26 Q32 24 44 26" fill="none" stroke="#777" strokeWidth="0.4" opacity="0.7"/>
+                {/* Mesh pattern - vertical */}
+                <path d="M26 9 Q25 22 26 35" fill="none" stroke="#777" strokeWidth="0.4" opacity="0.5"/>
+                <path d="M32 8 Q32 22 32 36" fill="none" stroke="#777" strokeWidth="0.4" opacity="0.5"/>
+                <path d="M38 9 Q39 22 38 35" fill="none" stroke="#777" strokeWidth="0.4" opacity="0.5"/>
+                {/* Highlight / shine on head */}
+                <ellipse cx="27" cy="17" rx="5" ry="6" fill="rgba(255,255,255,0.25)"/>
+                {/* Ring connector */}
+                <rect x="28" y="35" width="8" height="3" rx="1.5" fill="#aaa" stroke="#888" strokeWidth="0.5"/>
+                {/* Stand pole */}
+                <rect x="30" y="38" width="4" height="14" rx="2" fill="url(#micStand)" stroke="#888" strokeWidth="0.4"/>
+                {/* Stand shine */}
+                <rect x="31.2" y="39" width="1.5" height="12" rx="0.75" fill="rgba(255,255,255,0.4)"/>
+                {/* Base */}
+                <ellipse cx="32" cy="54" rx="9" ry="3.5" fill="url(#micStand)" stroke="#777" strokeWidth="0.6"/>
+                <ellipse cx="32" cy="53" rx="9" ry="3" fill="none" stroke="rgba(255,255,255,0.2)" strokeWidth="0.5"/>
+              </svg>
+            </div>
             <p>How can I help you today?</p>
             <button className="eg-mini-btn">Tap to Speak</button>
           </article>
