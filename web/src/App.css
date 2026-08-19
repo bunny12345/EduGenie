@@ -822,45 +822,91 @@ textarea {
 
 .eg-subject-row {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 8px;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 12px;
 }
 
 .eg-subject-card {
-  padding: 10px;
+  padding: 16px;
   position: relative;
   overflow: hidden;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  border-radius: 16px;
+  background: #fff;
+  border: 1px solid #ece6ff;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
 }
 
-.eg-subject-card::after {
-  content: '';
-  position: absolute;
-  right: -16px;
-  top: -16px;
-  width: 50px;
-  height: 50px;
-  border-radius: 16px;
-  background: linear-gradient(140deg, #efeaff, #e8f8ff);
+.eg-subject-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(91, 71, 255, 0.12);
+  border-color: #d4ccff;
+}
+
+.eg-subject-card-icon {
+  width: 48px;
+  height: 48px;
+  border-radius: 14px;
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  background: linear-gradient(135deg, #f0edff, #e8f0ff);
+}
+
+.eg-subject-card-icon svg {
+  width: 26px;
+  height: 26px;
+}
+
+.eg-subject-card-info {
+  flex: 1;
+  min-width: 0;
 }
 
 .eg-subject-card h4 {
   margin: 0;
-  font-size: 11px;
-  color: #4f5783;
-  line-height: var(--lh-tight);
+  font-size: 14px;
+  font-weight: 700;
+  color: #2b2f45;
+  line-height: 1.2;
 }
 
 .eg-subject-card strong {
-  display: block;
-  margin-top: 4px;
-  font-size: 1.08rem;
-  line-height: var(--lh-tight);
+  display: inline-block;
+  margin-top: 2px;
+  font-size: 1.15rem;
+  color: var(--brand);
+  line-height: 1.3;
 }
 
-.eg-subject-card span {
+.eg-subject-score-label {
+  display: inline-block;
+  margin-left: 6px;
+  font-size: 11px;
   color: #7b82ac;
-  font-size: 10px;
-  line-height: var(--lh-base);
+  font-weight: 500;
+}
+
+.eg-subject-teacher {
+  display: block;
+  margin-top: 2px;
+  font-size: 11px;
+  color: #8b90b8;
+  font-weight: 500;
+}
+
+.eg-subject-card-arrow {
+  font-size: 22px;
+  color: #c5c9e0;
+  flex-shrink: 0;
+  font-weight: 300;
+  transition: color 0.15s;
+}
+
+.eg-subject-card:hover .eg-subject-card-arrow {
+  color: var(--brand);
 }
 
 .eg-reco-card {
@@ -870,28 +916,195 @@ textarea {
   background: linear-gradient(120deg, #f5f2ff, #f2f8ff);
 }
 
-/* Student portal — My Teachers */
+/* Student portal — My Teachers (kept for reference, section removed from UI) */
 .eg-teachers-card { padding: 14px; }
 .eg-teachers-card h3 { margin: 0 0 10px; font-size: 1rem; color: #2b2f45; }
 .eg-teachers-class { color: #5b47ff; font-weight: 600; font-size: 0.85rem; }
-.eg-teachers-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-  gap: 8px;
-}
-.eg-teacher-chip {
+
+/* Subject page — navigation cards */
+.eg-subject-nav-cards {
   display: flex;
   align-items: center;
-  gap: 9px;
-  padding: 9px 11px;
+  gap: 8px;
+  padding: 8px 0 4px;
+}
+
+.eg-subject-nav-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 8px 14px;
+  border: 1px solid #e5e7eb;
   border-radius: 12px;
-  background: linear-gradient(120deg, #fef6ff, #eef4ff);
+  background: #fff;
+  color: #4b5563;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background 0.15s, color 0.15s;
+}
+
+.eg-subject-nav-back:hover {
+  background: #f3f4f6;
+  color: #1f2937;
+}
+
+.eg-subject-nav-scroll {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  flex: 1;
+  scrollbar-width: none;
+}
+
+.eg-subject-nav-scroll::-webkit-scrollbar { display: none; }
+
+.eg-subject-nav-chip {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 14px 6px 6px;
+  border: 1.5px solid #e5e7eb;
+  border-radius: 14px;
+  background: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  color: #4b5563;
+  cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
+  transition: transform 0.15s, box-shadow 0.15s, background 0.15s, border-color 0.15s;
+}
+
+.eg-subject-nav-chip:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.06);
+}
+
+.eg-subject-nav-chip.active {
+  box-shadow: 0 4px 16px rgba(91, 71, 255, 0.12);
+  font-weight: 700;
+}
+
+.eg-subject-nav-chip-icon {
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  display: grid;
+  place-items: center;
+  background: #f3f4f6;
+  flex-shrink: 0;
+}
+
+.eg-subject-nav-chip-icon svg {
+  width: 16px;
+  height: 16px;
+}
+
+.eg-subject-nav-chip-label {
+  font-size: 13px;
+}
+
+/* Subject page — layout */
+.eg-subject-page {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.eg-subject-header {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 16px 20px;
+  border-radius: 16px;
+  border: 1.5px solid #e5e7eb;
+}
+
+.eg-subject-header-icon {
+  width: 48px;
+  height: 48px;
+  border-radius: 14px;
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+}
+
+.eg-subject-header-icon svg {
+  width: 26px;
+  height: 26px;
+}
+
+.eg-subject-header-text h2 {
+  font-size: 1.3rem;
+  font-weight: 800;
+}
+
+.eg-subject-page-grid {
+  display: grid;
+  grid-template-columns: 1.6fr 1fr;
+  gap: 12px;
+  align-items: start;
+}
+
+.eg-subject-hw-card {
+  padding: 16px;
+  max-height: 78vh;
+  overflow-y: auto;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+  border-radius: 16px;
+  background: #fff;
   border: 1px solid #ece6ff;
 }
-.eg-teacher-avatar { font-size: 20px; }
-.eg-teacher-text { display: flex; flex-direction: column; min-width: 0; }
-.eg-teacher-text strong { font-size: 13px; color: #3a2f7a; }
-.eg-teacher-text small { font-size: 11px; color: #6b7090; }
+
+.eg-subject-sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.eg-subject-test-card {
+  padding: 16px;
+  max-height: 40vh;
+  overflow-y: auto;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+  border-radius: 16px;
+  background: #fff;
+  border: 1px solid #ece6ff;
+}
+
+.eg-subject-progress-card {
+  padding: 20px;
+  border-radius: 16px;
+  background: #fff;
+  border: 1px solid #ece6ff;
+  text-align: center;
+}
+
+.eg-subject-section-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.eg-subject-section-head h4 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 700;
+  color: #2b2f45;
+}
+
+.eg-subject-progress-score {
+  font-size: 48px;
+  font-weight: 800;
+  line-height: 1.1;
+  margin: 8px 0;
+}
 
 .eg-reco-card h3 {
   margin: 0;
@@ -4509,6 +4722,15 @@ textarea {
     grid-template-columns: 1fr;
   }
 
+  .eg-subject-page-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .eg-subject-nav-cards {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+  }
+
   .eg-ai-screen {
     min-height: auto;
     max-height: none;
@@ -5296,13 +5518,7 @@ textarea {
   gap: 20px;
 }
 
-.eg-subject-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 20px;
-}
-
+/* overridden by earlier .eg-subject-header — keep only non-conflicting rules */
 .eg-subject-header h2 {
   margin: 0;
   font-size: 20px;

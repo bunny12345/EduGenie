@@ -84,6 +84,101 @@ function getScore(row) {
   return Number.isFinite(n) ? n : null;
 }
 
+/* Subject icon component — clean SVG icons for each subject */
+function getSubjectTheme(subject) {
+  const s = (subject || '').toLowerCase();
+  if (s.includes('math')) return { color: '#5b47ff', bg: 'linear-gradient(135deg, #ede9ff, #e0e7ff)', border: '#d4ccff' };
+  if (s.includes('science') || s.includes('physics') || s.includes('chemistry')) return { color: '#10b981', bg: 'linear-gradient(135deg, #d1fae5, #e0f7fa)', border: '#a7f3d0' };
+  if (s.includes('bio')) return { color: '#22c55e', bg: 'linear-gradient(135deg, #dcfce7, #ecfdf5)', border: '#bbf7d0' };
+  if (s.includes('english') || s.includes('language') || s.includes('literature')) return { color: '#f59e0b', bg: 'linear-gradient(135deg, #fef3c7, #fff7ed)', border: '#fde68a' };
+  if (s.includes('history') || s.includes('social')) return { color: '#8b5cf6', bg: 'linear-gradient(135deg, #ede9fe, #f3e8ff)', border: '#ddd6fe' };
+  if (s.includes('hindi') || s.includes('telugu') || s.includes('sanskrit') || s.includes('urdu') || s.includes('tamil') || s.includes('kannada')) return { color: '#ec4899', bg: 'linear-gradient(135deg, #fce7f3, #fdf2f8)', border: '#fbcfe8' };
+  if (s.includes('geo')) return { color: '#06b6d4', bg: 'linear-gradient(135deg, #cffafe, #e0f2fe)', border: '#a5f3fc' };
+  if (s.includes('computer') || s.includes('coding')) return { color: '#3b82f6', bg: 'linear-gradient(135deg, #dbeafe, #eff6ff)', border: '#bfdbfe' };
+  return { color: '#5b47ff', bg: 'linear-gradient(135deg, #f0edff, #e8f0ff)', border: '#d4ccff' };
+}
+
+function SubjectIcon({ subject }) {
+  const s = (subject || '').toLowerCase();
+  // Mathematics / Maths
+  if (s.includes('math')) return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="#5b47ff" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <line x1="4" y1="12" x2="20" y2="12"/><line x1="12" y1="4" x2="12" y2="20"/>
+      <circle cx="7" cy="7" r="1.5" fill="#5b47ff" stroke="none"/>
+      <circle cx="17" cy="17" r="1.5" fill="#5b47ff" stroke="none"/>
+    </svg>
+  );
+  // Science / Physics / Chemistry
+  if (s.includes('science') || s.includes('physics') || s.includes('chemistry')) return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="#10b981" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M9 3v6l-4 8a2 2 0 0 0 1.8 3h10.4a2 2 0 0 0 1.8-3l-4-8V3"/>
+      <line x1="9" y1="3" x2="15" y2="3"/><path d="M10 14h4"/>
+    </svg>
+  );
+  // Biology
+  if (s.includes('bio')) return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="#22c55e" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M12 22c-4-4-8-7.5-8-11a8 8 0 0 1 16 0c0 3.5-4 7-8 11z"/>
+      <path d="M12 11V6"/><path d="M9 8l3-2 3 2"/>
+    </svg>
+  );
+  // English / Language / Literature
+  if (s.includes('english') || s.includes('language') || s.includes('literature')) return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="#f59e0b" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/>
+      <line x1="8" y1="7" x2="16" y2="7"/><line x1="8" y1="11" x2="14" y2="11"/>
+    </svg>
+  );
+  // History / Social
+  if (s.includes('history') || s.includes('social')) return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="#8b5cf6" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/>
+      <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>
+    </svg>
+  );
+  // Hindi / Telugu / Sanskrit (language subjects)
+  if (s.includes('hindi') || s.includes('telugu') || s.includes('sanskrit') || s.includes('urdu') || s.includes('tamil') || s.includes('kannada')) return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="#ec4899" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+      <path d="M8 9h8"/><path d="M8 13h5"/>
+    </svg>
+  );
+  // Geography
+  if (s.includes('geo')) return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="#06b6d4" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a16 16 0 0 1 4 10 16 16 0 0 1-4 10"/>
+      <path d="M12 2a16 16 0 0 0-4 10 16 16 0 0 0 4 10"/>
+    </svg>
+  );
+  // Computer / IT
+  if (s.includes('computer') || s.includes('coding') || s.includes('programming')) return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="#3b82f6" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/>
+      <line x1="14" y1="4" x2="10" y2="20"/>
+    </svg>
+  );
+  // Art / Drawing
+  if (s.includes('art') || s.includes('draw')) return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="#f97316" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.9 0 1.5-.7 1.5-1.5 0-.4-.1-.7-.4-1-.3-.3-.4-.6-.4-1 0-.8.7-1.5 1.5-1.5H16c3.3 0 6-2.7 6-6 0-5.5-4.5-9-10-9z"/>
+      <circle cx="7.5" cy="11.5" r="1.5" fill="#f97316" stroke="none"/><circle cx="10.5" cy="7.5" r="1.5" fill="#22c55e" stroke="none"/>
+      <circle cx="14.5" cy="7.5" r="1.5" fill="#ef4444" stroke="none"/><circle cx="17.5" cy="11.5" r="1.5" fill="#3b82f6" stroke="none"/>
+    </svg>
+  );
+  // Music
+  if (s.includes('music')) return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="#a855f7" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/>
+    </svg>
+  );
+  // Default — generic book icon
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="#5b47ff" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/>
+    </svg>
+  );
+}
+
 function buildProgressSummary(rows) {
   const safeRows = Array.isArray(rows) ? rows : [];
   const bySubject = new Map();
@@ -408,7 +503,7 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
     setPanelError((prev) => ({ ...prev, [key]: value }));
   };
 
-  // Computed values for subject grouping
+  // Computed values for subject grouping (uses classHomework defined after subjects)
   const homeworkBySubject = useMemo(() => {
     const grouped = new Map();
     homework.forEach((h) => {
@@ -536,6 +631,16 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
     });
     return Array.from(seen).sort();
   }, [dashboard]);
+
+  // Only show homework for subjects that have a teacher in this class
+  const classHomework = useMemo(() => {
+    if (!subjects.length) return homework; // fallback: if no subjects loaded yet, show all
+    const validSubjects = new Set(subjects.map((s) => s.toLowerCase()));
+    return homework.filter((h) => {
+      const subj = (h?.subject || 'General').toLowerCase();
+      return subj === 'general' || validSubjects.has(subj);
+    });
+  }, [homework, subjects]);
 
   // Calculate notification count for each subject
   const getSubjectNotifications = (subject) => {
@@ -2828,15 +2933,15 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
           {/* Sam Interactive Panel */}
           {talkToSamOpen && (
             <div className="eg-talk-sam-pop" role="dialog" aria-label="Talk to Sam">
-              {/* Sam anime avatar — sits on top edge of popup */}
-              <div className={`eg-sam-avatar-container ${talkToSamSpeaking ? 'speaking' : ''} ${(talkToSamBusy || chatLoading) ? 'thinking' : ''}`}>
+              {/* Sam anime avatar — DISABLED for now, enable later with better images */}
+              {/* <div className={`eg-sam-avatar-container ${talkToSamSpeaking ? 'speaking' : ''} ${(talkToSamBusy || chatLoading) ? 'thinking' : ''}`}>
                 <img
                   src={SAM_GESTURES[samGesture] || SAM_GESTURES.wave}
                   alt="Sam"
                   className="eg-sam-avatar-img"
                   draggable={false}
                 />
-              </div>
+              </div> */}
               <div className="eg-talk-sam-header">
                 <div className="eg-talk-sam-avatar-ring">
                   <span className="eg-talk-sam-avatar">🎓</span>
@@ -3120,35 +3225,39 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
           </div>
         </header>
 
-        {/* Subject Navigation */}
-        {activeSidebarTab !== 'My Orchard' && activeSidebarTab !== 'Games' && activeSidebarTab !== 'Progress' && activeSidebarTab !== 'AI Tutor' && !UTILITY_TABS[activeSidebarTab] && (
-        <div className="eg-subject-nav">
+        {/* Subject Navigation — polished icon cards, shown when viewing a specific subject */}
+        {activeSidebarTab !== 'My Orchard' && activeSidebarTab !== 'Games' && activeSidebarTab !== 'Progress' && activeSidebarTab !== 'AI Tutor' && !UTILITY_TABS[activeSidebarTab] && activeView !== 'home' && (
+        <div className="eg-subject-nav-cards">
           <button
-            className={`eg-subject-pill ${activeView === 'home' ? 'active' : ''}`}
+            className="eg-subject-nav-back"
             onClick={() => setActiveView('home')}
           >
-            🏠 Home
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="16" height="16"><polyline points="15 18 9 12 15 6"/></svg>
+            Home
           </button>
-          {safeArray(subjects).map((subject) => {
-            const notifyCount = getSubjectNotifications(subject);
-            return (
-              <button
-                key={subject}
-                className={`eg-subject-pill ${activeView === subject ? 'active' : ''}`}
-                onClick={() => setActiveView(subject)}
-              >
-                {subject}
-                {notifyCount > 0 && (
-                  <span className="eg-subject-pill-badge">{notifyCount}</span>
-                )}
-              </button>
-            );
-          })}
-          {!safeArray(subjects).length ? (
-            <span className="eg-subject-nav-empty">
-              No subjects yet — they appear here as soon as your school registers a teacher for your class.
-            </span>
-          ) : null}
+          <div className="eg-subject-nav-scroll">
+            {safeArray(subjects).map((subject) => {
+              const theme = getSubjectTheme(subject);
+              const notifyCount = getSubjectNotifications(subject);
+              const isActive = activeView === subject;
+              return (
+                <button
+                  key={subject}
+                  className={`eg-subject-nav-chip ${isActive ? 'active' : ''}`}
+                  onClick={() => setActiveView(subject)}
+                  style={isActive ? { background: theme.bg, borderColor: theme.color + '55' } : {}}
+                >
+                  <span className="eg-subject-nav-chip-icon" style={isActive ? { background: theme.color + '18' } : {}}>
+                    <SubjectIcon subject={subject} />
+                  </span>
+                  <span className="eg-subject-nav-chip-label" style={isActive ? { color: theme.color } : {}}>{subject}</span>
+                  {notifyCount > 0 && (
+                    <span className="eg-subject-pill-badge">{notifyCount}</span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
         </div>
         )}
 
@@ -3186,13 +3295,13 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
                   {panelError.homework ? <p className="eg-loading">{panelError.homework}</p> : null}
                   <ul>
                     {/* Show only unique subject names — click to go to subject page */}
-                    {[...new Set((Array.isArray(homework) ? homework : []).map((h) => h?.subject || 'General'))].slice(0, 4).map((subj) => (
+                    {[...new Set((Array.isArray(classHomework) ? classHomework : []).map((h) => h?.subject || 'General'))].slice(0, 4).map((subj) => (
                       <li key={subj} style={{ cursor: 'pointer', color: '#5b47ff', fontWeight: '600' }}
                         onClick={() => setActiveView(subj)}>
                         📚 {subj}
                       </li>
                     ))}
-                    {!panelLoading.homework && !homework.length ? <li>No homework tasks assigned.</li> : null}
+                    {!panelLoading.homework && !classHomework.length ? <li>No homework tasks assigned.</li> : null}
                   </ul>
                   <button>Start Learning</button>
                 </div>
@@ -3260,33 +3369,33 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
 
             <section className="eg-subject-row">
               {panelError.progress ? <p className="eg-loading">{panelError.progress}</p> : null}
-              {safeArray(progressSummary).map((s) => (
-                <article key={s.subject} className="cardish eg-subject-card">
-                  <h4>{s.subject}</h4>
-                  <strong>{s.score}%</strong>
-                  <span>{s.score >= 75 ? 'Excellent' : 'Keep Practicing'}</span>
-                </article>
-              ))}
-              {!panelLoading.progress && !progressSummary.length ? <p className="eg-loading">No progress metrics yet.</p> : null}
-            </section>
-
-            <section className="cardish eg-teachers-card">
-              <h3>My Teachers {className ? <span className="eg-teachers-class">· {className}</span> : null}</h3>
-              {classTeachers.length ? (
-                <div className="eg-teachers-grid">
-                  {classTeachers.map((t) => (
-                    <div key={t.id} className="eg-teacher-chip">
-                      <span className="eg-teacher-avatar">👩‍🏫</span>
-                      <span className="eg-teacher-text">
-                        <strong>{t.subject}</strong>
-                        <small>{t.name}</small>
-                      </span>
+              {safeArray(subjects).map((subj) => {
+                const progressEntry = safeArray(progressSummary).find((p) => p.subject === subj);
+                const score = progressEntry?.score ?? null;
+                const teacher = classTeachers.find((t) => t.subject === subj);
+                const teacherName = teacher?.name || '';
+                const scoreLabel = score !== null ? (score >= 80 ? 'Excellent' : score >= 60 ? 'Good' : 'Keep Practicing') : '';
+                return (
+                  <article
+                    key={subj}
+                    className="cardish eg-subject-card"
+                    onClick={() => setActiveView(subj)}
+                    style={{ cursor: 'pointer' }}
+                  >
+                    <div className="eg-subject-card-icon">
+                      <SubjectIcon subject={subj} />
                     </div>
-                  ))}
-                </div>
-              ) : (
-                <p className="eg-loading">Your class teachers will appear here once your school assigns them.</p>
-              )}
+                    <div className="eg-subject-card-info">
+                      <h4>{subj}</h4>
+                      {score !== null && <strong>{score}%</strong>}
+                      {scoreLabel && <span className="eg-subject-score-label">{scoreLabel}</span>}
+                      {teacherName && <small className="eg-subject-teacher">{teacherName}</small>}
+                    </div>
+                    <div className="eg-subject-card-arrow">›</div>
+                  </article>
+                );
+              })}
+              {!safeArray(subjects).length && !panelLoading.progress ? <p className="eg-loading">No subjects yet.</p> : null}
             </section>
 
             <section className="cardish eg-reco-card eg-grad-reco">
@@ -3374,8 +3483,8 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
             {panelError.homework ? <p className="eg-loading">{panelError.homework}</p> : null}
             <ul className="mini-list">
               {/* Home page: show subject name only — tap to go to subject page */}
-              {[...new Set((Array.isArray(homework) ? homework : []).map((h) => h?.subject || 'General'))].slice(0, 5).map((subj) => {
-                const count = homework.filter((h) => (h.subject || 'General') === subj && h.status !== 'submitted').length;
+              {[...new Set((Array.isArray(classHomework) ? classHomework : []).map((h) => h?.subject || 'General'))].slice(0, 5).map((subj) => {
+                const count = classHomework.filter((h) => (h.subject || 'General') === subj && h.status !== 'submitted').length;
                 return (
                   <li key={subj} style={{ cursor: 'pointer', padding: '6px 0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
                     onClick={() => setActiveView(subj)}>
@@ -3388,7 +3497,7 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
                   </li>
                 );
               })}
-              {!panelLoading.homework && !homework.length ? <li>No homework assigned.</li> : null}
+              {!panelLoading.homework && !classHomework.length ? <li>No homework assigned.</li> : null}
             </ul>
             <p style={{ fontSize: '12px', color: '#999', marginTop: '6px' }}>Tap a subject to see full details →</p>
           </article>
@@ -3484,31 +3593,34 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
           </article>
         </section>
         </>
-        ) : (
+        ) : (() => {
+          const subjectTheme = getSubjectTheme(activeView);
+          return (
           <section
-            className="eg-main-grid"
-            style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))' }}
+            className="eg-subject-page"
             onClick={(e) => {
               if (e.target === e.currentTarget && homeworkStatusFilter !== 'all') {
                 setHomeworkStatusFilter('all');
               }
             }}
           >
-            <h2 style={{ gridColumn: '1 / -1', marginBottom: '20px' }}>{activeView} - Homework & Tests</h2>
+            {/* Subject header banner */}
+            <div className="eg-subject-header" style={{ background: subjectTheme.bg, borderColor: subjectTheme.border }}>
+              <div className="eg-subject-header-icon" style={{ background: subjectTheme.color + '18' }}>
+                <SubjectIcon subject={activeView} />
+              </div>
+              <div className="eg-subject-header-text">
+                <h2 style={{ margin: 0, color: subjectTheme.color }}>{activeView}</h2>
+                <p style={{ margin: 0, fontSize: '13px', color: '#6b7280' }}>Homework & Tests</p>
+              </div>
+            </div>
 
+            <div className="eg-subject-page-grid">
             {/* Subject Homework — full details */}
-            <article
-              className="cardish eg-mini-card eg-grad-soft"
-              style={{
-                gridColumn: 'span 2',
-                maxHeight: '78vh',
-                overflowY: 'auto',
-                overflowX: 'hidden',
-                WebkitOverflowScrolling: 'touch'
-              }}
-            >
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', flexWrap: 'wrap', marginBottom: '6px' }}>
-                <h4 style={{ margin: 0 }}>📝 {activeView} Homework</h4>
+            <article className="cardish eg-subject-hw-card">
+              <div className="eg-subject-section-head">
+                <svg viewBox="0 0 24 24" fill="none" stroke={subjectTheme.color} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" width="18" height="18"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+                <h4>{activeView} Homework</h4>
                 <button
                   type="button"
                   className="eg-inline-btn"
@@ -4101,16 +4213,12 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
             </article>
 
             {/* Subject Tests */}
-            <article
-              className="cardish eg-mini-card eg-grad-soft"
-              style={{
-                maxHeight: '78vh',
-                overflowY: 'auto',
-                overflowX: 'hidden',
-                WebkitOverflowScrolling: 'touch'
-              }}
-            >
-              <h4>🧪 {activeView} Mock Tests</h4>
+            <div className="eg-subject-sidebar">
+            <article className="cardish eg-subject-test-card">
+              <div className="eg-subject-section-head">
+                <svg viewBox="0 0 24 24" fill="none" stroke={subjectTheme.color} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" width="18" height="18"><path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2"/><rect x="9" y="3" width="6" height="4" rx="2"/><path d="M9 14l2 2 4-4"/></svg>
+                <h4>{activeView} Mock Tests</h4>
+              </div>
               {panelError.tests ? <p className="eg-loading">{panelError.tests}</p> : null}
               <ul className="mini-list">
                 {(testsBySubject.get(activeView) || []).map((t) => (
@@ -4128,16 +4236,21 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
 
             {/* Subject Progress */}
             {progressBySubject.has(activeView) && (
-              <article className="cardish eg-mini-card eg-progress-card eg-grad-progress">
-                <h4>📊 {activeView} Progress</h4>
-                <div style={{ fontSize: '48px', fontWeight: 'bold', color: '#5b47ff', marginBottom: '10px' }}>
+              <article className="cardish eg-subject-progress-card">
+                <div className="eg-subject-section-head">
+                  <svg viewBox="0 0 24 24" fill="none" stroke={subjectTheme.color} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" width="18" height="18"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+                  <h4>{activeView} Progress</h4>
+                </div>
+                <div className="eg-subject-progress-score" style={{ color: subjectTheme.color }}>
                   {progressBySubject.get(activeView)}%
                 </div>
-                <small>Average Score in {activeView}</small>
+                <small style={{ color: '#6b7280' }}>Average Score</small>
               </article>
             )}
+            </div>
+            </div>
           </section>
-        )}
+        );})()}
         </div>
       </div>
 
