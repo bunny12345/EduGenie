@@ -119,6 +119,7 @@ export class SchoolController {
       className: body?.className,
       loginId: body?.loginId,
       password: body?.password,
+      gender: body?.gender || null,
       createdBy: req?.user?.sub || null
     });
     if (!res.ok) return { success: false, error: res.error };
@@ -212,6 +213,7 @@ export class SchoolController {
       subject: body?.subject,
       loginId: body?.loginId,
       password: body?.password,
+      gender: body?.gender || null,
       grades: body?.grades,
       createdBy: req?.user?.sub || null
     });
@@ -255,6 +257,14 @@ export class SchoolController {
     const res = await this.authFlow.deleteTeacherBySchool({ schoolId, teacherId: id });
     if (!res.ok) return { success: false, error: res.error };
     return { success: true, teacher: res.teacher };
+  }
+
+  @Post('teachers/deduplicate')
+  async deduplicateTeachers(@Req() req: any) {
+    this.ensureSchoolAdmin(req);
+    const schoolId = req?.user?.schoolId || req?.user?.sub;
+    const result = await this.authFlow.deduplicateTeacherSubjects(schoolId);
+    return { success: true, removed: result.removed };
   }
 
   @Post('invites/teacher')

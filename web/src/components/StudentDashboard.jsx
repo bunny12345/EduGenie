@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import SubjectBackground, { getPalette } from './SubjectBackground';
 import {
   createCalendarEvent,
   earnReward,
@@ -87,15 +88,23 @@ function getScore(row) {
 /* Subject icon component — clean SVG icons for each subject */
 function getSubjectTheme(subject) {
   const s = (subject || '').toLowerCase();
-  if (s.includes('math')) return { color: '#5b47ff', bg: 'linear-gradient(135deg, #ede9ff, #e0e7ff)', border: '#d4ccff' };
-  if (s.includes('science') || s.includes('physics') || s.includes('chemistry')) return { color: '#10b981', bg: 'linear-gradient(135deg, #d1fae5, #e0f7fa)', border: '#a7f3d0' };
-  if (s.includes('bio')) return { color: '#22c55e', bg: 'linear-gradient(135deg, #dcfce7, #ecfdf5)', border: '#bbf7d0' };
-  if (s.includes('english') || s.includes('language') || s.includes('literature')) return { color: '#f59e0b', bg: 'linear-gradient(135deg, #fef3c7, #fff7ed)', border: '#fde68a' };
-  if (s.includes('history') || s.includes('social')) return { color: '#8b5cf6', bg: 'linear-gradient(135deg, #ede9fe, #f3e8ff)', border: '#ddd6fe' };
-  if (s.includes('hindi') || s.includes('telugu') || s.includes('sanskrit') || s.includes('urdu') || s.includes('tamil') || s.includes('kannada')) return { color: '#ec4899', bg: 'linear-gradient(135deg, #fce7f3, #fdf2f8)', border: '#fbcfe8' };
-  if (s.includes('geo')) return { color: '#06b6d4', bg: 'linear-gradient(135deg, #cffafe, #e0f2fe)', border: '#a5f3fc' };
-  if (s.includes('computer') || s.includes('coding')) return { color: '#3b82f6', bg: 'linear-gradient(135deg, #dbeafe, #eff6ff)', border: '#bfdbfe' };
-  return { color: '#5b47ff', bg: 'linear-gradient(135deg, #f0edff, #e8f0ff)', border: '#d4ccff' };
+  const p = getPalette(subject);
+  if (s.includes('math')) return { color: '#7a6b1a', bg: 'linear-gradient(135deg, #fefaed, #fdf5dc)', border: '#e8d89a', pageBg: p.bg, accent: p.accent };
+  if (s.includes('science') || s.includes('physics') || s.includes('chemistry'))
+    return { color: '#0a7550', bg: 'linear-gradient(135deg, #eefbf3, #e0f7ec)', border: '#a7f3d0', pageBg: p.bg, accent: p.accent };
+  if (s.includes('bio')) return { color: '#166534', bg: 'linear-gradient(135deg, #dcfce7, #ecfdf5)', border: '#bbf7d0', pageBg: p.bg, accent: p.accent };
+  if (s.includes('english') || s.includes('language') || s.includes('literature'))
+    return { color: '#9b1d5d', bg: 'linear-gradient(135deg, #fdf2f6, #fce7f0)', border: '#f5c0d5', pageBg: p.bg, accent: p.accent };
+  if (s.includes('history') || s.includes('social'))
+    return { color: '#5b21b6', bg: 'linear-gradient(135deg, #f0edfb, #ede9fe)', border: '#ddd6fe', pageBg: p.bg, accent: p.accent };
+  if (s.includes('hindi') || s.includes('telugu') || s.includes('sanskrit') || s.includes('urdu') || s.includes('tamil') || s.includes('kannada'))
+    return { color: s.includes('hindi') || s.includes('sanskrit') || s.includes('urdu') ? '#92400e' : '#065f46',
+      bg: s.includes('hindi') || s.includes('sanskrit') || s.includes('urdu') ? 'linear-gradient(135deg, #fef6ee, #fef0e0)' : 'linear-gradient(135deg, #eefbf3, #e0f7ec)',
+      border: s.includes('hindi') || s.includes('sanskrit') || s.includes('urdu') ? '#e8c49e' : '#a7f3d0', pageBg: p.bg, accent: p.accent };
+  if (s.includes('geo')) return { color: '#5b21b6', bg: 'linear-gradient(135deg, #f0edfb, #ede9fe)', border: '#d1c8f0', pageBg: p.bg, accent: p.accent };
+  if (s.includes('computer') || s.includes('coding'))
+    return { color: '#1e40af', bg: 'linear-gradient(135deg, #eef0fb, #dbeafe)', border: '#bfdbfe', pageBg: p.bg, accent: p.accent };
+  return { color: '#3b3080', bg: 'linear-gradient(135deg, #f0eeff, #e8f0ff)', border: '#d4ccff', pageBg: p.bg, accent: p.accent };
 }
 
 function SubjectIcon({ subject }) {
@@ -636,11 +645,17 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
   const classHomework = useMemo(() => {
     if (!subjects.length) return homework; // fallback: if no subjects loaded yet, show all
     const validSubjects = new Set(subjects.map((s) => s.toLowerCase()));
+    const myClass = (dashboard?.className || '').trim().toLowerCase();
     return homework.filter((h) => {
       const subj = (h?.subject || 'General').toLowerCase();
+      // Filter by class: only show homework for this student's class (or legacy untagged)
+      if (myClass) {
+        const hwClass = (h?.className || h?.class_name || '').trim().toLowerCase();
+        if (hwClass && hwClass !== myClass) return false;
+      }
       return subj === 'general' || validSubjects.has(subj);
     });
-  }, [homework, subjects]);
+  }, [homework, subjects, dashboard]);
 
   // Calculate notification count for each subject
   const getSubjectNotifications = (subject) => {
@@ -3276,9 +3291,12 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
           utilityPanel
         ) : activeView === 'home' ? (
           <>
+            {/* Homepage background (PNG) */}
+            <div className="eg-home-bg-wrap" style={{ backgroundImage: `url(${process.env.PUBLIC_URL}/assets/sam/student-home-bg.png)` }} />
+
             <section className="eg-main-grid eg-main-grid-home">
               <div className="eg-left-stack">
-              <section className="cardish eg-hero-card eg-grad-hero">
+              <section className="cardish eg-hero-card eg-grad-hero eg-home-glass">
                 <h1>Good Morning, {greetingName}! 👋</h1>
                 <p>Ready to learn something amazing today?</p>
               <div className="eg-hero-inner">
@@ -3378,11 +3396,11 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
                 return (
                   <article
                     key={subj}
-                    className="cardish eg-subject-card"
+                    className="cardish eg-subject-card eg-home-glass"
                     onClick={() => setActiveView(subj)}
-                    style={{ cursor: 'pointer' }}
+                    style={{ cursor: 'pointer', borderColor: getSubjectTheme(subj).border, position: 'relative', overflow: 'hidden' }}
                   >
-                    <div className="eg-subject-card-icon">
+                    <div className="eg-subject-card-icon" style={{ background: getSubjectTheme(subj).color + '15' }}>
                       <SubjectIcon subject={subj} />
                     </div>
                     <div className="eg-subject-card-info">
@@ -3398,7 +3416,7 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
               {!safeArray(subjects).length && !panelLoading.progress ? <p className="eg-loading">No subjects yet.</p> : null}
             </section>
 
-            <section className="cardish eg-reco-card eg-grad-reco">
+            <section className="cardish eg-reco-card eg-grad-reco eg-home-glass">
               <div>
                 <h3>AI Recommends for You</h3>
                 <p>Based on your current progress and library data.</p>
@@ -3416,7 +3434,7 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
 
         <p className="eg-section-title">Your day at a glance</p>
         <section className="eg-bottom-grid">
-          <article className="cardish eg-mini-card eg-grad-soft">
+          <article className="cardish eg-mini-card eg-grad-soft eg-home-glass">
             <h4>Daily Focus</h4>
             <ul className="mini-list bullets">
               <li>Revise key concepts for 20 minutes</li>
@@ -3425,7 +3443,7 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
             </ul>
           </article>
 
-          <article className="cardish eg-mini-card eg-grad-soft">
+          <article className="cardish eg-mini-card eg-grad-soft eg-home-glass">
             <h4>Learning Mode</h4>
             <div className="eg-role-list">
               <span>Guided Practice</span>
@@ -3434,7 +3452,7 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
             </div>
           </article>
 
-          <article className="cardish eg-mini-card eg-grad-soft eg-timeline-card">
+          <article className="cardish eg-mini-card eg-grad-soft eg-timeline-card eg-home-glass">
             <h4>Lesson Timeline</h4>
             {panelError.timeline ? <p className="eg-loading">{panelError.timeline}</p> : null}
             {!panelLoading.timeline && !panelError.timeline && !recentLessonTimeline.length && !recentSubjectTimeline.length ? (
@@ -3478,7 +3496,7 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
             </div>
           </article>
 
-          <article className="cardish eg-mini-card eg-grad-soft">
+          <article className="cardish eg-mini-card eg-grad-soft eg-home-glass">
             <h4>📝 Homework</h4>
             {panelError.homework ? <p className="eg-loading">{panelError.homework}</p> : null}
             <ul className="mini-list">
@@ -3502,7 +3520,7 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
             <p style={{ fontSize: '12px', color: '#999', marginTop: '6px' }}>Tap a subject to see full details →</p>
           </article>
 
-          <article className="cardish eg-mini-card eg-grad-soft">
+          <article className="cardish eg-mini-card eg-grad-soft eg-home-glass">
             <h4>Announcements</h4>
             {panelError.dashboard ? <p className="eg-loading">{panelError.dashboard}</p> : null}
             <ul className="mini-list bullets">
@@ -3515,7 +3533,7 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
             </ul>
           </article>
 
-          <article className="cardish eg-mini-card eg-grad-soft">
+          <article className="cardish eg-mini-card eg-grad-soft eg-home-glass">
             <h4>Mock Tests</h4>
             {panelError.tests ? <p className="eg-loading">{panelError.tests}</p> : null}
             <ul className="mini-list">
@@ -3532,7 +3550,7 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
             {testResult ? <p className="eg-inline-note">Last score: {String(testResult.score)} | {testResult.feedback}</p> : null}
           </article>
 
-          <article className="cardish eg-mini-card eg-progress-card eg-grad-progress">
+          <article className="cardish eg-mini-card eg-progress-card eg-grad-progress eg-home-glass">
             <h4>Progress Dashboard</h4>
             {panelError.progress ? <p className="eg-loading">{panelError.progress}</p> : null}
             {trend.length > 1 ? <Sparkline values={trend} /> : <p className="eg-loading">Not enough points for trend chart.</p>}
@@ -3547,7 +3565,7 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
             </div>
           </article>
 
-          <article className="cardish eg-mini-card eg-voice-card eg-grad-voice">
+          <article className="cardish eg-mini-card eg-voice-card eg-grad-voice eg-home-glass">
             <h4>AI Voice Assistant</h4>
             <div className="eg-mic">
               <svg viewBox="0 0 64 64" width="42" height="42" xmlns="http://www.w3.org/2000/svg">
@@ -3597,27 +3615,31 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
           const subjectTheme = getSubjectTheme(activeView);
           return (
           <section
-            className="eg-subject-page"
+            className="eg-subject-page eg-subject-themed"
             onClick={(e) => {
               if (e.target === e.currentTarget && homeworkStatusFilter !== 'all') {
                 setHomeworkStatusFilter('all');
               }
             }}
+            style={{ position: 'relative', overflow: 'hidden' }}
           >
+            {/* Full-page decorative SVG background */}
+            <SubjectBackground subject={activeView} />
+
             {/* Subject header banner */}
-            <div className="eg-subject-header" style={{ background: subjectTheme.bg, borderColor: subjectTheme.border }}>
+            <div className="eg-subject-header eg-subject-glass-card" style={{ borderColor: subjectTheme.border + '66', position: 'relative', zIndex: 1 }}>
               <div className="eg-subject-header-icon" style={{ background: subjectTheme.color + '18' }}>
                 <SubjectIcon subject={activeView} />
               </div>
               <div className="eg-subject-header-text">
                 <h2 style={{ margin: 0, color: subjectTheme.color }}>{activeView}</h2>
-                <p style={{ margin: 0, fontSize: '13px', color: '#6b7280' }}>Homework & Tests</p>
+                <p style={{ margin: 0, fontSize: '13px', color: subjectTheme.color + 'aa' }}>Homework & Tests</p>
               </div>
             </div>
 
-            <div className="eg-subject-page-grid">
+            <div className="eg-subject-page-grid" style={{ position: 'relative', zIndex: 1 }}>
             {/* Subject Homework — full details */}
-            <article className="cardish eg-subject-hw-card">
+            <article className="cardish eg-subject-hw-card eg-subject-glass-card">
               <div className="eg-subject-section-head">
                 <svg viewBox="0 0 24 24" fill="none" stroke={subjectTheme.color} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" width="18" height="18"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
                 <h4>{activeView} Homework</h4>
@@ -4214,7 +4236,7 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
 
             {/* Subject Tests */}
             <div className="eg-subject-sidebar">
-            <article className="cardish eg-subject-test-card">
+            <article className="cardish eg-subject-test-card eg-subject-glass-card">
               <div className="eg-subject-section-head">
                 <svg viewBox="0 0 24 24" fill="none" stroke={subjectTheme.color} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" width="18" height="18"><path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2"/><rect x="9" y="3" width="6" height="4" rx="2"/><path d="M9 14l2 2 4-4"/></svg>
                 <h4>{activeView} Mock Tests</h4>
@@ -4236,7 +4258,7 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
 
             {/* Subject Progress */}
             {progressBySubject.has(activeView) && (
-              <article className="cardish eg-subject-progress-card">
+              <article className="cardish eg-subject-progress-card eg-subject-glass-card">
                 <div className="eg-subject-section-head">
                   <svg viewBox="0 0 24 24" fill="none" stroke={subjectTheme.color} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" width="18" height="18"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
                   <h4>{activeView} Progress</h4>

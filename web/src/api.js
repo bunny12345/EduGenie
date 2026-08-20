@@ -757,6 +757,16 @@ export async function schoolRegisterTeacher(payload) {
   return res.json();
 }
 
+export async function schoolDeduplicateTeachers() {
+  const headers = await authHeaders();
+  const url = `${API_BASE}/school/teachers/deduplicate`;
+  const res = await fetch(url, {
+    method: 'POST',
+    headers
+  });
+  return res.json();
+}
+
 export async function schoolInviteTeacher(payload) {
   const headers = await authHeaders();
   const url = `${API_BASE}/school/invites/teacher`;

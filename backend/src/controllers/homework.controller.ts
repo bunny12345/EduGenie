@@ -2,6 +2,7 @@ import { Controller, Get, Post, Body, Query, Param, UseGuards, Req } from '@nest
 import { SupabaseService } from '../supabase.service';
 import { AuthGuard } from '../auth/auth.guard';
 import { LocalFeedService } from '../shared/local-feed.service';
+import { StudentAuthService } from '../auth/student-auth.service';
 import * as fs from 'fs';
 import * as path from 'path';
 import { randomUUID } from 'crypto';
@@ -10,7 +11,8 @@ import { randomUUID } from 'crypto';
 export class HomeworkController {
   constructor(
     private readonly db: SupabaseService,
-    private readonly localFeed: LocalFeedService
+    private readonly localFeed: LocalFeedService,
+    private readonly studentAuth: StudentAuthService
   ) {}
 
   private sanitizeAttachmentUrls(value: any, fallbackSingle?: any) {
@@ -69,7 +71,15 @@ export class HomeworkController {
       const localRows = this.localFeed.listHomeworkForStudent(id);
       const dbIds = new Set(dbRows.map((r: any) => String(r.id || '')));
       const freshLocal = localRows.filter((r: any) => !dbIds.has(String(r.id || '')));
-      const mergedRows = [...dbRows, ...freshLocal];
+      // Filter by student's actual class to prevent cross-class homework leakage
+      const studentProfile = await this.studentAuth.resolveStudentProfile(id);
+      const studentClass = String(studentProfile?.className || '').trim().toLowerCase();
+      const isMyClass = (row: any) => {
+        if (!studentClass) return true; // no class info = show all
+        const hwClass = String(row?.class_name || '').trim().toLowerCase();
+        return !hwClass || hwClass === studentClass; // no class_name on row = legacy, keep it
+      };
+      const mergedRows = [...dbRows, ...freshLocal].filter(isMyClass);
 
       const attemptsRes = await this.db.client.from('homework_attempts').select('*').eq('student_id', id).order('created_at', { ascending: false });
       const attemptsRows: any[] = Array.isArray((attemptsRes as any)?.data) ? (attemptsRes as any).data : [];

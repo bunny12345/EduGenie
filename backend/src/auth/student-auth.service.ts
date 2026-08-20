@@ -539,6 +539,7 @@ export class StudentAuthService implements OnModuleInit {
     subject?: string;
     loginId: string;
     password: string;
+    gender?: string;
     grades?: string[];
     createdBy?: string;
   }) {
@@ -581,12 +582,15 @@ export class StudentAuthService implements OnModuleInit {
     };
     this.rememberTeacher(account);
 
+    const gender = String(payload.gender || '').trim().toLowerCase() || null;
+
     const baseRow = {
       id: teacherId,
       school_id: schoolId,
       name,
       email,
       subject,
+      gender,
       login_id: loginId,
       password_salt: passwordSalt,
       password_hash: passwordHash,
@@ -784,6 +788,43 @@ export class StudentAuthService implements OnModuleInit {
     }
 
     return { ok: true, teacher: { id: teacherId } };
+  }
+
+  /**
+   * Remove duplicate subject+class combinations within a school.
+   * Keeps the first teacher registered for each subject+class pair and deletes the rest.
+   */
+  async deduplicateTeacherSubjects(schoolId: string) {
+    const sid = String(schoolId || '').trim();
+    if (!sid) return { removed: 0 };
+
+    const seen = new Map<string, string>(); // key = "subject|grade" → first teacherId
+    const toRemove: string[] = [];
+
+    for (const account of StudentAuthService.teacherAccounts.values()) {
+      if (String(account.schoolId || '').trim() !== sid) continue;
+      const subj = String(account.subject || '').trim().toLowerCase();
+      const grades = normalizeGrades(account.grades);
+      for (const g of grades) {
+        const key = `${subj}|${g.toLowerCase()}`;
+        if (seen.has(key)) {
+          toRemove.push(account.teacherId);
+          break;
+        } else {
+          seen.set(key, account.teacherId);
+        }
+      }
+    }
+
+    for (const teacherId of toRemove) {
+      this.removeTeacherAccount(teacherId);
+      try {
+        await this.db.client.from('students').update({ teacher_id: null }).eq('teacher_id', teacherId);
+        await this.db.client.from('teachers').delete().eq('id', teacherId);
+      } catch (_e) { /* non-fatal */ }
+    }
+
+    return { removed: toRemove.length };
   }
 
   /**
@@ -1377,12 +1418,10 @@ export class StudentAuthService implements OnModuleInit {
     const from = (page - 1) * limit;
     const to = from + limit - 1;
 
-    const inGrades = (className: unknown, rowTeacherId?: unknown) => {
+    const inGrades = (className: unknown, _rowTeacherId?: unknown) => {
       if (!gradeSet.size) return true;
       const cn = String(className || '').trim().toLowerCase();
-      if (gradeSet.has(cn)) return true;
-      // Students directly assigned to this teacher stay visible too.
-      return !!teacherId && String(rowTeacherId || '').trim() === teacherId;
+      return gradeSet.has(cn);
     };
 
     try {
@@ -1648,11 +1687,13 @@ export class StudentAuthService implements OnModuleInit {
     createdBy?: string;
     schoolId?: string;
     teacherId?: string;
+    gender?: string;
   }) {
     const loginId = String(payload.loginId || '').trim().toLowerCase();
     const password = String(payload.password || '');
     const name = String(payload.name || '').trim();
     const className = String(payload.className || '').trim() || 'Class';
+    const gender = String(payload.gender || '').trim().toLowerCase() || null;
 
     if (!loginId || !password || !name) {
       return { ok: false, error: 'loginId, password and name are required' };
@@ -1696,6 +1737,7 @@ export class StudentAuthService implements OnModuleInit {
           id: studentId,
           name,
           class_name: className,
+          gender,
           school_id: payload.schoolId || null,
           teacher_id: payload.teacherId || null,
           created_by: payload.createdBy || null
@@ -1727,6 +1769,7 @@ export class StudentAuthService implements OnModuleInit {
             password_salt: passwordSalt,
             password_hash: passwordHash,
             name,
+            gender,
             class_name: className,
             school_id: payload.schoolId || null,
             teacher_id: payload.teacherId || null,
@@ -1840,6 +1883,7 @@ export class StudentAuthService implements OnModuleInit {
     className: string;
     loginId: string;
     password: string;
+    gender?: string;
     createdBy?: string;
   }) {
     const schoolId = String(payload.schoolId || '').trim();
@@ -1868,6 +1912,7 @@ export class StudentAuthService implements OnModuleInit {
       className,
       schoolId,
       teacherId,
+      gender: payload.gender,
       createdBy: payload.createdBy
     });
   }

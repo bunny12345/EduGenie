@@ -46,7 +46,14 @@ export class DashboardController {
       const mergedHomeworkRows = Array.isArray(homeworkRows) && homeworkRows.length
         ? homeworkRows
         : this.localFeed.listHomeworkForStudent(id);
-      const todayPlan = (Array.isArray(mergedHomeworkRows) ? mergedHomeworkRows : []).slice(0, 6).map((h: any) => ({
+      // Filter homework by student's class to prevent cross-class leakage
+      const studentClassName = String(student?.class_name || '').trim().toLowerCase();
+      const classFilteredHomework = (Array.isArray(mergedHomeworkRows) ? mergedHomeworkRows : []).filter((h: any) => {
+        if (!studentClassName) return true;
+        const hwClass = String(h?.class_name || '').trim().toLowerCase();
+        return !hwClass || hwClass === studentClassName;
+      });
+      const todayPlan = classFilteredHomework.slice(0, 6).map((h: any) => ({
         type: 'homework',
         title: h.title || h.file_url || 'Homework task',
         dueAt: h.due_at || h.created_at || null,

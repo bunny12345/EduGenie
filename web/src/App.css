@@ -574,10 +574,51 @@ textarea {
   color: #7c82a7;
 }
 
+/* ── Student Homepage PNG background ── */
+.eg-home-bg-wrap {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  pointer-events: none;
+  z-index: 0;
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+}
+
+/* Glass-effect cards on the homepage */
+.eg-home-glass.cardish {
+  background: rgba(255, 255, 255, 0.55) !important;
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border-color: rgba(255, 255, 255, 0.4) !important;
+  box-shadow: 0 4px 20px rgba(80, 60, 140, 0.05), 0 1px 4px rgba(80, 60, 140, 0.02);
+}
+
+.eg-home-glass.eg-grad-hero {
+  background: rgba(255, 255, 255, 0.5) !important;
+}
+
+.eg-home-glass.eg-grad-reco {
+  background: rgba(255, 255, 255, 0.48) !important;
+}
+
+.eg-home-glass.eg-grad-progress {
+  background: rgba(255, 255, 255, 0.5) !important;
+}
+
+.eg-home-glass.eg-grad-voice {
+  background: rgba(255, 255, 255, 0.5) !important;
+}
+
 .eg-main-grid {
   display: grid;
   grid-template-columns: 1.55fr 1fr;
   gap: 10px;
+  position: relative;
+  z-index: 1;
 }
 
 .eg-main-grid.eg-main-grid-home {
@@ -1012,6 +1053,22 @@ textarea {
   display: flex;
   flex-direction: column;
   gap: 12px;
+}
+
+/* Themed subject page with full SVG background */
+.eg-subject-page.eg-subject-themed {
+  border-radius: 18px;
+  padding: 16px;
+  min-height: 70vh;
+}
+
+/* Glass-effect transparent cards over the subject background */
+.eg-subject-glass-card.cardish {
+  background: rgba(255, 255, 255, 0.52) !important;
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border-color: rgba(255, 255, 255, 0.35) !important;
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.03), 0 1px 4px rgba(0, 0, 0, 0.015);
 }
 
 .eg-subject-header {
@@ -2083,6 +2140,8 @@ textarea {
   column-gap: 14px;
   row-gap: 14px;
   align-items: start;
+  position: relative;
+  z-index: 1;
 }
 
 /* Quiet label that introduces the tile grid on Home. */
@@ -2093,6 +2152,8 @@ textarea {
   letter-spacing: 0.06em;
   text-transform: uppercase;
   color: #8a8fae;
+  position: relative;
+  z-index: 1;
 }
 
 /* Subject switcher — soft pills instead of a hard grey toolbar. */
@@ -3468,6 +3529,45 @@ textarea {
   gap: 12px;
   align-content: start;
   overflow-y: auto;
+}
+
+/* Themed teacher main with subject SVG background */
+.td-main.td-main-themed {
+  background: transparent;
+}
+
+.td-main-themed > *:not(svg) {
+  position: relative;
+  z-index: 1;
+}
+
+/* Transparent glass cards in teacher portal */
+.td-main-themed .td-topbar {
+  background: rgba(255, 255, 255, 0.55);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border-color: rgba(255, 255, 255, 0.3);
+}
+
+.td-main-themed .td-stat-card {
+  background: rgba(255, 255, 255, 0.5);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border-color: rgba(255, 255, 255, 0.3);
+}
+
+.td-main-themed .td-card {
+  background: rgba(255, 255, 255, 0.5);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border-color: rgba(255, 255, 255, 0.3);
+}
+
+.td-main-themed .td-class-banner {
+  background: rgba(255, 255, 255, 0.45);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border-color: rgba(255, 255, 255, 0.25);
 }
 
 .td-topbar {

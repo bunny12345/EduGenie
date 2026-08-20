@@ -24,6 +24,7 @@ import {
   schoolUpdateTeacher,
   schoolResetTeacherPassword,
   schoolDeleteTeacher,
+  schoolDeduplicateTeachers,
   updateCurriculumLesson,
   uploadCurriculumLessonDocument
 } from '../api';
@@ -109,6 +110,7 @@ export default function SchoolDashboard({ session, onLogout }) {
   const [teacherLoginId, setTeacherLoginId] = useState('');
   const [teacherPassword, setTeacherPassword] = useState('');
   const [teacherGrades, setTeacherGrades] = useState([]);
+  const [teacherGender, setTeacherGender] = useState('');
   const [note, setNote] = useState('');
   const [busy, setBusy] = useState('');
   const [createdTeacher, setCreatedTeacher] = useState(null);
@@ -141,6 +143,7 @@ export default function SchoolDashboard({ session, onLogout }) {
   const [studentClassName, setStudentClassName] = useState('');
   const [studentLoginId, setStudentLoginId] = useState('');
   const [studentPassword, setStudentPassword] = useState('');
+  const [studentGender, setStudentGender] = useState('');
   const [createdStudent, setCreatedStudent] = useState(null);
   const [studentInviteLink, setStudentInviteLink] = useState('');
   const [studentInvites, setStudentInvites] = useState([]);
@@ -698,6 +701,8 @@ export default function SchoolDashboard({ session, onLogout }) {
       }
     }
     load();
+    // Fire-and-forget: remove any legacy duplicate subject rows
+    schoolDeduplicateTeachers().catch(() => {});
     return () => {
       active = false;
     };
@@ -842,6 +847,19 @@ export default function SchoolDashboard({ session, onLogout }) {
       setNote('Pick at least one class — the subject only appears in Curriculum Upload for the classes you select.');
       return;
     }
+    // Duplicate subject check: prevent registering the same subject for the same class
+    const existingTeachers = Array.isArray(teachers) ? teachers : [];
+    for (const grade of teacherGrades) {
+      const className = `Class ${grade}`;
+      const duplicate = existingTeachers.find(
+        (t) => String(t.subject || '').toLowerCase() === teacherSubject.trim().toLowerCase()
+          && (Array.isArray(t.grades) ? t.grades : []).some((g) => String(g).toLowerCase() === className.toLowerCase())
+      );
+      if (duplicate) {
+        setNote(`${teacherSubject} already has a teacher (${duplicate.name}) for ${className}. Cannot register duplicate subjects for the same class.`);
+        return;
+      }
+    }
     setBusy('manual');
     setNote('');
     try {
@@ -851,6 +869,7 @@ export default function SchoolDashboard({ session, onLogout }) {
         subject: teacherSubject,
         loginId: teacherLoginId,
         password: teacherPassword,
+        gender: teacherGender || undefined,
         grades: teacherGrades.map((g) => `Class ${g}`)
       });
       if (!res?.success) {
@@ -876,6 +895,7 @@ export default function SchoolDashboard({ session, onLogout }) {
       setTeacherLoginId('');
       setTeacherPassword('');
       setTeacherGrades([]);
+      setTeacherGender('');
       setNote('Teacher account created. Share login credentials manually.');
     } catch (e2) {
       setNote('Unable to register teacher right now.');
@@ -1076,7 +1096,8 @@ export default function SchoolDashboard({ session, onLogout }) {
         name: studentName,
         className: studentClassName,
         loginId: studentLoginId,
-        password: studentPassword
+        password: studentPassword,
+        gender: studentGender || undefined
       });
       if (!res?.success) {
         setNote(res?.error || 'Student registration failed.');
@@ -1093,6 +1114,7 @@ export default function SchoolDashboard({ session, onLogout }) {
       setStudentName('');
       setStudentLoginId('');
       setStudentPassword('');
+      setStudentGender('');
       setStudentPage(1);
       await refreshStudentsSection();
       setNote('Student account created. Share the login credentials with the student.');
@@ -1454,6 +1476,13 @@ export default function SchoolDashboard({ session, onLogout }) {
             <input value={teacherName} onChange={(e) => setTeacherName(e.target.value)} placeholder="Teacher name" />
             <input value={teacherEmail} onChange={(e) => setTeacherEmail(e.target.value)} placeholder="Teacher email" />
             <input value={teacherSubject} onChange={(e) => setTeacherSubject(e.target.value)} placeholder="Subject" />
+            <label className="sd-field-label">Gender</label>
+            <select value={teacherGender} onChange={(e) => setTeacherGender(e.target.value)}>
+              <option value="">Select gender</option>
+              <option value="male">Male</option>
+              <option value="female">Female</option>
+              <option value="other">Other</option>
+            </select>
             <input value={teacherLoginId} onChange={(e) => setTeacherLoginId(e.target.value)} placeholder="Teacher login ID" />
             <input type="password" value={teacherPassword} onChange={(e) => setTeacherPassword(e.target.value)} placeholder="Strong password" />
             <label className="sd-field-label">Classes (grades this teacher handles)</label>
@@ -2023,6 +2052,13 @@ export default function SchoolDashboard({ session, onLogout }) {
               <h3>Manual Student Registration</h3>
               <form className="sd-form" onSubmit={onRegisterStudent}>
                 <input value={studentName} onChange={(e) => setStudentName(e.target.value)} placeholder="Student name" />
+                <label className="sd-field-label">Gender</label>
+                <select value={studentGender} onChange={(e) => setStudentGender(e.target.value)}>
+                  <option value="">Select gender</option>
+                  <option value="male">Male</option>
+                  <option value="female">Female</option>
+                  <option value="other">Other</option>
+                </select>
                 <label className="sd-field-label">Class</label>
                 <select value={studentClassName} onChange={(e) => setStudentClassName(e.target.value)}>
                   <option value="">Select class</option>

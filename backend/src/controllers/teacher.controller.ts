@@ -1107,6 +1107,15 @@ export class TeacherController {
     const targetClass: string | null = body?.className || null;
     const studentIds = Array.isArray(body?.studentIds) ? body.studentIds : [];
 
+    // Verify the teacher actually teaches the target class
+    if (targetClass) {
+      const scope = await this.teacherScope(req);
+      const teacherGrades = new Set((scope.grades || []).map((g: string) => g.toLowerCase()));
+      if (teacherGrades.size && !teacherGrades.has(targetClass.toLowerCase())) {
+        return { success: false, created: 0, assignments: [], error: `You do not teach "${targetClass}"` };
+      }
+    }
+
     let effectiveStudentIds: string[];
 
     if (targetClass) {

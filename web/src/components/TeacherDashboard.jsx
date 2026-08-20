@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import SubjectBackground, { getPalette } from './SubjectBackground';
 import {
   addTestQuestion,
   askTeacherAi,
@@ -1776,7 +1777,9 @@ export default function TeacherDashboard({ session, onLogout }) {
       </nav>
 
       {/* ── Main content ── */}
-      <div className="td-main">
+      <div className="td-main td-main-themed" style={{ position: 'relative', overflow: 'hidden' }}>
+        {/* Subject-themed SVG background */}
+        <SubjectBackground subject={teacherProfile?.subject || session?.subject || 'General'} />
         <header className="td-topbar">
           <div>
             <p className="td-kicker">Teacher Workspace</p>
