@@ -358,8 +358,39 @@ const UTILITY_TABS = {
 
 export default function StudentDashboard({ studentId = 'test', onLogout }) {
   // Navigation state
-  const [activeView, setActiveView] = useState('home'); // 'home' or subject name
-  const [activeSidebarTab, setActiveSidebarTab] = useState('Home');
+  const SIDEBAR_TABS = ['Home', 'My Orchard', 'Games', 'AI Tutor', 'Homework', 'Mock Tests', 'Progress', 'Calendar', 'Rewards', 'Library', 'Settings'];
+  const [activeView, setActiveView] = useState(() => {
+    const h = decodeURIComponent(window.location.hash.replace('#', ''));
+    if (!h || h === 'Home' || SIDEBAR_TABS.includes(h)) return 'home';
+    return h;
+  });
+  const [activeSidebarTab, setActiveSidebarTab] = useState(() => {
+    const h = decodeURIComponent(window.location.hash.replace('#', ''));
+    if (SIDEBAR_TABS.includes(h)) return h;
+    if (!h) return 'Home';
+    return 'Home';
+  });
+
+  useEffect(() => {
+    window.location.hash = activeSidebarTab === 'Home' ? (activeView === 'home' ? 'Home' : activeView) : activeSidebarTab;
+  }, [activeSidebarTab, activeView]);
+
+  useEffect(() => {
+    function onHashChange() {
+      const h = decodeURIComponent(window.location.hash.replace('#', ''));
+      if (!h || h === 'Home' || h === 'home') {
+        setActiveSidebarTab('Home');
+        setActiveView('home');
+      } else if (SIDEBAR_TABS.includes(h)) {
+        setActiveSidebarTab(h);
+      } else {
+        setActiveSidebarTab('Home');
+        setActiveView(h);
+      }
+    }
+    window.addEventListener('hashchange', onHashChange);
+    return () => window.removeEventListener('hashchange', onHashChange);
+  }, []);
 
   const [panelLoading, setPanelLoading] = useState({
     dashboard: false,
@@ -3291,9 +3322,6 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
           utilityPanel
         ) : activeView === 'home' ? (
           <>
-            {/* Homepage background (PNG) */}
-            <div className="eg-home-bg-wrap" style={{ backgroundImage: `url(${process.env.PUBLIC_URL}/assets/sam/student-home-bg.png)` }} />
-
             <section className="eg-main-grid eg-main-grid-home">
               <div className="eg-left-stack">
               <section className="cardish eg-hero-card eg-grad-hero eg-home-glass">

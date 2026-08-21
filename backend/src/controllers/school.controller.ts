@@ -46,12 +46,14 @@ export class SchoolController {
     @Req() req: any,
     @Query('q') q?: string,
     @Query('page') page?: string,
-    @Query('limit') limit?: string
+    @Query('limit') limit?: string,
+    @Query('className') className?: string
   ) {
     this.ensureSchoolAdmin(req);
     const schoolId = req?.user?.schoolId || req?.user?.sub || 'school-local';
     const teachersRes = await this.authFlow.listTeachersBySchool(schoolId, {
       q,
+      className: className || undefined,
       page: page ? Number(page) : undefined,
       limit: limit ? Number(limit) : undefined
     });
@@ -92,13 +94,15 @@ export class SchoolController {
     @Req() req: any,
     @Query('q') q?: string,
     @Query('page') page?: string,
-    @Query('limit') limit?: string
+    @Query('limit') limit?: string,
+    @Query('className') className?: string
   ) {
     this.ensureSchoolAdmin(req);
     const schoolId = req?.user?.schoolId || req?.user?.sub || 'school-local';
     const studentsRes = await this.authFlow.listStudentsByScope({
       schoolId,
       q,
+      className: className || undefined,
       page: page ? Number(page) : undefined,
       limit: limit ? Number(limit) : undefined
     });

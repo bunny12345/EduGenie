@@ -1269,6 +1269,7 @@ export class StudentAuthService implements OnModuleInit {
     schoolIdRaw: string,
     opts?: {
       q?: string;
+      className?: string;
       page?: number;
       limit?: number;
     }
@@ -1282,6 +1283,7 @@ export class StudentAuthService implements OnModuleInit {
     }
 
     const queryText = String(opts?.q || '').trim().toLowerCase();
+    const classNameFilter = String(opts?.className || '').trim().toLowerCase();
     const hasPaging = opts?.page !== undefined || opts?.limit !== undefined || !!queryText;
     const page = Math.max(1, Number(opts?.page || 1));
     const limit = hasPaging
@@ -1342,11 +1344,16 @@ export class StudentAuthService implements OnModuleInit {
         });
       }
 
-      const merged = Array.from(byId.values()).sort((a, b) => {
-        const aTs = a.createdAt ? new Date(a.createdAt).getTime() : 0;
-        const bTs = b.createdAt ? new Date(b.createdAt).getTime() : 0;
-        return bTs - aTs;
-      });
+      const merged = Array.from(byId.values())
+        .filter((t) => {
+          if (!classNameFilter) return true;
+          return (t.grades || []).some((g: string) => String(g).trim().toLowerCase() === classNameFilter);
+        })
+        .sort((a, b) => {
+          const aTs = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+          const bTs = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+          return bTs - aTs;
+        });
       const total = merged.length;
       const totalPages = Math.max(1, Math.ceil(total / limit));
       const paged = merged.slice(from, from + limit);
@@ -1366,6 +1373,10 @@ export class StudentAuthService implements OnModuleInit {
           if (!queryText) return true;
           const text = `${t.name || ''} ${t.email || ''} ${t.subject || ''} ${t.loginId || ''}`.toLowerCase();
           return text.includes(queryText);
+        })
+        .filter((t) => {
+          if (!classNameFilter) return true;
+          return normalizeGrades(t.grades).some((g) => g.toLowerCase() === classNameFilter);
         })
         .map((t) => ({
           id: t.teacherId,

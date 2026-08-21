@@ -233,7 +233,23 @@ export default function TeacherDashboard({ session, onLogout }) {
 
   const [busy, setBusy] = useState('');
   const [note, setNote] = useState('');
-  const [activeSection, setActiveSection] = useState('teacher');
+  const [activeSection, setActiveSection] = useState(() => {
+    const h = window.location.hash.replace('#', '');
+    return h || 'teacher';
+  });
+
+  useEffect(() => {
+    window.location.hash = activeSection;
+  }, [activeSection]);
+
+  useEffect(() => {
+    function onHashChange() {
+      const h = window.location.hash.replace('#', '');
+      if (h) setActiveSection(h);
+    }
+    window.addEventListener('hashchange', onHashChange);
+    return () => window.removeEventListener('hashchange', onHashChange);
+  }, []);
 
   // Test creation state
   const [tests, setTests] = useState([]);

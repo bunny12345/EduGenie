@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   createCurriculumLesson,
   deleteCurriculumLesson,
@@ -124,6 +124,9 @@ export default function SchoolDashboard({ session, onLogout }) {
   const [invitePage, setInvitePage] = useState(1);
   const [inviteTotalPages, setInviteTotalPages] = useState(1);
   const [teacherSearch, setTeacherSearch] = useState('');
+  const [teacherClassFilter, setTeacherClassFilter] = useState('');
+  const [showTeacherClassFilter, setShowTeacherClassFilter] = useState(false);
+  const teacherClassFilterRef = useRef(null);
   const [teacherPage, setTeacherPage] = useState(1);
   const [teacherTotalPages, setTeacherTotalPages] = useState(1);
   // Teacher management (edit / reset password / delete)
@@ -135,6 +138,9 @@ export default function SchoolDashboard({ session, onLogout }) {
   const [teacherActionBusy, setTeacherActionBusy] = useState('');
   const [teacherActionNote, setTeacherActionNote] = useState('');
   const [studentSearch, setStudentSearch] = useState('');
+  const [studentClassFilter, setStudentClassFilter] = useState('');
+  const [showClassFilter, setShowClassFilter] = useState(false);
+  const classFilterRef = useRef(null);
   const [studentPage, setStudentPage] = useState(1);
   const [studentTotalPages, setStudentTotalPages] = useState(1);
   // Student registration (moved here from the teacher portal — student accounts
@@ -184,7 +190,23 @@ export default function SchoolDashboard({ session, onLogout }) {
   const [exportFormat, setExportFormat] = useState(null);
 
   // Which sidebar page is open.
-  const [activeSection, setActiveSection] = useState('overview');
+  const [activeSection, setActiveSection] = useState(() => {
+    const h = window.location.hash.replace('#', '');
+    return h || 'overview';
+  });
+
+  useEffect(() => {
+    window.location.hash = activeSection;
+  }, [activeSection]);
+
+  useEffect(() => {
+    function onHashChange() {
+      const h = window.location.hash.replace('#', '');
+      if (h) setActiveSection(h);
+    }
+    window.addEventListener('hashchange', onHashChange);
+    return () => window.removeEventListener('hashchange', onHashChange);
+  }, []);
 
   const INVITES_PER_PAGE = 5;
   const TEACHERS_PER_PAGE = 6;
@@ -247,7 +269,7 @@ export default function SchoolDashboard({ session, onLogout }) {
   // Refresh specific sections
   async function refreshTeachersSection() {
     setRefreshing('teachers');
-    await loadTeachers({ q: teacherSearch, page: teacherPage, limit: TEACHERS_PER_PAGE });
+    await loadTeachers({ q: teacherSearch, className: teacherClassFilter || undefined, page: teacherPage, limit: TEACHERS_PER_PAGE });
     setRefreshing('');
   }
 
@@ -757,11 +779,30 @@ export default function SchoolDashboard({ session, onLogout }) {
   }, [inviteSearch, inviteStatusFilter, invitePage]);
 
   useEffect(() => {
+    if (!showClassFilter) return;
+    function handleClick(e) {
+      if (classFilterRef.current && !classFilterRef.current.contains(e.target)) setShowClassFilter(false);
+    }
+    document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, [showClassFilter]);
+
+  useEffect(() => {
+    if (!showTeacherClassFilter) return;
+    function handleClick(e) {
+      if (teacherClassFilterRef.current && !teacherClassFilterRef.current.contains(e.target)) setShowTeacherClassFilter(false);
+    }
+    document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, [showTeacherClassFilter]);
+
+  useEffect(() => {
     let active = true;
     async function refreshTeachers() {
       try {
         const tRes = await schoolTeachers({
           q: teacherSearch,
+          className: teacherClassFilter || undefined,
           page: teacherPage,
           limit: TEACHERS_PER_PAGE
         });
@@ -776,7 +817,7 @@ export default function SchoolDashboard({ session, onLogout }) {
     return () => {
       active = false;
     };
-  }, [teacherSearch, teacherPage]);
+  }, [teacherSearch, teacherClassFilter, teacherPage]);
 
   useEffect(() => {
     let active = true;
@@ -784,6 +825,7 @@ export default function SchoolDashboard({ session, onLogout }) {
       try {
         const sRes = await schoolStudents({
           q: studentSearch,
+          className: studentClassFilter || undefined,
           page: studentPage,
           limit: STUDENTS_PER_PAGE
         });
@@ -798,7 +840,7 @@ export default function SchoolDashboard({ session, onLogout }) {
     return () => {
       active = false;
     };
-  }, [studentSearch, studentPage]);
+  }, [studentSearch, studentClassFilter, studentPage]);
 
   useEffect(() => {
     if (studentInvitePage > studentInviteTotalPages) {
@@ -1859,7 +1901,41 @@ export default function SchoolDashboard({ session, onLogout }) {
               }}
               placeholder="Search teachers by name/email/subject"
             />
+            <div ref={teacherClassFilterRef} style={{ position: 'relative', display: 'inline-block' }}>
+              <button
+                type="button"
+                className={`sd-inline-btn${teacherClassFilter ? ' primary' : ''}`}
+                onClick={() => setShowTeacherClassFilter((v) => !v)}
+                title="Filter by class"
+                style={{ display: 'flex', alignItems: 'center', gap: '5px', minWidth: '110px' }}
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
+                {teacherClassFilter || 'All Classes'}
+              </button>
+              {showTeacherClassFilter && (
+                <div className="sd-class-filter-dropdown">
+                  <button
+                    type="button"
+                    className={`sd-class-filter-option${!teacherClassFilter ? ' active' : ''}`}
+                    onClick={() => { setTeacherClassFilter(''); setTeacherPage(1); setShowTeacherClassFilter(false); }}
+                  >
+                    All Classes
+                  </button>
+                  {classOptions.map((cls) => (
+                    <button
+                      key={cls}
+                      type="button"
+                      className={`sd-class-filter-option${teacherClassFilter === cls ? ' active' : ''}`}
+                      onClick={() => { setTeacherClassFilter(cls); setTeacherPage(1); setShowTeacherClassFilter(false); }}
+                    >
+                      {cls}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
+          <div className="sd-student-scroll">
           <ul className="sd-list sd-teacher-list">
             {(teachers.length ? teachers : []).map((t) => {
               const tid = t.id || t.loginId;
@@ -1934,6 +2010,7 @@ export default function SchoolDashboard({ session, onLogout }) {
             })}
             {!teachers.length ? <li>No teachers match the current search.</li> : null}
           </ul>
+          </div>
           <div className="invite-pager">
             <button
               type="button"
@@ -1990,6 +2067,7 @@ export default function SchoolDashboard({ session, onLogout }) {
               <option value="expired">Expired</option>
             </select>
           </div>
+          <div className="sd-student-scroll">
           <ul className="sd-invite-list">
             {(invites.length ? invites : []).map((i) => (
               <li key={i.token}>
@@ -2022,6 +2100,7 @@ export default function SchoolDashboard({ session, onLogout }) {
             ))}
             {!invites.length ? <li>No invites match the current filters.</li> : null}
           </ul>
+          </div>
           <div className="invite-pager">
             <button
               type="button"
@@ -2206,7 +2285,41 @@ export default function SchoolDashboard({ session, onLogout }) {
               }}
               placeholder="Search students by name/class"
             />
+            <div ref={classFilterRef} style={{ position: 'relative', display: 'inline-block' }}>
+              <button
+                type="button"
+                className={`sd-inline-btn${studentClassFilter ? ' primary' : ''}`}
+                onClick={() => setShowClassFilter((v) => !v)}
+                title="Filter by class"
+                style={{ display: 'flex', alignItems: 'center', gap: '5px', minWidth: '110px' }}
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
+                {studentClassFilter || 'All Classes'}
+              </button>
+              {showClassFilter && (
+                <div className="sd-class-filter-dropdown">
+                  <button
+                    type="button"
+                    className={`sd-class-filter-option${!studentClassFilter ? ' active' : ''}`}
+                    onClick={() => { setStudentClassFilter(''); setStudentPage(1); setShowClassFilter(false); }}
+                  >
+                    All Classes
+                  </button>
+                  {classOptions.map((cls) => (
+                    <button
+                      key={cls}
+                      type="button"
+                      className={`sd-class-filter-option${studentClassFilter === cls ? ' active' : ''}`}
+                      onClick={() => { setStudentClassFilter(cls); setStudentPage(1); setShowClassFilter(false); }}
+                    >
+                      {cls}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
+          <div className="sd-student-scroll">
           <ul className="sd-list sd-teacher-list">
             {(students.length ? students : []).map((s) => {
               const sid = s.id || s.loginId;
@@ -2275,6 +2388,7 @@ export default function SchoolDashboard({ session, onLogout }) {
             })}
             {!students.length ? <li>No students match the current search.</li> : null}
           </ul>
+          </div>
           <div className="invite-pager">
             <button
               type="button"

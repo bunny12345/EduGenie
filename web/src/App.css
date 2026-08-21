@@ -574,20 +574,6 @@ textarea {
   color: #7c82a7;
 }
 
-/* ── Student Homepage PNG background ── */
-.eg-home-bg-wrap {
-  position: fixed;
-  top: 0;
-  left: 0;
-  width: 100vw;
-  height: 100vh;
-  pointer-events: none;
-  z-index: 0;
-  background-size: cover;
-  background-position: center;
-  background-repeat: no-repeat;
-}
-
 /* Glass-effect cards on the homepage */
 .eg-home-glass.cardish {
   background: rgba(255, 255, 255, 0.55) !important;
@@ -4254,9 +4240,14 @@ textarea {
 
 .invite-toolbar {
   margin-top: 10px;
-  display: grid;
-  grid-template-columns: 1fr 160px;
+  display: flex;
   gap: 8px;
+  align-items: center;
+}
+
+.invite-toolbar .invite-search {
+  flex: 1;
+  min-width: 0;
 }
 
 .invite-search,
@@ -4269,6 +4260,63 @@ textarea {
   font-size: 12px;
   color: #42528a;
   background: #fff;
+}
+
+.sd-class-filter-dropdown {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  min-width: 160px;
+  max-height: 260px;
+  overflow-y: auto;
+  background: #fff;
+  border: 1px solid #dfe5f7;
+  border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(39, 45, 100, 0.13);
+  z-index: 50;
+  padding: 4px;
+}
+
+.sd-class-filter-option {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: none;
+  border-radius: 7px;
+  padding: 7px 12px;
+  font-size: 12px;
+  font-family: inherit;
+  color: #42528a;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.sd-class-filter-option:hover {
+  background: #f0f2ff;
+}
+
+.sd-class-filter-option.active {
+  background: #e8ecff;
+  font-weight: 600;
+  color: #3b3fc0;
+}
+
+.sd-student-scroll {
+  max-height: 480px;
+  overflow-y: auto;
+  margin-top: 4px;
+  scrollbar-width: thin;
+  scrollbar-color: #c8cef0 transparent;
+}
+
+.sd-student-scroll::-webkit-scrollbar {
+  width: 6px;
+}
+
+.sd-student-scroll::-webkit-scrollbar-thumb {
+  background: #c8cef0;
+  border-radius: 3px;
 }
 
 .invite-pager {

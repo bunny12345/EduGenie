@@ -91,6 +91,7 @@ function App() {
   }, []);
 
   function handleLogin(nextSession) {
+    window.location.hash = '';
     setSession(nextSession);
     setSessionExpired(false);
     localStorage.setItem('edugenie.session', JSON.stringify(nextSession));
@@ -98,6 +99,7 @@ function App() {
   }
 
   function handleLogout() {
+    window.location.hash = '';
     setSession(null);
     setSessionExpired(false);
     localStorage.removeItem('edugenie.session');
