@@ -459,6 +459,7 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
   const [chatInput, setChatInput] = useState('');
   const [chatLoading, setChatLoading] = useState(false);
   const [chatFollowups, setChatFollowups] = useState([]);
+  const [showChatActions, setShowChatActions] = useState(false);
   const [chatImages, setChatImages] = useState([]);
   const [chatImageError, setChatImageError] = useState('');
   const [chatReadAloudId, setChatReadAloudId] = useState('');
@@ -1954,6 +1955,7 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
       // Show follow-up suggestions if provided
       if (Array.isArray(res?.followups) && res.followups.length) {
         setChatFollowups(res.followups);
+        setShowChatActions(true);
       }
       setChatImages([]);
       loadLearningTimelinePanel();
@@ -2728,47 +2730,61 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
         ) : null}
         <div ref={chatEndRef} />
       </div>
-      {chatFollowups.length > 0 && !chatLoading ? (
-        <div className="eg-ai-followups">
-          {chatFollowups.map((f, i) => (
-            <button
-              key={i}
-              type="button"
-              className="eg-ai-followup-btn"
-              onClick={() => onSendTutorMessage(f)}
-            >
-              {f}
-            </button>
-          ))}
-        </div>
-      ) : null}
-
-      {/* ── Interactive Learning Actions ──────────────────────────────── */}
+      {/* ── Collapsible suggestions & actions toggle ──────────────────── */}
       {!chatLoading && chatHistory.length > 0 && !quizRushActive && !explainBackActive ? (
-        <div className="eg-ai-interactive-actions">
+        <div className="eg-ai-actions-wrap">
           <button
             type="button"
-            className="eg-ai-action-btn eg-ai-action-quiz"
-            onClick={onRequestCheckQuestion}
-            disabled={checkQuestionLoading}
+            className={`eg-ai-actions-toggle ${showChatActions ? 'is-open' : ''}`}
+            onClick={() => setShowChatActions((v) => !v)}
           >
-            {checkQuestionLoading ? '⏳ Generating...' : '🧠 Quiz Me'}
+            <span className="eg-ai-actions-toggle-icon">💡</span>
+            <span>{showChatActions ? 'Hide suggestions' : 'Suggestions & Actions'}</span>
+            <span className={`eg-ai-actions-caret ${showChatActions ? 'open' : ''}`}>▾</span>
           </button>
-          <button
-            type="button"
-            className="eg-ai-action-btn eg-ai-action-explain"
-            onClick={() => onStartExplainBack()}
-          >
-            🗣️ Explain Back
-          </button>
-          <button
-            type="button"
-            className="eg-ai-action-btn eg-ai-action-rush"
-            onClick={onStartQuizRush}
-            disabled={quizRushLoading}
-          >
-            {quizRushLoading ? '⏳ Loading...' : '⚡ Quiz Rush'}
-          </button>
+          {showChatActions && (
+            <div className="eg-ai-actions-panel">
+              {chatFollowups.length > 0 ? (
+                <div className="eg-ai-followups">
+                  {chatFollowups.map((f, i) => (
+                    <button
+                      key={i}
+                      type="button"
+                      className="eg-ai-followup-btn"
+                      onClick={() => { onSendTutorMessage(f); setShowChatActions(false); }}
+                    >
+                      {f}
+                    </button>
+                  ))}
+                </div>
+              ) : null}
+              <div className="eg-ai-interactive-actions">
+                <button
+                  type="button"
+                  className="eg-ai-action-btn eg-ai-action-quiz"
+                  onClick={() => { onRequestCheckQuestion(); setShowChatActions(false); }}
+                  disabled={checkQuestionLoading}
+                >
+                  {checkQuestionLoading ? '⏳ Generating...' : '🧠 Quiz Me'}
+                </button>
+                <button
+                  type="button"
+                  className="eg-ai-action-btn eg-ai-action-explain"
+                  onClick={() => { onStartExplainBack(); setShowChatActions(false); }}
+                >
+                  🗣️ Explain Back
+                </button>
+                <button
+                  type="button"
+                  className="eg-ai-action-btn eg-ai-action-rush"
+                  onClick={() => { onStartQuizRush(); setShowChatActions(false); }}
+                  disabled={quizRushLoading}
+                >
+                  {quizRushLoading ? '⏳ Loading...' : '⚡ Quiz Rush'}
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       ) : null}
 

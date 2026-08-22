@@ -180,7 +180,7 @@ export default function SchoolDashboard({ session, onLogout }) {
   // to explain a subject that is registered but not attached to this class.
   const [curriculumAllSubjects, setCurriculumAllSubjects] = useState([]);
   const [curriculumLoadError, setCurriculumLoadError] = useState('');
-  const [curriculumPdfFile, setCurriculumPdfFile] = useState(null);
+  const [curriculumPdfFiles, setCurriculumPdfFiles] = useState([]);
   const [curriculumEditing, setCurriculumEditing] = useState(null);
   const [curriculumRowBusy, setCurriculumRowBusy] = useState('');
   const [curriculumConfirmDelete, setCurriculumConfirmDelete] = useState(null);
@@ -581,8 +581,8 @@ export default function SchoolDashboard({ session, onLogout }) {
       setNote('Enter a lesson name.');
       return;
     }
-    if (!curriculumPdfFile) {
-      setNote('Choose the lesson PDF to upload.');
+    if (!curriculumPdfFiles.length) {
+      setNote('Choose at least one lesson PDF to upload.');
       return;
     }
 
@@ -590,8 +590,6 @@ export default function SchoolDashboard({ session, onLogout }) {
     setNote('');
     let createdLessonId = '';
     try {
-      const dataUrl = await readFileAsDataUrl(curriculumPdfFile);
-
       const created = await createCurriculumLesson({
         teacherId: curriculumSubjectMatch.teacherId,
         subject: curriculumSubjectMatch.subject,
@@ -605,22 +603,26 @@ export default function SchoolDashboard({ session, onLogout }) {
       createdLessonId = String(created?.lesson?.id || '');
       if (!createdLessonId) throw new Error('Lesson was created without an id');
 
-      const uploaded = await uploadCurriculumLessonDocument(createdLessonId, {
-        fileName: curriculumPdfFile.name,
-        mimeType: curriculumPdfFile.type || 'application/pdf',
-        data: dataUrl
-      });
-      if (uploaded?.success === false) throw new Error(uploaded?.error || 'Upload failed');
+      const errors = [];
+      for (const file of curriculumPdfFiles) {
+        const dataUrl = await readFileAsDataUrl(file);
+        const uploaded = await uploadCurriculumLessonDocument(createdLessonId, {
+          fileName: file.name,
+          mimeType: file.type || 'application/pdf',
+          data: dataUrl
+        });
+        if (uploaded?.success === false || uploaded?.error) errors.push(uploaded?.error || `Failed: ${file.name}`);
+      }
 
       const lessonNumber = created?.lesson?.order_index;
       setNote(
-        uploaded?.error
-          ? `Lesson added with warnings: ${uploaded.error}`
-          : `Lesson ${lessonNumber || ''} "${curriculumLessonTitle.trim()}" added to ${curriculumSubjectMatch.subject} · ${curriculumClassName}.`.replace('  ', ' ')
+        errors.length
+          ? `Lesson added with warnings: ${errors.join('; ')}`
+          : `Lesson ${lessonNumber || ''} "${curriculumLessonTitle.trim()}" added with ${curriculumPdfFiles.length} doc(s) to ${curriculumSubjectMatch.subject} · ${curriculumClassName}.`.replace('  ', ' ')
       );
       setCurriculumLessonTitle('');
       setCurriculumLessonDescription('');
-      setCurriculumPdfFile(null);
+      setCurriculumPdfFiles([]);
       setCurriculumSubject(curriculumSubjectMatch.subject);
       await loadCurriculumPanel();
     } catch (e2) {
@@ -651,17 +653,16 @@ export default function SchoolDashboard({ session, onLogout }) {
       });
       if (res?.success === false) throw new Error(res?.error || 'Unable to update the lesson');
 
-      if (editing.replacementFile) {
-        const dataUrl = await readFileAsDataUrl(editing.replacementFile);
-        for (const doc of curriculumDocumentsByLesson[String(editing.lessonId)] || []) {
-          await deleteCurriculumLessonDocument(editing.lessonId, doc.id);
+      if (editing.additionalFiles && editing.additionalFiles.length) {
+        for (const file of editing.additionalFiles) {
+          const dataUrl = await readFileAsDataUrl(file);
+          const uploaded = await uploadCurriculumLessonDocument(editing.lessonId, {
+            fileName: file.name,
+            mimeType: file.type || 'application/pdf',
+            data: dataUrl
+          });
+          if (uploaded?.success === false) throw new Error(uploaded?.error || 'Upload failed');
         }
-        const uploaded = await uploadCurriculumLessonDocument(editing.lessonId, {
-          fileName: editing.replacementFile.name,
-          mimeType: editing.replacementFile.type || 'application/pdf',
-          data: dataUrl
-        });
-        if (uploaded?.success === false) throw new Error(uploaded?.error || 'Replacement upload failed');
       }
 
       setNote(`Lesson "${editing.title.trim()}" updated.`);
@@ -1729,20 +1730,24 @@ export default function SchoolDashboard({ session, onLogout }) {
                 </div>
 
                 <div className="eg-cc-field">
-                  <label htmlFor="cc-pdf">Lesson PDF</label>
+                  <label htmlFor="cc-pdf">Lesson PDFs (lesson content, revision notes, question banks, etc.)</label>
                   <input
                     id="cc-pdf"
                     type="file"
                     accept="application/pdf"
-                    onChange={(e) => setCurriculumPdfFile(e.target.files?.[0] || null)}
+                    multiple
+                    onChange={(e) => setCurriculumPdfFiles(Array.from(e.target.files || []))}
                   />
+                  {curriculumPdfFiles.length > 1 && (
+                    <span className="eg-cc-file-count">{curriculumPdfFiles.length} files selected</span>
+                  )}
                 </div>
 
                 <div className="eg-cc-submit">
                   <button
                     type="submit"
                     className="eg-cc-primary"
-                    disabled={curriculumPdfUploading || !curriculumSubjectMatch || !curriculumLessonTitle.trim() || !curriculumPdfFile}
+                    disabled={curriculumPdfUploading || !curriculumSubjectMatch || !curriculumLessonTitle.trim() || !curriculumPdfFiles.length}
                   >
                     {curriculumPdfUploading ? 'Adding lesson…' : 'Add Lesson'}
                   </button>
@@ -1798,11 +1803,12 @@ export default function SchoolDashboard({ session, onLogout }) {
                                     placeholder="Description (optional)"
                                   />
                                   <label className="eg-cc-replace">
-                                    <span>Replace PDF (optional)</span>
+                                    <span>Add more documents (revision notes, question banks, etc.)</span>
                                     <input
                                       type="file"
                                       accept="application/pdf"
-                                      onChange={(e) => setCurriculumEditing((c) => ({ ...c, replacementFile: e.target.files?.[0] || null }))}
+                                      multiple
+                                      onChange={(e) => setCurriculumEditing((c) => ({ ...c, additionalFiles: Array.from(e.target.files || []) }))}
                                     />
                                   </label>
                                   <div className="eg-cc-edit-actions">
@@ -1823,6 +1829,23 @@ export default function SchoolDashboard({ session, onLogout }) {
                                       <li key={doc.id} className={`eg-cc-doc is-${doc.extraction_status || 'pending'}`}>
                                         <a href={doc.file_url} target="_blank" rel="noreferrer">{doc.file_name}</a>
                                         <span className="eg-cc-doc-status">{doc.extraction_status || 'pending'}</span>
+                                        <button
+                                          type="button"
+                                          className="eg-cc-doc-remove"
+                                          title="Remove this document"
+                                          disabled={!!curriculumRowBusy}
+                                          onClick={async () => {
+                                            setCurriculumRowBusy(lesson.id);
+                                            try {
+                                              await deleteCurriculumLessonDocument(lesson.id, doc.id);
+                                              await loadCurriculumPanel();
+                                            } catch (err) {
+                                              setNote(err?.message || 'Failed to remove document');
+                                            } finally {
+                                              setCurriculumRowBusy('');
+                                            }
+                                          }}
+                                        >✕</button>
                                       </li>
                                     ))}
                                     {!docs.length ? <li className="eg-cc-doc is-missing">No PDF attached</li> : null}
@@ -1851,7 +1874,7 @@ export default function SchoolDashboard({ session, onLogout }) {
                                         lessonId: lesson.id,
                                         title: lesson.title || '',
                                         description: lesson.description || '',
-                                        replacementFile: null
+                                        additionalFiles: []
                                       })}
                                     >
                                       Edit
