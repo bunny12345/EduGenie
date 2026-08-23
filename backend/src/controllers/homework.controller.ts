@@ -129,6 +129,7 @@ export class HomeworkController {
         return {
         note: h.note ?? h?.tasks?.meta?.note ?? null,
         startAt: h.start_at ?? h?.tasks?.meta?.startAt ?? null,
+        lessonTitles: Array.isArray(h?.tasks?.meta?.lessonTitles) ? h.tasks.meta.lessonTitles : [],
         attachmentUrls: attachmentUrls.length ? attachmentUrls : (attachmentUrl ? [attachmentUrl] : []),
         attachmentUrl,
         id: h.id || `${id}-${h.subject || 'General'}-${h.title || 'Homework'}-${h.due_at || h.created_at || idx}-${idx}`,
@@ -193,6 +194,7 @@ export class HomeworkController {
         return {
         note: h.note ?? h?.tasks?.meta?.note ?? null,
         startAt: h.start_at ?? h?.tasks?.meta?.startAt ?? null,
+        lessonTitles: Array.isArray(h?.tasks?.meta?.lessonTitles) ? h.tasks.meta.lessonTitles : [],
         attachmentUrls: attachmentUrls.length ? attachmentUrls : (attachmentUrl ? [attachmentUrl] : []),
         attachmentUrl,
         id: h.id || `${id}-${h.subject || 'General'}-${h.title || 'Homework'}-${h.due_at || h.created_at || idx}-${idx}`,

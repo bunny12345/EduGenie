@@ -525,17 +525,59 @@ export class ChatService {
             .eq('lesson_id', lessonId)
             .order('created_at', { ascending: true });
           const chunks = Array.isArray((chunksRes as any)?.data) ? (chunksRes as any).data : [];
+
+          // Fetch document names so we can label chunks by source
+          const docIds = Array.from(new Set(chunks.map((c: any) => String(c?.document_id || '')).filter(Boolean)));
+          let docNameById = new Map<string, string>();
+          if (docIds.length) {
+            const docsRes = await this.db.client.from('lesson_documents').select('id,file_name').in('id', docIds);
+            const docRows = Array.isArray((docsRes as any)?.data) ? (docsRes as any).data : [];
+            docNameById = new Map(docRows.map((d: any) => [String(d.id || ''), String(d.file_name || 'document')]));
+          }
+
           if (chunks.length) {
-            const scored = chunks
+            // Score all chunks by similarity, then ensure every document is represented
+            const allScored = chunks
               .map((chunk: any) => {
                 const chunkEmb = Array.isArray(chunk?.embedding) ? chunk.embedding : null;
                 const score = chunkEmb ? this.embeddings.cosine(emb, chunkEmb) : 0;
                 return { chunk, score };
               })
-              .sort((a: any, b: any) => b.score - a.score)
-              .slice(0, 8);
+              .sort((a: any, b: any) => b.score - a.score);
 
-            lessonContextSection = `\n\n--- LESSON DOCUMENT CONTENT (from the uploaded PDF for "${lessonTitle || 'this lesson'}") ---\nUse the following lesson content as your PRIMARY source of truth when teaching. Your explanations, examples, and questions MUST be grounded in this content. Do not invent facts that contradict this material.\n${scored.map(({ chunk }, idx) => `${idx + 1}. ${String(chunk?.chunk_text || '').trim()}`).filter(Boolean).join('\n')}\n--- END LESSON CONTENT ---`;
+            // Guarantee at least 3 chunks per document so question banks aren't starved
+            const selected: typeof allScored = [];
+            const usedIds = new Set<string>();
+            const chunksByDoc = new Map<string, typeof allScored>();
+            for (const entry of allScored) {
+              const did = String(entry.chunk?.document_id || '');
+              if (!chunksByDoc.has(did)) chunksByDoc.set(did, []);
+              chunksByDoc.get(did)!.push(entry);
+            }
+            for (const [, docChunks] of chunksByDoc) {
+              for (const entry of docChunks.slice(0, 3)) {
+                const cid = String(entry.chunk?.id || entry.chunk?.chunk_index || '') + String(entry.chunk?.document_id || '');
+                if (!usedIds.has(cid)) { selected.push(entry); usedIds.add(cid); }
+              }
+            }
+            // Fill remaining slots with top-scoring chunks across all docs
+            for (const entry of allScored) {
+              if (selected.length >= 20) break;
+              const cid = String(entry.chunk?.id || entry.chunk?.chunk_index || '') + String(entry.chunk?.document_id || '');
+              if (!usedIds.has(cid)) { selected.push(entry); usedIds.add(cid); }
+            }
+            selected.sort((a, b) => b.score - a.score);
+
+            const contextLines = selected.map(({ chunk }, idx) => {
+              const docName = docNameById.get(String(chunk?.document_id || '')) || 'document';
+              return `${idx + 1}. [${docName}] ${String(chunk?.chunk_text || '').trim()}`;
+            }).filter(Boolean).join('\n');
+
+            lessonContextSection = `\n\n--- LESSON MATERIALS (all uploaded documents for "${lessonTitle || 'this lesson'}") ---\n` +
+              `These materials include lesson content, revision notes, important exam questions, and any other documents the school uploaded for this lesson.\n` +
+              `Use ALL of the following as your PRIMARY source of truth. When the student asks about important questions, exam prep, revision, or practice, prioritize content from documents whose names contain "important", "revision", "question bank", or similar.\n` +
+              `Your explanations, examples, and questions MUST be grounded in this material. Do not invent facts that contradict it.\n` +
+              `${contextLines}\n--- END LESSON MATERIALS ---`;
           } else {
             lessonContextSection = `\n\nSelected lesson: ${lessonTitle || 'Untitled lesson'}${lessonSubject ? ` (${lessonSubject})` : ''} — No lesson document content available. Teach from general knowledge but stay on the topic of "${lessonTitle}".`;
           }
@@ -744,7 +786,9 @@ export class ChatService {
       // ── Socratic Teaching Loop ──────────────────────────────────────────
       ` IMPORTANT — Follow a Socratic teaching cycle in every interaction:` +
       ` 1) TEACH: Explain ONE small concept clearly with a real-life example (2-4 sentences max).` +
-      ` 2) CHECK: End EVERY teaching reply with exactly ONE short question that tests whether the student understood what you just explained. Frame it naturally like "Can you tell me..." or "What do you think would happen if..." or present a mini MCQ.` +
+      ` 2) CHECK: End EVERY teaching reply with exactly ONE short question that tests whether the student understood what you just explained.` +
+      `    PRIORITY for check questions: If the lesson materials include an important questions PDF, question bank, or revision notes, pick a REAL question from those documents that relates to the concept you just taught. Present it as-is or lightly rephrase it. This is the student's #1 exam prep — use the actual questions teachers uploaded.` +
+      `    If no matching question exists in the uploaded materials for this concept, create a natural check question like "Can you tell me..." or "What do you think would happen if..." or a mini MCQ.` +
       ` 3) FEEDBACK: When the student answers your check question, give immediate feedback — praise if correct, gently correct if wrong with a simpler re-explanation, then move to the next micro-concept.` +
       ` 4) PROGRESS: After 2-3 successful checks in a row, congratulate the student on their progress and suggest they try "Explain Back" or "Quiz Rush" to lock in the knowledge (the student has buttons for these).` +
       ` Never dump multiple concepts without checking understanding. One concept → one check → feedback → next concept.` +
@@ -757,7 +801,14 @@ export class ChatService {
       ` Match emojis to the example when natural, like buildings for construction, plants for nature, books for study, or stars for success.` +
       ` Keep emoji use light: usually 0 to 3 per reply, never every sentence, and never in a distracting way.` +
       ` Keep responses concise (3-5 sentences for simple questions; use numbered steps for complex ones).` +
-      ` When a lesson is selected, treat the uploaded lesson PDF as the main teaching boundary.` +
+      ` When a lesson is selected, treat ALL uploaded lesson documents (lesson content, revision notes, important questions, question banks) as the main teaching boundary.` +
+      ` DOCUMENT PRIORITY RULES:` +
+      ` - Important questions and question bank documents are your most valuable resource. Weave those exact questions into your teaching as check questions, practice problems, and exam prep.` +
+      ` - Revision notes documents contain condensed key points. Use them to structure your explanations and ensure you cover what the school considers important.` +
+      ` - Lesson content documents provide the detailed teaching material. Use them for explanations and examples.` +
+      ` - When testing the student, ALWAYS prefer a real question from the uploaded question bank or important questions document over making up your own.` +
+      ` - When summarizing or revising, follow the structure from the revision notes document if available.` +
+      ` If the student asks about important questions, exam questions, revision, or practice, answer ONLY from the uploaded materials — especially from documents labeled as important questions, question banks, or revision notes.` +
       ` In lesson mode, only teach concepts that are present in or directly required by that selected lesson context.` +
       ` Do not drift into other chapters, extra syllabus areas, or advanced depth beyond school level unless the student explicitly asks to switch topics.` +
       ` If the student asks something outside the selected lesson, gently say it is outside this lesson and bring them back to the current lesson.` +

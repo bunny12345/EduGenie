@@ -198,6 +198,10 @@ export default function TeacherDashboard({ session, onLogout }) {
   const [editingDragOverImageIndex, setEditingDragOverImageIndex] = useState(null);
   const [assignStartAt, setAssignStartAt] = useState('');
   const [assignDueAt, setAssignDueAt] = useState('');
+  const [assignLessonIds, setAssignLessonIds] = useState([]);
+  const [assignAvailableLessons, setAssignAvailableLessons] = useState([]);
+  const [showLessonPicker, setShowLessonPicker] = useState(false);
+  const lessonPickerRef = useRef(null);
   const [activeAssignments, setActiveAssignments] = useState([]); // confirmed assignments shown at bottom
   const [homeworkHistory, setHomeworkHistory] = useState([]);     // all past assignments from backend
   const [editingHwId, setEditingHwId] = useState(null);
@@ -206,6 +210,9 @@ export default function TeacherDashboard({ session, onLogout }) {
   const [editingHwSubject, setEditingHwSubject] = useState('');
   const [editingHwStartAt, setEditingHwStartAt] = useState('');
   const [editingHwDueAt, setEditingHwDueAt] = useState('');
+  const [editingHwLessonIds, setEditingHwLessonIds] = useState([]);
+  const [showEditingLessonPicker, setShowEditingLessonPicker] = useState(false);
+  const editingLessonPickerRef = useRef(null);
   const [editingHwAttachmentUrls, setEditingHwAttachmentUrls] = useState([]);
   const [editingHwUploading, setEditingHwUploading] = useState(false);
   const [showHistoryDropdown, setShowHistoryDropdown] = useState(false);
@@ -871,6 +878,40 @@ export default function TeacherDashboard({ session, onLogout }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [studentSearch, studentClassFilter]);
 
+  // Auto-select the class when teacher only teaches one
+  useEffect(() => {
+    if (teacherTargetClass !== 'all') return;
+    if (allKnownClasses.length === 1) setTeacherTargetClass(allKnownClasses[0]);
+  }, [allKnownClasses, teacherTargetClass]);
+
+  // Load available lessons for homework chapter picker
+  useEffect(() => {
+    let active = true;
+    const cls = (!teacherTargetClass || teacherTargetClass === 'all') ? '' : teacherTargetClass;
+    (async () => {
+      try {
+        const res = await listCurriculumLessons({ className: cls, subject: assignSubject || '' });
+        const lessons = Array.isArray(res?.lessons) ? res.lessons : [];
+        if (active) setAssignAvailableLessons(lessons);
+      } catch { if (active) setAssignAvailableLessons([]); }
+    })();
+    return () => { active = false; };
+  }, [teacherTargetClass, assignSubject]);
+
+  useEffect(() => {
+    if (!showLessonPicker && !showEditingLessonPicker) return;
+    function handleClick(e) {
+      if (showLessonPicker && lessonPickerRef.current && !lessonPickerRef.current.contains(e.target)) {
+        setShowLessonPicker(false);
+      }
+      if (showEditingLessonPicker && editingLessonPickerRef.current && !editingLessonPickerRef.current.contains(e.target)) {
+        setShowEditingLessonPicker(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, [showLessonPicker, showEditingLessonPicker]);
+
   useEffect(() => {
     loadProgressPanel(selectedStudentId);
     loadDeliveryPanel(selectedStudentId);
@@ -1170,7 +1211,11 @@ export default function TeacherDashboard({ session, onLogout }) {
         attachmentUrl: allAttachmentUrls[0] || null,
         startAt: assignStartAt || null,
         dueAt: assignDueAt || null,
-        className: teacherTargetClass
+        className: teacherTargetClass,
+        lessonIds: assignLessonIds.length ? assignLessonIds : undefined,
+        lessonTitles: assignLessonIds.length
+          ? assignLessonIds.map((id) => assignAvailableLessons.find((l) => l.id === id)?.title || '').filter(Boolean)
+          : undefined
       });
       const created = Number(res?.created || 0);
       if (created) {
@@ -1214,6 +1259,8 @@ export default function TeacherDashboard({ session, onLogout }) {
         setAssignPreviewUrls([]);
         setAssignStartAt('');
         setAssignDueAt('');
+        setAssignLessonIds([]);
+        setAssignLessonIds([]);
         // Refresh from backend in background; keep optimistic card visible.
         loadHomeworkHistory();
       } else {
@@ -1369,6 +1416,7 @@ export default function TeacherDashboard({ session, onLogout }) {
     setEditingHwSubject(homework.subject || 'Mathematics');
     setEditingHwStartAt(homework.startAt || '');
     setEditingHwDueAt(homework.dueAt || '');
+    setEditingHwLessonIds(Array.isArray(homework.lessonIds) ? homework.lessonIds : []);
     setEditingHwAttachmentUrls(asUrlList(homework?.attachmentUrls || homework?.attachment_urls, homework?.attachmentUrl || homework?.attachment_url));
     setNote(`Editing "${homework.title || 'Homework'}". Update and save to resend to all students.`);
   }
@@ -1422,7 +1470,11 @@ export default function TeacherDashboard({ session, onLogout }) {
         note: editingHwNote || null,
         startAt: editingHwStartAt || null,
         dueAt: editingHwDueAt || null,
-        attachmentUrls: editingHwAttachmentUrls
+        attachmentUrls: editingHwAttachmentUrls,
+        lessonIds: editingHwLessonIds,
+        lessonTitles: editingHwLessonIds
+          .map((id) => assignAvailableLessons.find((lesson) => lesson.id === id)?.title || '')
+          .filter(Boolean)
       });
       const updatedHomework = res?.homework || {
         id: editingHwId,
@@ -1432,6 +1484,10 @@ export default function TeacherDashboard({ session, onLogout }) {
         startAt: editingHwStartAt || null,
         dueAt: editingHwDueAt || null,
         assignmentGroupId: activeAssignments.find((a) => a.id === editingHwId)?.assignmentGroupId || null,
+        lessonIds: editingHwLessonIds,
+        lessonTitles: editingHwLessonIds
+          .map((id) => assignAvailableLessons.find((lesson) => lesson.id === id)?.title || '')
+          .filter(Boolean),
         attachmentUrls: editingHwAttachmentUrls,
         attachmentUrl: editingHwAttachmentUrls[0] || null,
       };
@@ -1448,6 +1504,8 @@ export default function TeacherDashboard({ session, onLogout }) {
                 startAt: updatedHomework.startAt,
                 dueAt: updatedHomework.dueAt,
                 className: updatedHomework.className || a.className,
+                lessonIds: updatedHomework.lessonIds || editingHwLessonIds,
+                lessonTitles: updatedHomework.lessonTitles || [],
                 attachmentUrls: asUrlList(updatedHomework.attachmentUrls, updatedHomework.attachmentUrl),
                 attachmentUrl: updatedHomework.attachmentUrl || asUrlList(updatedHomework.attachmentUrls, updatedHomework.attachmentUrl)[0] || null
               }
@@ -1466,6 +1524,8 @@ export default function TeacherDashboard({ session, onLogout }) {
                 startAt: updatedHomework.startAt,
                 dueAt: updatedHomework.dueAt,
                 className: updatedHomework.className || a.className,
+                lessonIds: updatedHomework.lessonIds || editingHwLessonIds,
+                lessonTitles: updatedHomework.lessonTitles || [],
                 attachmentUrls: asUrlList(updatedHomework.attachmentUrls, updatedHomework.attachmentUrl),
                 attachmentUrl: updatedHomework.attachmentUrl || asUrlList(updatedHomework.attachmentUrls, updatedHomework.attachmentUrl)[0] || null
               }
@@ -1485,6 +1545,8 @@ export default function TeacherDashboard({ session, onLogout }) {
       setEditingHwSubject('');
       setEditingHwStartAt('');
       setEditingHwDueAt('');
+      setEditingHwLessonIds([]);
+      setShowEditingLessonPicker(false);
       setEditingHwAttachmentUrls([]);
       await loadHomeworkHistory();
     } catch (e2) {
@@ -1501,6 +1563,8 @@ export default function TeacherDashboard({ session, onLogout }) {
     setEditingHwSubject('');
     setEditingHwStartAt('');
     setEditingHwDueAt('');
+    setEditingHwLessonIds([]);
+    setShowEditingLessonPicker(false);
     setEditingHwAttachmentUrls([]);
     setNote('Edit cancelled.');
   }
@@ -2099,6 +2163,75 @@ export default function TeacherDashboard({ session, onLogout }) {
                   title={lockedSubject ? 'Locked to your subject' : undefined}
                   style={lockedSubject ? { background: '#f2f4fb', cursor: 'not-allowed' } : undefined}
                 />
+                {/* Chapter / Lesson picker */}
+                <div ref={lessonPickerRef} style={{ position: 'relative' }}>
+                  <button
+                    type="button"
+                    className={`td-lesson-picker-btn${assignLessonIds.length ? ' has-selection' : ''}`}
+                    onClick={() => setShowLessonPicker((v) => !v)}
+                  >
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+                    {assignLessonIds.length
+                      ? `${assignLessonIds.length} chapter${assignLessonIds.length > 1 ? 's' : ''} selected`
+                      : 'Select chapters (optional)'}
+                    <span style={{ marginLeft: 'auto', fontSize: '10px', transition: 'transform 0.2s', transform: showLessonPicker ? 'rotate(180deg)' : 'none' }}>▾</span>
+                  </button>
+                  {showLessonPicker && (
+                    <div className="td-lesson-picker-dropdown">
+                      {!teacherTargetClass || teacherTargetClass === 'all' ? (
+                        assignAvailableLessons.length > 0 ? null : (
+                        <div style={{ padding: '12px', fontSize: '12px', color: '#6b7280', textAlign: 'center' }}>
+                          Select a class to see chapters, or no lessons uploaded yet.
+                        </div>
+                        )
+                      ) : assignAvailableLessons.length === 0 ? (
+                        <div style={{ padding: '12px', fontSize: '12px', color: '#6b7280', textAlign: 'center' }}>
+                          No lessons uploaded for {assignSubject} in {teacherTargetClass} yet. Upload lessons from the school portal first.
+                        </div>
+                      ) : (
+                        <>
+                          <label className="td-lesson-picker-option">
+                            <input
+                              type="checkbox"
+                              checked={assignLessonIds.length === 0}
+                              onChange={() => setAssignLessonIds([])}
+                            />
+                            <span style={{ fontWeight: 600 }}>All chapters / General</span>
+                          </label>
+                          {assignAvailableLessons.map((lesson, idx) => (
+                            <label key={lesson.id} className="td-lesson-picker-option">
+                              <input
+                                type="checkbox"
+                                checked={assignLessonIds.includes(lesson.id)}
+                                onChange={(e) => {
+                                  if (e.target.checked) {
+                                    setAssignLessonIds((prev) => [...prev, lesson.id]);
+                                  } else {
+                                    setAssignLessonIds((prev) => prev.filter((id) => id !== lesson.id));
+                                  }
+                                }}
+                              />
+                              <span>{idx + 1}. {lesson.title}</span>
+                            </label>
+                          ))}
+                        </>
+                      )}
+                    </div>
+                  )}
+                  {assignLessonIds.length > 0 && (
+                    <div className="td-lesson-picker-tags">
+                      {assignLessonIds.map((id) => {
+                        const lesson = assignAvailableLessons.find((l) => l.id === id);
+                        return lesson ? (
+                          <span key={id} className="td-lesson-tag">
+                            📖 {lesson.title}
+                            <button type="button" onClick={() => setAssignLessonIds((prev) => prev.filter((x) => x !== id))}>✕</button>
+                          </span>
+                        ) : null;
+                      })}
+                    </div>
+                  )}
+                </div>
                 <textarea
                   rows={4}
                   value={assignNote}
@@ -2268,6 +2401,49 @@ export default function TeacherDashboard({ session, onLogout }) {
                         readOnly={!!lockedSubject}
                         title={lockedSubject ? 'Locked to your subject' : undefined}
                       />
+                    </div>
+                    <div ref={editingLessonPickerRef} style={{ position: 'relative' }}>
+                      <button
+                        type="button"
+                        className={`td-lesson-picker-btn${editingHwLessonIds.length ? ' has-selection' : ''}`}
+                        onClick={() => setShowEditingLessonPicker((value) => !value)}
+                      >
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+                        {editingHwLessonIds.length
+                          ? `${editingHwLessonIds.length} chapter${editingHwLessonIds.length > 1 ? 's' : ''} selected`
+                          : 'All chapters / General'}
+                        <span style={{ marginLeft: 'auto', fontSize: '10px', transform: showEditingLessonPicker ? 'rotate(180deg)' : 'none' }}>▾</span>
+                      </button>
+                      {showEditingLessonPicker && (
+                        <div className="td-lesson-picker-dropdown">
+                          <label className="td-lesson-picker-option">
+                            <input type="checkbox" checked={!editingHwLessonIds.length} onChange={() => setEditingHwLessonIds([])} />
+                            <span style={{ fontWeight: 600 }}>All chapters / General</span>
+                          </label>
+                          {assignAvailableLessons.length ? assignAvailableLessons.map((lesson, index) => (
+                            <label key={lesson.id} className="td-lesson-picker-option">
+                              <input
+                                type="checkbox"
+                                checked={editingHwLessonIds.includes(lesson.id)}
+                                onChange={(event) => setEditingHwLessonIds((current) => event.target.checked
+                                  ? [...current, lesson.id]
+                                  : current.filter((id) => id !== lesson.id))}
+                              />
+                              <span>{index + 1}. {lesson.title}</span>
+                            </label>
+                          )) : (
+                            <div style={{ padding: '12px', fontSize: '12px', color: '#6b7280' }}>No lessons available for this class and subject.</div>
+                          )}
+                        </div>
+                      )}
+                      {editingHwLessonIds.length > 0 && (
+                        <div className="td-lesson-picker-tags">
+                          {editingHwLessonIds.map((id) => {
+                            const lesson = assignAvailableLessons.find((item) => item.id === id);
+                            return lesson ? <span key={id} className="td-lesson-tag">📖 {lesson.title}</span> : null;
+                          })}
+                        </div>
+                      )}
                     </div>
                     <div>
                       <label style={{ display: 'block', fontSize: '13px', color: '#666', marginBottom: '4px' }}>Instructions / Note</label>

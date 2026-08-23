@@ -3855,6 +3855,13 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
                                   {/* Header */}
                                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '8px', flexWrap: 'wrap', marginBottom: '6px' }}>
                                     <div style={{ fontWeight: 700, fontSize: '14px', color: '#111827' }}>{h.title || 'Homework Task'}</div>
+                                    {Array.isArray(h.lessonTitles) && h.lessonTitles.length > 0 && (
+                                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '3px', marginTop: '2px' }}>
+                                        {h.lessonTitles.map((lt, ltIdx) => (
+                                          <span key={ltIdx} style={{ background: '#eef2ff', color: '#4338ca', borderRadius: '999px', padding: '2px 7px', fontSize: '10px', fontWeight: 600 }}>📖 {lt}</span>
+                                        ))}
+                                      </div>
+                                    )}
                                     <span style={{ fontSize: '12px', fontWeight: 700, color: statusColor, background: isSubmitted ? '#dcfce7' : '#fee2e2', borderRadius: '999px', padding: '3px 10px', whiteSpace: 'nowrap' }}>
                                       {statusLabel}
                                     </span>
@@ -3972,6 +3979,15 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
                           title="Click to view teacher instructions and assigned images"
                         >
                           <div style={{ fontWeight: 'bold', fontSize: '15px' }}>{h.title || 'Homework Task'}</div>
+                          {Array.isArray(h.lessonTitles) && h.lessonTitles.length > 0 && (
+                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
+                              {h.lessonTitles.map((lt, ltIdx) => (
+                                <span key={ltIdx} style={{ background: '#eef2ff', color: '#4338ca', borderRadius: '999px', padding: '2px 8px', fontSize: '10px', fontWeight: 600 }}>
+                                  📖 {lt}
+                                </span>
+                              ))}
+                            </div>
+                          )}
                           <span style={{ background: state.bg, color: state.color, borderRadius: '999px', padding: '3px 8px', fontSize: '11px', fontWeight: 700 }}>
                             {state.label}
                           </span>

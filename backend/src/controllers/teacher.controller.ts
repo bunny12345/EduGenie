@@ -118,6 +118,8 @@ export class TeacherController {
       assignmentGroupId: meta?.assignmentGroupId ?? null,
       attachmentUrls,
       attachmentUrl: attachmentUrls[0] ?? null,
+      lessonIds: Array.isArray(meta?.lessonIds) ? meta.lessonIds : [],
+      lessonTitles: Array.isArray(meta?.lessonTitles) ? meta.lessonTitles : [],
     };
   }
 
@@ -942,6 +944,8 @@ export class TeacherController {
         assignmentGroupId: this.readHomeworkMeta(h).assignmentGroupId,
         attachmentUrls: this.readHomeworkMeta(h).attachmentUrls,
         attachmentUrl: this.readHomeworkMeta(h).attachmentUrl,
+        lessonIds: this.readHomeworkMeta(h).lessonIds,
+        lessonTitles: this.readHomeworkMeta(h).lessonTitles,
         createdAt: h.created_at || null,
       }));
       return { success: true, assignments };
@@ -964,6 +968,8 @@ export class TeacherController {
           assignmentGroupId: this.readHomeworkMeta(h).assignmentGroupId,
           attachmentUrls: this.readHomeworkMeta(h).attachmentUrls,
           attachmentUrl: this.readHomeworkMeta(h).attachmentUrl,
+          lessonIds: this.readHomeworkMeta(h).lessonIds,
+          lessonTitles: this.readHomeworkMeta(h).lessonTitles,
           createdAt: h.created_at || null,
         }))
       };
@@ -1155,6 +1161,8 @@ export class TeacherController {
       .map((u: string) => String(u).trim());
     const attachmentUrl = attachmentUrls[0] || null;
     const assignmentGroupId = String(body?.assignmentGroupId || '').trim() || makeAssignmentGroupId();
+    const lessonIds = Array.isArray(body?.lessonIds) ? body.lessonIds.filter(Boolean) : [];
+    const lessonTitles = Array.isArray(body?.lessonTitles) ? body.lessonTitles.filter(Boolean) : [];
     const sharedMeta = {
       note,
       startAt,
@@ -1163,6 +1171,8 @@ export class TeacherController {
       assignmentGroupId,
       attachmentUrls,
       attachmentUrl,
+      lessonIds,
+      lessonTitles,
       teacherId: this.actorId(req),
     };
 
@@ -1313,6 +1323,8 @@ export class TeacherController {
     const note = body?.note ?? null;
     const startAt = body?.startAt || null;
     const dueAt = body?.dueAt || null;
+    const lessonIds = Array.isArray(body?.lessonIds) ? body.lessonIds.filter(Boolean) : [];
+    const lessonTitles = Array.isArray(body?.lessonTitles) ? body.lessonTitles.filter(Boolean) : [];
 
     const updatePayload: any = {
       title: title || undefined,
@@ -1323,6 +1335,9 @@ export class TeacherController {
       class_name: body?.className || undefined,
       attachment_urls: attachmentUrls,
       attachment_url: attachmentUrl,
+      tasks: {
+        meta: { lessonIds, lessonTitles }
+      },
     };
     Object.keys(updatePayload).forEach((key) => updatePayload[key] === undefined && delete updatePayload[key]);
 
@@ -1367,6 +1382,8 @@ export class TeacherController {
                 className: updatePayload.class_name ?? rowMeta?.className ?? null,
                 attachmentUrls,
                 attachmentUrl,
+                lessonIds,
+                lessonTitles,
                 teacherId,
               },
             },
@@ -1447,6 +1464,8 @@ export class TeacherController {
             className: updatePayload.class_name ?? seedMeta?.className ?? null,
             attachmentUrls,
             attachmentUrl,
+            lessonIds,
+            lessonTitles,
             teacherId,
           },
         },
@@ -1480,6 +1499,8 @@ export class TeacherController {
           assignmentGroupId: this.readHomeworkMeta(sample).assignmentGroupId,
           attachmentUrls: this.readHomeworkMeta(sample).attachmentUrls,
           attachmentUrl: this.readHomeworkMeta(sample).attachmentUrl,
+          lessonIds: this.readHomeworkMeta(sample).lessonIds,
+          lessonTitles: this.readHomeworkMeta(sample).lessonTitles,
           createdAt: sample?.created_at || seedRow?.created_at || null,
         },
       };
