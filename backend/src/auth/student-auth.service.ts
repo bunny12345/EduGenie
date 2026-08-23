@@ -18,6 +18,7 @@ type StudentAccount = {
   className?: string;
   teacherId?: string;
   schoolId?: string;
+  gender?: string;
 };
 
 type TeacherAccount = {
@@ -997,6 +998,14 @@ export class StudentAuthService implements OnModuleInit {
       loginId: account.loginId,
       grades: normalizeGrades(account.grades)
     };
+  }
+
+  getLocalStudent(studentId: string): { studentId: string; name?: string; className?: string; schoolId?: string; loginId?: string; gender?: string } | null {
+    const id = String(studentId || '').trim();
+    for (const account of StudentAuthService.localAccounts.values()) {
+      if (String(account.studentId || '').trim() === id) return account;
+    }
+    return null;
   }
 
   async createInvite(payload: {

@@ -188,6 +188,32 @@ function SubjectIcon({ subject }) {
   );
 }
 
+function SchoolServiceIcon({ type }) {
+  const paths = {
+    student: <><circle cx="12" cy="8" r="3"/><path d="M5 20c.8-3.2 3.2-5 7-5s6.2 1.8 7 5"/></>,
+    fee: <><rect x="5" y="3" width="14" height="18" rx="2"/><path d="M8 7h8M8 11h8M8 15h3"/><circle cx="16" cy="16" r="1"/></>,
+    transport: <><rect x="3" y="6" width="18" height="11" rx="2"/><path d="M5 17v2M19 17v2M3 11h18"/><circle cx="7" cy="15" r="1"/><circle cx="17" cy="15" r="1"/></>,
+    attendance: <><circle cx="12" cy="12" r="8"/><path d="M12 7v5l3 2M9 3h6"/></>,
+    medical: <><path d="M7 4h10v17H7z"/><path d="M10 2h4v4h-4zM12 9v6M9 12h6"/></>,
+    room: <><path d="M4 20V5h16v15M8 20v-5h8v5M8 9h8"/><circle cx="12" cy="12" r="1"/></>,
+    leaves: <><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M8 2v4M16 2v4M4 9h16M8 13h3M8 16h5"/></>,
+    query: <><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4M8.5 8.5a3 3 0 0 1 5 2c0 2-2 2-2 4M11.5 17h.01"/></>,
+    library: <><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></>,
+  };
+  return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">{paths[type] || paths.student}</svg>;
+}
+
+const SCHOOL_SERVICES = [
+  ['student', 'Student Info', '#6366f1', '#eef0ff'],
+  ['fee', 'Fee', '#e67e22', '#fff3e2'],
+  ['transport', 'Transport', '#0891b2', '#e0f7fa'],
+  ['attendance', 'Attendance', '#e11d48', '#fde8ee'],
+  ['medical', 'Medical Info', '#16a34a', '#e8f8ee'],
+  ['room', 'My Room', '#d97706', '#fff7e6'],
+  ['leaves', 'Leaves', '#2563eb', '#e8f0ff'],
+  ['query', 'Technical Query', '#db2777', '#fce7f3'],
+];
+
 function buildProgressSummary(rows) {
   const safeRows = Array.isArray(rows) ? rows : [];
   const bySubject = new Map();
@@ -204,10 +230,6 @@ function buildProgressSummary(rows) {
     const avg = Math.round(arr.reduce((a, b) => a + b, 0) / arr.length);
     return { subject, score: avg };
   });
-}
-
-function buildTrendPoints(rows) {
-  return (Array.isArray(rows) ? rows : []).map(getScore).filter((n) => n !== null).slice(-7);
 }
 
 function parseDate(value) {
@@ -322,31 +344,6 @@ function getHomeworkState(h) {
   return { submitted: false, resubmitted: false, overdue: false, expired: false, hide: false, label: 'Pending', color: '#6b7280', bg: '#f3f4f6' };
 }
 
-function Sparkline({ values }) {
-  const safeValues = safeArray(values);
-  if (!safeValues.length) return null;
-  const width = 180;
-  const height = 64;
-  const min = Math.min(...safeValues);
-  const max = Math.max(...safeValues);
-  const span = Math.max(max - min, 1);
-  const pts = safeValues.map((v, i) => {
-    const x = (i / Math.max(safeValues.length - 1, 1)) * (width - 10) + 5;
-    const y = height - 6 - ((v - min) / span) * (height - 16);
-    return `${x},${y}`;
-  });
-  const lastPoint = pts[pts.length - 1] || '0,0';
-  const last = String(lastPoint).split(',');
-
-  return (
-    <svg className="eg-spark" viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none" aria-hidden="true">
-      <polyline className="eg-spark-track" points={`5,${height - 6} ${width - 5},${height - 6}`} />
-      <polyline className="eg-spark-line" points={pts.join(' ')} pathLength="1" />
-      <circle className="eg-spark-dot" cx={last[0]} cy={last[1]} r="3" />
-    </svg>
-  );
-}
-
 // Sidebar tabs that used to be small cards on the Home screen. They now open as
 // their own focused page so Home can stay a clean overview.
 const UTILITY_TABS = {
@@ -370,6 +367,7 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
     if (!h) return 'Home';
     return 'Home';
   });
+  const [selectedSchoolService, setSelectedSchoolService] = useState(null);
 
   useEffect(() => {
     window.location.hash = activeSidebarTab === 'Home' ? (activeView === 'home' ? 'Home' : activeView) : activeSidebarTab;
@@ -419,6 +417,8 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
 
   const [dashboard, setDashboard] = useState(null);
   const [studentProfile, setStudentProfile] = useState(null);
+  const [showProfileDropdown, setShowProfileDropdown] = useState(false);
+  const profileDropdownRef = useRef(null);
   const [homework, setHomework] = useState([]);
   const [progress, setProgress] = useState([]);
   const [events, setEvents] = useState([]);
@@ -1026,6 +1026,15 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
   }, [studentProfile, dashboard, tutorSubject]);
 
   useEffect(() => {
+    if (!showProfileDropdown) return;
+    function handleClick(e) {
+      if (profileDropdownRef.current && !profileDropdownRef.current.contains(e.target)) setShowProfileDropdown(false);
+    }
+    document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, [showProfileDropdown]);
+
+  useEffect(() => {
     const timer = setInterval(() => {
       loadDashboardPanel();
       loadHomeworkPanel();
@@ -1103,6 +1112,10 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
   const greetingName = dashboard?.greetingName || sessionProfile?.name || 'Student';
   const classTeachers = Array.isArray(dashboard?.classTeachers) ? dashboard.classTeachers : [];
   const className = dashboard?.className || sessionProfile?.className || '';
+  const studentGender = (dashboard?.gender || studentProfile?.gender || '').toLowerCase();
+  const studentLoginId = dashboard?.loginId || studentProfile?.loginId || '';
+  const schoolName = dashboard?.schoolName || '';
+  const profileEmoji = studentGender === 'female' ? '👩' : studentGender === 'male' ? '👦' : '🧑';
   const streak = dashboard?.streak || {};
   const streakDays = Number(streak.days || 0);
   const streakLongest = Number(streak.longest || 0);
@@ -1133,7 +1146,6 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
   }, [coins]);
 
   const eventsTop = events.slice(0, 3);
-  const testsTop = tests.slice(0, 3);
   const libraryTop = library.slice(0, 4);
   const chatHistoryTop = chatHistory.slice(-3);
   const recentLessonTimeline = useMemo(() => safeArray(learningTimeline).filter((item) => item?.scopeType === 'lesson').slice(0, 4), [learningTimeline]);
@@ -1142,7 +1154,6 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
   const currentTheme = settings?.prefs?.theme || settings?.theme || 'Unknown';
   const currentLanguage = settings?.prefs?.language || settings?.language || 'Unknown';
   const progressSummary = useMemo(() => buildProgressSummary(progress), [progress]);
-  const trend = useMemo(() => buildTrendPoints(progress), [progress]);
   const tutorQuickPrompts = useMemo(() => {
     const lessonLabel = String(selectedTutorLesson?.title || '').trim();
     if (lessonLabel) {
@@ -3276,13 +3287,25 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
               )}
             </button>
             <span className="pill">🏅 {badges}</span>
-            <div className="eg-profile-chip">
-              <div className="eg-profile-avatar">🧑</div>
+            <div className="eg-profile-chip" ref={profileDropdownRef} onClick={() => setShowProfileDropdown((v) => !v)} style={{ cursor: 'pointer', position: 'relative' }}>
+              <div className="eg-profile-avatar">{profileEmoji}</div>
               <div className="eg-profile-meta">
                 <strong>Hi, {greetingName}</strong>
                 <span>{className ? `Student · ${className}` : 'Student'}</span>
               </div>
-              <span className="eg-profile-caret">▾</span>
+              <span className={`eg-profile-caret ${showProfileDropdown ? 'open' : ''}`}>▾</span>
+              {showProfileDropdown && (
+                <div className="eg-profile-dropdown">
+                  <div className="eg-profile-dropdown-avatar">{profileEmoji}</div>
+                  <strong className="eg-profile-dropdown-name">{greetingName}</strong>
+                  {schoolName && <span className="eg-profile-dropdown-school">🏫 {schoolName}</span>}
+                  <div className="eg-profile-dropdown-details">
+                    {className && <span>📚 {className}</span>}
+                    {studentGender && <span>{studentGender === 'female' ? '♀️' : '♂️'} {studentGender.charAt(0).toUpperCase() + studentGender.slice(1)}</span>}
+                    {studentLoginId && <span>🔑 {studentLoginId}</span>}
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </header>
@@ -3352,22 +3375,6 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
                   </blockquote>
                 </div>
 
-                <div className="eg-plan-box">
-                  <h3>Today's Plan</h3>
-                  {panelError.homework ? <p className="eg-loading">{panelError.homework}</p> : null}
-                  <ul>
-                    {/* Show only unique subject names — click to go to subject page */}
-                    {[...new Set((Array.isArray(classHomework) ? classHomework : []).map((h) => h?.subject || 'General'))].slice(0, 4).map((subj) => (
-                      <li key={subj} style={{ cursor: 'pointer', color: '#5b47ff', fontWeight: '600' }}
-                        onClick={() => setActiveView(subj)}>
-                        📚 {subj}
-                      </li>
-                    ))}
-                    {!panelLoading.homework && !classHomework.length ? <li>No homework tasks assigned.</li> : null}
-                  </ul>
-                  <button>Start Learning</button>
-                </div>
-
                 <div className={`eg-streak-box ${streakActiveToday ? 'done-today' : ''} ${streakAtRisk ? 'at-risk' : ''}`}>
                   <h4>Current Streak {streakActiveToday ? '✅' : ''}</h4>
                   <strong>{streakDays}</strong>
@@ -3429,6 +3436,36 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
               </div>
             </section>
 
+            <section className="eg-home-summary-row">
+              <article className="cardish eg-home-summary-card eg-home-glass">
+                <h4>📝 Homework</h4>
+                {panelError.homework ? <p className="eg-loading">{panelError.homework}</p> : null}
+                <ul className="mini-list">
+                  {[...new Set((Array.isArray(classHomework) ? classHomework : []).map((h) => h?.subject || 'General'))].slice(0, 5).map((subj) => {
+                    const count = classHomework.filter((h) => (h.subject || 'General') === subj && h.status !== 'submitted').length;
+                    return (
+                      <li key={subj} style={{ cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }} onClick={() => setActiveView(subj)}>
+                        <span style={{ color: '#5b47ff', fontWeight: 600 }}>📚 {subj}</span>
+                        {count > 0 ? <span className="eg-home-pending">{count} pending</span> : null}
+                      </li>
+                    );
+                  })}
+                  {!panelLoading.homework && !classHomework.length ? <li>No homework assigned.</li> : null}
+                </ul>
+              </article>
+
+              <article className="cardish eg-home-summary-card eg-home-glass">
+                <h4>Announcements</h4>
+                {panelError.dashboard ? <p className="eg-loading">{panelError.dashboard}</p> : null}
+                <ul className="mini-list bullets">
+                  {safeArray(announcementsTop).map((a) => (
+                    <li key={a.id || `${a.title}-${a.createdAt}`}><strong>{a.title || 'Announcement'}:</strong> {a.message || 'No details'}</li>
+                  ))}
+                  {!panelLoading.dashboard && !announcementsTop.length ? <li>No announcements yet.</li> : null}
+                </ul>
+              </article>
+            </section>
+
             <section className="eg-subject-row">
               {panelError.progress ? <p className="eg-loading">{panelError.progress}</p> : null}
               {safeArray(subjects).map((subj) => {
@@ -3462,84 +3499,99 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
 
             <section className="cardish eg-reco-card eg-grad-reco eg-home-glass">
               <div>
-                <h3>AI Recommends for You</h3>
-                <p>Based on your current progress and library data.</p>
+                <h3>Academics</h3>
+                <p>Quick access to your learning tools</p>
               </div>
-              {panelError.library ? <p className="eg-loading">{panelError.library}</p> : null}
-              <div className="eg-tag-row">
-                {safeArray(libraryTop).slice(0, 4).map((t) => (
-                  <span key={t.id || t.title}>{t.title || t.summary || 'Learning Resource'}</span>
+              <div className="eg-academ-grid">
+                <button className="eg-academ-card" onClick={() => onSidebarNavClick('AI Tutor')}>
+                  <div className="eg-academ-icon" style={{ background: '#eef0ff' }}>
+                    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#6366f1" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M12 8V4H8"/><rect x="2" y="2" width="20" height="8" rx="2"/><path d="M2 14h20"/><rect x="2" y="14" width="20" height="8" rx="2"/><circle cx="8" cy="6" r="1" fill="#6366f1"/><circle cx="8" cy="18" r="1" fill="#6366f1"/></svg>
+                  </div>
+                  <span>AI Tutor</span>
+                </button>
+                <button className="eg-academ-card" onClick={() => onSidebarNavClick('Homework')}>
+                  <div className="eg-academ-icon" style={{ background: '#fef3e2' }}>
+                    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#e67e22" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+                  </div>
+                  <span>Homework</span>
+                </button>
+                <button className="eg-academ-card" onClick={() => onSidebarNavClick('My Orchard')}>
+                  <div className="eg-academ-icon" style={{ background: '#e8f8ee' }}>
+                    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#22c55e" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22V12"/><path d="M5 12a7 7 0 0 1 14 0"/><path d="M5 12c0 4.4 3.1 8 7 10"/><path d="M19 12c0 4.4-3.1 8-7 10"/><circle cx="12" cy="5" r="3"/></svg>
+                  </div>
+                  <span>My Orchard</span>
+                </button>
+                <button className="eg-academ-card" onClick={() => onSidebarNavClick('Mock Tests')}>
+                  <div className="eg-academ-icon" style={{ background: '#fde8ee' }}>
+                    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#e11d48" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2"/><rect x="9" y="3" width="6" height="4" rx="2"/><path d="M9 14l2 2 4-4"/></svg>
+                  </div>
+                  <span>Mock Tests</span>
+                </button>
+                <button className="eg-academ-card" onClick={() => onSidebarNavClick('Progress')}>
+                  <div className="eg-academ-icon" style={{ background: '#e0f2fe' }}>
+                    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#0284c7" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+                  </div>
+                  <span>Progress</span>
+                </button>
+                <button className="eg-academ-card" onClick={() => onSidebarNavClick('Games')}>
+                  <div className="eg-academ-icon" style={{ background: '#fef9e7' }}>
+                    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#ca8a04" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="6" width="20" height="12" rx="2"/><line x1="6" y1="12" x2="10" y2="12"/><line x1="8" y1="10" x2="8" y2="14"/><circle cx="15" cy="11" r="1" fill="#ca8a04"/><circle cx="18" cy="13" r="1" fill="#ca8a04"/></svg>
+                  </div>
+                  <span>Games</span>
+                </button>
+                <button className="eg-academ-card" onClick={() => onSidebarNavClick('Calendar')}>
+                  <div className="eg-academ-icon" style={{ background: '#f0e6ff' }}>
+                    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#7c3aed" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+                  </div>
+                  <span>Calendar</span>
+                </button>
+                <button className="eg-academ-card" onClick={() => onSidebarNavClick('Rewards')}>
+                  <div className="eg-academ-icon" style={{ background: '#fff7ed' }}>
+                    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#ea580c" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="8" r="6"/><path d="M15.477 12.89L17 22l-5-3-5 3 1.523-9.11"/></svg>
+                  </div>
+                  <span>Rewards</span>
+                </button>
+                <button className="eg-academ-card" onClick={() => onSidebarNavClick('Library')}>
+                  <div className="eg-academ-icon" style={{ background: '#ecfdf5' }}>
+                    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#059669" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+                  </div>
+                  <span>Library</span>
+                </button>
+              </div>
+            </section>
+            <section className="cardish eg-services-card eg-home-glass">
+              <div className="eg-services-heading">
+                <div>
+                  <h3>School Services</h3>
+                  <p>Helpful school tools, customizable to your school</p>
+                </div>
+                {selectedSchoolService ? <button type="button" className="eg-services-close" onClick={() => setSelectedSchoolService(null)} aria-label="Close service details">✕</button> : null}
+              </div>
+              <div className="eg-services-grid">
+                {SCHOOL_SERVICES.map(([type, label, color, background]) => (
+                  <button
+                    key={type}
+                    type="button"
+                    className={`eg-service-card${selectedSchoolService?.label === label ? ' is-selected' : ''}`}
+                    onClick={() => setSelectedSchoolService({ label, color })}
+                  >
+                    <span className="eg-service-icon" style={{ color, background }}><SchoolServiceIcon type={type} /></span>
+                    <span>{label}</span>
+                  </button>
                 ))}
-                {!panelLoading.library && !libraryTop.length ? <span>No recommendations yet.</span> : null}
               </div>
+              {selectedSchoolService ? (
+                <div className="eg-service-demo-panel" style={{ borderColor: `${selectedSchoolService.color}44` }}>
+                  <strong>{selectedSchoolService.label}</strong>
+                  <span>This school service is ready to be customized for your school requirements.</span>
+                  <small>For now, this is a client demo preview. Your school can define the fields, approvals, notifications, and workflows.</small>
+                </div>
+              ) : null}
             </section>
           </div>
         </section>
 
-        <p className="eg-section-title">Your day at a glance</p>
-        <section className="eg-bottom-grid">
-          <article className="cardish eg-mini-card eg-grad-soft eg-home-glass">
-            <h4>Daily Focus</h4>
-            <ul className="mini-list bullets">
-              <li>Revise key concepts for 20 minutes</li>
-              <li>Complete one homework task before lunch</li>
-              <li>Practice one mock test section</li>
-            </ul>
-          </article>
-
-          <article className="cardish eg-mini-card eg-grad-soft eg-home-glass">
-            <h4>Learning Mode</h4>
-            <div className="eg-role-list">
-              <span>Guided Practice</span>
-              <span>Test Simulation</span>
-              <span>Quick Revision</span>
-            </div>
-          </article>
-
-          <article className="cardish eg-mini-card eg-grad-soft eg-timeline-card eg-home-glass">
-            <h4>Lesson Timeline</h4>
-            {panelError.timeline ? <p className="eg-loading">{panelError.timeline}</p> : null}
-            {!panelLoading.timeline && !panelError.timeline && !recentLessonTimeline.length && !recentSubjectTimeline.length ? (
-              <p className="eg-inline-note">Your lesson and subject learning threads will appear here after you start chatting with EduGenie.</p>
-            ) : null}
-            {recentLessonTimeline.length ? <p className="eg-timeline-section-title">Lesson threads</p> : null}
-            <div className="eg-timeline-list">
-              {recentLessonTimeline.map((item) => (
-                <div key={item.conversationId} className="eg-timeline-row">
-                  <div className="eg-timeline-copy">
-                    <strong>{item.lessonTitle || 'Lesson thread'}</strong>
-                    <span>{item.subject || 'General'} · {item.userMessageCount || 0} student messages</span>
-                    <small>{item.lastActivityAt ? `Last active ${fmtDate(item.lastActivityAt)}` : 'No recent activity'}</small>
-                  </div>
-                  <div className="eg-timeline-actions">
-                    {renderTimelineConfidenceBadge(item.confidence)}
-                    <button className="eg-inline-btn" type="button" onClick={() => onResumeTimelineThread(item)}>
-                      Resume
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
-            {recentSubjectTimeline.length ? <p className="eg-timeline-section-title">Subject threads</p> : null}
-            <div className="eg-timeline-list">
-              {recentSubjectTimeline.map((item) => (
-                <div key={item.conversationId} className="eg-timeline-row">
-                  <div className="eg-timeline-copy">
-                    <strong>{item.subject || 'General'}</strong>
-                    <span>All visible lessons · {item.userMessageCount || 0} student messages</span>
-                    <small>{item.lastActivityAt ? `Last active ${fmtDate(item.lastActivityAt)}` : 'No recent activity'}</small>
-                  </div>
-                  <div className="eg-timeline-actions">
-                    {renderTimelineConfidenceBadge(item.confidence)}
-                    <button className="eg-inline-btn" type="button" onClick={() => onResumeTimelineThread(item)}>
-                      Resume subject
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </article>
-
+        <section className="eg-bottom-grid eg-home-legacy-summary">
           <article className="cardish eg-mini-card eg-grad-soft eg-home-glass">
             <h4>📝 Homework</h4>
             {panelError.homework ? <p className="eg-loading">{panelError.homework}</p> : null}
@@ -3575,38 +3627,6 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
               ))}
               {!panelLoading.dashboard && !announcementsTop.length ? <li>No announcements yet.</li> : null}
             </ul>
-          </article>
-
-          <article className="cardish eg-mini-card eg-grad-soft eg-home-glass">
-            <h4>Mock Tests</h4>
-            {panelError.tests ? <p className="eg-loading">{panelError.tests}</p> : null}
-            <ul className="mini-list">
-              {safeArray(testsTop).map((t) => (
-                <li key={t.id} className="eg-list-with-action">
-                  <span>{t.title || t.name || 'Mock Test'}</span>
-                  <button className="eg-inline-btn" onClick={() => onStartTest(t.id)} disabled={startingTestId === t.id}>
-                    {startingTestId === t.id ? '...' : 'Start'}
-                  </button>
-                </li>
-              ))}
-              {!panelLoading.tests && !testsTop.length ? <li>No tests available.</li> : null}
-            </ul>
-            {testResult ? <p className="eg-inline-note">Last score: {String(testResult.score)} | {testResult.feedback}</p> : null}
-          </article>
-
-          <article className="cardish eg-mini-card eg-progress-card eg-grad-progress eg-home-glass">
-            <h4>Progress Dashboard</h4>
-            {panelError.progress ? <p className="eg-loading">{panelError.progress}</p> : null}
-            {trend.length > 1 ? <Sparkline values={trend} /> : <p className="eg-loading">Not enough points for trend chart.</p>}
-            <div className="eg-bars">
-              {safeArray(progressSummary).map((s) => (
-                <div key={s.subject} className="bar-row">
-                  <span>{s.subject}</span>
-                  <div><i style={{ width: `${Math.max(10, Math.min(100, s.score))}%` }} /></div>
-                  <small>{s.score}%</small>
-                </div>
-              ))}
-            </div>
           </article>
 
           <article className="cardish eg-mini-card eg-voice-card eg-grad-voice eg-home-glass">

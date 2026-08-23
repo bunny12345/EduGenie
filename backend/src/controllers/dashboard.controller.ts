@@ -41,6 +41,37 @@ export class DashboardController {
         teacher_id: profile.teacherId || null,
       };
 
+      // Fetch gender, loginId and school name for profile card
+      let gender: string | null = null;
+      let loginId: string | null = null;
+      let schoolName: string | null = null;
+      try {
+        const stuRows = await this.db.client.from('students').select('gender,login_id').eq('id', id).limit(1);
+        const stuRow = Array.isArray((stuRows as any)?.data) ? (stuRows as any).data[0] : null;
+        gender = stuRow?.gender || null;
+        loginId = stuRow?.login_id || null;
+        if (!loginId) {
+          const accRows = await this.db.client.from('student_accounts').select('login_id,gender').eq('student_id', id).limit(1);
+          const accRow = Array.isArray((accRows as any)?.data) ? (accRows as any).data[0] : null;
+          loginId = accRow?.login_id || null;
+          if (!gender) gender = accRow?.gender || null;
+        }
+      } catch { /* non-fatal */ }
+      if (!gender || !loginId) {
+        const local = this.studentAuth.getLocalStudent(id);
+        if (local) {
+          if (!gender) gender = local.gender || null;
+          if (!loginId) loginId = local.loginId || null;
+        }
+      }
+      try {
+        if (student.school_id) {
+          const schRows = await this.db.client.from('schools').select('school_name').eq('id', student.school_id).limit(1);
+          const schRow = Array.isArray((schRows as any)?.data) ? (schRows as any).data[0] : null;
+          schoolName = schRow?.school_name || null;
+        }
+      } catch { /* non-fatal */ }
+
       const hw = await this.db.client.from('homework').select('*').eq('student_id', id).order('due_at', { ascending: true }).limit(8);
       const homeworkRows = (hw && (hw as any).data) || [];
       const mergedHomeworkRows = Array.isArray(homeworkRows) && homeworkRows.length
@@ -122,6 +153,9 @@ export class DashboardController {
       const dashboard = {
         greetingName: student?.name || null,
         className: student?.class_name || null,
+        gender,
+        loginId,
+        schoolName,
         todayPlan,
         subjects,
         classTeachers,
