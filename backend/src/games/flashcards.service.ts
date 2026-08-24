@@ -71,6 +71,16 @@ export class FlashcardsService {
     }
   }
 
+  private async deleteRows(table: string, eqs: Array<[string, any]>): Promise<void> {
+    try {
+      let q: any = this.db.client.from(table).delete();
+      for (const [k, v] of eqs) q = q.eq(k, v);
+      await q;
+    } catch {
+      /* non-fatal */
+    }
+  }
+
   // ─── arcade catalog ─────────────────────────────────────────────────────────
   listGames(): GameCatalogEntry[] {
     return [...GAME_CATALOG].sort((a, b) => a.order - b.order);
@@ -302,6 +312,11 @@ export class FlashcardsService {
       return { success: true, deckId: deck.id, skipped: true, reason: 'already-generated' };
     }
 
+    // When force-regenerating, remove old cards so we don't get duplicates
+    if (opts.force && Number(deck.card_count || 0) > 0) {
+      await this.deleteRows('flashcards', [['deck_id', deck.id]]);
+    }
+
     const chunks = await this.selectRows('lesson_chunks', [['lesson_id', lessonId]]);
     const content = (chunks || [])
       .sort((a, b) => Number(a.chunk_index || 0) - Number(b.chunk_index || 0))
@@ -316,6 +331,21 @@ export class FlashcardsService {
 
     const inserted = await this.insertCards(deck, cards, 'ai');
     return { success: true, deckId: deck.id, cards: inserted };
+  }
+
+  async generateForAllLessons(): Promise<{ generated: number; skipped: number; failed: number }> {
+    let generated = 0, skipped = 0, failed = 0;
+    try {
+      const res = await this.db.client.from('lessons').select('id');
+      const lessons = Array.isArray((res as any)?.data) ? (res as any).data : [];
+      for (const lesson of lessons) {
+        const result = await this.generateForLesson(String(lesson.id || ''));
+        if (result.skipped) skipped++;
+        else if (result.success) generated++;
+        else failed++;
+      }
+    } catch { /* non-fatal */ }
+    return { generated, skipped, failed };
   }
 
   // ─── subject + chapter picker data ───────────────────────────────────────────
@@ -375,6 +405,7 @@ export class FlashcardsService {
           return {
             deckId: d.id,
             chapterId: d.chapter_id || null,
+            lessonId: d.lesson_id || null,
             chapterNumber: Number(d.chapter_number || 0),
             title: d.chapter_title,
             cardCount: deckCards.length,

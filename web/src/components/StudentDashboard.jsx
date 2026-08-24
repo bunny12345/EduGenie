@@ -434,6 +434,9 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
   const [tutorLessons, setTutorLessons] = useState([]);
   const [selectedTutorLessonId, setSelectedTutorLessonId] = useState('');
   const [selectedTutorLesson, setSelectedTutorLesson] = useState(null);
+  // Set while a flashcard deep-link is in flight so subject-change effects can't
+  // reset the lesson selection or reload the wrong chat thread.
+  const tutorHandoffRef = useRef(false);
 
   const [startingTestId, setStartingTestId] = useState('');
   const [startingHomeworkId, setStartingHomeworkId] = useState('');
@@ -723,23 +726,28 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
     }
   }
 
-  async function loadTutorLessonsPanel(subjectOverride) {
+  async function loadTutorLessonsPanel(subjectOverride, lessonIdOverride) {
     const className = String(
       studentProfile?.className
       || studentProfile?.class_name
+      || dashboard?.className
       || dashboard?.student?.className
       || dashboard?.student?.class_name
       || ''
     ).trim();
     const subject = String(subjectOverride || tutorSubject || '').trim();
-    if (!className) {
+    if (!className && !lessonIdOverride) {
       setTutorLessons([]);
       setSelectedTutorLesson(null);
       return [];
     }
 
     try {
-      const res = await listCurriculumLessons({ className, subject });
+      // Normal path: every lesson for the class+subject (populates the dropdown).
+      // The lessonId fallback only kicks in when the class isn't resolved yet.
+      const res = await listCurriculumLessons(
+        className ? { className, subject } : { lessonId: lessonIdOverride }
+      );
       const lessons = Array.isArray(res?.lessons) ? res.lessons : [];
       setTutorLessons(lessons);
       setSelectedTutorLesson((prev) => {
@@ -897,12 +905,12 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
     }
   }
 
-  function getCurrentTutorConversationId() {
-    const normalizedSubject = String(tutorSubject || 'General')
+  function getCurrentTutorConversationId(lessonOverride, subjectOverride) {
+    const normalizedSubject = String(subjectOverride || tutorSubject || 'General')
       .trim()
       .toLowerCase()
       .replace(/[^a-z0-9]+/g, '-');
-    const lessonPart = String(selectedTutorLesson?.id || '').trim();
+    const lessonPart = String(lessonOverride?.id || selectedTutorLesson?.id || '').trim();
     return lessonPart
       ? `conv-${studentId}:subject-${normalizedSubject}:lesson-${lessonPart}`
       : `conv-${studentId}:subject-${normalizedSubject}:all-lessons`;
@@ -1004,6 +1012,7 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
   }, [studentId]);
 
   useEffect(() => {
+    if (tutorHandoffRef.current) return;
     loadChatPanel(getCurrentTutorConversationId());
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [studentId, tutorSubject, selectedTutorLesson?.id]);
@@ -1019,6 +1028,7 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
   }, [subjects, tutorSubject]);
 
   useEffect(() => {
+    if (tutorHandoffRef.current) return;
     if (studentProfile?.className || studentProfile?.class_name || dashboard?.student?.className || dashboard?.student?.class_name) {
       loadTutorLessonsPanel(tutorSubject);
     }
@@ -1501,7 +1511,7 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
     setSelectedTutorLessonId(lessonId);
     setSelectedTutorLesson({ id: lessonId, title: lessonTitle, subject });
 
-    const lessons = await loadTutorLessonsPanel(subject);
+    const lessons = await loadTutorLessonsPanel(subject, lessonId);
     const matchedLesson = safeArray(lessons).find((lesson) => String(lesson?.id || '') === lessonId);
     if (matchedLesson) {
       setSelectedTutorLessonId(String(matchedLesson.id || ''));
@@ -1511,34 +1521,42 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
 
   // Deep-link from a flashcard's "Ask AI" button into the AI Tutor: open the
   // matching subject + chapter and auto-send an explain request for the card.
-  async function onAskTutorFromGame({ subjectName, chapterTitle, question, answer }) {
+  async function onAskTutorFromGame({ subjectName, lessonId, chapterTitle, question, answer }) {
     const subject = String(subjectName || tutorSubject || 'Science').trim() || 'Science';
+    tutorHandoffRef.current = true;
     setActiveSidebarTab('AI Tutor');
     setActiveView('home');
-    setTutorSubject(subject);
-    setSelectedTutorLessonId('');
-    setSelectedTutorLesson(null);
 
-    // Load the subject's lessons and try to match the chapter by title.
-    const lessons = await loadTutorLessonsPanel(subject);
-    const norm = (s) => String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
-    const target = norm(chapterTitle);
-    const matched = safeArray(lessons).find((l) => {
-      const t = norm(l?.title);
-      return t && target && (t === target || t.includes(target) || target.includes(t));
-    });
-    if (matched) {
-      setSelectedTutorLessonId(String(matched.id || ''));
-      setSelectedTutorLesson(matched);
+    try {
+      // Load lessons for this subject, then select the matching one by ID or title
+      const lessons = await loadTutorLessonsPanel(subject, lessonId);
+      const norm = (s) => String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+      const target = norm(chapterTitle);
+      const matched = safeArray(lessons).find((l) => String(l?.id || '') === String(lessonId || '')) || safeArray(lessons).find((l) => {
+        const t = norm(l?.title);
+        return t && target && (t === target || t.includes(target) || target.includes(t));
+      });
+      setTutorSubject(subject);
+      if (matched) {
+        setSelectedTutorLessonId(String(matched.id || ''));
+        setSelectedTutorLesson(matched);
+      } else {
+        setSelectedTutorLessonId('');
+        setSelectedTutorLesson(null);
+      }
+
+      // Load the correct thread ourselves — the auto-reload effect is suppressed.
+      await loadChatPanel(getCurrentTutorConversationId(matched || null, subject));
+
+      const q = String(question || '').trim();
+      const a = String(answer || '').trim();
+      const prompt =
+        `I'm revising the chapter "${chapterTitle}". Please explain this flashcard in simple terms `
+        + `with a short example.\n\nQuestion: ${q}${a ? `\nAnswer: ${a}` : ''}`;
+      await onSendTutorMessage(prompt, { lesson: matched || null, subject });
+    } finally {
+      tutorHandoffRef.current = false;
     }
-
-    const q = String(question || '').trim();
-    const a = String(answer || '').trim();
-    const prompt =
-      `I'm revising the chapter "${chapterTitle}". Please explain this flashcard in simple terms `
-      + `with a short example.\n\nQuestion: ${q}${a ? `\nAnswer: ${a}` : ''}`;
-    // Small delay so the tab switch + lesson selection settle before sending.
-    setTimeout(() => { onSendTutorMessage(prompt); }, 60);
   }
 
   // A flashcard chapter bonus was awarded — reflect the new balance in the top bar.
@@ -1891,9 +1909,11 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
   async function onSendTutorMessage(overrideMsg, opts = {}) {
     const msg = (typeof overrideMsg === 'string' ? overrideMsg : chatInput).trim();
     if (!msg && !chatImages.length) return null;
+    const targetLesson = opts?.lesson || selectedTutorLesson;
+    const targetSubject = opts?.subject || targetLesson?.subject || tutorSubject;
     setChatFollowups([]);
     setChatImageError('');
-    const conversationId = getCurrentTutorConversationId();
+    const conversationId = getCurrentTutorConversationId(targetLesson, targetSubject);
     const recentMessages = safeArray(chatHistory)
       .slice(-20)
       .map((m) => ({
@@ -1911,9 +1931,9 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
       imageName: chatImages[0]?.name || '',
       imageDataUrls: chatImages.map((img) => img.dataUrl),
       imageNames: chatImages.map((img) => img.name),
-      lessonId: selectedTutorLesson?.id || '',
-      lessonTitle: selectedTutorLesson?.title || '',
-      lessonSubject: selectedTutorLesson?.subject || tutorSubject,
+      lessonId: targetLesson?.id || '',
+      lessonTitle: targetLesson?.title || '',
+      lessonSubject: targetLesson?.subject || targetSubject,
       fromVoice: Boolean(opts?.fromVoice),
       hidden: Boolean(opts?.hidden),
     };
@@ -1937,9 +1957,9 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
         chatImages[0]?.dataUrl || undefined,
         chatImages.map((img) => img.dataUrl),
         chatImages.map((img) => img.name),
-        selectedTutorLesson?.id || undefined,
-        selectedTutorLesson?.title || undefined,
-        selectedTutorLesson?.subject || tutorSubject || undefined,
+        targetLesson?.id || undefined,
+        targetLesson?.title || undefined,
+        targetLesson?.subject || targetSubject || undefined,
         abortController?.signal
       );
       // If the backend returned an error response (401/403/500 etc.), surface it

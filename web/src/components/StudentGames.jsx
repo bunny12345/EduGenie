@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { getGamesCatalog } from '../api';
 import Flashcards from './games/Flashcards';
 import './StudentGames.css';
@@ -11,6 +11,7 @@ import './StudentGames.css';
 export default function StudentGames({ studentId, greetingName, onAskTutor, onCoinsEarned }) {
   const [games, setGames] = useState(null);
   const [activeGame, setActiveGame] = useState(null); // gameKey being played
+  const flashcardsBackRef = useRef(null);
 
   useEffect(() => {
     let alive = true;
@@ -26,14 +27,25 @@ export default function StudentGames({ studentId, greetingName, onAskTutor, onCo
     return (
       <div className="eg-games">
         <div className="eg-games-playhead">
-          <button className="eg-games-back" onClick={() => setActiveGame(null)}>← Arcade</button>
+          <button
+            className="eg-games-back"
+            onClick={() => {
+              if (active.gameKey === 'flashcards' && flashcardsBackRef.current?.()) return;
+              setActiveGame(null);
+            }}
+          >← Arcade</button>
           <div className="eg-games-playtitle" style={{ '--game-accent': active.accent }}>
             <span className="eg-games-playicon">{active.icon}</span>
             <strong>{active.title}</strong>
           </div>
         </div>
         {active.gameKey === 'flashcards' && (
-          <Flashcards studentId={studentId} onAskTutor={onAskTutor} onCoinsEarned={onCoinsEarned} />
+          <Flashcards
+            studentId={studentId}
+            onAskTutor={onAskTutor}
+            onCoinsEarned={onCoinsEarned}
+            onArcadeBackReady={(handler) => { flashcardsBackRef.current = handler; }}
+          />
         )}
       </div>
     );

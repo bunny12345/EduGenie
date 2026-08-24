@@ -8,10 +8,10 @@ import { getFlashcardOverview, getFlashcardCards, submitFlashcardReview, logGame
  *
  * Props:
  *   studentId      – the learner
- *   onAskTutor({ subjectName, chapterTitle, question, answer }) – deep-link to AI Tutor
+ *   onAskTutor({ subjectName, lessonId, chapterTitle, question, answer }) – deep-link to AI Tutor
  *   onCoinsEarned(totalCoins) – bubble the new coin balance up to the top bar
  */
-export default function Flashcards({ studentId, onAskTutor, onCoinsEarned }) {
+export default function Flashcards({ studentId, onAskTutor, onCoinsEarned, onArcadeBackReady }) {
   const [phase, setPhase] = useState('loading'); // loading | picker | playing | summary | empty
   const [subjects, setSubjects] = useState([]);
   const [activeSubjectKey, setActiveSubjectKey] = useState(null);
@@ -46,6 +46,18 @@ export default function Flashcards({ studentId, onAskTutor, onCoinsEarned }) {
   }, [studentId]);
 
   useEffect(() => { loadOverview(); }, [loadOverview]);
+
+  useEffect(() => {
+    if (typeof onArcadeBackReady !== 'function') return undefined;
+    onArcadeBackReady(() => {
+      if (phase === 'playing' || phase === 'summary') {
+        setPhase('picker');
+        return true;
+      }
+      return false;
+    });
+    return () => onArcadeBackReady(null);
+  }, [phase, onArcadeBackReady]);
 
   const activeSubject = useMemo(
     () => subjects.find((s) => s.subjectKey === activeSubjectKey) || null,
@@ -181,6 +193,7 @@ export default function Flashcards({ studentId, onAskTutor, onCoinsEarned }) {
     onAskTutor({
       subjectName: session.subjectName,
       subjectKey: session.subjectKey,
+      lessonId: session.chapter?.lessonId || null,
       chapterTitle: card.chapterTitle || session.chapterTitle,
       question: card.front,
       answer: card.back,

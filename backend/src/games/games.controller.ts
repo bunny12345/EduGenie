@@ -62,6 +62,14 @@ export class GamesController {
     return this.flashcards.generateForLesson(body.lessonId, { force: body.force, count: body.count });
   }
 
+  // Bulk-regenerate flashcards for all lessons that have chunks
+  @Post('flashcards/generate-all')
+  @UseGuards(AuthGuard)
+  async flashcardGenerateAll(@Req() req: any) {
+    const results = await this.flashcards.generateForAllLessons();
+    return { success: true, ...results };
+  }
+
   // Award the one-time 100-coin bonus for finishing every card in a chapter.
   @Post('flashcards/complete-chapter')
   @UseGuards(AuthGuard)

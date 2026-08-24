@@ -257,7 +257,7 @@ export class CurriculumController {
   }
 
   @Get('lessons')
-  async listLessons(@Req() req: any, @Query('className') className?: string, @Query('subject') subject?: string) {
+  async listLessons(@Req() req: any, @Query('className') className?: string, @Query('subject') subject?: string, @Query('lessonId') lessonId?: string) {
     try {
       const role = String(req?.actorRole || req?.user?.role || '').toLowerCase();
 
@@ -265,7 +265,8 @@ export class CurriculumController {
         const result = await this.curriculum.listLessons({
           schoolId: this.schoolIdFromReq(req),
           className,
-          subject
+          subject,
+          lessonId
         });
         return { success: true, ...result };
       }
@@ -274,7 +275,8 @@ export class CurriculumController {
         const result = await this.curriculum.listLessons({
           teacherId: this.teacherIdFromReq(req),
           className,
-          subject
+          subject,
+          lessonId
         });
         return { success: true, ...result };
       }
@@ -287,7 +289,8 @@ export class CurriculumController {
         const result = await this.curriculum.listLessons({
           teacherId: undefined,
           className: studentClassName,
-          subject
+          subject,
+          lessonId
         });
         return { success: true, ...result };
       }

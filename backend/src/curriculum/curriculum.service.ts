@@ -421,13 +421,13 @@ export class CurriculumService {
     await this.purgeLessonDerivedData(lessonId);
     const remaining = await this.db.client.from('lesson_chunks').select('id').eq('lesson_id', lessonId).limit(1);
     if (Array.isArray((remaining as any)?.data) && (remaining as any).data.length) {
-      this.flashcards.generateForLesson(lessonId).catch(() => { /* best-effort */ });
+      this.flashcards.generateForLesson(lessonId, { force: true }).catch(() => { /* best-effort */ });
     }
 
     return { lessonId, documentId, deleted: true };
   }
 
-  async listLessons(params: { teacherId?: string; schoolId?: string; className?: string; subject?: string }) {
+  async listLessons(params: { teacherId?: string; schoolId?: string; className?: string; subject?: string; lessonId?: string }) {
     const teacherId = String(params.teacherId || '').trim();
     const schoolId = String(params.schoolId || '').trim();
     const className = String(params.className || '').trim();
@@ -442,7 +442,8 @@ export class CurriculumService {
       if (!teacherIds.length) return { lessons: [] };
       query = query.in('teacher_id', teacherIds);
     }
-    if (params.subject) query = query.eq('subject', String(params.subject).trim());
+    if (params.lessonId) query = query.eq('id', String(params.lessonId).trim());
+    if (params.subject) query = query.ilike('subject', String(params.subject).trim());
 
     const res = await query.order('order_index', { ascending: true }).order('created_at', { ascending: true });
     const lessons = Array.isArray((res as any)?.data) ? (res as any).data : [];
@@ -600,7 +601,7 @@ export class CurriculumService {
       // Fire-and-forget: pre-build this chapter's flashcards from the freshly
       // extracted content so students never wait on the AI (and we only spend
       // tokens once per chapter). Failures here must not affect the upload.
-      this.flashcards.generateForLesson(lessonId).catch(() => { /* best-effort */ });
+      this.flashcards.generateForLesson(lessonId, { force: true }).catch(() => { /* best-effort */ });
 
       return {
         document: { ...doc, extraction_status: 'completed' },
