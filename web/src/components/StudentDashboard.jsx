@@ -189,18 +189,18 @@ function SubjectIcon({ subject }) {
 }
 
 function SchoolServiceIcon({ type }) {
-  const paths = {
-    student: <><circle cx="12" cy="8" r="3"/><path d="M5 20c.8-3.2 3.2-5 7-5s6.2 1.8 7 5"/></>,
-    fee: <><rect x="5" y="3" width="14" height="18" rx="2"/><path d="M8 7h8M8 11h8M8 15h3"/><circle cx="16" cy="16" r="1"/></>,
-    transport: <><rect x="3" y="6" width="18" height="11" rx="2"/><path d="M5 17v2M19 17v2M3 11h18"/><circle cx="7" cy="15" r="1"/><circle cx="17" cy="15" r="1"/></>,
-    attendance: <><circle cx="12" cy="12" r="8"/><path d="M12 7v5l3 2M9 3h6"/></>,
-    medical: <><path d="M7 4h10v17H7z"/><path d="M10 2h4v4h-4zM12 9v6M9 12h6"/></>,
-    room: <><path d="M4 20V5h16v15M8 20v-5h8v5M8 9h8"/><circle cx="12" cy="12" r="1"/></>,
-    leaves: <><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M8 2v4M16 2v4M4 9h16M8 13h3M8 16h5"/></>,
-    query: <><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4M8.5 8.5a3 3 0 0 1 5 2c0 2-2 2-2 4M11.5 17h.01"/></>,
-    library: <><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></>,
+  const gifMap = {
+    student: 'student-info.gif',
+    fee: 'fee.gif',
+    transport: 'transport.gif',
+    attendance: 'attendance.gif',
+    medical: 'medical-info.gif',
+    room: 'my-room.gif',
+    leaves: 'leaves.gif',
+    query: 'technical-query.gif',
   };
-  return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">{paths[type] || paths.student}</svg>;
+  const filename = gifMap[type] || 'student-info.gif';
+  return <img src={`/assets/gifs/${filename}`} alt={type} width="36" height="36" style={{ objectFit: 'contain' }} />;
 }
 
 const SCHOOL_SERVICES = [
@@ -3525,55 +3525,55 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
               <div className="eg-academ-grid">
                 <button className="eg-academ-card" onClick={() => onSidebarNavClick('AI Tutor')}>
                   <div className="eg-academ-icon" style={{ background: '#eef0ff' }}>
-                    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#6366f1" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M12 8V4H8"/><rect x="2" y="2" width="20" height="8" rx="2"/><path d="M2 14h20"/><rect x="2" y="14" width="20" height="8" rx="2"/><circle cx="8" cy="6" r="1" fill="#6366f1"/><circle cx="8" cy="18" r="1" fill="#6366f1"/></svg>
+                    <img src="/assets/gifs/ai-tutor.gif" alt="AI Tutor" width="36" height="36" style={{ objectFit: 'contain' }} />
                   </div>
                   <span>AI Tutor</span>
                 </button>
                 <button className="eg-academ-card" onClick={() => onSidebarNavClick('Homework')}>
                   <div className="eg-academ-icon" style={{ background: '#fef3e2' }}>
-                    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#e67e22" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+                    <img src="/assets/gifs/homework.gif" alt="Homework" width="36" height="36" style={{ objectFit: 'contain' }} />
                   </div>
                   <span>Homework</span>
                 </button>
                 <button className="eg-academ-card" onClick={() => onSidebarNavClick('My Orchard')}>
                   <div className="eg-academ-icon" style={{ background: '#e8f8ee' }}>
-                    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#22c55e" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22V12"/><path d="M5 12a7 7 0 0 1 14 0"/><path d="M5 12c0 4.4 3.1 8 7 10"/><path d="M19 12c0 4.4-3.1 8-7 10"/><circle cx="12" cy="5" r="3"/></svg>
+                    <img src="/assets/gifs/my-orchard.gif" alt="My Orchard" width="36" height="36" style={{ objectFit: 'contain' }} />
                   </div>
                   <span>My Orchard</span>
                 </button>
                 <button className="eg-academ-card" onClick={() => onSidebarNavClick('Mock Tests')}>
                   <div className="eg-academ-icon" style={{ background: '#fde8ee' }}>
-                    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#e11d48" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2"/><rect x="9" y="3" width="6" height="4" rx="2"/><path d="M9 14l2 2 4-4"/></svg>
+                    <img src="/assets/gifs/mock-tests.gif" alt="Mock Tests" width="36" height="36" style={{ objectFit: 'contain' }} />
                   </div>
                   <span>Mock Tests</span>
                 </button>
                 <button className="eg-academ-card" onClick={() => onSidebarNavClick('Progress')}>
                   <div className="eg-academ-icon" style={{ background: '#e0f2fe' }}>
-                    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#0284c7" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+                    <img src="/assets/gifs/progress.gif" alt="Progress" width="36" height="36" style={{ objectFit: 'contain' }} />
                   </div>
                   <span>Progress</span>
                 </button>
                 <button className="eg-academ-card" onClick={() => onSidebarNavClick('Games')}>
                   <div className="eg-academ-icon" style={{ background: '#fef9e7' }}>
-                    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#ca8a04" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="6" width="20" height="12" rx="2"/><line x1="6" y1="12" x2="10" y2="12"/><line x1="8" y1="10" x2="8" y2="14"/><circle cx="15" cy="11" r="1" fill="#ca8a04"/><circle cx="18" cy="13" r="1" fill="#ca8a04"/></svg>
+                    <img src="/assets/gifs/games.gif" alt="Games" width="36" height="36" style={{ objectFit: 'contain' }} />
                   </div>
                   <span>Games</span>
                 </button>
                 <button className="eg-academ-card" onClick={() => onSidebarNavClick('Calendar')}>
                   <div className="eg-academ-icon" style={{ background: '#f0e6ff' }}>
-                    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#7c3aed" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+                    <img src="/assets/gifs/calendar.gif" alt="Calendar" width="36" height="36" style={{ objectFit: 'contain' }} />
                   </div>
                   <span>Calendar</span>
                 </button>
                 <button className="eg-academ-card" onClick={() => onSidebarNavClick('Rewards')}>
                   <div className="eg-academ-icon" style={{ background: '#fff7ed' }}>
-                    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#ea580c" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="8" r="6"/><path d="M15.477 12.89L17 22l-5-3-5 3 1.523-9.11"/></svg>
+                    <img src="/assets/gifs/rewards.gif" alt="Rewards" width="36" height="36" style={{ objectFit: 'contain' }} />
                   </div>
                   <span>Rewards</span>
                 </button>
                 <button className="eg-academ-card" onClick={() => onSidebarNavClick('Library')}>
                   <div className="eg-academ-icon" style={{ background: '#ecfdf5' }}>
-                    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#059669" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+                    <img src="/assets/gifs/library.gif" alt="Library" width="36" height="36" style={{ objectFit: 'contain' }} />
                   </div>
                   <span>Library</span>
                 </button>
