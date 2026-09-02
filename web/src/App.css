@@ -846,8 +846,8 @@ textarea {
 
 .eg-plan-box h3,
 .eg-streak-box h4 {
-  margin: 0 0 8px;
-  font-size: 13px;
+  margin: 0 0 4px;
+  font-size: 12px;
   line-height: var(--lh-tight);
 }
 
@@ -878,8 +878,8 @@ textarea {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 2px;
-  padding: 8px 10px;
+  gap: 1px;
+  padding: 6px 10px 8px;
   box-shadow: 0 10px 26px rgba(0, 0, 0, 0.1),
               0 0 0 2px #f5b942,
               0 0 14px rgba(245, 185, 66, 0.65),
@@ -887,7 +887,7 @@ textarea {
 }
 
 .eg-streak-box strong {
-  font-size: 1.5rem;
+  font-size: 1.25rem;
   color: var(--brand);
   line-height: 1;
 }
@@ -908,8 +908,8 @@ textarea {
 .eg-streak-sub {
   display: flex;
   flex-direction: column;
-  gap: 2px;
-  margin: 6px 0 2px;
+  gap: 1px;
+  margin: 2px 0 0;
 }
 .eg-streak-sub small {
   font-size: 10px;
@@ -941,17 +941,17 @@ textarea {
 /* Milestone badges row */
 .eg-streak-badges {
   display: flex;
-  gap: 5px;
-  margin: 4px 0 2px;
+  gap: 4px;
+  margin: 2px 0 1px;
 }
 .eg-streak-badge {
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 0;
-  min-width: 34px;
-  padding: 4px 3px 3px;
-  border-radius: 8px;
+  min-width: 28px;
+  padding: 3px 2px 2px;
+  border-radius: 7px;
   border: 1px solid #eceff9;
   background: #fafbff;
 }
@@ -968,10 +968,10 @@ textarea {
 /* Next milestone progress */
 .eg-streak-next {
   width: 100%;
-  margin: 4px 0 2px;
+  margin: 2px 0 1px;
   display: flex;
   flex-direction: column;
-  gap: 3px;
+  gap: 2px;
   align-items: center;
 }
 .eg-streak-next-bar {
@@ -991,13 +991,13 @@ textarea {
 .eg-streak-next small { font-size: 9px; color: #7f86ae; font-weight: 600; }
 
 .eg-goal-ring {
-  margin-top: 4px;
-  width: 68px;
-  height: 68px;
+  margin-top: 2px;
+  width: 54px;
+  height: 54px;
   border-radius: 50%;
   display: grid;
   place-items: center;
-  padding: 4px;
+  padding: 3px;
   transition: background 0.4s ease;
 }
 
@@ -1009,14 +1009,14 @@ textarea {
   display: grid;
   place-items: center;
   color: var(--brand);
-  font-size: 13px;
+  font-size: 11px;
   font-weight: 700;
-  line-height: 1.2;
+  line-height: 1.1;
   text-align: center;
 }
 
 .eg-goal-ring small {
-  font-size: 9px;
+  font-size: 8px;
   color: #7f86ae;
   font-weight: 500;
   display: block;
@@ -1145,18 +1145,18 @@ textarea {
   cursor: pointer;
   flex-shrink: 0;
   transition: background 0.15s, color 0.15s, transform 0.15s ease, box-shadow 0.15s ease;
-  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.14),
-              0 0 0 1.5px #000000,
-              0 0 6px rgba(0, 0, 0, 0.45);
+  box-shadow: 0 6px 14px rgba(0, 0, 0, 0.2),
+              0 0 0 1.5px rgba(70, 70, 78, 0.45),
+              0 0 6px rgba(0, 0, 0, 0.22);
 }
 
 .eg-subject-nav-back:hover {
   background: #f3f4f6;
   color: #1f2937;
   transform: translateY(-1px);
-  box-shadow: 0 6px 14px rgba(0, 0, 0, 0.16),
-              0 0 0 1.5px #000000,
-              0 0 10px rgba(0, 0, 0, 0.6);
+  box-shadow: 0 9px 18px rgba(0, 0, 0, 0.24),
+              0 0 0 1.5px rgba(70, 70, 78, 0.45),
+              0 0 10px rgba(0, 0, 0, 0.26);
 }
 
 .eg-subject-nav-back:active {
@@ -1194,9 +1194,9 @@ textarea {
   white-space: nowrap;
   flex-shrink: 0;
   transition: transform 0.15s, box-shadow 0.15s, background 0.15s, border-color 0.15s;
-  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.14),
-              0 0 0 1.5px #000000,
-              0 0 6px rgba(0, 0, 0, 0.45);
+  box-shadow: 0 6px 14px rgba(0, 0, 0, 0.2),
+              0 0 0 1.5px rgba(70, 70, 78, 0.45),
+              0 0 6px rgba(0, 0, 0, 0.22);
 }
 
 .eg-subject-nav-chip:hover,
@@ -1318,37 +1318,37 @@ textarea {
 /* Individual homework assignment cards, black 3D frame like every other panel. */
 .eg-hw-item-card {
   border-radius: 18px;
-  box-shadow: 0 6px 14px rgba(0, 0, 0, 0.16),
-              0 0 0 2px #000000,
-              0 0 10px rgba(0, 0, 0, 0.5),
+  box-shadow: 0 10px 22px rgba(0, 0, 0, 0.22),
+              0 0 0 2px rgba(70, 70, 78, 0.45),
+              0 0 8px rgba(0, 0, 0, 0.18),
               inset 0 1px 0 rgba(255, 255, 255, 0.4);
 }
 
 /* Every clickable button (and role="button" toggle) inside the Homework panel
-   gets the same black 3D frame + hover/press zoom used in the sidebar.
+   gets the same 3D frame + hover/press zoom used in the sidebar.
    border-radius here matters — role="button" divs (e.g. the homework title
    toggle row) have none of their own, so without it the frame looks sharp. */
 .eg-subject-hw-card button,
 .eg-subject-hw-card [role="button"] {
   border-radius: 10px;
   transition: transform 0.15s ease, box-shadow 0.15s ease;
-  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.14),
-              0 0 0 1.5px #000000,
-              0 0 6px rgba(0, 0, 0, 0.45);
+  box-shadow: 0 6px 14px rgba(0, 0, 0, 0.2),
+              0 0 0 1.5px rgba(70, 70, 78, 0.45),
+              0 0 6px rgba(0, 0, 0, 0.22);
 }
 .eg-subject-hw-card button:hover,
 .eg-subject-hw-card [role="button"]:hover {
   transform: translateY(-1px) scale(1.035);
-  box-shadow: 0 6px 14px rgba(0, 0, 0, 0.18),
-              0 0 0 1.5px #000000,
-              0 0 10px rgba(0, 0, 0, 0.6);
+  box-shadow: 0 9px 18px rgba(0, 0, 0, 0.24),
+              0 0 0 1.5px rgba(70, 70, 78, 0.45),
+              0 0 10px rgba(0, 0, 0, 0.26);
 }
 .eg-subject-hw-card button:active,
 .eg-subject-hw-card [role="button"]:active {
   transform: translateY(0) scale(0.96);
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.16),
-              0 0 0 1.5px #000000,
-              0 0 8px rgba(0, 0, 0, 0.65);
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.2),
+              0 0 0 1.5px rgba(70, 70, 78, 0.45),
+              0 0 8px rgba(0, 0, 0, 0.3);
 }
 
 .eg-subject-sidebar {
