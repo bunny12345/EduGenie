@@ -60,6 +60,10 @@ textarea {
   gap: 12px;
   min-height: 0;
   overflow-y: auto;
+  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.25),
+              0 0 0 2px #000000,
+              0 0 14px rgba(0, 0, 0, 0.5),
+              inset 0 1px 0 rgba(255, 255, 255, 0.08);
 }
 
 .eg-logo {
@@ -110,6 +114,19 @@ textarea {
   font-size: 12px;
   font-weight: 500;
   line-height: var(--lh-tight);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2),
+              0 0 0 1.5px #000000,
+              0 0 8px rgba(0, 0, 0, 0.55),
+              inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.eg-nav-item:hover {
+  transform: scale(1.035) translateY(-1px);
+  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.3),
+              0 0 0 1.5px #000000,
+              0 0 14px rgba(0, 0, 0, 0.7),
+              inset 0 1px 0 rgba(255, 255, 255, 0.14);
 }
 
 .eg-nav-icon {
@@ -171,21 +188,36 @@ textarea {
   cursor: pointer;
   font-size: 12px;
   font-weight: 600;
-  transition: background 0.18s ease, color 0.18s ease, border-color 0.18s ease;
+  transition: background 0.18s ease, color 0.18s ease, border-color 0.18s ease,
+              transform 0.15s ease, box-shadow 0.15s ease;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2),
+              0 0 0 1.5px #ffb4b4,
+              0 0 8px rgba(255, 180, 180, 0.5),
+              inset 0 1px 0 rgba(255, 255, 255, 0.08);
 }
 
 .eg-side-logout:hover {
   background: rgba(255, 107, 107, 0.18);
   border-color: rgba(255, 107, 107, 0.4);
   color: #fff;
+  transform: scale(1.035) translateY(-1px);
+  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.3),
+              0 0 0 1.5px #ffb4b4,
+              0 0 14px rgba(255, 180, 180, 0.75),
+              inset 0 1px 0 rgba(255, 255, 255, 0.14);
 }
 
 .eg-main {
-  display: grid;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
   gap: 10px;
   min-height: 0;
   overflow-y: auto;
   overflow-x: hidden;
+  /* The glow frame's drop-shadow bleeds past each panel's border — without this
+     the LAST panel's glow gets clipped flush against the scroll boundary. */
+  padding-bottom: 28px;
 }
 
 /* Full-bleed AI Tutor: the main column becomes a viewport-height flex stack so
@@ -653,7 +685,35 @@ textarea {
   backdrop-filter: blur(14px);
   -webkit-backdrop-filter: blur(14px);
   border-color: rgba(255, 255, 255, 0.4) !important;
-  box-shadow: 0 4px 20px rgba(80, 60, 140, 0.05), 0 1px 4px rgba(80, 60, 140, 0.02);
+  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.16),
+              0 0 0 2px #000000,
+              0 0 14px rgba(0, 0, 0, 0.5),
+              inset 0 1px 0 rgba(255, 255, 255, 0.5);
+}
+
+/* Subject cards glow black by default, like the other panels; hovering or
+   clicking swaps the ring/glow to the subject's own theme colour for a
+   pressable "button" feel — --subject-glow/--subject-glow-rgb are set
+   inline per card in JSX. */
+.eg-subject-card.eg-home-glass {
+  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.14),
+              0 0 0 2px #000000,
+              0 0 14px rgba(0, 0, 0, 0.5),
+              inset 0 1px 0 rgba(255, 255, 255, 0.5);
+}
+.eg-subject-card.eg-home-glass:hover {
+  transform: translateY(-3px) scale(1.015);
+  box-shadow: 0 14px 30px rgba(0, 0, 0, 0.16),
+              0 0 0 2px var(--subject-glow, #000000),
+              0 0 20px rgba(var(--subject-glow-rgb, 0, 0, 0), 0.75),
+              inset 0 1px 0 rgba(255, 255, 255, 0.6);
+}
+.eg-subject-card.eg-home-glass:active {
+  transform: translateY(0) scale(0.98);
+  box-shadow: 0 6px 14px rgba(0, 0, 0, 0.18),
+              0 0 0 2px var(--subject-glow, #000000),
+              0 0 16px rgba(var(--subject-glow-rgb, 0, 0, 0), 0.85),
+              inset 0 2px 6px rgba(0, 0, 0, 0.12);
 }
 .eg-bottom-grid.eg-home-legacy-summary {
   display: none !important;
@@ -720,6 +780,8 @@ textarea {
   gap: 10px;
 }
 
+/* Static 3D-style glow frame — black for general panels, gold for the
+   streak panel (see .eg-streak-box below). Applied to .eg-hero-card first. */
 .eg-hero-card {
   padding: 10px 12px;
 }
@@ -818,6 +880,10 @@ textarea {
   align-items: center;
   gap: 2px;
   padding: 8px 10px;
+  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.1),
+              0 0 0 2px #f5b942,
+              0 0 14px rgba(245, 185, 66, 0.65),
+              inset 0 1px 0 rgba(255, 255, 255, 0.6);
 }
 
 .eg-streak-box strong {
@@ -1078,20 +1144,36 @@ textarea {
   font-weight: 600;
   cursor: pointer;
   flex-shrink: 0;
-  transition: background 0.15s, color 0.15s;
+  transition: background 0.15s, color 0.15s, transform 0.15s ease, box-shadow 0.15s ease;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.14),
+              0 0 0 1.5px #000000,
+              0 0 6px rgba(0, 0, 0, 0.45);
 }
 
 .eg-subject-nav-back:hover {
   background: #f3f4f6;
   color: #1f2937;
+  transform: translateY(-1px);
+  box-shadow: 0 6px 14px rgba(0, 0, 0, 0.16),
+              0 0 0 1.5px #000000,
+              0 0 10px rgba(0, 0, 0, 0.6);
 }
 
+.eg-subject-nav-back:active {
+  transform: translateY(0) scale(0.97);
+}
+
+/* The chips' glow bleeds past their own edges — pad the scroll strip so it
+   isn't clipped by overflow-x:auto (which forces overflow-y to clip too),
+   offsetting with a matching negative margin so the row's height is unchanged. */
 .eg-subject-nav-scroll {
   display: flex;
   gap: 8px;
   overflow-x: auto;
   flex: 1;
   scrollbar-width: none;
+  padding: 16px 0;
+  margin: -16px 0;
 }
 
 .eg-subject-nav-scroll::-webkit-scrollbar { display: none; }
@@ -1112,15 +1194,27 @@ textarea {
   white-space: nowrap;
   flex-shrink: 0;
   transition: transform 0.15s, box-shadow 0.15s, background 0.15s, border-color 0.15s;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.14),
+              0 0 0 1.5px #000000,
+              0 0 6px rgba(0, 0, 0, 0.45);
 }
 
-.eg-subject-nav-chip:hover {
+.eg-subject-nav-chip:hover,
+.eg-subject-nav-chip.active {
   transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(0,0,0,0.06);
+  box-shadow: 0 6px 14px rgba(0, 0, 0, 0.14),
+              0 0 0 1.5px var(--subject-glow, #000000),
+              0 0 10px rgba(var(--subject-glow-rgb, 0, 0, 0), 0.6);
+}
+
+.eg-subject-nav-chip:active {
+  transform: translateY(0) scale(0.97);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.16),
+              0 0 0 1.5px var(--subject-glow, #000000),
+              0 0 10px rgba(var(--subject-glow-rgb, 0, 0, 0), 0.7);
 }
 
 .eg-subject-nav-chip.active {
-  box-shadow: 0 4px 16px rgba(91, 71, 255, 0.12);
   font-weight: 700;
 }
 
@@ -1157,13 +1251,18 @@ textarea {
   min-height: 70vh;
 }
 
-/* Glass-effect transparent cards over the subject background */
+/* Glass-effect transparent cards over the subject background — glow matches
+   the current subject's theme colour (--subject-glow/--subject-glow-rgb are
+   set once on the wrapping .eg-subject-page in JSX and inherit down). */
 .eg-subject-glass-card.cardish {
   background: rgba(255, 255, 255, 0.52) !important;
   backdrop-filter: blur(14px);
   -webkit-backdrop-filter: blur(14px);
   border-color: rgba(255, 255, 255, 0.35) !important;
-  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.03), 0 1px 4px rgba(0, 0, 0, 0.015);
+  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.14),
+              0 0 0 2px var(--subject-glow, #000000),
+              0 0 14px rgba(var(--subject-glow-rgb, 0, 0, 0), 0.5),
+              inset 0 1px 0 rgba(255, 255, 255, 0.5);
 }
 
 .eg-subject-header {
@@ -1173,6 +1272,10 @@ textarea {
   padding: 16px 20px;
   border-radius: 16px;
   border: 1.5px solid #e5e7eb;
+  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.1),
+              0 0 0 2px var(--subject-glow, #000000),
+              0 0 14px rgba(var(--subject-glow-rgb, 0, 0, 0), 0.45),
+              inset 0 1px 0 rgba(255, 255, 255, 0.5);
 }
 
 .eg-subject-header-icon {
@@ -1202,7 +1305,7 @@ textarea {
 }
 
 .eg-subject-hw-card {
-  padding: 16px;
+  padding: 16px 16px 26px;
   max-height: 78vh;
   overflow-y: auto;
   overflow-x: hidden;
@@ -1210,6 +1313,42 @@ textarea {
   border-radius: 16px;
   background: #fff;
   border: 1px solid #ece6ff;
+}
+
+/* Individual homework assignment cards, black 3D frame like every other panel. */
+.eg-hw-item-card {
+  border-radius: 18px;
+  box-shadow: 0 6px 14px rgba(0, 0, 0, 0.16),
+              0 0 0 2px #000000,
+              0 0 10px rgba(0, 0, 0, 0.5),
+              inset 0 1px 0 rgba(255, 255, 255, 0.4);
+}
+
+/* Every clickable button (and role="button" toggle) inside the Homework panel
+   gets the same black 3D frame + hover/press zoom used in the sidebar.
+   border-radius here matters — role="button" divs (e.g. the homework title
+   toggle row) have none of their own, so without it the frame looks sharp. */
+.eg-subject-hw-card button,
+.eg-subject-hw-card [role="button"] {
+  border-radius: 10px;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.14),
+              0 0 0 1.5px #000000,
+              0 0 6px rgba(0, 0, 0, 0.45);
+}
+.eg-subject-hw-card button:hover,
+.eg-subject-hw-card [role="button"]:hover {
+  transform: translateY(-1px) scale(1.035);
+  box-shadow: 0 6px 14px rgba(0, 0, 0, 0.18),
+              0 0 0 1.5px #000000,
+              0 0 10px rgba(0, 0, 0, 0.6);
+}
+.eg-subject-hw-card button:active,
+.eg-subject-hw-card [role="button"]:active {
+  transform: translateY(0) scale(0.96);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.16),
+              0 0 0 1.5px #000000,
+              0 0 8px rgba(0, 0, 0, 0.65);
 }
 
 .eg-subject-sidebar {
@@ -1669,7 +1808,7 @@ textarea {
   font-size: 14px;
   line-height: 1.68;
   width: fit-content;
-  max-width: min(78%, 900px);
+  max-width: min(88%, 1100px);
   flex: 0 0 auto;
   align-self: flex-start;
   letter-spacing: 0.01em;
@@ -1702,7 +1841,7 @@ textarea {
   justify-self: end;
   box-shadow: 0 8px 20px rgba(66, 74, 214, 0.28);
   color: #ffffff;
-  max-width: min(72%, 760px);
+  max-width: min(80%, 950px);
 }
 
 .eg-ai-msg-text {
@@ -2140,6 +2279,17 @@ textarea {
   transform: translateY(-1px);
 }
 
+.eg-ai-action-story {
+  background: linear-gradient(135deg, #22c55e, #16a34a);
+  color: #fff;
+  border-color: rgba(34, 197, 94, 0.4);
+}
+
+.eg-ai-action-story:hover:not(:disabled) {
+  background: linear-gradient(135deg, #16a34a, #15803d);
+  transform: translateY(-1px);
+}
+
 /* ── Due Review Nudge ─────────────────────────────────────────────── */
 .eg-ai-nudge {
   display: flex;
@@ -2291,6 +2441,17 @@ textarea {
   line-height: 1.5;
 }
 
+.eg-ai-explain-hint {
+  margin: 0 0 10px;
+  font-size: 11.5px;
+  color: #67e8c4;
+  background: rgba(52, 211, 153, 0.1);
+  border: 1px solid rgba(52, 211, 153, 0.25);
+  border-radius: 8px;
+  padding: 7px 10px;
+  line-height: 1.5;
+}
+
 .eg-ai-explain-textarea {
   width: 100%;
   box-sizing: border-box;
@@ -2339,6 +2500,24 @@ textarea {
   margin: 0;
   font-size: 12px;
   color: #fbbf24;
+}
+
+/* ── Story Mode Panel ─────────────────────────────────────────────── */
+.eg-ai-story-panel {
+  margin: 8px 12px;
+  padding: 14px;
+  background: linear-gradient(135deg, rgba(34, 197, 94, 0.08), rgba(21, 128, 61, 0.06));
+  border: 1.5px solid rgba(34, 197, 94, 0.25);
+  border-radius: 12px;
+  animation: fadeSlideUp 0.3s ease;
+}
+
+.eg-ai-story-text {
+  margin: 0 0 14px;
+  font-size: 13.5px;
+  color: #e2e8f0;
+  line-height: 1.7;
+  white-space: pre-wrap;
 }
 
 /* ── Quiz Rush Panel ──────────────────────────────────────────────── */
@@ -5320,11 +5499,11 @@ textarea {
   }
 
   .ai-msg {
-    max-width: min(88%, 900px);
+    max-width: min(88%, 1100px);
   }
 
   .ai-msg.user {
-    max-width: min(86%, 760px);
+    max-width: min(86%, 950px);
   }
 
   .eg-ai-chat-screen {

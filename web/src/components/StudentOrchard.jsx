@@ -293,6 +293,9 @@ export default function StudentOrchard({ studentId, greetingName = 'there' }) {
                 </span>
                 <ProgressRing value={t.progressPct} size={44} stroke={5} color={t.accentColor} />
               </div>
+              {t.dueReviewCount > 0 && (
+                <span className="eg-orch-tree-due-badge">📋 {t.dueReviewCount} review{t.dueReviewCount === 1 ? '' : 's'} due</span>
+              )}
               <div className="eg-orch-tree-art">
                 <TreeSprite treeType={t.treeType} stage={t.stage} size={128} accentColor={t.accentColor} health={t.health} />
                 {t.stage === 'golden_fruit' && (

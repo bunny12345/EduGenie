@@ -2,6 +2,11 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { getOrchardTree } from '../../api';
 import TreeSprite from './TreeSprite';
 import { STAGE_EMOJI } from './treeAssets';
+import RetentionCheckModal from './RetentionCheckModal';
+
+// Milestone keys that are unlocked via a retention-check modal rather than a
+// normal in-app activity, mapped to the review type completeOrchardReview expects.
+const RETENTION_MILESTONE_TYPE = { week_retention: 'week', month_retention: 'month' };
 
 // Milestone checklist grouped by the stage each requirement unlocks.
 // Mirrors the Knowledge Orchard growth spec.
@@ -72,6 +77,17 @@ export default function OrchardTreeDetail({ studentId, subjectKey, initialTree, 
   const [detail, setDetail] = useState(initialTree || null);
   const [loading, setLoading] = useState(!initialTree);
   const [activeChapterId, setActiveChapterId] = useState('');
+  const [reviewModal, setReviewModal] = useState(null); // { chapter, reviewType } | null
+
+  const loadDetail = React.useCallback(async () => {
+    if (!studentId || !subjectKey) return;
+    try {
+      const res = await getOrchardTree(studentId, subjectKey);
+      setDetail(res);
+    } catch {
+      /* keep any existing data */
+    }
+  }, [studentId, subjectKey]);
 
   useEffect(() => {
     let cancelled = false;
@@ -222,10 +238,21 @@ export default function OrchardTreeDetail({ studentId, subjectKey, initialTree, 
                   <ul>
                     {group.items.map(([key, label]) => {
                       const checked = Boolean(activeChapter.milestones?.[key]);
+                      const reviewType = RETENTION_MILESTONE_TYPE[key];
+                      const canTakeCheck = !checked && reviewType && activeChapter.dueReview === reviewType;
                       return (
                         <li key={key} className={checked ? 'checked' : ''}>
                           <span className="eg-mstone-check">{checked ? '✅' : '⭕️'}</span>
                           {label}
+                          {canTakeCheck && (
+                            <button
+                              type="button"
+                              className="eg-mstone-check-btn"
+                              onClick={() => setReviewModal({ chapter: activeChapter, reviewType })}
+                            >
+                              Take the check →
+                            </button>
+                          )}
                         </li>
                       );
                     })}
@@ -235,6 +262,21 @@ export default function OrchardTreeDetail({ studentId, subjectKey, initialTree, 
             })}
           </div>
         </div>
+      )}
+
+      {reviewModal && (
+        <RetentionCheckModal
+          studentId={studentId}
+          subjectKey={subjectKey}
+          subjectLabel={detail.subject}
+          chapter={reviewModal.chapter}
+          reviewType={reviewModal.reviewType}
+          onClose={() => setReviewModal(null)}
+          onDone={() => {
+            setReviewModal(null);
+            loadDetail();
+          }}
+        />
       )}
     </div>
   );

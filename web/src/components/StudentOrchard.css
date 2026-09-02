@@ -52,6 +52,16 @@
   margin: 4px 0 0;
   color: #6b7090;
 }
+/* The header sits directly on the living-orchard sky backdrop (no card behind
+   it), so its text needs its own night palette — otherwise the near-black day
+   colors disappear against the dark night sky. */
+.eg-orch.is-night .eg-orch-greeting {
+  color: #f4f6ff;
+  text-shadow: 0 1px 6px rgba(0, 0, 0, 0.35);
+}
+.eg-orch.is-night .eg-orch-sub {
+  color: #c3cbef;
+}
 .eg-orch-counters {
   display: flex;
   gap: 12px;
@@ -156,6 +166,7 @@
 
 .eg-orch-tree-card {
   --accent: #7c3aed;
+  position: relative;
   text-align: left;
   border: 2px solid transparent;
   background: #fff;
@@ -826,6 +837,36 @@
 .eg-mstone-check {
   font-size: 13px;
 }
+.eg-mstone-check-btn {
+  margin-left: auto;
+  padding: 3px 10px;
+  border: 1px solid #7c3aed;
+  background: #f5f0ff;
+  color: #7c3aed;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.eg-mstone-check-btn:hover {
+  background: #7c3aed;
+  color: #fff;
+}
+
+.eg-orch-tree-due-badge {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  background: #7c3aed;
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 3px 8px;
+  border-radius: 999px;
+  box-shadow: 0 2px 6px rgba(124, 58, 237, 0.35);
+}
+
 
 /* ═══════════════════════════════════════════════════════════════════════════
    PHASE 6 — LIVING ORCHARD: seasons, sky, ambient life, treehouse, harvest

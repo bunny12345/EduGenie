@@ -2000,6 +2000,192 @@ export class ChatService {
     };
   }
 
+  // Subjects whose lessons ARE the literary text (a story/poem/passage) that
+  // students must reproduce accurately in exams. For these, Story Mode must
+  // retell the exact given story — inventing new characters/events would
+  // teach students the wrong version. Everything else (Math, Science, ...)
+  // keeps the "invent an illustrative narrative" behavior since it's the
+  // concept, not a specific narrative, being taught.
+  private static readonly LITERARY_SUBJECT_KEYWORDS = [
+    'english', 'hindi', 'sanskrit', 'urdu', 'french', 'spanish', 'german',
+    'tamil', 'telugu', 'kannada', 'malayalam', 'marathi', 'gujarati', 'punjabi',
+    'bengali', 'odia', 'assamese', 'literature', 'language',
+  ];
+
+  private isLiterarySubject(subject: string): boolean {
+    const s = String(subject || '').trim().toLowerCase();
+    return ChatService.LITERARY_SUBJECT_KEYWORDS.some((kw) => s.includes(kw));
+  }
+
+  /**
+   * Story Mode — turns a lesson's core idea into a short, friendly narrative
+   * grounded in the lesson's own uploaded content (the "Understand" stage's
+   * answer to "no video to watch": a quick story instead).
+   *
+   * Generated ONCE per lesson and cached in lesson_stories — every later open
+   * (by any student) reuses the same story instead of asking the LLM again.
+   * Completion is tracked per student in lesson_story_progress; only finishing
+   * the story (completeLessonStory) grows the orchard.
+   */
+  async generateLessonStory(
+    studentId: string,
+    body: { lessonId?: string; lessonTitle?: string; subject?: string }
+  ) {
+    const lessonId = String(body.lessonId || '').trim();
+    const lessonTitle = String(body.lessonTitle || 'this topic').trim();
+    const subject = String(body.subject || 'this subject').trim();
+
+    // Already generated for this lesson? Serve the cached story — never
+    // regenerate once one exists.
+    if (lessonId) {
+      try {
+        const existingRes = await this.db.client.from('lesson_stories').select('*').eq('lesson_id', lessonId).limit(1);
+        const existing = Array.isArray((existingRes as any)?.data) ? (existingRes as any).data[0] : null;
+        if (existing?.story) {
+          const completed = await this.hasCompletedLessonStory(studentId, lessonId);
+          return { success: true, title: existing.title, story: existing.story, completed };
+        }
+      } catch {
+        /* fall through to generation */
+      }
+    }
+
+    // Pull the lesson's real uploaded content so the story reflects it instead
+    // of a random narrative — same lookup used by generateQuizRush.
+    let lessonContext = '';
+    if (lessonId) {
+      try {
+        const chunksRes = await this.db.client
+          .from('lesson_chunks')
+          .select('chunk_text')
+          .eq('lesson_id', lessonId)
+          .order('created_at', { ascending: true })
+          .limit(8);
+        const chunks = Array.isArray((chunksRes as any)?.data) ? (chunksRes as any).data : [];
+        lessonContext = chunks.map((c: any) => String(c?.chunk_text || '').trim()).filter(Boolean).join('\n').slice(0, 3000);
+      } catch {
+        /* ignore */
+      }
+    }
+
+    const literary = this.isLiterarySubject(subject);
+
+    const systemPrompt = literary
+      ? 'You are a teacher helping students revise a language/literature lesson for exams. ' +
+        'Return ONLY valid JSON (no markdown fences): {"title":"...","story":"..."}'
+      : 'You are a creative teacher who turns real lesson content into short, fun stories for school ' +
+        'students. Return ONLY valid JSON (no markdown fences): {"title":"...","story":"..."}';
+
+    const instructions = literary
+      ? 'This is a language/literature lesson — the content above IS the actual story/passage students ' +
+        'must learn accurately for exams. Write a clear, faithful SUMMARY/retelling (200-280 words) of ' +
+        'THIS EXACT story: keep the same character names, places, events, and plot exactly as given. Do ' +
+        'NOT invent new characters, names, or events, and do NOT change what happens — students will be ' +
+        'tested on these exact details.'
+      : 'Write a short, engaging story (200-280 words) that teaches the core idea of this lesson ' +
+        'through a simple narrative with a relatable character or scenario. Keep it age-appropriate, ' +
+        'friendly, and easy to follow.';
+
+    const prompt = [
+      { role: 'system', content: systemPrompt },
+      {
+        role: 'user',
+        content:
+          `Subject: ${subject}\nLesson: ${lessonTitle}\n\n` +
+          (lessonContext ? `Lesson content:\n${lessonContext}\n\n` : '') +
+          instructions +
+          ' End with one encouraging sentence.',
+      },
+    ];
+
+    let raw = '';
+    try {
+      raw = await this.llm.query(prompt);
+    } catch {
+      return { success: false, error: 'Could not generate a story right now.' };
+    }
+
+    let title = lessonTitle;
+    let story = '';
+    try {
+      const cleaned = raw.replace(/```json\s*/gi, '').replace(/```/g, '').trim();
+      const parsed = JSON.parse(cleaned);
+      if (parsed?.story) {
+        story = String(parsed.story).trim();
+        title = String(parsed.title || lessonTitle).trim();
+      }
+    } catch {
+      story = String(raw || '').trim();
+    }
+    if (!story) return { success: false, error: 'Could not generate a story right now.' };
+
+    if (lessonId) {
+      try {
+        await this.db.client.from('lesson_stories').insert({
+          lesson_id: lessonId,
+          subject_key: subject.toLowerCase().replace(/\s+/g, '-') || null,
+          chapter_title: lessonTitle,
+          title,
+          story,
+          source: 'ai',
+          generated_at: new Date().toISOString(),
+        });
+      } catch {
+        /* a concurrent request may have cached it first — harmless */
+      }
+    }
+
+    return { success: true, title, story, completed: false };
+  }
+
+  private async hasCompletedLessonStory(studentId: string, lessonId: string): Promise<boolean> {
+    try {
+      const res = await this.db.client
+        .from('lesson_story_progress')
+        .select('id')
+        .eq('student_id', studentId)
+        .eq('lesson_id', lessonId)
+        .limit(1);
+      return Array.isArray((res as any)?.data) && (res as any).data.length > 0;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * Mark a lesson's story as finished → waters the orchard ('story' milestone,
+   * the Sprout stage's "Complete the story" task). Idempotent per student.
+   */
+  async completeLessonStory(studentId: string, body: { lessonId?: string; subject?: string }) {
+    const lessonId = String(body.lessonId || '').trim();
+    if (lessonId) {
+      try {
+        await this.db.client.from('lesson_story_progress').insert({
+          student_id: studentId,
+          lesson_id: lessonId,
+          completed_at: new Date().toISOString(),
+        });
+      } catch {
+        /* already completed (unique violation on repeat clicks) — fine */
+      }
+    }
+
+    const subjectKey = String(body.subject || '').trim().toLowerCase().replace(/\s+/g, '-') || undefined;
+    let orchardGrowth: any = null;
+    if (subjectKey) {
+      try {
+        orchardGrowth = await this.orchard.recordActivity(studentId, {
+          subjectKey,
+          activityType: 'story',
+          correct: true,
+        });
+      } catch {
+        /* orchard tie-in is best-effort */
+      }
+    }
+    return { success: true, orchardGrowth: orchardGrowth ? { watered: true, activityType: 'story' } : null };
+  }
+
   /**
    * Quiz Rush — generate a timed set of rapid-fire MCQs for a subject/lesson.
    * Wired to orchard with activityType: 'quiz'.

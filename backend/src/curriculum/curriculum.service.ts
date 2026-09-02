@@ -5,6 +5,7 @@ import { randomUUID } from 'crypto';
 import { SupabaseService } from '../supabase.service';
 import { EmbeddingsService } from '../embeddings/embeddings.service';
 import { FlashcardsService } from '../games/flashcards.service';
+import { QuizRushService } from '../games/quiz-rush.service';
 
 type VisibilityInput = {
   teacherId: string;
@@ -46,7 +47,8 @@ export class CurriculumService {
   constructor(
     private readonly db: SupabaseService,
     private readonly embeddings: EmbeddingsService,
-    private readonly flashcards: FlashcardsService
+    private readonly flashcards: FlashcardsService,
+    private readonly quizRush: QuizRushService
   ) {}
 
   private normalizeClassNames(value: any): string[] {
@@ -422,6 +424,7 @@ export class CurriculumService {
     const remaining = await this.db.client.from('lesson_chunks').select('id').eq('lesson_id', lessonId).limit(1);
     if (Array.isArray((remaining as any)?.data) && (remaining as any).data.length) {
       this.flashcards.generateForLesson(lessonId, { force: true }).catch(() => { /* best-effort */ });
+      this.quizRush.generateForLesson(lessonId, { force: true }).catch(() => { /* best-effort */ });
     }
 
     return { lessonId, documentId, deleted: true };
@@ -602,6 +605,7 @@ export class CurriculumService {
       // extracted content so students never wait on the AI (and we only spend
       // tokens once per chapter). Failures here must not affect the upload.
       this.flashcards.generateForLesson(lessonId, { force: true }).catch(() => { /* best-effort */ });
+      this.quizRush.generateForLesson(lessonId, { force: true }).catch(() => { /* best-effort */ });
 
       return {
         document: { ...doc, extraction_status: 'completed' },

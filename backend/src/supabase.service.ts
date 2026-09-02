@@ -78,6 +78,18 @@ export class SupabaseService {
             filters.push((rows) => rows.filter((r) => String(r[k] ?? '') != String(v ?? '')));
             return builder;
           },
+          is(k: string, v: any) {
+            filters.push((rows) => rows.filter((r) => (v === null ? (r[k] === null || r[k] === undefined) : r[k] === v)));
+            return builder;
+          },
+          lte(k: string, v: any) {
+            filters.push((rows) => rows.filter((r) => r[k] !== null && r[k] !== undefined && r[k] <= v));
+            return builder;
+          },
+          gte(k: string, v: any) {
+            filters.push((rows) => rows.filter((r) => r[k] !== null && r[k] !== undefined && r[k] >= v));
+            return builder;
+          },
           in(k: string, vals: any[]) {
             const set = new Set((vals || []).map((v) => String(v ?? '')));
             filters.push((rows) => rows.filter((r) => set.has(String(r[k] ?? ''))));

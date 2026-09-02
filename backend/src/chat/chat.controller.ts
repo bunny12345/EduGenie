@@ -328,6 +328,36 @@ export class ChatController {
     });
   }
 
+  @Post('story/generate')
+  @UseGuards(AuthGuard)
+  async generateLessonStory(
+    @Req() req: any,
+    @Body() payload: { studentId?: string; lessonId?: string; lessonTitle?: string; subject?: string }
+  ) {
+    const studentId = req.studentId || payload.studentId || 'anon';
+    return this.chatService.generateLessonStory(studentId, {
+      lessonId: payload.lessonId,
+      lessonTitle: payload.lessonTitle,
+      subject: payload.subject,
+    });
+  }
+
+  @Post('story/complete')
+  @UseGuards(AuthGuard)
+  async completeLessonStory(
+    @Req() req: any,
+    @Body() payload: { studentId?: string; lessonId?: string; subject?: string }
+  ) {
+    const studentId = req.studentId || payload.studentId || 'anon';
+    this.localFeed.logStudentActivity(studentId, {
+      type: 'learning',
+      action: 'story-complete',
+      title: 'Story Mode',
+      meta: { subject: payload.subject }
+    });
+    return this.chatService.completeLessonStory(studentId, { lessonId: payload.lessonId, subject: payload.subject });
+  }
+
   @Post('quiz-rush/generate')
   @UseGuards(AuthGuard)
   async generateQuizRush(

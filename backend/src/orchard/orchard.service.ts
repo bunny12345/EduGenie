@@ -769,6 +769,20 @@ export class OrchardService {
     await this.updateRows('orchard_profile', changes, [['student_id', studentId]]);
   }
 
+  // ─── which reviews are due right now (scheduled_at passed, not completed) ───
+  // Only rows a student hasn't PASSED yet count as "due" — a failed attempt
+  // stays open (completed_at left null) so the student can retake it.
+  private async dueReviewRows(studentId: string, eqs: Array<[string, any]> = []): Promise<any[]> {
+    try {
+      let q: any = this.db.client.from('orchard_reviews').select('*').eq('student_id', studentId).is('completed_at', null).lte('scheduled_at', new Date().toISOString());
+      for (const [k, v] of eqs) q = q.eq(k, v);
+      const res = await q;
+      return (res && res.data) || [];
+    } catch {
+      return [];
+    }
+  }
+
   // ─── complete a spaced-repetition review → advance to blossom/fruit ──────────
   async completeReview(studentId: string, input: { chapterId: string; reviewType: 'week' | 'month'; passed: boolean; occurredAt?: string }): Promise<any> {
     const occurredAt = input.occurredAt || new Date().toISOString();
@@ -779,9 +793,11 @@ export class OrchardService {
     const g = rows && rows[0];
     if (!g) return { success: false, error: 'chapter not found' };
 
+    // A failed check stays "due" (completed_at null) so the student can retry —
+    // only a pass closes it out.
     await this.updateRows(
       'orchard_reviews',
-      { completed_at: occurredAt, passed: input.passed },
+      input.passed ? { completed_at: occurredAt, passed: true } : { passed: false },
       [
         ['student_id', studentId],
         ['chapter_id', input.chapterId],
@@ -825,6 +841,15 @@ export class OrchardService {
     // Live meters relative to NOW so trees decay when the student stops studying.
     const activityMap = await this.activityBySubject(studentId);
 
+    // Retention checks (Blossom/Fruit) due right now, counted per subject so
+    // the tree card can nudge "2 reviews due" before the student opens it.
+    const dueRows = await this.dueReviewRows(studentId);
+    const dueCountBySubject = new Map<string, number>();
+    for (const r of dueRows) {
+      const key = String(r.subject_key || '');
+      dueCountBySubject.set(key, (dueCountBySubject.get(key) || 0) + 1);
+    }
+
     const trees = catalog.map((subject) => {
       const t = byKey.get(subject.subject_key) || {};
       const live = this.computeLiveMeters(activityMap.get(subject.subject_key) || []);
@@ -852,6 +877,7 @@ export class OrchardService {
         mood: this.moodForTree(t.stage || 'seed', health),
         daysSinceLast: live.daysSinceLast,
         season: seasonForDate(new Date()),
+        dueReviewCount: dueCountBySubject.get(subject.subject_key) || 0,
       };
     });
 
@@ -904,12 +930,23 @@ export class OrchardService {
     ]);
     const growthByChapter = new Map((growthRows || []).map((g) => [String(g.chapter_id), g]));
 
+    // Which chapters have a retention check due right now (week/month), so the
+    // checklist can offer a "take the check" action instead of sitting dead.
+    const dueRows = await this.dueReviewRows(studentId, [['subject_key', subjectKey]]);
+    const dueByChapter = new Map<string, 'week' | 'month'>();
+    for (const r of dueRows) {
+      const key = String(r.chapter_id);
+      // Week must be offered before month if both happen to be open.
+      if (!dueByChapter.has(key) || r.review_type === 'week') dueByChapter.set(key, r.review_type);
+    }
+
     const chapters = (chapterRows || [])
       .sort((a, b) => Number(a.order_index || 0) - Number(b.order_index || 0))
       .map((ch) => {
         const g = growthByChapter.get(String(ch.id)) || {};
         return {
           chapterId: ch.id,
+          lessonId: ch.lesson_id || null,
           chapterNumber: ch.chapter_number,
           title: ch.title,
           stage: g.stage || 'seed',
@@ -919,6 +956,7 @@ export class OrchardService {
           isGolden: Boolean(g.is_golden),
           fruitCollected: Boolean(g.fruit_collected),
           milestones: g.milestones || {},
+          dueReview: dueByChapter.get(String(ch.id)) || null,
         };
       });
 

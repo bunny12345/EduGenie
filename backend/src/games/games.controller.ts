@@ -1,11 +1,15 @@
 import { Body, Controller, Get, Post, Query, Req, UseGuards } from '@nestjs/common';
 import { AuthGuard } from '../auth/auth.guard';
 import { FlashcardsService } from './flashcards.service';
+import { QuizRushService } from './quiz-rush.service';
 import { ReviewRating } from './games.constants';
 
 @Controller('games')
 export class GamesController {
-  constructor(private readonly flashcards: FlashcardsService) {}
+  constructor(
+    private readonly flashcards: FlashcardsService,
+    private readonly quizRush: QuizRushService,
+  ) {}
 
   // Arcade line-up (live + coming-soon games).
   @Get()
@@ -105,5 +109,51 @@ export class GamesController {
   ) {
     const id = req.studentId || body.studentId;
     return this.flashcards.logSession(id, body);
+  }
+
+  // ── Quiz Rush (arcade): pre-generated MCQs, mirrors the flashcards picker ──
+
+  // Subject + chapter picker data for the quiz rush game.
+  @Get('quiz-rush/overview')
+  @UseGuards(AuthGuard)
+  async quizRushOverview(@Req() req: any, @Query('studentId') studentId?: string) {
+    const id = req.studentId || studentId;
+    return this.quizRush.getOverview(id);
+  }
+
+  // Build a play session: a specific chapter (deckId) or all chapters.
+  @Get('quiz-rush/questions')
+  @UseGuards(AuthGuard)
+  async quizRushQuestions(
+    @Req() req: any,
+    @Query('subject') subject: string,
+    @Query('deckId') deckId?: string,
+    @Query('scope') scope?: string,
+    @Query('limit') limit?: string,
+    @Query('studentId') studentId?: string,
+  ) {
+    const id = req.studentId || studentId;
+    return this.quizRush.getQuestions(id, {
+      subjectKey: subject,
+      deckId,
+      scope,
+      limit: limit ? Number(limit) : undefined,
+    });
+  }
+
+  // On-demand generation (dev/admin) — normally questions are generated
+  // automatically when a lesson is uploaded, same as flashcards.
+  @Post('quiz-rush/generate')
+  @UseGuards(AuthGuard)
+  async quizRushGenerate(@Req() req: any, @Body() body: { lessonId: string; force?: boolean; count?: number }) {
+    return this.quizRush.generateForLesson(body.lessonId, { force: body.force, count: body.count });
+  }
+
+  // Bulk-regenerate quiz questions for all lessons that have chunks.
+  @Post('quiz-rush/generate-all')
+  @UseGuards(AuthGuard)
+  async quizRushGenerateAll(@Req() req: any) {
+    const results = await this.quizRush.generateForAllLessons();
+    return { success: true, ...results };
   }
 }

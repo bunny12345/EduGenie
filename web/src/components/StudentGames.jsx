@@ -1,6 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { getGamesCatalog } from '../api';
 import Flashcards from './games/Flashcards';
+import MemoryMaze from './games/MemoryMaze';
+import QuizRush from './games/QuizRush';
 import './StudentGames.css';
 
 /**
@@ -12,6 +14,8 @@ export default function StudentGames({ studentId, greetingName, onAskTutor, onCo
   const [games, setGames] = useState(null);
   const [activeGame, setActiveGame] = useState(null); // gameKey being played
   const flashcardsBackRef = useRef(null);
+  const memoryMazeBackRef = useRef(null);
+  const quizRushBackRef = useRef(null);
 
   useEffect(() => {
     let alive = true;
@@ -31,6 +35,8 @@ export default function StudentGames({ studentId, greetingName, onAskTutor, onCo
             className="eg-games-back"
             onClick={() => {
               if (active.gameKey === 'flashcards' && flashcardsBackRef.current?.()) return;
+              if (active.gameKey === 'memory_maze' && memoryMazeBackRef.current?.()) return;
+              if (active.gameKey === 'quiz_rush' && quizRushBackRef.current?.()) return;
               setActiveGame(null);
             }}
           >← Arcade</button>
@@ -45,6 +51,18 @@ export default function StudentGames({ studentId, greetingName, onAskTutor, onCo
             onAskTutor={onAskTutor}
             onCoinsEarned={onCoinsEarned}
             onArcadeBackReady={(handler) => { flashcardsBackRef.current = handler; }}
+          />
+        )}
+        {active.gameKey === 'memory_maze' && (
+          <MemoryMaze
+            studentId={studentId}
+            onArcadeBackReady={(handler) => { memoryMazeBackRef.current = handler; }}
+          />
+        )}
+        {active.gameKey === 'quiz_rush' && (
+          <QuizRush
+            studentId={studentId}
+            onArcadeBackReady={(handler) => { quizRushBackRef.current = handler; }}
           />
         )}
       </div>

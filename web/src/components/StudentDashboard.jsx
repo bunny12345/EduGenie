@@ -18,6 +18,7 @@ import {
   getTests,
   listCurriculumLessons,
   recordProgress,
+  recordOrchardActivity,
   saveSettings,
   sendChat,
   transcribeTutorAudio,
@@ -29,6 +30,8 @@ import {
   generateCheckQuestion,
   answerCheckQuestion,
   evaluateExplainBack,
+  generateLessonStory,
+  completeLessonStory,
   generateQuizRush,
   submitQuizRush,
   getDueReviewNudge
@@ -83,6 +86,15 @@ function fmtDate(value) {
 function getScore(row) {
   const n = Number(row?.score ?? row?.metric_value ?? row?.value ?? row?.details?.score ?? row?.details?.value);
   return Number.isFinite(n) ? n : null;
+}
+
+// "#rrggbb"/"#rgb" -> "r, g, b" for use inside rgba(var(--x), alpha) in CSS.
+function hexToRgb(hex) {
+  const clean = String(hex || '').replace('#', '');
+  const full = clean.length === 3 ? clean.split('').map((c) => c + c).join('') : clean;
+  const num = parseInt(full, 16);
+  if (!full || Number.isNaN(num)) return '0, 0, 0';
+  return `${(num >> 16) & 255}, ${(num >> 8) & 255}, ${num & 255}`;
 }
 
 /* Subject icon component — clean SVG icons for each subject */
@@ -514,6 +526,11 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
   const [explainBackInput, setExplainBackInput] = useState('');
   const [explainBackLoading, setExplainBackLoading] = useState(false);
   const [explainBackResult, setExplainBackResult] = useState(null);
+  const [storyActive, setStoryActive] = useState(false);
+  const [storyLoading, setStoryLoading] = useState(false);
+  const [storyData, setStoryData] = useState(null); // { title, story }
+  const [storyCompleted, setStoryCompleted] = useState(false); // already done (server or just now)
+  const [storyJustCompleted, setStoryJustCompleted] = useState(false); // one-time celebration this session
   const [dueReviewNudge, setDueReviewNudge] = useState(null);
 
   const [testResult, setTestResult] = useState(null);
@@ -967,6 +984,12 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
                 { hidden: true, speak: true }
               );
             }, 500);
+            // This intro is the app's stand-in for "watching" the lesson (there is
+            // no video) — record it once so the Orchard checklist reflects it.
+            const orchardSubjectKey = String(lesson.subject || tutorSubject || '').trim().toLowerCase().replace(/\s+/g, '-');
+            if (orchardSubjectKey) {
+              recordOrchardActivity({ studentId, subjectKey: orchardSubjectKey, activityType: 'lesson' }).catch(() => {});
+            }
           } else {
             // Returning on a new day — progress check
             setTimeout(() => {
@@ -2340,7 +2363,15 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
       }
 
       setTalkToSamTranscript(recognized);
-      await onSamSendMessage(recognized);
+      if (explainBackActive) {
+        // Explain Back is open — treat the spoken answer as the explanation
+        // instead of a normal chat message, and evaluate it right away.
+        setTalkToSamOpen(false);
+        setExplainBackInput(recognized);
+        await onSubmitExplainBack(recognized);
+      } else {
+        await onSamSendMessage(recognized);
+      }
     } catch (e) {
       setTalkToSamError(e?.message || 'Voice input failed. Please try again.');
     } finally {
@@ -2533,12 +2564,14 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
     setExplainBackResult(null);
   }
 
-  async function onSubmitExplainBack() {
-    if (!explainBackInput.trim() || explainBackLoading) return;
+  async function onSubmitExplainBack(overrideText) {
+    const textToSubmit = String(overrideText || explainBackInput || '').trim();
+    if (!textToSubmit || explainBackLoading) return;
+    setExplainBackInput(textToSubmit);
     setExplainBackLoading(true);
     try {
       const res = await evaluateExplainBack(studentId, {
-        explanation: explainBackInput.trim(),
+        explanation: textToSubmit,
         topic: explainBackTopic,
         conversationId: getCurrentTutorConversationId(),
         lessonId: selectedTutorLesson?.id,
@@ -2567,6 +2600,50 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
     setExplainBackActive(false);
     setExplainBackResult(null);
     setExplainBackInput('');
+  }
+
+  async function onStartStory() {
+    if (storyLoading) return;
+    setStoryActive(true);
+    setStoryData(null);
+    setStoryCompleted(false);
+    setStoryJustCompleted(false);
+    setStoryLoading(true);
+    try {
+      const res = await generateLessonStory(studentId, {
+        lessonId: selectedTutorLesson?.id,
+        lessonTitle: selectedTutorLesson?.title,
+        subject: selectedTutorLesson?.subject || tutorSubject,
+      });
+      if (res?.success) {
+        setStoryData({ title: res.title, story: res.story });
+        setStoryCompleted(Boolean(res.completed));
+      }
+    } catch (e) {
+      console.warn('story generation failed', e);
+    } finally {
+      setStoryLoading(false);
+    }
+  }
+
+  async function onFinishStory() {
+    setStoryJustCompleted(true);
+    setStoryCompleted(true);
+    try {
+      await completeLessonStory(studentId, {
+        lessonId: selectedTutorLesson?.id,
+        subject: selectedTutorLesson?.subject || tutorSubject,
+      });
+    } catch (e) {
+      console.warn('story completion failed', e);
+    }
+  }
+
+  function onCloseStory() {
+    setStoryActive(false);
+    setStoryData(null);
+    setStoryCompleted(false);
+    setStoryJustCompleted(false);
   }
 
   // Load due review nudge when tutor opens
@@ -2762,7 +2839,7 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
         <div ref={chatEndRef} />
       </div>
       {/* ── Collapsible suggestions & actions toggle ──────────────────── */}
-      {!chatLoading && chatHistory.length > 0 && !quizRushActive && !explainBackActive ? (
+      {!chatLoading && chatHistory.length > 0 && !quizRushActive && !explainBackActive && !storyActive ? (
         <div className="eg-ai-actions-wrap">
           <button
             type="button"
@@ -2793,7 +2870,7 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
                 <button
                   type="button"
                   className="eg-ai-action-btn eg-ai-action-quiz"
-                  onClick={() => { onRequestCheckQuestion(); setShowChatActions(false); }}
+                  onClick={onRequestCheckQuestion}
                   disabled={checkQuestionLoading}
                 >
                   {checkQuestionLoading ? '⏳ Generating...' : '🧠 Quiz Me'}
@@ -2801,17 +2878,25 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
                 <button
                   type="button"
                   className="eg-ai-action-btn eg-ai-action-explain"
-                  onClick={() => { onStartExplainBack(); setShowChatActions(false); }}
+                  onClick={onStartExplainBack}
                 >
                   🗣️ Explain Back
                 </button>
                 <button
                   type="button"
                   className="eg-ai-action-btn eg-ai-action-rush"
-                  onClick={() => { onStartQuizRush(); setShowChatActions(false); }}
+                  onClick={onStartQuizRush}
                   disabled={quizRushLoading}
                 >
                   {quizRushLoading ? '⏳ Loading...' : '⚡ Quiz Rush'}
+                </button>
+                <button
+                  type="button"
+                  className="eg-ai-action-btn eg-ai-action-story"
+                  onClick={onStartStory}
+                  disabled={storyLoading}
+                >
+                  {storyLoading ? '⏳ Writing...' : '📖 Story Mode'}
                 </button>
               </div>
             </div>
@@ -2873,6 +2958,7 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
             <button type="button" className="eg-ai-check-dismiss" onClick={onCloseExplainBack}>✕</button>
           </div>
           <p className="eg-ai-explain-prompt">Explain in your own words what you learned about this topic. The AI will evaluate your understanding!</p>
+          <p className="eg-ai-explain-hint">💬 Type your explanation here, or tap the 🎙️ Sam button below to answer by voice instead.</p>
           {!explainBackResult ? (
             <>
               <textarea
@@ -2885,7 +2971,7 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
               <button
                 type="button"
                 className="eg-ai-action-btn eg-ai-action-explain"
-                onClick={onSubmitExplainBack}
+                onClick={() => onSubmitExplainBack()}
                 disabled={!explainBackInput.trim() || explainBackLoading}
               >
                 {explainBackLoading ? '⏳ Evaluating...' : '📤 Submit Explanation'}
@@ -2902,6 +2988,42 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
               {explainBackResult.gaps?.length ? <p className="eg-ai-explain-gaps">📝 Work on: {explainBackResult.gaps.join(', ')}</p> : null}
               <button type="button" className="eg-ai-action-btn" onClick={onCloseExplainBack}>Done</button>
             </div>
+          )}
+        </div>
+      ) : null}
+
+      {/* ── Story Mode panel ─────────────────────────────────────────── */}
+      {storyActive ? (
+        <div className="eg-ai-story-panel">
+          <div className="eg-ai-check-header">
+            <span>📖 {storyData?.title || 'Story Mode'}</span>
+            <button type="button" className="eg-ai-check-dismiss" onClick={onCloseStory}>✕</button>
+          </div>
+          {storyLoading ? (
+            <p className="eg-ai-explain-prompt">Writing your story...</p>
+          ) : storyData ? (
+            <>
+              {storyCompleted && !storyJustCompleted ? (
+                <p className="eg-ai-explain-hint">✅ You've already completed this story.</p>
+              ) : null}
+              <p className="eg-ai-story-text">{storyData.story}</p>
+              {!storyCompleted ? (
+                <button type="button" className="eg-ai-action-btn eg-ai-action-story" onClick={onFinishStory}>
+                  ✅ I finished the story!
+                </button>
+              ) : storyJustCompleted ? (
+                <div className="eg-ai-explain-result">
+                  <div className="eg-ai-explain-score">
+                    <span>🌳 Orchard watered!</span>
+                  </div>
+                  <button type="button" className="eg-ai-action-btn" onClick={onCloseStory}>Done</button>
+                </div>
+              ) : (
+                <button type="button" className="eg-ai-action-btn" onClick={onCloseStory}>Close</button>
+              )}
+            </>
+          ) : (
+            <p className="eg-ai-explain-prompt">Could not write a story right now — try again in a moment.</p>
           )}
         </div>
       ) : null}
@@ -3263,6 +3385,7 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
       </aside>
 
       <div className={`eg-main ${activeSidebarTab === 'AI Tutor' ? 'eg-main-ai' : ''}`}>
+        {activeSidebarTab !== 'AI Tutor' && (
         <header className="eg-topbar cardish">
           <div className="eg-search">Search for topics, tests, books...</div>
           <div className="eg-top-actions">
@@ -3329,6 +3452,7 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
             </div>
           </div>
         </header>
+        )}
 
         {/* Subject Navigation — polished icon cards, shown when viewing a specific subject */}
         {activeSidebarTab !== 'My Orchard' && activeSidebarTab !== 'Games' && activeSidebarTab !== 'Progress' && activeSidebarTab !== 'AI Tutor' && !UTILITY_TABS[activeSidebarTab] && activeView !== 'home' && (
@@ -3350,7 +3474,11 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
                   key={subject}
                   className={`eg-subject-nav-chip ${isActive ? 'active' : ''}`}
                   onClick={() => setActiveView(subject)}
-                  style={isActive ? { background: theme.bg, borderColor: theme.color + '55' } : {}}
+                  style={{
+                    '--subject-glow': theme.accent,
+                    '--subject-glow-rgb': hexToRgb(theme.accent),
+                    ...(isActive ? { background: theme.bg, borderColor: theme.color + '55' } : {}),
+                  }}
                 >
                   <span className="eg-subject-nav-chip-icon" style={isActive ? { background: theme.color + '18' } : {}}>
                     <SubjectIcon subject={subject} />
@@ -3494,14 +3622,22 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
                 const teacher = classTeachers.find((t) => t.subject === subj);
                 const teacherName = teacher?.name || '';
                 const scoreLabel = score !== null ? (score >= 80 ? 'Excellent' : score >= 60 ? 'Good' : 'Keep Practicing') : '';
+                const subjectTheme = getSubjectTheme(subj);
                 return (
                   <article
                     key={subj}
                     className="cardish eg-subject-card eg-home-glass"
                     onClick={() => setActiveView(subj)}
-                    style={{ cursor: 'pointer', borderColor: getSubjectTheme(subj).border, position: 'relative', overflow: 'hidden' }}
+                    style={{
+                      cursor: 'pointer',
+                      borderColor: subjectTheme.border,
+                      position: 'relative',
+                      overflow: 'hidden',
+                      '--subject-glow': subjectTheme.accent,
+                      '--subject-glow-rgb': hexToRgb(subjectTheme.accent),
+                    }}
                   >
-                    <div className="eg-subject-card-icon" style={{ background: getSubjectTheme(subj).color + '15' }}>
+                    <div className="eg-subject-card-icon" style={{ background: subjectTheme.color + '15' }}>
                       <SubjectIcon subject={subj} />
                     </div>
                     <div className="eg-subject-card-info">
@@ -3705,7 +3841,12 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
                 setHomeworkStatusFilter('all');
               }
             }}
-            style={{ position: 'relative', overflow: 'hidden' }}
+            style={{
+              position: 'relative',
+              overflow: 'hidden',
+              '--subject-glow': subjectTheme.accent,
+              '--subject-glow-rgb': hexToRgb(subjectTheme.accent),
+            }}
           >
             {/* Full-page decorative SVG background */}
             <SubjectBackground subject={activeView} />
@@ -3999,8 +4140,8 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
                         const canEnterEditMode = canResubmitWindow && !isEditingResubmit;
                         const canSubmitNow = !state.submitted || canResubmit;
                         return (
-                  <div key={homeworkId || h.title} style={{
-                    background: state.overdue && !state.submitted ? '#fff1f2' : '#f8f8ff', borderRadius: '10px', padding: '14px',
+                  <div key={homeworkId || h.title} className="eg-hw-item-card" style={{
+                    background: state.overdue && !state.submitted ? '#fff1f2' : '#f8f8ff', padding: '14px',
                     borderLeft: `4px solid ${state.color}`
                   }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
@@ -4015,7 +4156,7 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
                               setExpandedTeacherInfoById((prev) => ({ ...prev, [homeworkId]: !prev[homeworkId] }));
                             }
                           }}
-                          style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px', flexWrap: 'wrap', cursor: 'pointer' }}
+                          style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px', flexWrap: 'wrap', cursor: 'pointer', padding: '8px 12px' }}
                           title="Click to view teacher instructions and assigned images"
                         >
                           <div style={{ fontWeight: 'bold', fontSize: '15px' }}>{h.title || 'Homework Task'}</div>

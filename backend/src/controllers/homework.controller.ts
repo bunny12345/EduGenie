@@ -3,6 +3,8 @@ import { SupabaseService } from '../supabase.service';
 import { AuthGuard } from '../auth/auth.guard';
 import { LocalFeedService } from '../shared/local-feed.service';
 import { StudentAuthService } from '../auth/student-auth.service';
+import { OrchardService } from '../orchard/orchard.service';
+import { normalizeSubjectKey } from '../orchard/orchard.constants';
 import * as fs from 'fs';
 import * as path from 'path';
 import { randomUUID } from 'crypto';
@@ -12,7 +14,8 @@ export class HomeworkController {
   constructor(
     private readonly db: SupabaseService,
     private readonly localFeed: LocalFeedService,
-    private readonly studentAuth: StudentAuthService
+    private readonly studentAuth: StudentAuthService,
+    private readonly orchard: OrchardService
   ) {}
 
   private sanitizeAttachmentUrls(value: any, fallbackSingle?: any) {
@@ -335,10 +338,10 @@ export class HomeworkController {
         }
       }
 
-      let currentHomeworkAttachmentUrls: string[] = [];
-      try {
-        const currentRes = await this.db.client.from('homework').select('latest_attachment_urls,latest_attachment_url,attachment_urls,attachment_url').eq('id', id).maybeSingle();
+      let currentHomeworkAttachmentUrls: string[] = [];      let homeworkSubject = '';      try {
+        const currentRes = await this.db.client.from('homework').select('subject,latest_attachment_urls,latest_attachment_url,attachment_urls,attachment_url').eq('id', id).maybeSingle();
         const currentRow = (currentRes as any)?.data || null;
+        homeworkSubject = String(currentRow?.subject || '').trim();
         currentHomeworkAttachmentUrls = this.sanitizeAttachmentUrls(
           currentRow?.latest_attachment_urls ?? currentRow?.attachment_urls,
           currentRow?.latest_attachment_url ?? currentRow?.attachment_url ?? null
@@ -394,6 +397,16 @@ export class HomeworkController {
         title: `Homework ${id}`,
         details: isResubmission ? 'Resubmitted homework attempt' : 'Submitted homework attempt'
       });
+      // Ties homework submission back into the living Orchard (the "Do the
+      // homework" milestone was previously never wired to any real event).
+      const orchardSubjectKey = normalizeSubjectKey(homeworkSubject);
+      if (orchardSubjectKey) {
+        try {
+          await this.orchard.recordActivity(actorStudentId, { subjectKey: orchardSubjectKey, activityType: 'homework' });
+        } catch {
+          /* orchard tie-in is best-effort */
+        }
+      }
       return { success: true, attemptId: row.id || null, grade: row.score ?? null, status: nextStatus, resubmitted: isResubmission };
     } catch (e) {
       return { success: true, attemptId: `local-attempt-${Date.now()}`, grade: null, warning: String(e) };

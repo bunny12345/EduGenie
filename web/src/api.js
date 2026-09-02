@@ -330,6 +330,17 @@ export async function completeFlashcardChapter(payload) {
   return checkSuccess(data, 'completeFlashcardChapter');
 }
 
+export async function getQuizRushOverview(studentId) {
+  const url = `${API_BASE}/games/quiz-rush/overview?studentId=${encodeURIComponent(studentId)}`;
+  return getJsonChecked(url, 'getQuizRushOverview');
+}
+
+export async function getQuizRushQuestions(studentId, { subject, deckId, scope = 'all', limit = 10 } = {}) {
+  const params = new URLSearchParams({ studentId, subject: subject || '', scope, limit: String(limit) });
+  if (deckId) params.set('deckId', deckId);
+  return getJsonChecked(`${API_BASE}/games/quiz-rush/questions?${params.toString()}`, 'getQuizRushQuestions');
+}
+
 export async function getHomework(studentId) {
   const url = `${API_BASE}/homework?studentId=${encodeURIComponent(studentId)}`;
   return getJsonChecked(url, 'getHomework');
@@ -1100,6 +1111,26 @@ export async function evaluateExplainBack(studentId, payload) {
   return res.json();
 }
 
+export async function generateLessonStory(studentId, payload) {
+  const headers = await authHeaders();
+  const res = await fetch(`${API_BASE}/chat/story/generate`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({ studentId, ...payload })
+  });
+  return res.json();
+}
+
+export async function completeLessonStory(studentId, payload) {
+  const headers = await authHeaders();
+  const res = await fetch(`${API_BASE}/chat/story/complete`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({ studentId, ...payload })
+  });
+  return res.json();
+}
+
 export async function generateQuizRush(studentId, opts) {
   const headers = await authHeaders();
   const res = await fetch(`${API_BASE}/chat/quiz-rush/generate`, {
@@ -1211,6 +1242,8 @@ const api = {
   generateCheckQuestion,
   answerCheckQuestion,
   evaluateExplainBack,
+  generateLessonStory,
+  completeLessonStory,
   generateQuizRush,
   submitQuizRush,
   getDueReviewNudge

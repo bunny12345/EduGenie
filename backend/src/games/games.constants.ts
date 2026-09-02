@@ -52,7 +52,7 @@ export const GAME_CATALOG: GameCatalogEntry[] = [
     tagline: 'Flip-and-remember challenge for tricky concepts.',
     icon: '🌀',
     accent: '#ec4899',
-    status: 'soon',
+    status: 'live',
     order: 4,
   },
 ];

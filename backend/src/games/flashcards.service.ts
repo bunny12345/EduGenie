@@ -594,14 +594,21 @@ export class FlashcardsService {
       created_at: new Date().toISOString(),
     });
 
-    // Tie games back into the living orchard: a good flashcard run waters the
-    // matching subject tree (real activity → real growth).
-    if (gameKey === 'flashcards' && body.subjectKey && score > 0) {
+    // Tie games back into the living orchard: a good run waters the matching
+    // subject tree (real activity → real growth). Each game maps to its own
+    // milestone so the Orchard checklist reflects which activity was done.
+    const ORCHARD_ACTIVITY_BY_GAME: Record<string, string> = {
+      flashcards: 'flashcards',
+      memory_maze: 'memory_challenge',
+      quiz_rush: 'quiz',
+    };
+    const orchardActivityType = ORCHARD_ACTIVITY_BY_GAME[gameKey];
+    if (orchardActivityType && body.subjectKey && score > 0) {
       try {
         await this.orchard.recordActivity(studentId, {
           subjectKey: body.subjectKey,
           chapterId: body.chapterId,
-          activityType: 'flashcards',
+          activityType: orchardActivityType,
           correct: score >= Math.ceil(total / 2),
         });
       } catch {
