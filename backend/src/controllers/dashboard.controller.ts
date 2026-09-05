@@ -124,16 +124,30 @@ export class DashboardController {
         .select('*')
         .in('audience', ['students', 'all'])
         .order('created_at', { ascending: false })
-        .limit(8);
+        .limit(20);
       const announcementRows = (ann && (ann as any).data) || [];
-      const announcements = (Array.isArray(announcementRows) ? announcementRows : []).map((a: any) => ({
-        id: a.id,
-        title: a.title || 'Announcement',
-        message: a.message || '',
-        audience: a.audience || 'students',
-        createdAt: a.created_at || null
-      }));
-      const mergedAnnouncements = announcements.length ? announcements : this.localFeed.listAnnouncements();
+      // Only show announcements currently inside their (optional) visibility window.
+      const isAnnouncementVisible = (a: any) => {
+        const now = Date.now();
+        const startMs = a?.start_at ? new Date(a.start_at).getTime() : null;
+        const endMs = a?.end_at ? new Date(a.end_at).getTime() : null;
+        if (startMs && Number.isFinite(startMs) && now < startMs) return false;
+        if (endMs && Number.isFinite(endMs) && now > endMs) return false;
+        return true;
+      };
+      const announcements = (Array.isArray(announcementRows) ? announcementRows : [])
+        .filter(isAnnouncementVisible)
+        .slice(0, 8)
+        .map((a: any) => ({
+          id: a.id,
+          title: a.title || 'Announcement',
+          message: a.message || '',
+          audience: a.audience || 'students',
+          createdAt: a.created_at || null
+        }));
+      const mergedAnnouncements = announcements.length
+        ? announcements
+        : this.localFeed.listAnnouncements().filter(isAnnouncementVisible).slice(0, 8);
 
       const streak = await this.computeLearningStreak(id, mergedHomeworkRows, progressRows);
 

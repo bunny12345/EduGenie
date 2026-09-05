@@ -59,7 +59,7 @@ function valueColor(v) {
   return '#cbd5e1';
 }
 
-export default function StudentProgress({ studentId, greetingName }) {
+export default function StudentProgress({ studentId, greetingName, fetchFn }) {
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
   const [trendView, setTrendView] = useState('daily'); // 'daily' | 'monthly'
@@ -72,13 +72,16 @@ export default function StudentProgress({ studentId, greetingName }) {
   const load = useCallback(async () => {
     setError(null);
     try {
-      const res = await getLearningScore(studentId);
+      const res = fetchFn ? await fetchFn(studentId) : await getLearningScore(studentId);
       setData(res || null);
     } catch (e) {
       setError('Could not load your progress right now.');
     }
-  }, [studentId]);
+  }, [studentId, fetchFn]);
 
+  // A different studentId (e.g. a teacher switching students) means the old
+  // report is now for the wrong person — clear it instead of showing stale data.
+  useEffect(() => { setData(null); }, [studentId]);
   useEffect(() => { load(); }, [load]);
 
   if (error) {

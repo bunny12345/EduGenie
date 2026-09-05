@@ -1021,24 +1021,6 @@ textarea {
   overflow: visible;
   transition: background 0.4s ease;
 }
-/* A rotating gold highlight sweep, masked to only the filled portion of the
-   ring — same moving-shine feel as the streak progress bar, just confined
-   to the gold arc instead of the whole circle. The mask itself is set
-   inline in JSX (fully resolved conic-gradient string, computed from
-   weeklyGoalPct) since a CSS var() inside mask-image's conic-gradient()
-   was not being applied by the browser, letting the sweep show everywhere. */
-.eg-goal-ring-shine {
-  position: absolute;
-  inset: 0;
-  border-radius: 50%;
-  pointer-events: none;
-  background: conic-gradient(from 0deg, transparent 0deg, rgba(255, 255, 255, 0.9) 18deg, transparent 40deg, transparent 360deg);
-  animation: eg-goal-ring-sweep 1.8s linear infinite;
-}
-@keyframes eg-goal-ring-sweep {
-  0% { transform: rotate(0deg); }
-  100% { transform: rotate(360deg); }
-}
 
 .eg-goal-ring-inner {
   position: relative;
@@ -4342,7 +4324,10 @@ textarea {
 }
 
 .td-main-themed .td-class-banner {
-  background: rgba(255, 255, 255, 0.45);
+  /* Keep the banner's own dark gradient (translucent) instead of the shared
+     light glass tint — the banner's text is white, and the light glass
+     background left it nearly unreadable (low contrast). */
+  background: linear-gradient(120deg, rgba(27, 30, 60, 0.8) 0%, rgba(47, 52, 120, 0.8) 100%);
   backdrop-filter: blur(10px);
   -webkit-backdrop-filter: blur(10px);
   border-color: rgba(255, 255, 255, 0.25);
@@ -4353,6 +4338,45 @@ textarea {
   border: 1px solid #e5e9fb;
   border-radius: 14px;
   padding: 14px 18px;
+}
+
+/* Light black border frame — same treatment as .td-card-framed / the
+   student home page panels. Needs !important to beat the higher-specificity
+   .td-main-themed glass-effect overrides above (and to add a border to
+   .td-class-banner, which has none of its own). */
+.td-framed {
+  border: 1.5px solid rgba(40, 40, 45, 0.35) !important;
+}
+
+/* Teacher portal — same 3D clickable frame + hover/press zoom used across the
+   student portal (homework/calendar buttons, subject nav chips). Applies to
+   every button in the sidebar and main content area; more specific rules
+   (e.g. .td-nav-btn.active's purple glow) still win where they set their own
+   box-shadow. border-radius is a fallback for icon-only buttons with none. */
+.td-shell button,
+.td-shell [role="button"] {
+  border-radius: 8px;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+  box-shadow: 0 6px 14px rgba(0, 0, 0, 0.2),
+              0 0 0 1.5px rgba(70, 70, 78, 0.45),
+              0 0 6px rgba(0, 0, 0, 0.22);
+}
+.td-shell button:hover:not(:disabled),
+.td-shell [role="button"]:hover {
+  transform: translateY(-1px) scale(1.035);
+  box-shadow: 0 9px 18px rgba(0, 0, 0, 0.24),
+              0 0 0 1.5px rgba(70, 70, 78, 0.45),
+              0 0 10px rgba(0, 0, 0, 0.26);
+}
+.td-shell button:active:not(:disabled),
+.td-shell [role="button"]:active {
+  transform: translateY(0) scale(0.96);
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.2),
+              0 0 0 1.5px rgba(70, 70, 78, 0.45),
+              0 0 8px rgba(0, 0, 0, 0.3);
+}
+.td-shell button:disabled {
+  cursor: not-allowed;
 }
 
 .td-topbar h1 {
@@ -4438,6 +4462,82 @@ textarea {
   grid-column: span 2;
 }
 
+/* Students page — Delivery Status (narrow) beside Homework Status (wide). */
+.td-delivery-hw-row {
+  grid-column: span 2;
+  display: grid;
+  grid-template-columns: minmax(220px, 280px) 1fr;
+  gap: 10px;
+  align-items: start;
+}
+
+.td-delivery-narrow {
+  height: 100%;
+}
+
+@media (max-width: 980px) {
+  .td-delivery-hw-row {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Student Progress page — student picker beside the full report, not stacked. */
+.td-progress-layout {
+  display: grid;
+  grid-template-columns: minmax(260px, 320px) 1fr;
+  gap: 14px;
+  align-items: start;
+}
+
+.td-progress-student-card {
+  position: sticky;
+  top: 18px;
+  max-height: calc(100vh - 36px);
+  overflow-y: auto;
+}
+
+@media (max-width: 980px) {
+  .td-progress-layout {
+    grid-template-columns: 1fr;
+  }
+  .td-progress-student-card {
+    position: static;
+    max-height: none;
+  }
+}
+
+/* The embedded student Progress report brings its own page-style padding —
+   trim it down since the card already adds its own 12px padding. */
+.td-progress-page-card .eg-pg {
+  padding: 6px 4px 18px;
+  max-width: none;
+}
+
+/* AI Assistant page — no header/stats above it, so let the chat card fill
+   the full available height instead of a fixed min-height. */
+.td-ai-page {
+  height: calc(100vh - 36px);
+  display: flex;
+}
+
+.td-ai-tutor-card {
+  padding: 0;
+  overflow: hidden;
+  flex: 1;
+  min-height: 0;
+}
+
+.td-ai-tutor-card .eg-ai-panel {
+  border-radius: 10px;
+  height: 100%;
+}
+
+/* Announcements, Assign Homework, Teacher AI Assistant, Mock Tests — same
+   light black border frame used on the student home page panels. */
+.td-card-framed {
+  border: 1.5px solid rgba(40, 40, 45, 0.35) !important;
+}
+
 .td-student-list {
   margin-top: 10px;
   display: grid;
@@ -4469,6 +4569,20 @@ textarea {
 .td-student-list span {
   font-size: 11px;
   color: #68739f;
+}
+
+.td-student-pager {
+  margin-top: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+}
+
+.td-student-pager-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: #6470a0;
 }
 
 .td-progress-grid {
@@ -4544,6 +4658,41 @@ textarea {
   background: #f0f1ff;
 }
 
+.td-hw-pager {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.td-hw-pager-btn {
+  border: 1.5px solid #c8cdf5;
+  border-radius: 8px;
+  background: #fff;
+  color: #5764c9;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 4px 8px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s;
+}
+
+.td-hw-pager-btn:hover:not(:disabled) {
+  background: #f0f1ff;
+}
+
+.td-hw-pager-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.td-hw-pager-label {
+  font-size: 11px;
+  font-weight: 700;
+  color: #6470a0;
+  white-space: nowrap;
+}
+
 .td-section-subtitle {
   margin: 12px 0 4px;
   font-size: 11px;
@@ -4594,10 +4743,212 @@ textarea {
   text-align: right;
 }
 
-/* ── Delivery chips ── */
+/* ── Day/Month toggle (Progress Snapshot) — same shape as the student portal's
+   toggle, restyled with the Teacher portal's palette. ── */
+.td-toggle {
+  display: inline-flex;
+  background: #f1f2fb;
+  border-radius: 999px;
+  padding: 3px;
+  gap: 2px;
+}
+
+.td-toggle button {
+  border: none;
+  background: transparent;
+  color: #6470a0;
+  font-size: 11px;
+  font-weight: 800;
+  padding: 5px 12px;
+  border-radius: 999px;
+  cursor: pointer;
+  white-space: nowrap;
+  box-shadow: none;
+  transform: none;
+}
+
+.td-toggle button:hover:not(:disabled),
+.td-toggle button:active:not(:disabled) {
+  box-shadow: none;
+  transform: none;
+}
+
+.td-toggle button.on {
+  background: #fff;
+  color: #5764c9;
+  box-shadow: 0 2px 8px rgba(87, 100, 201, 0.2);
+}
+
+/* ── Progress Snapshot — subject growth chart (mirrors the student portal) ── */
+.td-progress-chart {
+  margin-top: 8px;
+}
+
+.td-progress-chart-top {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 8px;
+}
+
+.td-progress-ring {
+  position: relative;
+  width: 76px;
+  height: 76px;
+  flex-shrink: 0;
+}
+
+.td-progress-ring svg {
+  width: 100%;
+  height: 100%;
+}
+
+.td-progress-ring-track {
+  fill: none;
+  stroke: #eef0fa;
+  stroke-width: 7;
+}
+
+.td-progress-ring-value {
+  fill: none;
+  stroke-width: 7;
+  stroke-linecap: round;
+  transition: stroke-dashoffset 0.9s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.td-progress-ring-num {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  font-weight: 900;
+  color: #2b2f4e;
+}
+
+.td-progress-ring-num em {
+  font-style: normal;
+  font-size: 10px;
+  margin-left: 1px;
+  color: #9aa0bd;
+}
+
+.td-progress-chart-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.td-progress-chart-meta strong {
+  font-size: 14px;
+  color: #2b2f4e;
+}
+
+.td-progress-status {
+  display: inline-block;
+  width: fit-content;
+  font-size: 11px;
+  font-weight: 800;
+  padding: 2px 10px;
+  border-radius: 999px;
+}
+
+.td-progress-status.strong { background: #dcfce7; color: #166534; }
+.td-progress-status.on-track { background: #e0f2fe; color: #075985; }
+.td-progress-status.needs-focus { background: #fff7ed; color: #9a3412; }
+.td-progress-status.not-started { background: #eef0fa; color: #6470a0; }
+
+.td-progress-trend {
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.td-progress-trend.up { color: #16a34a; }
+.td-progress-trend.down { color: #dc2626; }
+
+.td-progress-svg {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+
+.td-progress-gridline {
+  stroke: #eef0fa;
+  stroke-width: 1;
+}
+
+.td-progress-axis-y {
+  fill: #b6bad2;
+  font-size: 9px;
+  text-anchor: end;
+}
+
+.td-progress-axis-x {
+  fill: #6470a0;
+  font-size: 10px;
+  font-weight: 700;
+  text-anchor: middle;
+}
+
+.td-progress-axis-x.future {
+  fill: #c2c6dc;
+}
+
+.td-progress-line {
+  fill: none;
+  stroke-width: 2.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.td-progress-dot {
+  fill: #fff;
+  stroke-width: 2.6;
+}
+
+.td-progress-val {
+  fill: #6470a0;
+  font-size: 10px;
+  font-weight: 700;
+  text-anchor: middle;
+}
+
+.td-progress-empty {
+  text-align: center;
+  padding: 24px 16px;
+  color: #8892c4;
+}
+
+.td-progress-empty-emoji {
+  font-size: 28px;
+  margin-bottom: 6px;
+}
+
+.td-progress-empty p {
+  margin: 0 auto;
+  max-width: 320px;
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+
+.td-progress-tip {
+  margin: 8px 0 0;
+  font-size: 12px;
+  color: #6470a0;
+  background: #f8faff;
+  border: 1px solid #e9ecfb;
+  border-radius: 10px;
+  padding: 8px 10px;
+}
+
+/* Delivery Status is now the narrow column beside Homework Status (see
+   .td-delivery-hw-row) — stack the chips in a row each instead of a 3-across
+   grid so they still read cleanly at that width. */
 .td-delivery-chips {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: 1fr;
   gap: 8px;
   margin-top: 8px;
 }
@@ -4606,11 +4957,11 @@ textarea {
   border: 1px solid #e5e9fb;
   border-radius: 12px;
   background: #f8f9ff;
-  padding: 10px 8px;
+  padding: 9px 12px;
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
   align-items: center;
-  gap: 2px;
+  gap: 10px;
 }
 
 .td-delivery-chip.td-chip-warn {
@@ -4760,6 +5111,40 @@ textarea {
   background: #fafbff;
 }
 
+/* When a status filter (Submitted/Not submitted/Overdue) is active the table
+   can hold dozens of rows — cap the height to roughly 5 rows and scroll the
+   rest instead of dumping everything on the page at once. */
+.td-hw-table-scroll {
+  max-height: 360px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: #c3caf5 #f4f6ff;
+}
+
+.td-hw-table-scroll thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  box-shadow: 0 1px 0 #e5e9fb;
+}
+
+.td-hw-table-scroll::-webkit-scrollbar {
+  width: 8px;
+}
+
+.td-hw-table-scroll::-webkit-scrollbar-track {
+  background: #f4f6ff;
+}
+
+.td-hw-table-scroll::-webkit-scrollbar-thumb {
+  background: #c3caf5;
+  border-radius: 999px;
+}
+
+.td-hw-table-scroll::-webkit-scrollbar-thumb:hover {
+  background: #a7b0f0;
+}
+
 /* Status badges */
 .td-hw-badge {
   display: inline-block;
@@ -4807,6 +5192,15 @@ textarea {
   border: 1px solid #dfe5f7;
   padding: 9px 10px;
   font-size: 12px;
+  box-sizing: border-box;
+  max-width: 100%;
+}
+
+/* Browsers default textareas to resize: both — dragging the corner handle
+   sideways let it grow past the card and overflow the panel, unlike every
+   other (non-resizable) field on the page. Only allow vertical resizing. */
+.td-form textarea {
+  resize: vertical;
 }
 
 .td-form button {
@@ -5055,6 +5449,47 @@ textarea {
   margin: 4px 0 0;
   font-size: 12px;
   color: #646f9c;
+}
+
+/* Announcement scheduling — start/end datetime row in the post form, and the
+   small "when is this visible" badge shown on each posted announcement.
+   minmax(0, 1fr) (not plain 1fr) is required here — a datetime-local input's
+   min-content width otherwise forces the grid wider than the card, pushing
+   the row past the panel's edge. */
+.td-announce-schedule {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 8px;
+  width: 100%;
+  min-width: 0;
+}
+
+.td-announce-schedule > div {
+  min-width: 0;
+}
+
+.td-announce-schedule input[type="datetime-local"] {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+}
+
+.td-announce-schedule-hint {
+  display: block;
+  margin-top: -4px;
+  font-size: 11px;
+  color: #8892c4;
+}
+
+.td-announce-schedule-badge {
+  display: inline-block;
+  margin-top: 6px;
+  font-size: 10px;
+  font-weight: 700;
+  color: #5764c9;
+  background: #eef0ff;
+  border-radius: 999px;
+  padding: 2px 9px;
 }
 
 .td-invite-row,

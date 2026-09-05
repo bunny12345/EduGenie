@@ -703,6 +703,24 @@ export async function getTeacherStudentProgress(studentId) {
   return checkSuccess(data, 'getTeacherStudentProgress');
 }
 
+export async function getTeacherStudentSubjectProgress(studentId) {
+  const res = await fetch(`${API_BASE}/teacher/students/${encodeURIComponent(studentId)}/subject-progress`, {
+    headers: await authHeaders()
+  });
+  if (!res.ok) throw new Error(`getTeacherStudentSubjectProgress failed: ${res.status}`);
+  const data = await res.json();
+  return checkSuccess(data, 'getTeacherStudentSubjectProgress');
+}
+
+export async function getTeacherStudentLearningScore(studentId) {
+  const res = await fetch(`${API_BASE}/teacher/students/${encodeURIComponent(studentId)}/learning-score`, {
+    headers: await authHeaders()
+  });
+  if (!res.ok) throw new Error(`getTeacherStudentLearningScore failed: ${res.status}`);
+  const data = await res.json();
+  return checkSuccess(data, 'getTeacherStudentLearningScore');
+}
+
 export async function getTeacherStudentDeliveryStatus(studentId) {
   const res = await fetch(`${API_BASE}/teacher/students/${encodeURIComponent(studentId)}/delivery-status`, {
     headers: await authHeaders()
@@ -1231,6 +1249,8 @@ const api = {
   getTeacherStudents,
   bulkUpdateTeacherStudentsClass,
   getTeacherStudentProgress,
+  getTeacherStudentSubjectProgress,
+  getTeacherStudentLearningScore,
   getTeacherStudentDeliveryStatus,
   assignTeacherHomework,
   updateTeacherHomework,

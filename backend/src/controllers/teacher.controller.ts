@@ -3,6 +3,8 @@ import { SupabaseService } from '../supabase.service';
 import { AuthGuard } from '../auth/auth.guard';
 import { StudentAuthService } from '../auth/student-auth.service';
 import { LocalFeedService } from '../shared/local-feed.service';
+import { LearningScoreService } from '../progress/learning-score.service';
+import { normalizeSubjectKey } from '../orchard/orchard.constants';
 import { METRIC_ORDER_COLUMN, metricAt, metricScore } from '../progress/progress-metric.util';
 
 function makeAssignmentGroupId() {
@@ -20,7 +22,8 @@ export class TeacherController {
   constructor(
     private readonly db: SupabaseService,
     private readonly studentAuth: StudentAuthService,
-    private readonly localFeed: LocalFeedService
+    private readonly localFeed: LocalFeedService,
+    private readonly learningScore: LearningScoreService
   ) {}
 
   private sampleStudents() {
@@ -504,10 +507,87 @@ export class TeacherController {
     }
   }
 
+  // Full "Learning Score" report — every subject, exactly what the student
+  // sees on their own Progress page — so the Teacher portal can mirror it 1:1
+  // for a teacher-selected student (properly access-checked, unlike the
+  // self-service /progress/learning-score endpoint which trusts a query param).
+  @Get('students/:id/learning-score')
+  async studentLearningScore(@Req() req: any, @Param('id') studentId: string) {
+    this.ensureTeacher(req);
+    await this.ensureStudentAccess(req, studentId);
+    try {
+      const data = await this.learningScore.getLearningScore(studentId);
+      return { ...data, studentId };
+    } catch (e) {
+      return {
+        success: false,
+        error: String((e as any)?.message || e || 'learning score failed'),
+        studentId,
+        hasData: false,
+        score: 0,
+        maxScore: 1000,
+        dimensions: [],
+        trend: [],
+        subjects: []
+      };
+    }
+  }
+
+  // Same per-subject growth data the student portal's Progress page shows
+  // (score, trend, daily/monthly line), scoped down to just the teacher's own
+  // subject so the Teacher portal mirrors what that student sees for it.
+  @Get('students/:id/subject-progress')
+  async studentSubjectProgress(@Req() req: any, @Param('id') studentId: string) {
+    this.ensureTeacher(req);
+    await this.ensureStudentAccess(req, studentId);
+    const subjectScope = await this.teacherSubject(req);
+
+    try {
+      const data = await this.learningScore.getLearningScore(studentId);
+      const subjects = Array.isArray(data?.subjects) ? data.subjects : [];
+      const targetKey = subjectScope ? normalizeSubjectKey(subjectScope) : null;
+      const subject = (targetKey && subjects.find((s: any) => s.subjectKey === targetKey)) || subjects[0] || null;
+
+      return {
+        success: true,
+        studentId,
+        hasData: !!data?.hasData,
+        subject
+      };
+    } catch (e) {
+      return {
+        success: false,
+        error: String((e as any)?.message || e || 'subject progress failed'),
+        studentId,
+        hasData: false,
+        subject: null
+      };
+    }
+  }
+
   @Get('students/:id/delivery-status')
   async studentDeliveryStatus(@Req() req: any, @Param('id') studentId: string) {
     this.ensureTeacher(req);
     await this.ensureStudentAccess(req, studentId);
+    const subjectScope = await this.teacherSubject(req);
+
+    // A homework row counts as pending only while the student hasn't submitted
+    // it yet — submission sets status to 'submitted'/'resubmitted'/'graded'.
+    const isPendingHomework = (h: any) => {
+      const s = String(h?.status || '').trim().toLowerCase();
+      return s !== 'submitted' && s !== 'resubmitted' && s !== 'graded';
+    };
+    const scopeToSubject = (rows: any[]) => (subjectScope
+      ? rows.filter((h: any) => String(h?.subject || '').trim().toLowerCase() === subjectScope)
+      : rows);
+    const isAnnouncementVisible = (a: any) => {
+      const now = Date.now();
+      const startMs = a?.start_at ? new Date(a.start_at).getTime() : null;
+      const endMs = a?.end_at ? new Date(a.end_at).getTime() : null;
+      if (startMs && Number.isFinite(startMs) && now < startMs) return false;
+      if (endMs && Number.isFinite(endMs) && now > endMs) return false;
+      return true;
+    };
 
     try {
       const [homeworkRes, announcementsRes, testsRes, eventsRes, rewardsRes] = await Promise.all([
@@ -527,8 +607,8 @@ export class TeacherController {
         return Array.from(merged.values());
       };
 
-      const homeworkRows = mergeById((homeworkRes as any)?.data || [], this.localFeed.listHomeworkForStudent(studentId));
-      const announcementRows = mergeById((announcementsRes as any)?.data || [], this.localFeed.listAnnouncements());
+      const homeworkRows = scopeToSubject(mergeById((homeworkRes as any)?.data || [], this.localFeed.listHomeworkForStudent(studentId)));
+      const announcementRows = mergeById((announcementsRes as any)?.data || [], this.localFeed.listAnnouncements()).filter(isAnnouncementVisible);
       const testRows = mergeById((testsRes as any)?.data || [], this.localFeed.listTests());
       const eventRows = mergeById((eventsRes as any)?.data || [], this.localFeed.listEventsForStudent(studentId));
       const rewardRows = Array.isArray((rewardsRes as any)?.data) ? (rewardsRes as any).data : [];
@@ -541,7 +621,7 @@ export class TeacherController {
         status: {
           announcementsAvailable: announcementRows.length,
           homeworkAssigned: homeworkRows.length,
-          homeworkPending: homeworkRows.filter((h: any) => String(h?.status || 'pending') !== 'completed').length,
+          homeworkPending: homeworkRows.filter(isPendingHomework).length,
           testsAvailable: testRows.filter((t: any) => String(t?.status || 'upcoming') !== 'completed').length,
           eventsScheduled: eventRows.length,
           rewardCoins: Math.max(Number(rewardHead?.coins || 0), Number(rewardFallback.coins || 0)),
@@ -552,8 +632,8 @@ export class TeacherController {
         }
       };
     } catch (e) {
-      const homeworkRows = this.localFeed.listHomeworkForStudent(studentId);
-      const announcementRows = this.localFeed.listAnnouncements();
+      const homeworkRows = scopeToSubject(this.localFeed.listHomeworkForStudent(studentId));
+      const announcementRows = this.localFeed.listAnnouncements().filter(isAnnouncementVisible);
       const testRows = this.localFeed.listTests();
       const eventRows = this.localFeed.listEventsForStudent(studentId);
       const rewardFallback = this.localFeed.getRewards(studentId);
@@ -564,7 +644,7 @@ export class TeacherController {
         status: {
           announcementsAvailable: announcementRows.length,
           homeworkAssigned: homeworkRows.length,
-          homeworkPending: homeworkRows.filter((h: any) => String(h?.status || 'pending') !== 'completed').length,
+          homeworkPending: homeworkRows.filter(isPendingHomework).length,
           testsAvailable: testRows.filter((t: any) => String(t?.status || 'upcoming') !== 'completed').length,
           eventsScheduled: eventRows.length,
           rewardCoins: Number(rewardFallback.coins || 0),
@@ -1525,6 +1605,8 @@ export class TeacherController {
         title: a.title || 'Announcement',
         message: a.message || '',
         audience: a.audience || 'students',
+        startAt: a.start_at || null,
+        endAt: a.end_at || null,
         createdAt: a.created_at || null
       }));
       return { success: true, announcements: normalized.length ? normalized : this.localFeed.listAnnouncements() };
@@ -1537,11 +1619,15 @@ export class TeacherController {
   async postAnnouncement(@Req() req: any, @Body() body: any) {
     this.ensureTeacher(req);
     const targetClass: string | null = body?.className || null;
+    const startAt = body?.startAt ? new Date(body.startAt).toISOString() : null;
+    const endAt = body?.endAt ? new Date(body.endAt).toISOString() : null;
     const row = {
       title: body?.title || 'Announcement',
       message: body?.message || '',
       audience: targetClass ? `class:${targetClass}` : (body?.audience || 'students'),
       target_class: targetClass,
+      start_at: startAt,
+      end_at: endAt,
       created_by: req?.user?.sub || null,
       created_at: new Date().toISOString()
     };
@@ -1554,6 +1640,8 @@ export class TeacherController {
           title: inserted.title,
           message: inserted.message,
           audience: inserted.audience,
+          startAt: inserted.start_at ?? row.start_at,
+          endAt: inserted.end_at ?? row.end_at,
           createdAt: inserted.created_at || row.created_at
         }
       ]);
@@ -1564,6 +1652,8 @@ export class TeacherController {
           title: inserted.title,
           message: inserted.message,
           audience: inserted.audience,
+          startAt: inserted.start_at ?? row.start_at,
+          endAt: inserted.end_at ?? row.end_at,
           createdAt: inserted.created_at || row.created_at
         }
       };
@@ -1573,6 +1663,8 @@ export class TeacherController {
         title: row.title,
         message: row.message,
         audience: row.audience,
+        startAt: row.start_at,
+        endAt: row.end_at,
         createdAt: row.created_at
       };
       this.localFeed.addAnnouncements([local]);

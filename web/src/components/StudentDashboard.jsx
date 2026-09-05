@@ -3378,7 +3378,7 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
       ) : (
         <div className="eg-ai-select-lesson-prompt">
           <span className="eg-ai-select-lesson-icon" aria-hidden="true">📚</span>
-          <h4>Select a lesson to start chatting</h4>
+          <h4>Select a lesson to get started</h4>
           <p>
             {tutorSubject
               ? `Choose an available ${tutorSubject} lesson from the dropdown above — Sam will start a focused session just for that lesson.`
@@ -3875,15 +3875,6 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
                   <div className="eg-goal-box">
                     <h4>Weekly Goal</h4>
                     <div className="eg-goal-ring" style={{ background: `conic-gradient(#ffd23f ${weeklyGoalPct * 3.6}deg, #f3ecd6 ${weeklyGoalPct * 3.6}deg)` }}>
-                      {weeklyGoalPct > 0 && (
-                        <span
-                          className="eg-goal-ring-shine"
-                          style={{
-                            WebkitMaskImage: `conic-gradient(#000 ${weeklyGoalPct}%, transparent ${weeklyGoalPct}%)`,
-                            maskImage: `conic-gradient(#000 ${weeklyGoalPct}%, transparent ${weeklyGoalPct}%)`,
-                          }}
-                        />
-                      )}
                       <div className="eg-goal-ring-inner">
                         <div>{weeklyGoalPct}%</div>
                       </div>

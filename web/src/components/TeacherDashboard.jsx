@@ -1,37 +1,38 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import SubjectBackground, { getPalette } from './SubjectBackground';
+import TeacherSubjectProgressChart from './TeacherSubjectProgressChart';
+import StudentProgress from './StudentProgress';
 import {
   addTestQuestion,
-  askTeacherAi,
   assignTeacherHomework,
   updateTeacherHomework,
   getTeacherAssignedHomework,
   getTeacherHomeworkAttempts,
   uploadHomeworkImage,
   resyncTeacherHomework,
-  bulkUpdateTeacherStudentsClass,
   cloneTest,
   createTest,
   deleteTest,
   getTeacherAnnouncements,
-  getTeacherStudentActivity,
   getTeacherStudentHomework,
   getTeacherStudentTestAttempts,
   gradeTeacherHomework,
   getTeacherDashboard,
   getTeacherProfile,
   getTeacherStudentDeliveryStatus,
-  getTeacherStudentProgress,
+  getTeacherStudentSubjectProgress,
+  getTeacherStudentLearningScore,
   getTeacherStudents,
-  listCurriculumLessonDocuments,
   listCurriculumLessons,
   getTests,
   listTestQuestions,
   postTeacherAnnouncement,
-  setCurriculumLessonVisibility,
   updateTest,
   deleteTestQuestion,
-  updateTestQuestion
+  updateTestQuestion,
+  sendChat,
+  getChatHistory,
+  generateLocalTtsAudio
 } from '../api';
 
 function shortDate(value) {
@@ -41,7 +42,6 @@ function shortDate(value) {
   return dt.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 }
 
-const emptyProgress = { subjectScores: [], timeline: [] };
 const emptyDeliveryStatus = {
   announcementsAvailable: 0,
   homeworkAssigned: 0,
@@ -54,13 +54,21 @@ const emptyDeliveryStatus = {
   recentTestTitle: null,
   nextEventTitle: null
 };
-const emptyActivity = [];
 
 function shortDateTime(value) {
   if (!value) return 'Just now';
   const dt = new Date(value);
   if (Number.isNaN(dt.getTime())) return 'Just now';
   return dt.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+}
+
+function announcementScheduleLabel(a) {
+  const startAt = a?.startAt || a?.start_at || null;
+  const endAt = a?.endAt || a?.end_at || null;
+  if (startAt && endAt) return `Visible ${shortDateTime(startAt)} → ${shortDateTime(endAt)}`;
+  if (startAt) return `Visible from ${shortDateTime(startAt)}`;
+  if (endAt) return `Visible until ${shortDateTime(endAt)}`;
+  return 'Always visible';
 }
 
 function safeArray(v) {
@@ -101,6 +109,73 @@ function asUrlList(value, fallbackSingle) {
   return [];
 }
 
+// Downscale large images before sending to the AI Assistant chat (mirrors the
+// student AI Tutor's upload path) so payloads stay reasonable for inference.
+async function fileToCompressedDataUrl(file) {
+  if (!file) throw new Error('No file selected');
+
+  const readDataUrl = () => new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ''));
+    reader.onerror = () => reject(reader.error || new Error('Unable to read image'));
+    reader.readAsDataURL(file);
+  });
+
+  if (file.size <= 1.8 * 1024 * 1024) {
+    return readDataUrl();
+  }
+
+  const img = await new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const el = new Image();
+    el.onload = () => { URL.revokeObjectURL(url); resolve(el); };
+    el.onerror = (e) => { URL.revokeObjectURL(url); reject(e || new Error('Unable to load image')); };
+    el.src = url;
+  });
+
+  const maxSide = 1440;
+  const scale = Math.min(1, maxSide / Math.max(img.width, img.height));
+  const targetW = Math.max(1, Math.round(img.width * scale));
+  const targetH = Math.max(1, Math.round(img.height * scale));
+  const canvas = document.createElement('canvas');
+  canvas.width = targetW;
+  canvas.height = targetH;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return readDataUrl();
+  ctx.drawImage(img, 0, 0, targetW, targetH);
+  return canvas.toDataURL('image/jpeg', 0.8);
+}
+
+function fileToRawDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    if (!file) return reject(new Error('No file selected'));
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ''));
+    reader.onerror = () => reject(reader.error || new Error('Unable to read image'));
+    reader.readAsDataURL(file);
+  });
+}
+
+function base64ToBlob(base64, mimeType) {
+  const raw = atob(String(base64 || ''));
+  const bytes = new Uint8Array(raw.length);
+  for (let i = 0; i < raw.length; i += 1) bytes[i] = raw.charCodeAt(i);
+  return new Blob([bytes], { type: mimeType || 'audio/mpeg' });
+}
+
+function clampSpeed(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return 1;
+  return Math.min(1.8, Math.max(0.6, Number(n.toFixed(2))));
+}
+
+function getSpeedLabel(value) {
+  const speed = Number(value || 1);
+  if (speed < 0.9) return 'Slower';
+  if (speed > 1.1) return 'Faster';
+  return 'Normal';
+}
+
 function toLocalDateTimeInputValue(date = new Date()) {
   const pad = (n) => String(n).padStart(2, '0');
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
@@ -138,12 +213,11 @@ export default function TeacherDashboard({ session, onLogout }) {
     students: false,
     progress: false,
     delivery: false,
-    activity: false,
     announcements: false,
     tests: false,
     homework: false,
     testAttempts: false,
-    curriculum: false
+    chat: false
   });
 
   const [panelError, setPanelError] = useState({
@@ -151,24 +225,23 @@ export default function TeacherDashboard({ session, onLogout }) {
     students: '',
     progress: '',
     delivery: '',
-    activity: '',
     announcements: '',
     tests: '',
     homework: '',
     testAttempts: '',
-    curriculum: ''
+    chat: ''
   });
 
   const [dashboard, setDashboard] = useState({ summary: {} });
   const [students, setStudents] = useState([]);
   const [studentSearch, setStudentSearch] = useState('');
   const [studentClassFilter, setStudentClassFilter] = useState('all');
+  const [studentPage, setStudentPage] = useState(0);
   const [selectedStudentId, setSelectedStudentId] = useState('');
   const [selectedStudentIds, setSelectedStudentIds] = useState([]);
-  const [selectedProgress, setSelectedProgress] = useState(emptyProgress);
+  const [subjectProgress, setSubjectProgress] = useState(null);
+  const [progressView, setProgressView] = useState('daily');
   const [selectedDeliveryStatus, setSelectedDeliveryStatus] = useState(emptyDeliveryStatus);
-  const [selectedActivity, setSelectedActivity] = useState(emptyActivity);
-  const [activityTypeFilter, setActivityTypeFilter] = useState('all');
   const [selectedHomework, setSelectedHomework] = useState([]);
   const [homeworkStatusFilter, setHomeworkStatusFilter] = useState('all');
   const [selectedTestAttempts, setSelectedTestAttempts] = useState([]);
@@ -176,13 +249,38 @@ export default function TeacherDashboard({ session, onLogout }) {
   const [gradeValue, setGradeValue] = useState('');
   const [gradeFeedback, setGradeFeedback] = useState('');
 
+  // ── AI Assistant (mirrors the student AI Tutor, locked to the teacher's own subject) ──
+  const [tutorLessons, setTutorLessons] = useState([]);
+  const [selectedTutorLessonId, setSelectedTutorLessonId] = useState('');
+  const [selectedTutorLesson, setSelectedTutorLesson] = useState(null);
+  const [chatHistory, setChatHistory] = useState([]);
+  const [chatInput, setChatInput] = useState('');
+  const [chatLoading, setChatLoading] = useState(false);
+  const [chatImages, setChatImages] = useState([]);
+  const [chatImageError, setChatImageError] = useState('');
+  const [chatFollowups, setChatFollowups] = useState([]);
+  const [chatVoicePlayId, setChatVoicePlayId] = useState('');
+  const [chatVoiceLoadingId, setChatVoiceLoadingId] = useState('');
+  const [chatReadAloudSpeed, setChatReadAloudSpeed] = useState(1);
+  const chatEndRef = useRef(null);
+  const chatRequestAbortRef = useRef(null);
+  const localAudioRef = useRef(null);
+  const localAudioUrlRef = useRef('');
+  const localVoiceCacheRef = useRef({});
+  const [teacherActorId] = useState(() => {
+    // Distinct per-teacher chat identity so conversations don't mix between teachers.
+    const tId = String(session?.userId || session?.teacherId || session?.id || 'teacher-local');
+    return `teacher-${tId}`;
+  });
+
   const [announcements, setAnnouncements] = useState([]);
   const [announcementTitle, setAnnouncementTitle] = useState('');
   const [announcementMessage, setAnnouncementMessage] = useState('');
+  const [announcementStartAt, setAnnouncementStartAt] = useState('');
+  const [announcementEndAt, setAnnouncementEndAt] = useState('');
 
   // Student accounts are created and managed by the school admin, so the
   // teacher portal only reads the roster — no registration or invite state here.
-  const [bulkClassName, setBulkClassName] = useState('Class 8');
 
   const [assignTitle, setAssignTitle] = useState('');
   const [assignSubject, setAssignSubject] = useState(session?.subject || 'Mathematics');
@@ -227,8 +325,7 @@ export default function TeacherDashboard({ session, onLogout }) {
   const [gradeSubmittedById, setGradeSubmittedById] = useState({});
   const [expandedHistoryDetailsById, setExpandedHistoryDetailsById] = useState({});
 
-  const [teacherPrompt, setTeacherPrompt] = useState('Plan a 30-minute revision session for Algebra basics.');
-  const [teacherAi, setTeacherAi] = useState(null);
+  const [busy, setBusy] = useState('');
   const [historyStorageKey] = useState(() => {
     // Use the signed-in teacher's id so each teacher keeps a distinct history
     // cache. Falling back to a shared key would leak one teacher's assignments
@@ -238,7 +335,6 @@ export default function TeacherDashboard({ session, onLogout }) {
   });
   const [historyReady, setHistoryReady] = useState(false);
 
-  const [busy, setBusy] = useState('');
   const [note, setNote] = useState('');
   const [activeSection, setActiveSection] = useState(() => {
     const h = window.location.hash.replace('#', '');
@@ -281,13 +377,6 @@ export default function TeacherDashboard({ session, onLogout }) {
   const [editingQuestionCorrect, setEditingQuestionCorrect] = useState(0);
 
   const lockedSubject = String(teacherProfile?.subject || session?.subject || '').trim();
-  const defaultCurriculumSubject = String(teacherProfile?.subject || session?.subject || assignSubject || 'General').trim() || 'General';
-  const [curriculumSubject, setCurriculumSubject] = useState(defaultCurriculumSubject);
-  const [curriculumClassName, setCurriculumClassName] = useState('all');
-  const [curriculumLessons, setCurriculumLessons] = useState([]);
-  const [curriculumDocumentsByLesson, setCurriculumDocumentsByLesson] = useState({});
-  const [curriculumSelectedLessonId, setCurriculumSelectedLessonId] = useState('');
-  const [curriculumVisibilitySaving, setCurriculumVisibilitySaving] = useState('');
 
   // Panels load silently — nothing on screen ever announces "loading". The flag
   // below is kept only for the *first* fetch of each panel, so an empty-state
@@ -361,18 +450,18 @@ export default function TeacherDashboard({ session, onLogout }) {
 
   async function loadProgressPanel(studentId) {
     if (!studentId) {
-      setSelectedProgress(emptyProgress);
+      setSubjectProgress(null);
       return;
     }
 
     setPanelLoadingKey('progress', true);
     setPanelErrorKey('progress', '');
     try {
-      const res = await getTeacherStudentProgress(studentId);
-      setSelectedProgress(res || emptyProgress);
+      const res = await getTeacherStudentSubjectProgress(studentId);
+      setSubjectProgress(res || null);
     } catch (e) {
       setPanelErrorKey('progress', e?.message || 'Unable to load progress.');
-      setSelectedProgress(emptyProgress);
+      setSubjectProgress(null);
     } finally {
       setPanelLoadingKey('progress', false);
     }
@@ -397,22 +486,218 @@ export default function TeacherDashboard({ session, onLogout }) {
     }
   }
 
-  async function loadActivityPanel(studentId) {
-    if (!studentId) {
-      setSelectedActivity(emptyActivity);
-      return;
+  // ── AI Assistant (mirrors the student AI Tutor) ─────────────────────────
+  async function loadTutorLessonsPanel() {
+    const subject = lockedSubject || '';
+    if (!subject) {
+      setTutorLessons([]);
+      return [];
     }
-
-    setPanelLoadingKey('activity', true);
-    setPanelErrorKey('activity', '');
+    const className = (!teacherTargetClass || teacherTargetClass === 'all') ? '' : teacherTargetClass;
     try {
-      const res = await getTeacherStudentActivity(studentId);
-      setSelectedActivity(Array.isArray(res?.activity) ? res.activity : emptyActivity);
+      const res = await listCurriculumLessons({ className, subject });
+      const lessons = Array.isArray(res?.lessons) ? res.lessons : [];
+      setTutorLessons(lessons);
+      setSelectedTutorLesson((prev) => {
+        const prevId = String(prev?.id || selectedTutorLessonId || '');
+        const next = lessons.find((lesson) => String(lesson.id || '') === prevId) || null;
+        if (!next) setSelectedTutorLessonId('');
+        return next;
+      });
+      return lessons;
+    } catch {
+      setTutorLessons([]);
+      setSelectedTutorLessonId('');
+      setSelectedTutorLesson(null);
+      return [];
+    }
+  }
+
+  function getCurrentTutorConversationId(lessonOverride) {
+    const normalizedSubject = String(lockedSubject || 'general')
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-');
+    const lessonPart = String(lessonOverride?.id || selectedTutorLesson?.id || '').trim();
+    return lessonPart
+      ? `conv-${teacherActorId}:subject-${normalizedSubject}:lesson-${lessonPart}`
+      : `conv-${teacherActorId}:subject-${normalizedSubject}:all-lessons`;
+  }
+
+  async function loadChatPanel(conversationId) {
+    setPanelLoadingKey('chat', true);
+    setPanelErrorKey('chat', '');
+    try {
+      const res = await getChatHistory(teacherActorId, conversationId);
+      setChatHistory(safeArray(res?.messages));
     } catch (e) {
-      setPanelErrorKey('activity', e?.message || 'Unable to load recent activity.');
-      setSelectedActivity(emptyActivity);
+      setPanelErrorKey('chat', e?.message || 'Unable to load chat history.');
+      setChatHistory([]);
     } finally {
-      setPanelLoadingKey('activity', false);
+      setPanelLoadingKey('chat', false);
+    }
+  }
+
+  async function onSendTutorMessage(overrideMsg) {
+    const msg = (typeof overrideMsg === 'string' ? overrideMsg : chatInput).trim();
+    if (!msg && !chatImages.length) return;
+    setChatFollowups([]);
+    setChatImageError('');
+    const conversationId = getCurrentTutorConversationId();
+    const recentMessages = safeArray(chatHistory)
+      .slice(-20)
+      .map((m) => ({
+        role: m?.role === 'ai' ? 'assistant' : 'user',
+        content: String(m?.text || m?.message || '').trim(),
+      }))
+      .filter((m) => m.content);
+
+    const tempUserMsg = {
+      id: `tmp-u-${Date.now()}`,
+      role: 'user',
+      text: msg || (chatImages.length ? `Please explain these ${chatImages.length} image${chatImages.length === 1 ? '' : 's'}.` : ''),
+      ts: new Date().toISOString(),
+      imageDataUrls: chatImages.map((img) => img.dataUrl),
+      imageNames: chatImages.map((img) => img.name),
+    };
+    setChatHistory((prev) => [...safeArray(prev), tempUserMsg]);
+
+    const abortController = typeof AbortController !== 'undefined' ? new AbortController() : null;
+    chatRequestAbortRef.current = abortController;
+
+    setChatInput('');
+    setChatLoading(true);
+    setPanelErrorKey('chat', '');
+    try {
+      const res = await sendChat(
+        teacherActorId,
+        msg || 'Please explain these images.',
+        'Friendly',
+        conversationId,
+        recentMessages,
+        chatImages[0]?.dataUrl || undefined,
+        chatImages.map((img) => img.dataUrl),
+        chatImages.map((img) => img.name),
+        selectedTutorLesson?.id || undefined,
+        selectedTutorLesson?.title || undefined,
+        lockedSubject || undefined,
+        abortController?.signal
+      );
+      if (!res?.reply && (res?.error || res?.message || res?.statusCode)) {
+        throw new Error(res?.message || res?.error || 'Chat request failed');
+      }
+      const aiMsg = { id: `ai-${Date.now()}`, role: 'ai', text: res.reply || '…', ts: new Date().toISOString() };
+      setChatHistory((prev) => [...safeArray(prev), aiMsg]);
+      if (Array.isArray(res?.followups) && res.followups.length) {
+        setChatFollowups(res.followups);
+      }
+      setChatImages([]);
+    } catch (e) {
+      const isAborted = e?.name === 'AbortError' || String(e?.message || '').toLowerCase().includes('aborted');
+      if (isAborted) { setPanelErrorKey('chat', ''); return; }
+      const errMsg = { id: `tmp-err-${Date.now()}`, role: 'ai', text: `⚠️ ${e?.message || 'Unable to reach AI Assistant right now.'}`, ts: new Date().toISOString() };
+      setChatHistory((prev) => [...safeArray(prev), errMsg]);
+      setPanelErrorKey('chat', e?.message || 'Unable to send chat message.');
+    } finally {
+      chatRequestAbortRef.current = null;
+      setChatLoading(false);
+    }
+  }
+
+  function onStopTutorMessageSend() {
+    if (!chatRequestAbortRef.current) return;
+    chatRequestAbortRef.current.abort();
+    chatRequestAbortRef.current = null;
+    setChatLoading(false);
+    setPanelErrorKey('chat', '');
+  }
+
+  async function onTutorImageSelected(files) {
+    setChatImageError('');
+    const picked = Array.isArray(files) ? files.filter(Boolean) : [];
+    if (!picked.length) return;
+
+    const prepared = [];
+    for (const file of picked) {
+      if (!String(file.type || '').startsWith('image/')) {
+        setChatImageError('Only image files are allowed.');
+        continue;
+      }
+      if (file.size > 20 * 1024 * 1024) {
+        setChatImageError('Please upload images smaller than 20MB each.');
+        continue;
+      }
+      try {
+        let dataUrl = '';
+        try { dataUrl = String(await fileToCompressedDataUrl(file)); }
+        catch { dataUrl = String(await fileToRawDataUrl(file)); }
+        if (!dataUrl) throw new Error('empty image');
+        prepared.push({ id: `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`, name: String(file.name || 'image'), dataUrl });
+      } catch {
+        setChatImageError('Some images could not be processed. Try PNG/JPG files.');
+      }
+    }
+    if (!prepared.length) return;
+    setChatImages((prev) => [...prev, ...prepared].slice(0, 6));
+  }
+
+  function removeChatImageById(id) {
+    setChatImages((prev) => prev.filter((img) => img.id !== id));
+  }
+
+  function clearChatImages() {
+    setChatImages([]);
+  }
+
+  function stopLocalVoicePlayback() {
+    if (localAudioRef.current) {
+      localAudioRef.current.pause();
+      localAudioRef.current = null;
+    }
+    if (localAudioUrlRef.current) {
+      URL.revokeObjectURL(localAudioUrlRef.current);
+      localAudioUrlRef.current = '';
+    }
+    setChatVoicePlayId('');
+  }
+
+  async function onToggleLocalVoice(messageId, rawText) {
+    const id = String(messageId || '').trim();
+    if (!id) return;
+    if (chatVoicePlayId === id) { stopLocalVoicePlayback(); return; }
+    const cleanText = String(rawText || '').trim();
+    if (!cleanText) return;
+
+    setPanelErrorKey('chat', '');
+    setChatVoiceLoadingId(id);
+    try {
+      const cacheKey = `${id}::${cleanText.slice(0, 160)}`;
+      let cached = localVoiceCacheRef.current[cacheKey];
+      if (!cached) {
+        const tts = await generateLocalTtsAudio(cleanText, 'en-US', teacherActorId, undefined, chatReadAloudSpeed);
+        const audioBase64 = String(tts?.audioBase64 || '').trim();
+        if (!audioBase64) throw new Error('Local TTS returned empty audio.');
+        cached = { audioBase64, mimeType: String(tts?.mimeType || 'audio/mpeg').trim() || 'audio/mpeg' };
+        localVoiceCacheRef.current[cacheKey] = cached;
+      }
+      stopLocalVoicePlayback();
+      const blob = base64ToBlob(cached.audioBase64, cached.mimeType);
+      const url = URL.createObjectURL(blob);
+      const audio = new Audio(url);
+      audio.preload = 'auto';
+      audio.playbackRate = clampSpeed(chatReadAloudSpeed);
+      audio.onended = () => { if (localAudioRef.current === audio) stopLocalVoicePlayback(); };
+      audio.onerror = () => { if (localAudioRef.current === audio) stopLocalVoicePlayback(); };
+      localAudioRef.current = audio;
+      localAudioUrlRef.current = url;
+      setChatVoicePlayId(id);
+      await audio.play();
+      if (localAudioRef.current === audio) localAudioRef.current.playbackRate = clampSpeed(chatReadAloudSpeed);
+    } catch (e) {
+      stopLocalVoicePlayback();
+      setPanelErrorKey('chat', e?.message || 'Voice playback failed.');
+    } finally {
+      setChatVoiceLoadingId('');
     }
   }
 
@@ -518,50 +803,6 @@ export default function TeacherDashboard({ session, onLogout }) {
     }
   }
 
-  async function loadCurriculumPanel({ className = curriculumClassName, subject = curriculumSubject } = {}) {
-    setPanelLoadingKey('curriculum', true);
-    setPanelErrorKey('curriculum', '');
-    try {
-      const res = await listCurriculumLessons({ className: className === 'all' ? '' : className, subject: subject || '' });
-      const loadedLessons = Array.isArray(res?.lessons) ? res.lessons : [];
-      setCurriculumLessons(loadedLessons);
-      if (!curriculumSelectedLessonId && loadedLessons.length) {
-        setCurriculumSelectedLessonId(loadedLessons[0].id);
-      }
-      const selectedIds = loadedLessons.map((lesson) => String(lesson.id || '')).filter(Boolean).slice(0, 12);
-      const docEntries = await Promise.all(selectedIds.map(async (lessonId) => {
-        try {
-          const docRes = await listCurriculumLessonDocuments(lessonId);
-          return [lessonId, Array.isArray(docRes?.documents) ? docRes.documents : []];
-        } catch {
-          return [lessonId, []];
-        }
-      }));
-      setCurriculumDocumentsByLesson(Object.fromEntries(docEntries));
-    } catch (e) {
-      setPanelErrorKey('curriculum', e?.message || 'Unable to load curriculum lessons.');
-      setCurriculumLessons([]);
-      setCurriculumDocumentsByLesson({});
-    } finally {
-      setPanelLoadingKey('curriculum', false);
-    }
-  }
-
-  async function onToggleCurriculumVisibility(lessonId, classNames, isVisible) {
-    if (!lessonId) return;
-    const rows = Array.isArray(classNames) ? classNames : [classNames];
-    const cleaned = rows.map((v) => String(v || '').trim()).filter(Boolean);
-    if (!cleaned.length) return;
-    setCurriculumVisibilitySaving(lessonId);
-    try {
-      await setCurriculumLessonVisibility(lessonId, { classNames: cleaned, isVisible });
-      await loadCurriculumPanel();
-    } catch (e) {
-      setNote(e?.message || 'Unable to update lesson visibility.');
-    } finally {
-      setCurriculumVisibilitySaving('');
-    }
-  }
 
   async function loadTestQuestions(testId) {
     if (!testId) {
@@ -832,7 +1073,6 @@ export default function TeacherDashboard({ session, onLogout }) {
     if (!subj || subj.toLowerCase() === 'general') return;
     setAssignSubject(subj);
     setNewTestSubject(subj);
-    setCurriculumSubject(subj);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [teacherProfile]);
 
@@ -878,6 +1118,11 @@ export default function TeacherDashboard({ session, onLogout }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [studentSearch, studentClassFilter]);
 
+  // Jump back to page 1 whenever the roster being paged through changes shape.
+  useEffect(() => {
+    setStudentPage(0);
+  }, [studentSearch, studentClassFilter]);
+
   // Auto-select the class when teacher only teaches one
   useEffect(() => {
     if (teacherTargetClass !== 'all') return;
@@ -898,6 +1143,28 @@ export default function TeacherDashboard({ session, onLogout }) {
     return () => { active = false; };
   }, [teacherTargetClass, assignSubject]);
 
+  // AI Assistant — load lessons for the teacher's own subject when that page is open.
+  useEffect(() => {
+    if (activeSection !== 'ai-assistant') return;
+    loadTutorLessonsPanel();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeSection, teacherTargetClass, lockedSubject]);
+
+  // AI Assistant — (re)load chat history once a lesson is selected. Skip while
+  // a restored/selected lesson id hasn't resolved yet, to avoid a stray
+  // "all-lessons" conversation briefly overwriting the correct one.
+  useEffect(() => {
+    if (activeSection !== 'ai-assistant') return;
+    if (selectedTutorLessonId && !selectedTutorLesson) return;
+    loadChatPanel(getCurrentTutorConversationId());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeSection, selectedTutorLesson?.id, tutorLessons]);
+
+  // AI Assistant — scroll chat to bottom whenever messages change.
+  useEffect(() => {
+    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [chatHistory, chatLoading]);
+
   useEffect(() => {
     if (!showLessonPicker && !showEditingLessonPicker) return;
     function handleClick(e) {
@@ -915,7 +1182,6 @@ export default function TeacherDashboard({ session, onLogout }) {
   useEffect(() => {
     loadProgressPanel(selectedStudentId);
     loadDeliveryPanel(selectedStudentId);
-    loadActivityPanel(selectedStudentId);
     loadHomeworkPanel(selectedStudentId);
     loadTestAttemptsPanel(selectedStudentId);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -926,17 +1192,6 @@ export default function TeacherDashboard({ session, onLogout }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [createdTestId]);
 
-  useEffect(() => {
-    if (teacherProfile?.subject && (!curriculumSubject || curriculumSubject === 'General')) {
-      setCurriculumSubject(teacherProfile.subject);
-    }
-  }, [teacherProfile?.subject, curriculumSubject]);
-
-  useEffect(() => {
-    if (activeSection !== 'curriculum') return;
-    loadCurriculumPanel({ className: curriculumClassName, subject: curriculumSubject });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeSection, curriculumClassName, curriculumSubject]);
 
   const topStats = useMemo(() => {
     const s = dashboard?.summary || {};
@@ -952,47 +1207,14 @@ export default function TeacherDashboard({ session, onLogout }) {
 
   function toggleStudent(id) {
     setSelectedStudentIds((prev) => {
-      if (prev.includes(id)) return prev.filter((v) => v !== id);
-      return prev.concat(id);
+      if (prev.includes(id)) return [];
+      // Only one student can be checked at a time for bulk class updates.
+      return [id];
     });
-  }
-
-  function selectAllVisibleStudents() {
-    setSelectedStudentIds((classScopedStudents || []).map((student) => student.id));
   }
 
   function clearSelectedStudents() {
     setSelectedStudentIds([]);
-  }
-
-  async function onBulkUpdateClass(e) {
-    e.preventDefault();
-    if (!selectedStudentIds.length) {
-      setNote('Select at least one student for bulk class update.');
-      return;
-    }
-    if (!bulkClassName.trim()) {
-      setNote('Enter a class name for bulk update.');
-      return;
-    }
-
-    setBusy('bulk-class');
-    setNote('');
-    try {
-      const res = await bulkUpdateTeacherStudentsClass({
-        studentIds: selectedStudentIds,
-        className: bulkClassName.trim()
-      });
-      setNote(`Updated class to "${bulkClassName.trim()}" for ${Number(res?.updated || 0)} student(s).`);
-      await Promise.all([
-        loadStudentsPanel(studentSearch, studentClassFilter),
-        loadSummaryPanel()
-      ]);
-    } catch (e2) {
-      setNote(e2?.message || 'Unable to update classes in bulk right now.');
-    } finally {
-      setBusy('');
-    }
   }
 
   const classOptions = allKnownClasses;
@@ -1003,10 +1225,18 @@ export default function TeacherDashboard({ session, onLogout }) {
       // roster must follow it. In other sections fall back to the teacher's
       // active class. This prevents an empty list when the Students dropdown and
       // the teacher-section active class point at different classes.
-      const target = activeSection === 'students' ? studentClassFilter : teacherTargetClass;
+      const target = (activeSection === 'students' || activeSection === 'progress') ? studentClassFilter : teacherTargetClass;
       return safeArray(students).filter((s) => isInTargetClass(s, target));
     },
     [students, teacherTargetClass, studentClassFilter, activeSection]
+  );
+
+  const STUDENTS_PAGE_SIZE = 5;
+  const studentPageCount = Math.max(1, Math.ceil(classScopedStudents.length / STUDENTS_PAGE_SIZE));
+  const clampedStudentPage = Math.min(studentPage, studentPageCount - 1);
+  const pagedStudents = classScopedStudents.slice(
+    clampedStudentPage * STUDENTS_PAGE_SIZE,
+    (clampedStudentPage + 1) * STUDENTS_PAGE_SIZE
   );
 
   const classScopedAnnouncements = useMemo(
@@ -1071,6 +1301,19 @@ export default function TeacherDashboard({ session, onLogout }) {
   const latestFiveSelectedHomework = useMemo(() => {
     return safeArray(classScopedSelectedHomework).slice(0, 5);
   }, [classScopedSelectedHomework]);
+
+  // Prev/Next in the Homework Status panel step through students, not homework rows.
+  const selectedStudentIndex = classScopedStudents.findIndex((s) => s.id === selectedStudentId);
+
+  function goToAdjacentStudent(delta) {
+    if (!classScopedStudents.length) return;
+    const baseIndex = selectedStudentIndex === -1 ? 0 : selectedStudentIndex;
+    const nextIndex = Math.min(classScopedStudents.length - 1, Math.max(0, baseIndex + delta));
+    const nextStudent = classScopedStudents[nextIndex];
+    if (!nextStudent) return;
+    setSelectedStudentId(nextStudent.id);
+    setSelectedStudentIds([nextStudent.id]);
+  }
 
   const latestTwoActiveAssignments = useMemo(() => {
     return safeArray(classScopedActiveAssignments).slice(0, 2);
@@ -1733,6 +1976,10 @@ export default function TeacherDashboard({ session, onLogout }) {
       setNote('Please select a class at the top of the page before posting an announcement.');
       return;
     }
+    if (announcementStartAt && announcementEndAt && new Date(announcementEndAt) <= new Date(announcementStartAt)) {
+      setNote('End time must be after the start time.');
+      return;
+    }
 
     setBusy('announce');
     setNote('');
@@ -1741,7 +1988,9 @@ export default function TeacherDashboard({ session, onLogout }) {
         title: announcementTitle,
         message: announcementMessage,
         audience: 'students',
-        className: teacherTargetClass
+        className: teacherTargetClass,
+        startAt: announcementStartAt || null,
+        endAt: announcementEndAt || null
       });
       if (!res?.announcement) {
         setNote(res?.error || 'Announcement could not be posted.');
@@ -1750,26 +1999,12 @@ export default function TeacherDashboard({ session, onLogout }) {
 
       setAnnouncementTitle('');
       setAnnouncementMessage('');
+      setAnnouncementStartAt('');
+      setAnnouncementEndAt('');
       setNote(`Announcement posted to ${teacherTargetClass}.`);
       await Promise.all([loadAnnouncementsPanel(), loadSummaryPanel()]);
     } catch (e2) {
       setNote('Failed to post announcement.');
-    } finally {
-      setBusy('');
-    }
-  }
-
-  async function onAskAi(e) {
-    e.preventDefault();
-    if (!teacherPrompt.trim()) return;
-
-    setBusy('ai');
-    setTeacherAi(null);
-    try {
-      const res = await askTeacherAi(teacherPrompt);
-      setTeacherAi(res || null);
-    } catch (e2) {
-      setTeacherAi({ reply: 'AI request failed. Please retry.' });
     } finally {
       setBusy('');
     }
@@ -1789,11 +2024,6 @@ export default function TeacherDashboard({ session, onLogout }) {
     URL.revokeObjectURL(url);
   }
 
-  function activityIcon(type) {
-    const map = { homework: '📝', test: '📊', calendar: '📅', reward: '🏅', library: '📚', chat: '💬' };
-    return map[String(type || '').toLowerCase()] || '⚡';
-  }
-
   function scoreColor(score) {
     const n = Number(score);
     if (n >= 80) return '#22c55e';
@@ -1801,16 +2031,13 @@ export default function TeacherDashboard({ session, onLogout }) {
     return '#ef4444';
   }
 
-  const filteredActivity = activityTypeFilter === 'all'
-    ? (selectedActivity || [])
-    : (selectedActivity || []).filter((item) => String(item.type || '').toLowerCase() === activityTypeFilter);
-
   const selectedStudentName = (classScopedStudents.find((s) => s.id === selectedStudentId)?.name) || selectedStudentId || 'Student';
 
   const navItems = [
     { key: 'teacher', label: 'Teacher', icon: '📋' },
-    { key: 'curriculum', label: 'Curriculum', icon: '📚' },
-    { key: 'students', label: 'Students', icon: '👤' }
+    { key: 'ai-assistant', label: 'AI Assistant', icon: '🤖' },
+    { key: 'students', label: 'Students', icon: '👤' },
+    { key: 'progress', label: 'Student Progress', icon: '📈' }
   ];
 
   return (
@@ -1860,48 +2087,48 @@ export default function TeacherDashboard({ session, onLogout }) {
       <div className="td-main td-main-themed" style={{ position: 'relative', overflow: 'hidden' }}>
         {/* Subject-themed SVG background */}
         <SubjectBackground subject={teacherProfile?.subject || session?.subject || 'General'} />
-        <header className="td-topbar">
-          <div>
-            <p className="td-kicker">Teacher Workspace</p>
-            <h1>Welcome, {teacherProfile?.name || session?.name || 'Teacher'}</h1>
-            <p>
-              {teacherProfile?.subject || session?.subject
-                ? <><strong>{teacherProfile?.subject || session?.subject}</strong>{' · '}</>  
-                : null}
-              {activeSection === 'teacher'
-                ? 'Manage announcements, homework, and tests.'
-                : activeSection === 'curriculum'
-                  ? 'Control class visibility for admin-managed curriculum lessons.'
-                  : activeSection === 'students'
-                    ? 'Monitor student progress, activity, and delivery.'
+        {activeSection !== 'progress' && activeSection !== 'students' && activeSection !== 'ai-assistant' && (
+          <>
+            <header className="td-topbar td-framed">
+              <div>
+                <p className="td-kicker">Teacher Workspace</p>
+                <h1>Welcome, {teacherProfile?.name || session?.name || 'Teacher'}</h1>
+                <p>
+                  {teacherProfile?.subject || session?.subject
+                    ? <><strong>{teacherProfile?.subject || session?.subject}</strong>{' · '}</>  
+                    : null}
+                  {activeSection === 'teacher'
+                    ? 'Manage announcements, homework, and tests.'
                     : 'Register students and manage invitations.'}
-            </p>
-            {teacherProfile?.schoolName ? (
-              <p style={{ fontSize: 11, color: '#8892c4', marginTop: 2 }}>🏫 {teacherProfile.schoolName}</p>
-            ) : null}
-          </div>
-        </header>
+                </p>
+                {teacherProfile?.schoolName ? (
+                  <p style={{ fontSize: 11, color: '#8892c4', marginTop: 2 }}>🏫 {teacherProfile.schoolName}</p>
+                ) : null}
+              </div>
+            </header>
 
-        {panelError.summary ? <p className="td-note">{panelError.summary}</p> : null}
+            {panelError.summary ? <p className="td-note">{panelError.summary}</p> : null}
 
-        {/* Stats bar — always visible */}
-        <section className="td-stats">
-          {topStats.map((item) => (
-            <article key={item.label} className="td-stat-card">
-              <p>{item.label}</p>
-              <strong>{item.value}</strong>
-            </article>
-          ))}
-        </section>
+            {/* Stats bar — always visible */}
+            <section className="td-stats">
+              {topStats.map((item) => (
+                <article key={item.label} className="td-stat-card td-framed">
+                  <p>{item.label}</p>
+                  <strong>{item.value}</strong>
+                </article>
+              ))}
+            </section>
 
-        {note ? <p className="td-note">{note}</p> : null}
+            {note ? <p className="td-note">{note}</p> : null}
+          </>
+        )}
 
         {/* ══════════ TEACHER SECTION ══════════ */}
         {activeSection === 'teacher' && (
           <section className="td-grid">
 
             {/* ── Global class selector ── */}
-            <div className="td-class-banner">
+            <div className="td-class-banner td-framed">
               <span className="td-class-banner-label">📚 Active Class</span>
               <select
                 className="td-class-banner-select"
@@ -1923,12 +2150,36 @@ export default function TeacherDashboard({ session, onLogout }) {
               </span>
             </div>
 
-            <article className="td-card">
+            <article className="td-card td-card-framed">
               <h3>Announcements</h3>
               <p>Broadcast an update to <strong>{teacherTargetClass === 'all' ? 'the selected class' : teacherTargetClass}</strong>.</p>
               <form className="td-form" onSubmit={onPostAnnouncement}>
                 <input value={announcementTitle} onChange={(e) => setAnnouncementTitle(e.target.value)} placeholder="Announcement title" />
                 <textarea rows={3} value={announcementMessage} onChange={(e) => setAnnouncementMessage(e.target.value)} placeholder="Type announcement message" />
+                <div className="td-announce-schedule">
+                  <div>
+                    <label className="td-field-label">Visible From (optional)</label>
+                    <input
+                      type="datetime-local"
+                      className="td-input"
+                      value={announcementStartAt}
+                      onChange={(e) => setAnnouncementStartAt(e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <label className="td-field-label">Visible Until (optional)</label>
+                    <input
+                      type="datetime-local"
+                      className="td-input"
+                      value={announcementEndAt}
+                      min={announcementStartAt || undefined}
+                      onChange={(e) => setAnnouncementEndAt(e.target.value)}
+                    />
+                  </div>
+                </div>
+                <small className="td-announce-schedule-hint">
+                  Leave blank to post immediately and keep it visible indefinitely.
+                </small>
                 <button type="submit" disabled={busy === 'announce'}>
                   {busy === 'announce' ? 'Posting...' : teacherTargetClass === 'all' ? 'Select a class first' : `Post to ${teacherTargetClass}`}
                 </button>
@@ -1939,13 +2190,14 @@ export default function TeacherDashboard({ session, onLogout }) {
                   <li key={a.id || `${a.title}-${a.createdAt}`}>
                     <strong>{a.title}</strong>
                     <p>{a.message}</p>
+                    <span className="td-announce-schedule-badge">{announcementScheduleLabel(a)}</span>
                   </li>
                 ))}
                 {!panelLoading.announcements && !classScopedAnnouncements.length ? <p className="td-empty">No announcements posted yet.</p> : null}
               </ul>
             </article>
 
-            <article className="td-card td-card-wide">
+            <article className="td-card td-card-wide td-card-framed">
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                   <h3 style={{ margin: 0 }}>📝 Assign Homework</h3>
@@ -2612,26 +2864,7 @@ export default function TeacherDashboard({ session, onLogout }) {
               )}
             </article>
 
-            <article className="td-card td-card-wide">
-              <h3>Teacher AI Assistant</h3>
-              <p>Get class strategy suggestions, topic recap plans, and activity ideas.</p>
-              <form className="td-form td-ai-form" onSubmit={onAskAi}>
-                <textarea rows={3} value={teacherPrompt} onChange={(e) => setTeacherPrompt(e.target.value)} />
-                <button type="submit" disabled={busy === 'ai'}>{busy === 'ai' ? 'Thinking...' : 'Ask AI'}</button>
-              </form>
-              {teacherAi ? (
-                <div className="td-ai-reply">
-                  <p>{teacherAi.reply}</p>
-                  <ul>
-                    {(teacherAi.tips || []).map((tip) => (
-                      <li key={tip}>{tip}</li>
-                    ))}
-                  </ul>
-                </div>
-              ) : null}
-            </article>
-
-            <article className="td-card td-card-wide">
+            <article className="td-card td-card-wide td-card-framed">
               <h3>Mock Tests</h3>
               <p>Create tests and add questions for your students.</p>
               {panelError.tests ? <p className="td-empty">{panelError.tests}</p> : null}
@@ -2759,109 +2992,190 @@ export default function TeacherDashboard({ session, onLogout }) {
           </section>
         )}
 
-        {/* ══════════ CURRICULUM SECTION ══════════ */}
-        {activeSection === 'curriculum' && (
-          <section className="td-grid">
-            <article className="td-card td-card-wide">
-              <h3>Curriculum Library</h3>
-              <p>School admin creates lessons and uploads PDFs. Teachers can toggle class visibility here.</p>
-              <div className="invite-toolbar">
-                <input
-                  className="invite-search"
-                  value={curriculumSubject}
-                  onChange={(e) => setCurriculumSubject(e.target.value)}
-                  placeholder="Subject (e.g. Science)"
-                />
-                <select
-                  className="invite-filter"
-                  value={curriculumClassName}
-                  onChange={(e) => setCurriculumClassName(e.target.value)}
-                >
-                  <option value="all">All classes</option>
-                  {classOptions.map((className) => (
-                    <option key={className} value={className}>{className}</option>
-                  ))}
-                </select>
-                <button type="button" className="td-inline-btn" onClick={() => loadCurriculumPanel()}>
-                  ↻ Refresh
-                </button>
-              </div>
-              <p style={{ marginTop: 10, fontSize: 12, color: '#6b7280' }}>
-                Need a new lesson or PDF content update? Ask your school admin to manage curriculum content.
-              </p>
-            </article>
-
-            <article className="td-card">
-              <h3>Lessons</h3>
-              {panelError.curriculum ? <p className="td-empty">{panelError.curriculum}</p> : null}
-              <div className="td-student-list" style={{ maxHeight: 520, overflowY: 'auto' }}>
-                {curriculumLessons.map((lesson) => {
-                  const docs = curriculumDocumentsByLesson[String(lesson.id || '')] || [];
-                  const visibleClasses = Array.isArray(lesson.visibleClassNames) ? lesson.visibleClassNames : [];
-                  const isSelected = curriculumSelectedLessonId === lesson.id;
-                  return (
-                    <button
-                      key={lesson.id}
-                      type="button"
-                      className={isSelected ? 'active' : ''}
-                      onClick={() => setCurriculumSelectedLessonId(lesson.id)}
-                    >
-                      <div style={{ textAlign: 'left' }}>
-                        <strong>{lesson.title}</strong>
-                        <span>{lesson.subject} · {lesson.documentCount || docs.length || 0} PDF(s)</span>
-                        <span style={{ display: 'block', marginTop: 4, color: '#6b7280' }}>{lesson.description || 'No description'}</span>
-                        <span style={{ display: 'block', marginTop: 4, fontSize: 11, color: '#4b5563' }}>
-                          Visible to: {visibleClasses.length ? visibleClasses.join(', ') : 'No classes yet'}
-                        </span>
+        {/* ══════════ AI ASSISTANT SECTION ══════════ */}
+        {activeSection === 'ai-assistant' && (
+          <section className="td-ai-page">
+            <article className="td-card td-card-wide td-card-framed td-ai-tutor-card">
+              <section className="cardish eg-grad-ai eg-ai-panel eg-ai-screen">
+                <div className="eg-ai-top-sticky">
+                  <div className="eg-ai-head">
+                    <h3>🤖 AI Assistant</h3>
+                    <div className="eg-ai-head-controls">
+                      <div className="eg-ai-speed-control" title={`Voice speed: ${getSpeedLabel(chatReadAloudSpeed)}`}>
+                        <label htmlFor="td-ai-speed-range">Speed</label>
+                        <input
+                          id="td-ai-speed-range"
+                          type="range"
+                          min="0.6"
+                          max="1.8"
+                          step="0.1"
+                          value={chatReadAloudSpeed}
+                          onChange={(e) => setChatReadAloudSpeed(clampSpeed(e.target.value))}
+                          aria-label="Voice speed"
+                        />
+                        <span>{chatReadAloudSpeed.toFixed(1)}×</span>
                       </div>
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: 6, alignItems: 'flex-end' }}>
-                        <span className="td-invite-status">#{lesson.order_index ?? 0}</span>
-                        {curriculumClassName !== 'all' ? (
-                          <button
-                            type="button"
-                            className="td-inline-btn"
-                            disabled={curriculumVisibilitySaving === lesson.id}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              const visible = !(visibleClasses.some((cn) => String(cn).toLowerCase() === String(curriculumClassName).toLowerCase()));
-                              onToggleCurriculumVisibility(lesson.id, [curriculumClassName], visible);
-                            }}
-                          >
-                            {visibleClasses.some((cn) => String(cn).toLowerCase() === String(curriculumClassName).toLowerCase()) ? 'Hide from class' : 'Show to class'}
-                          </button>
-                        ) : null}
+                    </div>
+                  </div>
+                  <div className="eg-ai-context">
+                    <div className="eg-ai-context-row">
+                      <span className="eg-ai-select" style={{ display: 'inline-flex', alignItems: 'center' }}>
+                        {lockedSubject || 'No subject set'}
+                      </span>
+                      <select
+                        value={selectedTutorLessonId}
+                        onChange={(e) => {
+                          const nextId = e.target.value;
+                          setSelectedTutorLessonId(nextId);
+                          setSelectedTutorLesson(tutorLessons.find((lesson) => String(lesson.id || '') === String(nextId)) || null);
+                        }}
+                        className="eg-ai-select"
+                        disabled={!tutorLessons.length}
+                      >
+                        <option value="">{tutorLessons.length ? 'Select a lesson' : 'No lessons yet'}</option>
+                        {tutorLessons.map((lesson) => <option key={lesson.id} value={lesson.id}>{lesson.title}</option>)}
+                      </select>
+                    </div>
+                    <small className="eg-ai-scope-note">
+                      {teacherTargetClass && teacherTargetClass !== 'all'
+                        ? `Visible lessons for ${teacherTargetClass}`
+                        : 'Showing lessons across all your classes.'}
+                    </small>
+                    {selectedTutorLesson ? (
+                      <div className="eg-ai-lesson-chip">
+                        Teaching: <strong>{selectedTutorLesson.title}</strong> · {selectedTutorLesson.subject}
                       </div>
-                    </button>
-                  );
-                })}
-                {!panelLoading.curriculum && !curriculumLessons.length ? <p className="td-empty">No lessons created yet.</p> : null}
-              </div>
-            </article>
-
-            <article className="td-card td-card-wide">
-              <h3>Lesson Documents</h3>
-              <p>
-                {curriculumSelectedLessonId
-                  ? `Selected lesson: ${curriculumLessons.find((l) => l.id === curriculumSelectedLessonId)?.title || curriculumSelectedLessonId}`
-                  : 'Select a lesson first.'}
-              </p>
-              <p style={{ marginTop: 0, fontSize: 12, color: '#6b7280' }}>Read-only for teachers. Upload is restricted to school admin.</p>
-              {curriculumSelectedLessonId ? (
-                <div style={{ marginTop: 12 }}>
-                  <h4 style={{ marginBottom: 8 }}>Uploaded documents</h4>
-                  <ul className="td-announcements">
-                    {(curriculumDocumentsByLesson[String(curriculumSelectedLessonId)] || []).map((doc) => (
-                      <li key={doc.id}>
-                        <div>
-                          <strong>{doc.file_name}</strong>
-                          <p>{doc.extraction_status || 'pending'} · {doc.mime_type || 'application/pdf'}</p>
-                        </div>
-                        {doc.file_url ? <a href={doc.file_url} target="_blank" rel="noreferrer">Open file</a> : null}
-                      </li>
-                    ))}
-                  </ul>
+                    ) : null}
+                  </div>
                 </div>
-              ) : null}
+                {selectedTutorLesson ? (
+                  <>
+                    {panelError.chat ? <p className="eg-loading" style={{ color: '#dc2626' }}>{panelError.chat}</p> : null}
+                    <div className="eg-ai-chat eg-ai-chat-screen">
+                      {safeArray(chatHistory).map((m, idx) => {
+                        const messageId = String(m?.id || m?.ts || `msg-${idx}`);
+                        const messageText = m?.text || m?.message || '';
+                        const isBot = m?.role !== 'user';
+                        const isVoicePlaying = chatVoicePlayId === messageId;
+                        const isVoiceLoading = chatVoiceLoadingId === messageId;
+                        return (
+                          <div key={messageId} className={`ai-msg ${m.role === 'user' ? 'user' : 'bot'} eg-ai-msg-text`}>
+                            {Array.isArray(m?.imageDataUrls) && m.imageDataUrls.length ? (
+                              <div className="eg-ai-inline-image-wrap eg-ai-inline-image-grid">
+                                {m.imageDataUrls.slice(0, 4).map((url, i) => (
+                                  <img
+                                    key={`${messageId}-img-${i}`}
+                                    className="eg-ai-inline-image"
+                                    src={String(url)}
+                                    alt={String(m?.imageNames?.[i] || `Uploaded image ${i + 1}`)}
+                                  />
+                                ))}
+                                <small className="eg-ai-inline-image-label">{m.imageDataUrls.length} image{m.imageDataUrls.length === 1 ? '' : 's'} attached</small>
+                              </div>
+                            ) : null}
+                            {messageText}
+                            {isBot && messageText ? (
+                              <div className="eg-ai-msg-actions">
+                                <button
+                                  type="button"
+                                  className="eg-ai-voice-btn"
+                                  onClick={() => onToggleLocalVoice(messageId, messageText)}
+                                  disabled={Boolean(chatVoiceLoadingId) && !isVoicePlaying}
+                                >
+                                  {isVoiceLoading ? 'Generating Voice...' : (isVoicePlaying ? 'Stop Voice' : 'Play Voice')}
+                                </button>
+                              </div>
+                            ) : null}
+                          </div>
+                        );
+                      })}
+                      {chatLoading ? (
+                        <div className="ai-msg bot ai-msg-thinking">
+                          <span>EduGenie is thinking</span>
+                          <span className="eg-typing-dots" aria-hidden="true"><i /><i /><i /></span>
+                        </div>
+                      ) : null}
+                      {!panelLoading.chat && !chatHistory.length && !chatLoading ? (
+                        <div className="ai-msg bot">👋 Hi! Ask me anything about {selectedTutorLesson.title} to help plan or recap this lesson.</div>
+                      ) : null}
+                      <div ref={chatEndRef} />
+                    </div>
+                    {!chatLoading && chatFollowups.length > 0 ? (
+                      <div className="eg-ai-actions-wrap">
+                        <div className="eg-ai-actions-panel">
+                          <div className="eg-ai-followups">
+                            {chatFollowups.map((f, i) => (
+                              <button
+                                key={i}
+                                type="button"
+                                className="eg-ai-followup-btn"
+                                onClick={() => onSendTutorMessage(f)}
+                              >
+                                {f}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                    ) : null}
+                    {chatImages.length ? (
+                      <div className="eg-ai-image-preview-wrap">
+                        <div className="eg-ai-image-preview-grid">
+                          {chatImages.map((img) => (
+                            <div key={img.id} className="eg-ai-image-tile">
+                              <img className="eg-ai-image-preview" src={img.dataUrl} alt={img.name || 'Selected for AI Assistant'} />
+                              <button type="button" className="eg-ai-image-tile-remove" onClick={() => removeChatImageById(img.id)}>×</button>
+                            </div>
+                          ))}
+                        </div>
+                        <div className="eg-ai-image-meta">
+                          <span>{chatImages.length} file{chatImages.length === 1 ? '' : 's'} selected</span>
+                          <button type="button" className="eg-ai-image-clear" onClick={clearChatImages}>Clear all</button>
+                        </div>
+                      </div>
+                    ) : null}
+                    {chatImageError ? <p className="eg-ai-image-error">{chatImageError}</p> : null}
+                    <div className="eg-ai-input-row">
+                      <input
+                        className="eg-ai-input"
+                        value={chatInput}
+                        onChange={(e) => setChatInput(e.target.value)}
+                        onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); onSendTutorMessage(); } }}
+                        placeholder={`Ask about ${selectedTutorLesson.title}... (Enter to send)`}
+                        disabled={chatLoading}
+                      />
+                      {chatImages.length ? <span className="eg-ai-selected-pill">{chatImages.length} file{chatImages.length === 1 ? '' : 's'} ready</span> : null}
+                      <label className="eg-ai-attach-btn" htmlFor="td-ai-image-input">📎 File</label>
+                      <input
+                        id="td-ai-image-input"
+                        type="file"
+                        accept="image/*"
+                        multiple
+                        style={{ display: 'none' }}
+                        onChange={(e) => { onTutorImageSelected(Array.from(e.target.files || [])); e.target.value = ''; }}
+                        disabled={chatLoading}
+                      />
+                      <button
+                        className={`eg-ai-send-btn ${chatLoading ? 'eg-ai-stop-btn' : ''}`}
+                        onClick={() => (chatLoading ? onStopTutorMessageSend() : onSendTutorMessage())}
+                        disabled={!chatLoading && !chatInput.trim() && !chatImages.length}
+                      >
+                        {chatLoading ? 'Stop' : 'Send'}
+                      </button>
+                    </div>
+                  </>
+                ) : (
+                  <div className="eg-ai-select-lesson-prompt">
+                    <span className="eg-ai-select-lesson-icon" aria-hidden="true">📚</span>
+                    <h4>Select a lesson to get started</h4>
+                    <p>
+                      {lockedSubject
+                        ? `Choose an available ${lockedSubject} lesson from the dropdown above to start a focused assistant session for it.`
+                        : 'Your teacher profile has no subject set — ask your school admin to assign one.'}
+                    </p>
+                  </div>
+                )}
+              </section>
             </article>
           </section>
         )}
@@ -2876,7 +3190,7 @@ export default function TeacherDashboard({ session, onLogout }) {
               }
             }}
           >
-            <article className="td-card">
+            <article className="td-card td-card-framed">
               <h3>Students</h3>
               <p>Filter by class, select students, and run bulk actions.</p>
               <div className="invite-toolbar">
@@ -2896,28 +3210,15 @@ export default function TeacherDashboard({ session, onLogout }) {
                     <option key={className} value={className}>{className}</option>
                   ))}
                 </select>
-              </div>
-              <div className="td-invite-actions">
-                <button type="button" className="td-inline-btn" onClick={selectAllVisibleStudents}>Select Visible</button>
                 <button type="button" className="td-inline-btn" onClick={clearSelectedStudents}>Clear Selection</button>
               </div>
-              <form className="td-form" onSubmit={onBulkUpdateClass}>
-                <input
-                  value={bulkClassName}
-                  onChange={(e) => setBulkClassName(e.target.value)}
-                  placeholder="Bulk class name (ex: Class 8-B)"
-                />
-                <button type="submit" disabled={busy === 'bulk-class'}>
-                  {busy === 'bulk-class' ? 'Updating...' : `Update Class for ${selectedStudentIds.length} Selected`}
-                </button>
-              </form>
               {panelError.students ? <p className="td-empty">{panelError.students}</p> : null}
               <div className="td-student-list">
-                {classScopedStudents.map((s) => (
+                {pagedStudents.map((s) => (
                   <button
                     key={s.id}
                     className={selectedStudentId === s.id ? 'active' : ''}
-                    onClick={() => setSelectedStudentId(s.id)}
+                    onClick={() => { setSelectedStudentId(s.id); toggleStudent(s.id); }}
                   >
                     <div>
                       <strong>{s.name || 'Student'}</strong>
@@ -2934,178 +3235,133 @@ export default function TeacherDashboard({ session, onLogout }) {
                 ))}
                 {!panelLoading.students && !classScopedStudents.length ? <p className="td-empty">No students available yet for this class.</p> : null}
               </div>
-            </article>
-
-            <article className="td-card">
-              <h3>Progress Snapshot</h3>
-              <div className="td-analytics-header">
-                <p>{selectedStudentId ? `📊 ${selectedStudentName}` : 'Select a student to see metrics.'}</p>
-                {selectedProgress?.subjectScores?.length > 0 && (
+              {classScopedStudents.length > STUDENTS_PAGE_SIZE ? (
+                <div className="td-student-pager">
                   <button
                     type="button"
-                    className="td-export-btn"
-                    onClick={() => exportCSV(
-                      `progress-${selectedStudentName}-${new Date().toISOString().slice(0,10)}.csv`,
-                      ['Subject', 'Average Score', 'Date'],
-                      [
-                        ...(selectedProgress.subjectScores || []).map((x) => [x.subject, `${x.avgScore}%`, '']),
-                        ...(selectedProgress.timeline || []).map((t) => [t.subject, `${t.score}%`, t.date])
-                      ]
-                    )}
+                    className="td-inline-btn"
+                    disabled={clampedStudentPage === 0}
+                    onClick={() => setStudentPage((p) => Math.max(0, p - 1))}
                   >
-                    ↓ Export CSV
+                    ← Previous
                   </button>
-                )}
-              </div>
-              {panelError.progress ? <p className="td-empty">{panelError.progress}</p> : null}
-
-              {/* Subject score bars */}
-              {(selectedProgress?.subjectScores || []).length > 0 && (
-                <div className="td-score-bars">
-                  {(selectedProgress.subjectScores || []).slice(0, 6).map((x) => (
-                    <div key={x.subject} className="td-score-bar-row">
-                      <span className="td-score-bar-label">{x.subject}</span>
-                      <div className="td-score-bar-track">
-                        <div
-                          className="td-score-bar-fill"
-                          style={{ width: `${Math.min(100, Number(x.avgScore) || 0)}%`, background: scoreColor(x.avgScore) }}
-                        />
-                      </div>
-                      <span className="td-score-bar-value" style={{ color: scoreColor(x.avgScore) }}>{x.avgScore}%</span>
-                    </div>
-                  ))}
-                </div>
-              )}
-              {!panelLoading.progress && !selectedProgress?.subjectScores?.length ? <p className="td-empty">No progress data yet.</p> : null}
-
-              {/* Timeline */}
-              {(selectedProgress?.timeline || []).length > 0 && (
-                <>
-                  <p className="td-section-subtitle">Recent Attempts</p>
-                  <ul className="td-timeline">
-                    {(selectedProgress.timeline || []).slice(0, 6).map((t, idx) => (
-                      <li key={`${t.date || 'd'}-${idx}`}>
-                        <span>{shortDate(t.date)}</span>
-                        <span>{t.subject}</span>
-                        <strong style={{ color: scoreColor(t.score) }}>{t.score}%</strong>
-                      </li>
-                    ))}
-                  </ul>
-                </>
-              )}
-            </article>
-
-            <article className="td-card">
-              <h3>Delivery Status</h3>
-              <p>{selectedStudentId ? `What ${selectedStudentName} can currently see.` : 'Select a student to inspect delivery.'}</p>
-              {panelError.delivery ? <p className="td-empty">{panelError.delivery}</p> : null}
-              <div className="td-delivery-chips">
-                <div className="td-delivery-chip">
-                  <span className="td-chip-icon">📮</span>
-                  <strong>{selectedDeliveryStatus.announcementsAvailable}</strong>
-                  <span>Announcements</span>
-                </div>
-                <div className="td-delivery-chip">
-                  <span className="td-chip-icon">📝</span>
-                  <strong>{selectedDeliveryStatus.homeworkAssigned}</strong>
-                  <span>Homework</span>
-                </div>
-                <div className="td-delivery-chip td-chip-warn">
-                  <span className="td-chip-icon">⏳</span>
-                  <strong>{selectedDeliveryStatus.homeworkPending}</strong>
-                  <span>Pending</span>
-                </div>
-                <div className="td-delivery-chip">
-                  <span className="td-chip-icon">📊</span>
-                  <strong>{selectedDeliveryStatus.testsAvailable}</strong>
-                  <span>Tests</span>
-                </div>
-                <div className="td-delivery-chip">
-                  <span className="td-chip-icon">📅</span>
-                  <strong>{selectedDeliveryStatus.eventsScheduled}</strong>
-                  <span>Events</span>
-                </div>
-                <div className="td-delivery-chip td-chip-reward">
-                  <span className="td-chip-icon">🏅</span>
-                  <strong>{selectedDeliveryStatus.rewardCoins}</strong>
-                  <span>Coins</span>
-                </div>
-              </div>
-              <p className="td-section-subtitle">Latest Items</p>
-              <ul className="td-timeline">
-                <li><span>Announcement</span><strong>{selectedDeliveryStatus.recentAnnouncementTitle || '—'}</strong></li>
-                <li><span>Homework</span><strong>{selectedDeliveryStatus.recentHomeworkTitle || '—'}</strong></li>
-                <li><span>Test</span><strong>{selectedDeliveryStatus.recentTestTitle || '—'}</strong></li>
-                <li><span>Next Event</span><strong>{selectedDeliveryStatus.nextEventTitle || '—'}</strong></li>
-              </ul>
-            </article>
-
-            <article className="td-card">
-              <h3>Recent Student Activity</h3>
-              <div className="td-analytics-header">
-                <p>{selectedStudentId ? `⚡ ${selectedStudentName}` : 'Select a student to inspect activity.'}</p>
-                {filteredActivity.length > 0 && (
+                  <span className="td-student-pager-label">Page {clampedStudentPage + 1} of {studentPageCount}</span>
                   <button
                     type="button"
-                    className="td-export-btn"
-                    onClick={() => exportCSV(
-                      `activity-${selectedStudentName}-${new Date().toISOString().slice(0,10)}.csv`,
-                      ['Date', 'Type', 'Action', 'Title'],
-                      filteredActivity.map((item) => [item.createdAt || '', item.type || '', item.action || '', item.title || ''])
-                    )}
+                    className="td-inline-btn"
+                    disabled={clampedStudentPage >= studentPageCount - 1}
+                    onClick={() => setStudentPage((p) => Math.min(studentPageCount - 1, p + 1))}
                   >
-                    ↓ Export CSV
+                    Next →
                   </button>
-                )}
-              </div>
-              <div className="td-activity-filter">
-                {['all', 'homework', 'test', 'calendar', 'reward', 'library', 'chat'].map((t) => (
-                  <button
-                    key={t}
-                    type="button"
-                    className={`td-filter-chip${activityTypeFilter === t ? ' active' : ''}`}
-                    onClick={() => setActivityTypeFilter(t)}
-                  >
-                    {t === 'all' ? 'All' : `${activityIcon(t)} ${t}`}
-                  </button>
-                ))}
-              </div>
-              {panelError.activity ? <p className="td-empty">{panelError.activity}</p> : null}
-              <ul className="td-activity-list">
-                {filteredActivity.slice(0, 10).map((item) => (
-                  <li key={item.id} className="td-activity-item">
-                    <span className="td-activity-icon">{activityIcon(item.type)}</span>
-                    <div className="td-activity-body">
-                      <strong>{item.title || 'Activity'}</strong>
-                      <span>{item.type} · {item.action}</span>
-                    </div>
-                    <span className="td-activity-time">{shortDateTime(item.createdAt)}</span>
-                  </li>
-                ))}
-              </ul>
-              {!panelLoading.activity && !filteredActivity.length ? (
-                <p className="td-empty">{activityTypeFilter === 'all' ? 'No recent activity recorded yet.' : `No ${activityTypeFilter} activity yet.`}</p>
+                </div>
               ) : null}
             </article>
 
-            {/* ── Homework Status ── */}
-            <article className="td-card td-card-wide">
-              <h3>Homework Status</h3>
+            <article className="td-card td-card-framed">
+              <h3>Progress Snapshot</h3>
               <div className="td-analytics-header">
-                <p>{selectedStudentId ? `📝 All homework for ${selectedStudentName}` : 'Select a student to view homework.'}</p>
-                {classScopedSelectedHomework.length > 0 && (
-                  <button
-                    type="button"
-                    className="td-export-btn"
-                    onClick={() => exportCSV(
-                      `homework-${selectedStudentName}-${new Date().toISOString().slice(0,10)}.csv`,
-                      ['Title', 'Subject', 'Due Date', 'Status', 'Grade', 'Attempts', 'Submitted At'],
-                      classScopedSelectedHomework.map((h) => [h.title, h.subject, h.dueAt || '', h.status, h.grade ?? '', h.attemptCount, h.submittedAt || ''])
-                    )}
-                  >
-                    ↓ Export CSV
-                  </button>
-                )}
+                <p>{selectedStudentId ? `📊 ${selectedStudentName}` : 'Select a student to see metrics.'}</p>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  {subjectProgress?.subject ? (
+                    <div className="td-toggle" role="tablist" aria-label="Choose time range">
+                      <button type="button" className={progressView === 'daily' ? 'on' : ''} onClick={() => setProgressView('daily')}>Daily</button>
+                      <button type="button" className={progressView === 'monthly' ? 'on' : ''} onClick={() => setProgressView('monthly')}>Monthly</button>
+                    </div>
+                  ) : null}
+                  {subjectProgress?.subject && (
+                    <button
+                      type="button"
+                      className="td-export-btn"
+                      onClick={() => exportCSV(
+                        `progress-${selectedStudentName}-${subjectProgress.subject.subjectKey}-${new Date().toISOString().slice(0,10)}.csv`,
+                        ['Period', 'Score (%)'],
+                        (progressView === 'monthly' ? subjectProgress.subject.monthly : subjectProgress.subject.daily || [])
+                          .filter((p) => p.value != null)
+                          .map((p) => [p.label, p.value])
+                      )}
+                    >
+                      ↓ Export CSV
+                    </button>
+                  )}
+                </div>
+              </div>
+              {panelError.progress ? <p className="td-empty">{panelError.progress}</p> : null}
+              {subjectProgress?.subject ? (
+                <TeacherSubjectProgressChart subject={subjectProgress.subject} view={progressView} />
+              ) : (!panelLoading.progress && selectedStudentId ? <p className="td-empty">No progress data yet.</p> : null)}
+            </article>
+
+            <div className="td-delivery-hw-row">
+              <article className="td-card td-card-framed td-delivery-narrow">
+                <h3>Delivery Status</h3>
+                <p>{selectedStudentId ? `What ${selectedStudentName} can currently see.` : 'Select a student to inspect delivery.'}</p>
+                {panelError.delivery ? <p className="td-empty">{panelError.delivery}</p> : null}
+                <div className="td-delivery-chips">
+                  <div className="td-delivery-chip">
+                    <span className="td-chip-icon">📝</span>
+                    <strong>{selectedDeliveryStatus.homeworkAssigned}</strong>
+                    <span>Homework</span>
+                  </div>
+                  <div className="td-delivery-chip td-chip-warn">
+                    <span className="td-chip-icon">⏳</span>
+                    <strong>{selectedDeliveryStatus.homeworkPending}</strong>
+                    <span>Pending</span>
+                  </div>
+                  <div className="td-delivery-chip">
+                    <span className="td-chip-icon">📊</span>
+                    <strong>{selectedDeliveryStatus.testsAvailable}</strong>
+                    <span>Tests</span>
+                  </div>
+                </div>
+                <p className="td-section-subtitle">Latest Items</p>
+                <ul className="td-timeline">
+                  <li><span>Homework</span><strong>{selectedDeliveryStatus.recentHomeworkTitle || '—'}</strong></li>
+                  <li><span>Test</span><strong>{selectedDeliveryStatus.recentTestTitle || '—'}</strong></li>
+                </ul>
+              </article>
+
+              {/* ── Homework Status ── */}
+              <article className="td-card td-card-framed">
+                <h3>Homework Status</h3>
+                <div className="td-analytics-header">
+                  <p>{selectedStudentId ? `📝 All homework for ${selectedStudentName}` : 'Select a student to view homework.'}</p>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    {classScopedStudents.length > 1 ? (
+                      <div className="td-hw-pager">
+                        <button
+                          type="button"
+                          className="td-hw-pager-btn"
+                          disabled={selectedStudentIndex <= 0}
+                          onClick={() => goToAdjacentStudent(-1)}
+                        >
+                          ← Prev
+                        </button>
+                        <span className="td-hw-pager-label">{selectedStudentIndex + 1}/{classScopedStudents.length}</span>
+                        <button
+                          type="button"
+                          className="td-hw-pager-btn"
+                          disabled={selectedStudentIndex === -1 || selectedStudentIndex >= classScopedStudents.length - 1}
+                          onClick={() => goToAdjacentStudent(1)}
+                        >
+                          Next →
+                        </button>
+                      </div>
+                    ) : null}
+                    {classScopedSelectedHomework.length > 0 && (
+                      <button
+                        type="button"
+                        className="td-export-btn"
+                        onClick={() => exportCSV(
+                          `homework-${selectedStudentName}-${new Date().toISOString().slice(0,10)}.csv`,
+                          ['Title', 'Subject', 'Due Date', 'Status', 'Grade', 'Attempts', 'Submitted At'],
+                          classScopedSelectedHomework.map((h) => [h.title, h.subject, h.dueAt || '', h.status, h.grade ?? '', h.attemptCount, h.submittedAt || ''])
+                      )}
+                    >
+                      ↓ Export CSV
+                    </button>
+                  )}
+                </div>
               </div>
               {classScopedSelectedHomework.length > 0 ? (
                 <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', marginBottom: '12px' }}>
@@ -3135,7 +3391,7 @@ export default function TeacherDashboard({ session, onLogout }) {
               {panelError.homework ? <p className="td-empty">{panelError.homework}</p> : null}
               {classScopedSelectedHomework.length > 0 ? (
                 filteredSelectedHomework.length > 0 ? (
-                  <div className="td-hw-table-wrap">
+                  <div className={`td-hw-table-wrap${homeworkStatusFilter !== 'all' && filteredSelectedHomework.length > 5 ? ' td-hw-table-scroll' : ''}`}>
                     <table className="td-hw-table">
                     <thead>
                       <tr>
@@ -3359,9 +3615,10 @@ export default function TeacherDashboard({ session, onLogout }) {
                 )
               ) : (!panelLoading.homework ? <p className="td-empty">No homework assigned yet.</p> : null)}
             </article>
+            </div>
 
             {/* ── Test Attempt History ── */}
-            <article className="td-card td-card-wide">
+            <article className="td-card td-card-wide td-card-framed">
               <h3>Test Attempt History</h3>
               <div className="td-analytics-header">
                 <p>{selectedStudentId ? `📊 All test attempts for ${selectedStudentName}` : 'Select a student to view test history.'}</p>
@@ -3412,6 +3669,83 @@ export default function TeacherDashboard({ session, onLogout }) {
                   </table>
                 </div>
               ) : (!panelLoading.testAttempts ? <p className="td-empty">No test attempts recorded yet.</p> : null)}
+            </article>
+          </section>
+        )}
+
+        {/* ══════════ STUDENT PROGRESS SECTION ══════════ */}
+        {activeSection === 'progress' && (
+          <section className="td-progress-layout">
+            <article className="td-card td-card-framed td-progress-student-card">
+              <h3>Students</h3>
+              <p>Select a student to see their full progress report — every subject, just like they see it.</p>
+              <div className="invite-toolbar">
+                <input
+                  className="invite-search"
+                  value={studentSearch}
+                  onChange={(e) => setStudentSearch(e.target.value)}
+                  placeholder="Search students by name"
+                />
+                <select
+                  className="invite-filter"
+                  value={studentClassFilter}
+                  onChange={(e) => setStudentClassFilter(e.target.value)}
+                >
+                  <option value="all">All classes</option>
+                  {classOptions.map((className) => (
+                    <option key={className} value={className}>{className}</option>
+                  ))}
+                </select>
+              </div>
+              {panelError.students ? <p className="td-empty">{panelError.students}</p> : null}
+              <div className="td-student-list">
+                {pagedStudents.map((s) => (
+                  <button
+                    key={s.id}
+                    className={selectedStudentId === s.id ? 'active' : ''}
+                    onClick={() => setSelectedStudentId(s.id)}
+                  >
+                    <div>
+                      <strong>{s.name || 'Student'}</strong>
+                      <span>{s.className || 'Class'}</span>
+                    </div>
+                  </button>
+                ))}
+                {!panelLoading.students && !classScopedStudents.length ? <p className="td-empty">No students available yet for this class.</p> : null}
+              </div>
+              {classScopedStudents.length > STUDENTS_PAGE_SIZE ? (
+                <div className="td-student-pager">
+                  <button
+                    type="button"
+                    className="td-inline-btn"
+                    disabled={clampedStudentPage === 0}
+                    onClick={() => setStudentPage((p) => Math.max(0, p - 1))}
+                  >
+                    ← Previous
+                  </button>
+                  <span className="td-student-pager-label">Page {clampedStudentPage + 1} of {studentPageCount}</span>
+                  <button
+                    type="button"
+                    className="td-inline-btn"
+                    disabled={clampedStudentPage >= studentPageCount - 1}
+                    onClick={() => setStudentPage((p) => Math.min(studentPageCount - 1, p + 1))}
+                  >
+                    Next →
+                  </button>
+                </div>
+              ) : null}
+            </article>
+
+            <article className="td-card td-card-framed td-progress-page-card">
+              {selectedStudentId ? (
+                <StudentProgress
+                  studentId={selectedStudentId}
+                  greetingName={selectedStudentName}
+                  fetchFn={getTeacherStudentLearningScore}
+                />
+              ) : (
+                <p className="td-empty">Select a student on the left to see their full progress report.</p>
+              )}
             </article>
           </section>
         )}
