@@ -2,7 +2,9 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import SubjectBackground, { getPalette } from './SubjectBackground';
 import {
   createCalendarEvent,
-  earnReward,
+  updateCalendarEvent,
+  deleteCalendarEvent,
+  checkInReward,
   getCalendar,
   getChatHistory,
   getDashboard,
@@ -74,13 +76,6 @@ function playCoinSound() {
       osc.stop(now + offset + 0.34);
     });
   } catch { /* audio not available — fail silently */ }
-}
-
-function fmtDate(value) {
-  if (!value) return 'TBD';
-  const d = new Date(value);
-  if (Number.isNaN(d.getTime())) return 'TBD';
-  return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 }
 
 function getScore(row) {
@@ -368,22 +363,25 @@ const UTILITY_TABS = {
 export default function StudentDashboard({ studentId = 'test', onLogout }) {
   // Navigation state
   const SIDEBAR_TABS = ['Home', 'My Orchard', 'Games', 'AI Tutor', 'Homework', 'Mock Tests', 'Progress', 'Calendar', 'Rewards', 'Library', 'Settings'];
+  // Parsed once so every "restore after refresh" piece of state agrees on the
+  // same hash. Formats: "Home" | "Tab" | "Tab/Subject" | "AI Tutor/Subject/LessonId"
+  // (legacy bare "#Mathematics" while on the Home tab still works too).
+  const initialHashRaw = decodeURIComponent(window.location.hash.replace('#', ''));
+  const initialHashParts = initialHashRaw.split('/');
+  const initialHashTab = initialHashParts[0];
   const [activeView, setActiveView] = useState(() => {
-    const h = decodeURIComponent(window.location.hash.replace('#', ''));
-    if (!h || h === 'Home' || SIDEBAR_TABS.includes(h)) return 'home';
-    return h;
+    if (!initialHashRaw || initialHashRaw === 'Home') return 'home';
+    // AI Tutor encodes its subject/lesson in parts 1/2 — activeView isn't used
+    // to pick its content, so it always stays 'home' for that tab.
+    if (initialHashTab === 'AI Tutor') return 'home';
+    if (initialHashParts.length > 1) return initialHashParts[1];
+    if (SIDEBAR_TABS.includes(initialHashRaw)) return 'home';
+    return initialHashRaw;
   });
-  const [activeSidebarTab, setActiveSidebarTab] = useState(() => {
-    const h = decodeURIComponent(window.location.hash.replace('#', ''));
-    if (SIDEBAR_TABS.includes(h)) return h;
-    if (!h) return 'Home';
-    return 'Home';
-  });
+  const [activeSidebarTab, setActiveSidebarTab] = useState(() => (
+    SIDEBAR_TABS.includes(initialHashTab) ? initialHashTab : 'Home'
+  ));
   const [selectedSchoolService, setSelectedSchoolService] = useState(null);
-
-  useEffect(() => {
-    window.location.hash = activeSidebarTab === 'Home' ? (activeView === 'home' ? 'Home' : activeView) : activeSidebarTab;
-  }, [activeSidebarTab, activeView]);
 
   useEffect(() => {
     function onHashChange() {
@@ -391,8 +389,19 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
       if (!h || h === 'Home' || h === 'home') {
         setActiveSidebarTab('Home');
         setActiveView('home');
-      } else if (SIDEBAR_TABS.includes(h)) {
-        setActiveSidebarTab(h);
+        return;
+      }
+      const parts = h.split('/');
+      const tab = parts[0];
+      if (SIDEBAR_TABS.includes(tab)) {
+        setActiveSidebarTab(tab);
+        if (tab === 'AI Tutor') {
+          if (parts[1]) setTutorSubject(parts[1]);
+          if (parts[2]) setSelectedTutorLessonId(parts[2]);
+          setActiveView('home');
+        } else {
+          setActiveView(parts[1] || 'home');
+        }
       } else {
         setActiveSidebarTab('Home');
         setActiveView(h);
@@ -400,6 +409,7 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
     }
     window.addEventListener('hashchange', onHashChange);
     return () => window.removeEventListener('hashchange', onHashChange);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const [panelLoading, setPanelLoading] = useState({
@@ -442,13 +452,41 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
   const [learningTimeline, setLearningTimeline] = useState([]);
   const [settings, setSettings] = useState({ prefs: {} });
   const [chatHistory, setChatHistory] = useState([]);
-  const [tutorSubject, setTutorSubject] = useState('');
+  const [tutorSubject, setTutorSubject] = useState(() => (
+    initialHashTab === 'AI Tutor' && initialHashParts[1] ? initialHashParts[1] : ''
+  ));
   const [tutorLessons, setTutorLessons] = useState([]);
-  const [selectedTutorLessonId, setSelectedTutorLessonId] = useState('');
+  const [selectedTutorLessonId, setSelectedTutorLessonId] = useState(() => (
+    initialHashTab === 'AI Tutor' && initialHashParts[2] ? initialHashParts[2] : ''
+  ));
   const [selectedTutorLesson, setSelectedTutorLesson] = useState(null);
+  // True while we still need to confirm a subject restored from the URL hash
+  // against the class's real subject list — stops the "reset to first
+  // subject" effect below from clobbering it before that list has loaded.
+  const restoringTutorSubjectRef = useRef(Boolean(initialHashTab === 'AI Tutor' && initialHashParts[1]));
   // Set while a flashcard deep-link is in flight so subject-change effects can't
   // reset the lesson selection or reload the wrong chat thread.
   const tutorHandoffRef = useRef(false);
+
+  // Keep the URL hash in sync so a browser refresh lands back on the same
+  // page — including the specific AI Tutor subject/lesson, or the specific
+  // subject a tab like Homework is viewing.
+  useEffect(() => {
+    let next;
+    if (activeSidebarTab === 'AI Tutor') {
+      next = tutorSubject
+        ? `${activeSidebarTab}/${tutorSubject}${selectedTutorLessonId ? `/${selectedTutorLessonId}` : ''}`
+        : activeSidebarTab;
+    } else if (activeSidebarTab === 'Home') {
+      next = activeView === 'home' ? 'Home' : activeView;
+    } else if (activeView !== 'home') {
+      // e.g. the Homework tab viewing a specific subject — "Homework/Mathematics"
+      next = `${activeSidebarTab}/${activeView}`;
+    } else {
+      next = activeSidebarTab;
+    }
+    window.location.hash = next;
+  }, [activeSidebarTab, activeView, tutorSubject, selectedTutorLessonId]);
 
   const [startingTestId, setStartingTestId] = useState('');
   const [startingHomeworkId, setStartingHomeworkId] = useState('');
@@ -543,10 +581,22 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
   const [newEventDate, setNewEventDate] = useState('');
   const [calendarAdding, setCalendarAdding] = useState(false);
   const [calendarNote, setCalendarNote] = useState('');
+  // Dynamic month grid — always starts on today's real month/year (never
+  // hardcoded), rolls forward automatically whenever the year changes since
+  // it's re-derived from `new Date()` on every mount.
+  const [calendarViewMonth, setCalendarViewMonth] = useState(() => {
+    const d = new Date();
+    return { year: d.getFullYear(), month: d.getMonth() };
+  });
+  const [calendarSelectedDate, setCalendarSelectedDate] = useState(() => toDateInputValue(new Date()));
+  // Inline editing of an existing event in the Upcoming Events panel.
+  const [editingEventId, setEditingEventId] = useState('');
+  const [editEventTitle, setEditEventTitle] = useState('');
+  const [editEventDate, setEditEventDate] = useState('');
+  const [eventBusyId, setEventBusyId] = useState('');
 
   // Rewards earn
   const [rewardsNote, setRewardsNote] = useState('');
-  const [rewardsEarning, setRewardsEarning] = useState(false);
 
   // Panels load silently — nothing on screen ever announces "loading". The flag
   // below is kept only for the *first* fetch of each panel, so an empty-state
@@ -1024,7 +1074,8 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
         loadLibraryPanel(),
         loadLearningTimelinePanel(),
         loadSettingsPanel(),
-        loadChatPanel()
+        loadChatPanel(),
+        onAutoCheckIn()
       ]);
     }
     if (active) loadAll();
@@ -1036,16 +1087,30 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
 
   useEffect(() => {
     if (tutorHandoffRef.current) return;
+    // A lesson id was restored (from the URL hash, or mid-flight) but hasn't
+    // resolved into a full lesson object yet — loading now would fetch the
+    // wrong "all-lessons" conversation and a slower in-flight request could
+    // later overwrite the correct history once it does resolve. Wait for the
+    // lesson list to finish resolving (also covers a stale/deleted restored
+    // lesson id, where selectedTutorLesson would otherwise stay null->null
+    // and never re-trigger this effect), then load exactly once with the
+    // right id.
+    if (selectedTutorLessonId && !selectedTutorLesson) return;
     loadChatPanel(getCurrentTutorConversationId());
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [studentId, tutorSubject, selectedTutorLesson?.id]);
+  }, [studentId, tutorSubject, selectedTutorLesson?.id, tutorLessons]);
 
   useEffect(() => {
     // Follow the class's actual subjects: pick the first one, and clear the
-    // selection entirely when the class has none.
+    // selection entirely when the class has none. Skipped once while a
+    // subject restored from the URL hash is still waiting to be confirmed.
     if (!subjects.length) {
-      if (tutorSubject) setTutorSubject('');
+      if (tutorSubject && !restoringTutorSubjectRef.current) setTutorSubject('');
       return;
+    }
+    if (restoringTutorSubjectRef.current) {
+      restoringTutorSubjectRef.current = false;
+      if (subjects.includes(tutorSubject)) return;
     }
     if (!subjects.includes(tutorSubject)) setTutorSubject(subjects[0]);
   }, [subjects, tutorSubject]);
@@ -1178,7 +1243,6 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
     }
   }, [coins]);
 
-  const eventsTop = events.slice(0, 3);
   const libraryTop = library.slice(0, 4);
   const chatHistoryTop = chatHistory.slice(-3);
   const recentLessonTimeline = useMemo(() => safeArray(learningTimeline).filter((item) => item?.scopeType === 'lesson').slice(0, 4), [learningTimeline]);
@@ -1453,6 +1517,10 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
       stopLocalVoicePlayback();
       return;
     }
+
+    // Sam has the mic — don't let a message's voice button start talking
+    // over her (the button is also disabled in the JSX; this is a safety net).
+    if (talkToSamSpeaking) return;
 
     const cleanText = getReadAloudText(rawText);
     if (!cleanText) return;
@@ -1889,17 +1957,69 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
     }
   }
 
-  async function onEarnReward() {
-    setRewardsEarning(true);
-    setRewardsNote('');
+  function onStartEditEvent(ev) {
+    const id = String(ev?.id || '');
+    if (!id) return;
+    setEditingEventId(id);
+    setEditEventTitle(ev.title || '');
+    setEditEventDate(toDateInputValue(parseDate(ev?.starts_at || ev?.start || ev?.created_at)) || '');
+  }
+
+  function onCancelEditEvent() {
+    setEditingEventId('');
+    setEditEventTitle('');
+    setEditEventDate('');
+  }
+
+  async function onSaveEditEvent(e) {
+    e.preventDefault();
+    if (!editingEventId || !editEventTitle.trim() || !editEventDate) return;
+    setEventBusyId(editingEventId);
+    setPanelErrorKey('calendar', '');
     try {
-      const res = await earnReward({ studentId, coins: 10, reason: 'Daily study check-in' });
-      setRewardsNote(`+10 coins earned! Total: ${res?.newBalance ?? '–'}`);
-      await loadRewardsPanel();
-    } catch (e) {
-      setRewardsNote(e?.message || 'Unable to earn reward.');
+      await updateCalendarEvent(editingEventId, {
+        studentId,
+        title: editEventTitle.trim(),
+        start: new Date(editEventDate).toISOString(),
+        end: new Date(editEventDate).toISOString(),
+      });
+      onCancelEditEvent();
+      await loadCalendarPanel();
+    } catch (e2) {
+      setPanelErrorKey('calendar', e2?.message || 'Unable to update event.');
     } finally {
-      setRewardsEarning(false);
+      setEventBusyId('');
+    }
+  }
+
+  async function onDeleteEvent(ev) {
+    const id = String(ev?.id || '');
+    if (!id) return;
+    setEventBusyId(id);
+    setPanelErrorKey('calendar', '');
+    try {
+      await deleteCalendarEvent(id, studentId);
+      if (editingEventId === id) onCancelEditEvent();
+      await loadCalendarPanel();
+    } catch (e2) {
+      setPanelErrorKey('calendar', e2?.message || 'Unable to delete event.');
+    } finally {
+      setEventBusyId('');
+    }
+  }
+
+  // Automatic daily check-in — fires once per session load. The backend
+  // itself enforces "once per day" (checks for an existing check-in reward
+  // dated today before crediting), so this is safe to call on every login.
+  async function onAutoCheckIn() {
+    try {
+      const res = await checkInReward(studentId);
+      if (res && res.alreadyCheckedIn === false) {
+        setRewardsNote(`+10 coins for checking in today! Total: ${res?.newBalance ?? '–'}`);
+        await loadRewardsPanel();
+      }
+    } catch {
+      /* best-effort — silent, matches the rest of the app's background loads */
     }
   }
 
@@ -2057,6 +2177,8 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
     if (talkToSamRecording || talkToSamBusy) return;
     setTalkToSamError('');
     setTalkToSamTranscript('');
+    // Don't let a message's voice audio bleed into the mic recording.
+    stopLocalVoicePlayback();
 
     if (typeof window === 'undefined' || !window.navigator?.mediaDevices?.getUserMedia || typeof window.MediaRecorder === 'undefined') {
       setTalkToSamError('Voice recording is not supported on this browser.');
@@ -2223,6 +2345,10 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
     const cleanText = getReadAloudText(text);
     if (!cleanText) return;
 
+    // A message's own "Play Voice" audio takes the same speakers Sam is
+    // about to use — stop it so the two never overlap.
+    stopLocalVoicePlayback();
+
     // If already speaking, queue it
     if (talkToSamAudioRef.current || (typeof window !== 'undefined' && window.speechSynthesis && window.speechSynthesis.speaking)) {
       samSpeakQueueRef.current.push({ text: cleanText, autoListen: opts.autoListen !== false });
@@ -2383,6 +2509,9 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
   // Open → greet → auto-listen → student speaks → reply + speak → auto-listen → loop
   function onToggleTalkToSamPopup() {
     const wasOpen = talkToSamOpen;
+    // A message's voice button is also disabled while opening Sam, but
+    // guard here too in case this gets triggered another way.
+    if (!wasOpen && (chatVoicePlayId || chatVoiceLoadingId)) return;
     setTalkToSamOpen((prev) => !prev);
     setTalkToSamError('');
     setTalkToSamTranscript('');
@@ -2775,6 +2904,8 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
           ) : null}
         </div>
       </div>
+      {selectedTutorLesson ? (
+      <>
       {panelError.chat ? <p className="eg-loading" style={{ color: '#dc2626' }}>{panelError.chat}</p> : null}
       <div className="eg-ai-chat eg-ai-chat-screen">
         {safeArray(chatHistory).filter((m) => !m?.hidden).map((m, idx) => {
@@ -2814,8 +2945,8 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
                   type="button"
                   className="eg-ai-voice-btn"
                   onClick={() => onToggleLocalVoice(messageId, messageText)}
-                  disabled={Boolean(chatVoiceLoadingId) && !isVoicePlaying}
-                  title="Play local server-generated voice audio"
+                  disabled={(Boolean(chatVoiceLoadingId) && !isVoicePlaying) || (talkToSamSpeaking && !isVoicePlaying)}
+                  title={talkToSamSpeaking && !isVoicePlaying ? 'Sam is talking — wait for her to finish' : 'Play local server-generated voice audio'}
                 >
                   {isVoiceLoading ? 'Generating Voice...' : (isVoicePlaying ? 'Stop Voice' : 'Play Voice')}
                 </button>
@@ -3126,7 +3257,8 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
             onClick={onToggleTalkToSamPopup}
             aria-expanded={talkToSamOpen}
             aria-label="Talk to Sam"
-            title="Talk to Sam"
+            disabled={!talkToSamOpen && (Boolean(chatVoicePlayId) || Boolean(chatVoiceLoadingId))}
+            title={!talkToSamOpen && (chatVoicePlayId || chatVoiceLoadingId) ? 'A message is playing its voice — wait for it to finish' : 'Talk to Sam'}
           >
             <svg className="eg-talk-sam-mic-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M12 1a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
@@ -3242,6 +3374,18 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
           {chatLoading ? 'Stop' : 'Send'}
         </button>
       </div>
+      </>
+      ) : (
+        <div className="eg-ai-select-lesson-prompt">
+          <span className="eg-ai-select-lesson-icon" aria-hidden="true">📚</span>
+          <h4>Select a lesson to start chatting</h4>
+          <p>
+            {tutorSubject
+              ? `Choose an available ${tutorSubject} lesson from the dropdown above — Sam will start a focused session just for that lesson.`
+              : 'Choose a subject and lesson from the dropdowns above — Sam will start a focused session just for that lesson.'}
+          </p>
+        </div>
+      )}
     </section>
   );
 
@@ -3288,14 +3432,107 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
       ) : null}
 
       {activeSidebarTab === 'Calendar' ? (
-        <article className="cardish eg-utility-card">
+        <div className="eg-calendar-layout">
+        <article className="cardish eg-utility-card eg-calendar-page">
           {panelError.calendar ? <p className="eg-loading">{panelError.calendar}</p> : null}
-          <ul className="mini-list">
-            {safeArray(eventsTop).map((e) => (
-              <li key={e.id}>{e.title || e.event_type || 'Study Session'} - {fmtDate(e.starts_at || e.start || e.created_at)}</li>
-            ))}
-            {!panelLoading.calendar && !eventsTop.length ? <li>No events scheduled.</li> : null}
-          </ul>
+          {(() => {
+            const today = new Date();
+            const todayIso = toDateInputValue(today);
+            const { year, month } = calendarViewMonth;
+            const firstDay = new Date(year, month, 1);
+            const startOffset = (firstDay.getDay() + 6) % 7; // Mon=0 … Sun=6
+            const daysInMonth = new Date(year, month + 1, 0).getDate();
+            const monthLabel = firstDay.toLocaleString(undefined, { month: 'long', year: 'numeric' });
+            const DAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+
+            // Group every event by its calendar day for quick lookup.
+            const eventsByDate = {};
+            safeArray(events).forEach((ev) => {
+              const d = toDateInputValue(parseDate(ev?.starts_at || ev?.start || ev?.created_at));
+              if (!d) return;
+              (eventsByDate[d] = eventsByDate[d] || []).push(ev);
+            });
+
+            const cells = [];
+            for (let i = 0; i < startOffset; i++) cells.push(null);
+            for (let d = 1; d <= daysInMonth; d++) cells.push(d);
+
+            const selectedEvents = eventsByDate[calendarSelectedDate] || [];
+
+            return (
+              <>
+                <div className="eg-cal-head">
+                  <button
+                    type="button"
+                    className="eg-cal-nav-btn"
+                    onClick={() => setCalendarViewMonth(({ year: y, month: m }) => {
+                      const d = new Date(y, m - 1, 1);
+                      return { year: d.getFullYear(), month: d.getMonth() };
+                    })}
+                  >‹</button>
+                  <div className="eg-cal-head-title">
+                    <strong>{monthLabel}</strong>
+                    <button
+                      type="button"
+                      className="eg-cal-today-btn"
+                      onClick={() => {
+                        setCalendarViewMonth({ year: today.getFullYear(), month: today.getMonth() });
+                        setCalendarSelectedDate(todayIso);
+                      }}
+                    >Today</button>
+                  </div>
+                  <button
+                    type="button"
+                    className="eg-cal-nav-btn"
+                    onClick={() => setCalendarViewMonth(({ year: y, month: m }) => {
+                      const d = new Date(y, m + 1, 1);
+                      return { year: d.getFullYear(), month: d.getMonth() };
+                    })}
+                  >›</button>
+                </div>
+
+                <div className="eg-cal-weekdays">
+                  {DAY_LABELS.map((lbl) => <span key={lbl}>{lbl}</span>)}
+                </div>
+
+                <div className="eg-cal-grid">
+                  {cells.map((day, idx) => {
+                    if (!day) return <span key={`e-${idx}`} className="eg-cal-cell eg-cal-cell-empty" />;
+                    const iso = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+                    const dayEvents = eventsByDate[iso] || [];
+                    const isToday = iso === todayIso;
+                    const isSelected = iso === calendarSelectedDate;
+                    return (
+                      <button
+                        type="button"
+                        key={iso}
+                        className={`eg-cal-cell ${isToday ? 'is-today' : ''} ${isSelected ? 'is-selected' : ''} ${dayEvents.length ? 'has-events' : ''}`}
+                        onClick={() => {
+                          // Selecting a day previews its events AND pre-fills the
+                          // Add Event date — the student can still change it manually.
+                          setCalendarSelectedDate(iso);
+                          setNewEventDate(iso);
+                        }}
+                      >
+                        <span className="eg-cal-cell-num">{day}</span>
+                        {dayEvents.length > 0 && <span className="eg-cal-cell-dot" />}
+                      </button>
+                    );
+                  })}
+                </div>
+
+                <div className="eg-cal-events">
+                  <h4>{calendarSelectedDate === todayIso ? 'Today' : new Date(`${calendarSelectedDate}T00:00:00`).toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric' })}</h4>
+                  <ul className="mini-list">
+                    {selectedEvents.map((e) => (
+                      <li key={e.id}>{e.title || e.event_type || 'Study Session'}</li>
+                    ))}
+                    {!panelLoading.calendar && !selectedEvents.length ? <li>No events on this day.</li> : null}
+                  </ul>
+                </div>
+              </>
+            );
+          })()}
           <form className="eg-inline-form" onSubmit={onAddCalendarEvent}>
             <input
               className="eg-inline-input"
@@ -3317,6 +3554,75 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
           </form>
           {calendarNote ? <p className="eg-inline-note">{calendarNote}</p> : null}
         </article>
+
+        <article className="cardish eg-utility-card eg-cal-upcoming">
+          <h3>📌 Upcoming Events</h3>
+          {(() => {
+            const todayIso = toDateInputValue(new Date());
+            // Visible from creation until the end of their own day, then gone.
+            const upcoming = safeArray(events)
+              .filter((ev) => {
+                const d = toDateInputValue(parseDate(ev?.starts_at || ev?.start || ev?.created_at));
+                return d && d >= todayIso;
+              })
+              .sort((a, b) => new Date(a.starts_at || a.start || a.created_at) - new Date(b.starts_at || b.start || b.created_at));
+
+            if (!panelLoading.calendar && !upcoming.length) {
+              return <p className="eg-cal-upcoming-empty">No upcoming events. Add one from the calendar!</p>;
+            }
+
+            return (
+              <ul className="eg-cal-upcoming-list">
+                {upcoming.map((ev) => {
+                  const isEditing = editingEventId === String(ev.id);
+                  const busy = eventBusyId === String(ev.id);
+                  const d = parseDate(ev?.starts_at || ev?.start || ev?.created_at);
+                  const dIso = toDateInputValue(d);
+                  const isToday = dIso === todayIso;
+                  if (isEditing) {
+                    return (
+                      <li key={ev.id} className="eg-cal-upcoming-item is-editing">
+                        <form className="eg-cal-edit-form" onSubmit={onSaveEditEvent}>
+                          <input
+                            className="eg-inline-input"
+                            value={editEventTitle}
+                            onChange={(ex) => setEditEventTitle(ex.target.value)}
+                            placeholder="Event title"
+                            required
+                          />
+                          <input
+                            className="eg-inline-input"
+                            type="date"
+                            value={editEventDate}
+                            onChange={(ex) => setEditEventDate(ex.target.value)}
+                            required
+                          />
+                          <div className="eg-cal-edit-actions">
+                            <button type="submit" className="eg-inline-btn" disabled={busy}>{busy ? 'Saving…' : 'Save'}</button>
+                            <button type="button" className="eg-inline-btn" onClick={onCancelEditEvent} disabled={busy}>Cancel</button>
+                          </div>
+                        </form>
+                      </li>
+                    );
+                  }
+                  return (
+                    <li key={ev.id} className="eg-cal-upcoming-item">
+                      <div className="eg-cal-upcoming-info">
+                        <strong>{ev.title || ev.event_type || 'Study Session'}</strong>
+                        <span className={isToday ? 'is-today' : ''}>{isToday ? 'Today' : d ? d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' }) : ''}</span>
+                      </div>
+                      <div className="eg-cal-upcoming-actions">
+                        <button type="button" className="eg-icon-btn" onClick={() => onStartEditEvent(ev)} disabled={busy} title="Edit event">✏️</button>
+                        <button type="button" className="eg-icon-btn" onClick={() => onDeleteEvent(ev)} disabled={busy} title="Delete event">{busy ? '…' : '🗑️'}</button>
+                      </div>
+                    </li>
+                  );
+                })}
+              </ul>
+            );
+          })()}
+        </article>
+        </div>
       ) : null}
 
       {activeSidebarTab === 'Rewards' ? (
@@ -3324,11 +3630,6 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
           {panelError.rewards ? <p className="eg-loading">{panelError.rewards}</p> : null}
           <p className="eg-reward-big">{coins} Coins</p>
           <p>{badges} badges earned</p>
-          <div className="eg-inline-actions">
-            <button className="eg-mini-btn" onClick={onEarnReward} disabled={rewardsEarning}>
-              {rewardsEarning ? 'Earning...' : 'Check-in (+10 coins)'}
-            </button>
-          </div>
           {rewardsNote ? <p className="eg-inline-note">{rewardsNote}</p> : null}
         </article>
       ) : null}
@@ -3372,11 +3673,6 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
             </button>
           ))}
         </nav>
-
-        <div className="eg-upgrade">
-          <p>Upgrade to Premium</p>
-          <button>Go Premium</button>
-        </div>
 
         <button type="button" className="eg-side-logout" onClick={onLogout}>
           <span className="eg-nav-icon" aria-hidden="true">🚪</span>
@@ -3443,9 +3739,9 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
                   <strong className="eg-profile-dropdown-name">{greetingName}</strong>
                   {schoolName && <span className="eg-profile-dropdown-school">🏫 {schoolName}</span>}
                   <div className="eg-profile-dropdown-details">
-                    {className && <span>📚 {className}</span>}
-                    {studentGender && <span>{studentGender === 'female' ? '♀️' : '♂️'} {studentGender.charAt(0).toUpperCase() + studentGender.slice(1)}</span>}
-                    {studentLoginId && <span>🔑 {studentLoginId}</span>}
+                    {className && <span><strong>Class:</strong> {className}</span>}
+                    {studentGender && <span><strong>Gender:</strong> {studentGender.charAt(0).toUpperCase() + studentGender.slice(1)}</span>}
+                    {studentLoginId && <span><strong>Login ID:</strong> {studentLoginId}</span>}
                   </div>
                 </div>
               )}
@@ -3523,62 +3819,76 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
                   </blockquote>
                 </div>
 
-                <div className={`eg-streak-box ${streakActiveToday ? 'done-today' : ''} ${streakAtRisk ? 'at-risk' : ''}`}>
-                  <h4>Current Streak {streakActiveToday ? '✅' : ''}</h4>
-                  <strong>{streakDays}</strong>
-                  <span>Day{streakDays === 1 ? '' : 's'} 🔥</span>
+                <div className="eg-streak-split">
+                  <div className={`eg-streak-box ${streakActiveToday ? 'done-today' : ''} ${streakAtRisk ? 'at-risk' : ''}`}>
+                    <h4>Current Streak {streakActiveToday ? '✅' : ''}</h4>
+                    <strong>{streakDays}</strong>
+                    <span>Day{streakDays === 1 ? '' : 's'} 🔥</span>
 
-                  {/* At-risk nudge — reminder to study today before losing the streak */}
-                  {streakAtRisk && (
-                    <div className="eg-streak-nudge">
-                      {streakFreezesAvailable > 0
-                        ? <>Study today to keep your streak! <span className="eg-streak-nudge-freeze">❄️ A freeze will protect it once.</span></>
-                        : 'Study today or your streak resets!'}
+                    {/* At-risk nudge — reminder to study today before losing the streak */}
+                    {streakAtRisk && (
+                      <div className="eg-streak-nudge">
+                        {streakFreezesAvailable > 0
+                          ? <>Study today to keep your streak! <span className="eg-streak-nudge-freeze">❄️ A freeze will protect it once.</span></>
+                          : 'Study today or your streak resets!'}
+                      </div>
+                    )}
+
+                    {/* Freeze status */}
+                    {streakDays > 0 && !streakAtRisk && (
+                      <div className="eg-streak-freeze-line">
+                        {streakFreezeUsed
+                          ? '❄️ A freeze saved a missed day'
+                          : streakFreezesAvailable > 0
+                            ? '❄️ Freeze ready — one missed day is protected'
+                            : ''}
+                      </div>
+                    )}
+
+                    {/* Milestone badges 7 / 30 / 100 */}
+                    <div className="eg-streak-badges">
+                      {streakMilestones.map((m) => (
+                        <span
+                          key={m.days}
+                          className={`eg-streak-badge ${m.earned ? 'earned' : 'locked'}`}
+                          title={m.earned ? `${m.label} — ${m.days}-day badge earned!` : `${m.label} — reach ${m.days} days to unlock`}
+                        >
+                          <span className="eg-streak-badge-icon">{m.earned ? m.icon : '🔒'}</span>
+                          <small>{m.days}d</small>
+                        </span>
+                      ))}
                     </div>
-                  )}
 
-                  {/* Freeze status */}
-                  {streakDays > 0 && !streakAtRisk && (
-                    <div className="eg-streak-freeze-line">
-                      {streakFreezeUsed
-                        ? '❄️ A freeze saved a missed day'
-                        : streakFreezesAvailable > 0
-                          ? '❄️ Freeze ready — one missed day is protected'
-                          : ''}
-                    </div>
-                  )}
+                    {/* Next milestone progress */}
+                    {streakNextMilestone && (
+                      <div className="eg-streak-next">
+                        <div className="eg-streak-next-bar">
+                          <span style={{ width: `${Math.min(100, Math.round((streakDays / streakNextMilestone) * 100))}%` }} />
+                        </div>
+                        <small>{streakDaysToNext} day{streakDaysToNext === 1 ? '' : 's'} to your {streakNextMilestone}-day badge</small>
+                      </div>
+                    )}
 
-                  {/* Milestone badges 7 / 30 / 100 */}
-                  <div className="eg-streak-badges">
-                    {streakMilestones.map((m) => (
-                      <span
-                        key={m.days}
-                        className={`eg-streak-badge ${m.earned ? 'earned' : 'locked'}`}
-                        title={m.earned ? `${m.label} — ${m.days}-day badge earned!` : `${m.label} — reach ${m.days} days to unlock`}
-                      >
-                        <span className="eg-streak-badge-icon">{m.earned ? m.icon : '🔒'}</span>
-                        <small>{m.days}d</small>
-                      </span>
-                    ))}
+                    {streakLongest > 0 && <div className="eg-streak-sub"><small>🏆 Best: {streakLongest} day{streakLongest === 1 ? '' : 's'}</small></div>}
                   </div>
 
-                  {/* Next milestone progress */}
-                  {streakNextMilestone && (
-                    <div className="eg-streak-next">
-                      <div className="eg-streak-next-bar">
-                        <span style={{ width: `${Math.min(100, Math.round((streakDays / streakNextMilestone) * 100))}%` }} />
+                  <div className="eg-goal-box">
+                    <h4>Weekly Goal</h4>
+                    <div className="eg-goal-ring" style={{ background: `conic-gradient(#ffd23f ${weeklyGoalPct * 3.6}deg, #f3ecd6 ${weeklyGoalPct * 3.6}deg)` }}>
+                      {weeklyGoalPct > 0 && (
+                        <span
+                          className="eg-goal-ring-shine"
+                          style={{
+                            WebkitMaskImage: `conic-gradient(#000 ${weeklyGoalPct}%, transparent ${weeklyGoalPct}%)`,
+                            maskImage: `conic-gradient(#000 ${weeklyGoalPct}%, transparent ${weeklyGoalPct}%)`,
+                          }}
+                        />
+                      )}
+                      <div className="eg-goal-ring-inner">
+                        <div>{weeklyGoalPct}%</div>
                       </div>
-                      <small>{streakDaysToNext} day{streakDaysToNext === 1 ? '' : 's'} to your {streakNextMilestone}-day badge</small>
                     </div>
-                  )}
-
-                  {streakLongest > 0 && <div className="eg-streak-sub"><small>🏆 Best: {streakLongest} day{streakLongest === 1 ? '' : 's'}</small></div>}
-
-                  <div className="eg-goal-ring" style={{ background: `conic-gradient(var(--brand) ${weeklyGoalPct * 3.6}deg, #e8ebff ${weeklyGoalPct * 3.6}deg)` }}>
-                    <div className="eg-goal-ring-inner">
-                      <div>{weeklyGoalPct}%</div>
-                      <small>Weekly Goal</small>
-                    </div>
+                    <span className="eg-goal-box-sub">{Math.min(streakDays, 7)}/7 days this week</span>
                   </div>
                 </div>
               </div>
@@ -3588,18 +3898,30 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
               <article className="cardish eg-home-summary-card eg-home-glass">
                 <h4>📝 Homework</h4>
                 {panelError.homework ? <p className="eg-loading">{panelError.homework}</p> : null}
-                <ul className="mini-list">
-                  {[...new Set((Array.isArray(classHomework) ? classHomework : []).map((h) => h?.subject || 'General'))].slice(0, 5).map((subj) => {
-                    const count = classHomework.filter((h) => (h.subject || 'General') === subj && h.status !== 'submitted').length;
-                    return (
-                      <li key={subj} style={{ cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }} onClick={() => setActiveView(subj)}>
-                        <span style={{ color: '#5b47ff', fontWeight: 600 }}>📚 {subj}</span>
-                        {count > 0 ? <span className="eg-home-pending">{count} pending</span> : null}
-                      </li>
-                    );
-                  })}
-                  {!panelLoading.homework && !classHomework.length ? <li>No homework assigned.</li> : null}
-                </ul>
+                {(() => {
+                  const subjectsWithPending = [...new Set((Array.isArray(classHomework) ? classHomework : []).map((h) => h?.subject || 'General'))]
+                    .map((subj) => ({
+                      subj,
+                      count: classHomework.filter((h) => (h.subject || 'General') === subj && !getHomeworkState(h).submitted && !getHomeworkState(h).hide).length,
+                    }))
+                    .filter((row) => row.count > 0)
+                    .slice(0, 5);
+
+                  if (!panelLoading.homework && !subjectsWithPending.length) {
+                    return <p className="eg-home-no-hw">🎉 No homework assigned for today. Have fun!</p>;
+                  }
+
+                  return (
+                    <ul className="mini-list">
+                      {subjectsWithPending.map(({ subj, count }) => (
+                        <li key={subj} style={{ cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }} onClick={() => setActiveView(subj)}>
+                          <span style={{ color: '#5b47ff', fontWeight: 600 }}>📚 {subj}</span>
+                          <span className="eg-home-pending">{count} pending</span>
+                        </li>
+                      ))}
+                    </ul>
+                  );
+                })()}
               </article>
 
               <article className="cardish eg-home-summary-card eg-home-glass">
@@ -3754,7 +4076,7 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
             <ul className="mini-list">
               {/* Home page: show subject name only — tap to go to subject page */}
               {[...new Set((Array.isArray(classHomework) ? classHomework : []).map((h) => h?.subject || 'General'))].slice(0, 5).map((subj) => {
-                const count = classHomework.filter((h) => (h.subject || 'General') === subj && h.status !== 'submitted').length;
+                const count = classHomework.filter((h) => (h.subject || 'General') === subj && !getHomeworkState(h).submitted && !getHomeworkState(h).hide).length;
                 return (
                   <li key={subj} style={{ cursor: 'pointer', padding: '6px 0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
                     onClick={() => setActiveView(subj)}>

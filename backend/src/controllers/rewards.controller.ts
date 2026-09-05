@@ -56,6 +56,64 @@ export class RewardsController {
     }
   }
 
+  @Post('checkin')
+  @UseGuards(AuthGuard)
+  async checkIn(@Req() req: any, @Body() body: any) {
+    const sid = body.studentId || req.studentId;
+    const coins = 10;
+    const reason = 'Daily study check-in';
+    const todayKey = new Date().toISOString().slice(0, 10); // YYYY-MM-DD, server date
+    try {
+      const res = await this.db.client.from('student_rewards').select('amount,reward_type,label,created_at').eq('student_id', sid).limit(500);
+      if ((res as any)?.error) throw (res as any).error;
+      const rows = ((res as any)?.data as any[]) || [];
+      const coinRows = rows.filter((r: any) => String(r.reward_type || 'coin') === 'coin');
+      const alreadyCheckedIn = coinRows.some((r: any) => String(r.label || '') === reason && String(r.created_at || '').slice(0, 10) === todayKey);
+      const currentBalance = coinRows.reduce((sum: number, r: any) => sum + Number(r.amount || 0), 0);
+
+      if (alreadyCheckedIn) {
+        return { success: true, alreadyCheckedIn: true, newBalance: currentBalance };
+      }
+
+      const ins = await this.db.client
+        .from('student_rewards')
+        .insert([{ student_id: sid, reward_type: 'coin', amount: coins, label: reason, reason }])
+        .select();
+      if ((ins as any)?.error) throw (ins as any).error;
+
+      const newBalance = currentBalance + coins;
+      this.localFeed.addReward(sid, { amount: coins, reason, reward_type: 'coin' });
+      this.localFeed.setRewards(sid, { ...this.localFeed.getRewards(sid), coins: newBalance });
+      this.localFeed.logStudentActivity(sid, {
+        type: 'reward',
+        action: 'earned',
+        title: `${coins} coins earned`,
+        details: reason,
+        meta: { coins, balance: newBalance }
+      });
+      return { success: true, alreadyCheckedIn: false, newBalance };
+    } catch (e) {
+      // DB unreachable — fall back to the in-memory mirror, which already
+      // tracks its own reward list, so re-check there before crediting again.
+      const mirror = this.localFeed.getRewards(sid);
+      const alreadyCheckedIn = (mirror.recentRewards || []).some((r: any) =>
+        String(r.label || r.reason || '') === reason && String(r.createdAt || '').slice(0, 10) === todayKey
+      );
+      if (alreadyCheckedIn) {
+        return { success: true, error: String(e), alreadyCheckedIn: true, newBalance: mirror.coins || 0 };
+      }
+      const next = this.localFeed.addReward(sid, { amount: coins, reason, reward_type: 'coin' });
+      this.localFeed.logStudentActivity(sid, {
+        type: 'reward',
+        action: 'earned',
+        title: `${coins} coins earned`,
+        details: reason,
+        meta: { coins, balance: next.coins }
+      });
+      return { success: true, error: String(e), alreadyCheckedIn: false, newBalance: next.coins };
+    }
+  }
+
   @Post('earn')
   @UseGuards(AuthGuard)
   async earn(@Req() req: any, @Body() body: any) {

@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Delete, Query, Param, Body, UseGuards, Req } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Delete, Query, Param, Body, UseGuards, Req } from '@nestjs/common';
 import { SupabaseService } from '../supabase.service';
 import { AuthGuard } from '../auth/auth.guard';
 import { LocalFeedService } from '../shared/local-feed.service';
@@ -74,6 +74,40 @@ export class CalendarController {
         title: payload.title || 'Calendar event',
         details: 'Created calendar event',
         meta: { eventId: saved?.id || null, start: payload.start || null }
+      });
+      return { success: true, error: String(e), event: saved };
+    }
+  }
+
+  @Patch(':id')
+  @UseGuards(AuthGuard)
+  async update(@Req() req: any, @Param('id') id: string, @Body() payload: any) {
+    const studentId = payload.studentId || payload.student_id || req.studentId;
+    const patch: any = {};
+    if (payload.title !== undefined) patch.title = payload.title;
+    if (payload.start !== undefined) patch.start = payload.start;
+    if (payload.end !== undefined) patch.end = payload.end;
+    if (payload.type !== undefined) patch.type = payload.type;
+    try {
+      const res = await this.db.client.from('events').update(patch).eq('id', id).select();
+      const event = (res && (res as any).data && (res as any).data[0]) || null;
+      const saved = this.localFeed.addEvent({ id, student_id: studentId, ...patch, ...(event || {}) });
+      this.localFeed.logStudentActivity(studentId, {
+        type: 'calendar',
+        action: 'updated',
+        title: patch.title || saved?.title || `Event ${id}`,
+        details: 'Updated calendar event',
+        meta: { eventId: id, start: patch.start || saved?.start || null }
+      });
+      return { success: true, event: saved || event };
+    } catch (e) {
+      const saved = this.localFeed.addEvent({ id, student_id: studentId, ...patch });
+      this.localFeed.logStudentActivity(studentId, {
+        type: 'calendar',
+        action: 'updated',
+        title: patch.title || saved?.title || `Event ${id}`,
+        details: 'Updated calendar event',
+        meta: { eventId: id }
       });
       return { success: true, error: String(e), event: saved };
     }

@@ -437,6 +437,26 @@ export async function createCalendarEvent(payload) {
   return data;
 }
 
+export async function updateCalendarEvent(eventId, payload) {
+  const headers = await authHeaders();
+  const url = `${API_BASE}/calendar/${encodeURIComponent(eventId)}`;
+  const res = await fetch(url, { method: 'PATCH', headers, body: JSON.stringify(payload || {}) });
+  if (!res.ok) throw new Error(`updateCalendarEvent failed: ${res.status}`);
+  const data = await res.json();
+  if (data && data.success === false) throw new Error(data.error || 'Calendar update failed');
+  return data;
+}
+
+export async function deleteCalendarEvent(eventId, studentId) {
+  const headers = await authHeaders();
+  const url = `${API_BASE}/calendar/${encodeURIComponent(eventId)}?studentId=${encodeURIComponent(studentId)}`;
+  const res = await fetch(url, { method: 'DELETE', headers });
+  if (!res.ok) throw new Error(`deleteCalendarEvent failed: ${res.status}`);
+  const data = await res.json();
+  if (data && data.success === false) throw new Error(data.error || 'Calendar delete failed');
+  return data;
+}
+
 export async function getRewards(studentId) {
   const url = `${API_BASE}/rewards?studentId=${encodeURIComponent(studentId)}`;
   return getJsonChecked(url, 'getRewards');
@@ -447,6 +467,14 @@ export async function earnReward(payload) {
   const url = `${API_BASE}/rewards/earn`;
   const res = await fetch(url, { method: 'POST', headers, body: JSON.stringify(payload || {}) });
   if (!res.ok) throw new Error(`earnReward failed: ${res.status}`);
+  return res.json();
+}
+
+export async function checkInReward(studentId) {
+  const headers = await authHeaders();
+  const url = `${API_BASE}/rewards/checkin`;
+  const res = await fetch(url, { method: 'POST', headers, body: JSON.stringify({ studentId }) });
+  if (!res.ok) throw new Error(`checkInReward failed: ${res.status}`);
   return res.json();
 }
 
@@ -1171,8 +1199,11 @@ const api = {
   recordProgress,
   getCalendar,
   createCalendarEvent,
+  updateCalendarEvent,
+  deleteCalendarEvent,
   getRewards,
   earnReward,
+  checkInReward,
   getChatHistory,
   getLearningTimeline,
   generateLocalTtsAudio,

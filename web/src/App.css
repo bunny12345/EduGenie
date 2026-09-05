@@ -151,31 +151,9 @@ textarea {
   background: #fff;
 }
 
-.eg-upgrade {
-  margin-top: auto;
-  border-radius: 12px;
-  padding: 12px;
-  background: rgba(255, 255, 255, 0.08);
-}
-
-.eg-upgrade p {
-  margin: 0 0 8px;
-  font-size: 12px;
-  color: #cbd1ff;
-}
-
-.eg-upgrade button {
-  width: 100%;
-  border: 0;
-  border-radius: 9px;
-  padding: 9px;
-  background: linear-gradient(120deg, #805dff, #5e5bff);
-  color: #fff;
-  font-weight: 600;
-}
-
 /* Logout lives at the bottom of the sidebar, matching the school portal. */
 .eg-side-logout {
+  margin-top: auto;
   border: 1px solid rgba(255, 255, 255, 0.14);
   border-radius: 10px;
   background: rgba(255, 255, 255, 0.05);
@@ -340,7 +318,7 @@ textarea {
   display: grid;
   place-items: center;
   background: #f4f5ff;
-  border: 1px solid #e4e8ff;
+  border: 1.5px solid rgba(40, 40, 45, 0.3);
   padding: 0 8px;
   font-size: 10px;
   font-weight: 600;
@@ -362,7 +340,7 @@ textarea {
   line-height: 1;
   color: #6a4200;
   background: linear-gradient(135deg, #fff4c2 0%, #ffd85e 42%, #f5b010 100%);
-  box-shadow: 0 3px 12px rgba(216, 160, 20, 0.42), inset 0 1px 1px rgba(255, 255, 255, 0.75), inset 0 -2px 4px rgba(180, 120, 0, 0.28);
+  box-shadow: 0 3px 12px rgba(216, 160, 20, 0.42), 0 0 0 1.5px rgba(40, 40, 45, 0.3), inset 0 1px 1px rgba(255, 255, 255, 0.75), inset 0 -2px 4px rgba(180, 120, 0, 0.28);
   overflow: visible;
   transition: transform 0.15s ease, box-shadow 0.2s ease, filter 0.2s ease;
 }
@@ -493,7 +471,7 @@ textarea {
   line-height: 1;
   color: #7a2e00;
   background: linear-gradient(135deg, #ffe9c7, #ffcf8f);
-  box-shadow: 0 3px 12px rgba(255, 149, 0, 0.28);
+  box-shadow: 0 3px 12px rgba(255, 149, 0, 0.28), 0 0 0 1.5px rgba(40, 40, 45, 0.3);
   transition: transform 0.15s ease, box-shadow 0.2s ease, filter 0.2s ease;
 }
 .eg-streak-chip:hover { transform: translateY(-1px); box-shadow: 0 5px 16px rgba(255, 149, 0, 0.38); }
@@ -571,7 +549,7 @@ textarea {
 
 .eg-profile-chip {
   border-radius: 999px;
-  border: 1px solid #e4e8ff;
+  border: 1.5px solid rgba(40, 40, 45, 0.3);
   min-height: 30px;
   padding: 5px 8px;
   font-size: 11px;
@@ -678,6 +656,10 @@ textarea {
   color: #475569;
   font-weight: 500;
 }
+.eg-profile-dropdown-details span strong {
+  color: #1f2340;
+  font-weight: 700;
+}
 
 /* Glass-effect cards on the homepage */
 .eg-home-glass.cardish {
@@ -685,38 +667,28 @@ textarea {
   backdrop-filter: blur(14px);
   -webkit-backdrop-filter: blur(14px);
   border-color: rgba(255, 255, 255, 0.4) !important;
-  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.28),
-              0 0 0 2px rgba(70, 70, 78, 0.4),
-              0 0 10px rgba(0, 0, 0, 0.22),
-              inset 0 1px 0 rgba(255, 255, 255, 0.5);
+  box-shadow: none;
 }
 
-/* Subject cards glow black by default, like the other panels; hovering or
-   clicking swaps the ring/glow to the subject's own theme colour for a
-   pressable "button" feel — --subject-glow/--subject-glow-rgb are set
-   inline per card in JSX. */
+/* Subject cards — no shadow/frame effect on the home page. */
 .eg-subject-card.eg-home-glass {
-  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.26),
-              0 0 0 2px rgba(70, 70, 78, 0.4),
-              0 0 10px rgba(0, 0, 0, 0.22),
-              inset 0 1px 0 rgba(255, 255, 255, 0.5);
+  box-shadow: none;
 }
 .eg-subject-card.eg-home-glass:hover {
   transform: translateY(-3px) scale(1.015);
-  box-shadow: 0 14px 30px rgba(0, 0, 0, 0.16),
-              0 0 0 2px var(--subject-glow, #000000),
-              0 0 20px rgba(var(--subject-glow-rgb, 0, 0, 0), 0.75),
-              inset 0 1px 0 rgba(255, 255, 255, 0.6);
+  box-shadow: none;
 }
 .eg-subject-card.eg-home-glass:active {
   transform: translateY(0) scale(0.98);
-  box-shadow: 0 6px 14px rgba(0, 0, 0, 0.18),
-              0 0 0 2px var(--subject-glow, #000000),
-              0 0 16px rgba(var(--subject-glow-rgb, 0, 0, 0), 0.85),
-              inset 0 2px 6px rgba(0, 0, 0, 0.12);
+  box-shadow: none;
 }
 .eg-bottom-grid.eg-home-legacy-summary {
   display: none !important;
+}
+/* Academics + School Services keep a plain light-black border frame (no glow/shadow). */
+.eg-reco-card.eg-home-glass,
+.eg-services-card.eg-home-glass {
+  border: 1.5px solid rgba(40, 40, 45, 0.35) !important;
 }
 .eg-home-summary-row {
   display: grid;
@@ -745,6 +717,12 @@ textarea {
   color: #fff;
   font-size: 10px;
   font-weight: 600;
+}
+.eg-home-no-hw {
+  margin: 4px 0 0;
+  font-size: 12px;
+  color: #6b7090;
+  line-height: 1.5;
 }
 
 .eg-home-glass.eg-grad-hero {
@@ -801,18 +779,53 @@ textarea {
 
 .eg-hero-inner {
   display: grid;
-  grid-template-columns: 1fr 0.72fr;
+  grid-template-columns: 1fr 1.05fr;
   gap: 8px;
   align-items: start;
 }
 
 .eg-bot-quote,
 .eg-plan-box,
-.eg-streak-box {
+.eg-streak-box,
+.eg-goal-box {
   border: 1px solid var(--line);
   border-radius: 10px;
   background: #fafbff;
   padding: 8px;
+}
+
+/* Streak + Weekly Goal side by side instead of stacked, so the hero card
+   doesn't grow tall. */
+.eg-streak-split {
+  display: flex;
+  gap: 6px;
+  align-items: stretch;
+}
+.eg-streak-split .eg-streak-box {
+  flex: 1.35;
+}
+.eg-goal-box {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  text-align: center;
+  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.1),
+              0 0 0 2px #f5b942,
+              0 0 14px rgba(245, 185, 66, 0.65),
+              inset 0 1px 0 rgba(255, 255, 255, 0.6);
+}
+.eg-goal-box h4 {
+  margin: 0 0 2px;
+  font-size: 12px;
+  line-height: var(--lh-tight);
+}
+.eg-goal-box-sub {
+  font-size: 9px;
+  color: #7f86ae;
+  font-weight: 600;
 }
 
 .eg-bot-quote {
@@ -976,7 +989,7 @@ textarea {
 }
 .eg-streak-next-bar {
   width: 90%;
-  height: 6px;
+  height: 15px;
   border-radius: 999px;
   background: #ececf6;
   overflow: hidden;
@@ -985,38 +998,66 @@ textarea {
   display: block;
   height: 100%;
   border-radius: 999px;
-  background: linear-gradient(90deg, #ff9d3c, #ff6b45);
+  background: linear-gradient(90deg, #ffd23f, #ffb200, #ffd23f);
+  background-size: 200% 100%;
+  animation: eg-gold-shine 1.8s linear infinite;
   transition: width 0.4s ease;
+}
+@keyframes eg-gold-shine {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
 }
 .eg-streak-next small { font-size: 9px; color: #7f86ae; font-weight: 600; }
 
 .eg-goal-ring {
+  position: relative;
   margin-top: 2px;
-  width: 54px;
-  height: 54px;
+  width: 100px;
+  height: 100px;
   border-radius: 50%;
   display: grid;
   place-items: center;
-  padding: 3px;
+  padding: 15px;
+  overflow: visible;
   transition: background 0.4s ease;
+}
+/* A rotating gold highlight sweep, masked to only the filled portion of the
+   ring — same moving-shine feel as the streak progress bar, just confined
+   to the gold arc instead of the whole circle. The mask itself is set
+   inline in JSX (fully resolved conic-gradient string, computed from
+   weeklyGoalPct) since a CSS var() inside mask-image's conic-gradient()
+   was not being applied by the browser, letting the sweep show everywhere. */
+.eg-goal-ring-shine {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  pointer-events: none;
+  background: conic-gradient(from 0deg, transparent 0deg, rgba(255, 255, 255, 0.9) 18deg, transparent 40deg, transparent 360deg);
+  animation: eg-goal-ring-sweep 1.8s linear infinite;
+}
+@keyframes eg-goal-ring-sweep {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
 }
 
 .eg-goal-ring-inner {
+  position: relative;
+  z-index: 1;
   width: 100%;
   height: 100%;
   border-radius: 50%;
   background: #fff;
   display: grid;
   place-items: center;
-  color: var(--brand);
-  font-size: 11px;
-  font-weight: 700;
+  color: #b8860b;
+  font-size: 18px;
+  font-weight: 800;
   line-height: 1.1;
   text-align: center;
 }
 
 .eg-goal-ring small {
-  font-size: 8px;
+  font-size: 9px;
   color: #7f86ae;
   font-weight: 500;
   display: block;
@@ -1785,6 +1826,41 @@ textarea {
   overflow-y: auto;
   scrollbar-width: thin;
   scrollbar-color: rgba(160, 182, 255, 0.42) transparent;
+}
+
+/* Shown instead of the chat + composer until a lesson is picked — no
+   subject-wide "common" chat is reachable without one. */
+.eg-ai-select-lesson-prompt {
+  flex: 1 1 auto;
+  min-height: 300px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  gap: 10px;
+  border: 1px solid rgba(220, 230, 255, 0.18);
+  border-radius: 14px;
+  background: linear-gradient(180deg, rgba(10, 20, 72, 0.84), rgba(8, 16, 62, 0.88));
+  padding: 40px 24px;
+  box-shadow: inset 0 0 0 1px rgba(161, 183, 255, 0.06);
+}
+.eg-ai-select-lesson-icon {
+  font-size: 40px;
+  filter: drop-shadow(0 0 10px rgba(120, 145, 255, 0.4));
+}
+.eg-ai-select-lesson-prompt h4 {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 700;
+  color: #eef1ff;
+}
+.eg-ai-select-lesson-prompt p {
+  margin: 0;
+  max-width: 380px;
+  font-size: 13px;
+  line-height: 1.6;
+  color: #b7c1ec;
 }
 
 /* Keeps the conversation resting on the composer while it is short, and turns
@@ -2743,6 +2819,230 @@ textarea {
   font-size: 13px;
   gap: 8px;
 }
+
+/* ── Calendar page — dynamic month grid, always driven by the real date ──── */
+.eg-calendar-layout {
+  display: grid;
+  grid-template-columns: 1.3fr 1fr;
+  gap: 18px;
+  align-items: start;
+  max-width: 980px;
+}
+@media (max-width: 900px) {
+  .eg-calendar-layout {
+    grid-template-columns: 1fr;
+  }
+}
+.eg-calendar-page {
+  max-width: none;
+}
+.eg-cal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.eg-cal-head-title {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+.eg-cal-head-title strong {
+  font-size: 16px;
+  color: #1f2340;
+}
+.eg-cal-nav-btn,
+.eg-cal-today-btn {
+  border: none;
+  border-radius: 10px;
+  background: #f5f3ff;
+  color: #4b3fa8;
+  font-weight: 700;
+  cursor: pointer;
+}
+.eg-cal-nav-btn {
+  width: 32px;
+  height: 32px;
+  font-size: 16px;
+  display: grid;
+  place-items: center;
+}
+.eg-cal-today-btn {
+  padding: 3px 10px;
+  font-size: 11px;
+}
+.eg-cal-weekdays {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 4px;
+  margin-top: 4px;
+}
+.eg-cal-weekdays span {
+  text-align: center;
+  font-size: 10px;
+  font-weight: 700;
+  color: #8a8fae;
+  padding: 4px 0;
+}
+.eg-cal-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 4px;
+}
+.eg-cal-cell {
+  position: relative;
+  aspect-ratio: 1 / 1;
+  border: none;
+  border-radius: 10px;
+  background: #f7f7fb;
+  color: #374151;
+  font-size: 12px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+.eg-cal-cell-empty {
+  background: transparent;
+  cursor: default;
+}
+.eg-cal-cell.is-today {
+  background: #eef0ff;
+  color: #4338ca;
+  font-weight: 800;
+}
+.eg-cal-cell.is-selected {
+  background: #5b47ff;
+  color: #fff;
+}
+.eg-cal-cell-dot {
+  position: absolute;
+  bottom: 4px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: #ff9d3c;
+}
+.eg-cal-cell.is-selected .eg-cal-cell-dot {
+  background: #fff;
+}
+.eg-cal-events {
+  border-top: 1px solid var(--line);
+  padding-top: 10px;
+}
+.eg-cal-events h4 {
+  margin: 0 0 6px;
+  font-size: 13px;
+}
+
+/* Same black 3D frame + hover/press zoom as the Homework panel buttons —
+   excludes the day-grid cells themselves, which stay flat like a normal calendar. */
+.eg-calendar-layout button:not(.eg-cal-cell) {
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.14),
+              0 0 0 1.5px rgba(70, 70, 78, 0.45),
+              0 0 6px rgba(0, 0, 0, 0.22);
+}
+.eg-calendar-layout button:not(.eg-cal-cell):hover {
+  transform: translateY(-1px) scale(1.035);
+  box-shadow: 0 6px 14px rgba(0, 0, 0, 0.18),
+              0 0 0 1.5px rgba(70, 70, 78, 0.45),
+              0 0 10px rgba(0, 0, 0, 0.26);
+}
+.eg-calendar-layout button:not(.eg-cal-cell):active {
+  transform: translateY(0) scale(0.96);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.16),
+              0 0 0 1.5px rgba(70, 70, 78, 0.45),
+              0 0 8px rgba(0, 0, 0, 0.3);
+}
+
+/* ── Upcoming Events side panel ───────────────────────────────────────────── */
+.eg-cal-upcoming h3 {
+  margin: 0 0 12px;
+  font-size: 15px;
+}
+.eg-cal-upcoming-empty {
+  color: #8a8fae;
+  font-size: 13px;
+}
+.eg-cal-upcoming-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 60vh;
+  overflow-y: auto;
+}
+.eg-cal-upcoming-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: #f7f7fb;
+}
+.eg-cal-upcoming-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.eg-cal-upcoming-info strong {
+  font-size: 13px;
+  color: #1f2340;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.eg-cal-upcoming-info span {
+  font-size: 11px;
+  color: #8a8fae;
+}
+.eg-cal-upcoming-info span.is-today {
+  color: #4338ca;
+  font-weight: 700;
+}
+.eg-cal-upcoming-actions {
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
+}
+.eg-icon-btn {
+  width: 30px;
+  height: 30px;
+  border-radius: 9px;
+  border: none;
+  background: #fff;
+  cursor: pointer;
+  font-size: 13px;
+  display: grid;
+  place-items: center;
+}
+.eg-icon-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.eg-cal-upcoming-item.is-editing {
+  background: #f0edff;
+}
+.eg-cal-edit-form {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
+}
+.eg-cal-edit-actions {
+  display: flex;
+  gap: 6px;
+}
+
 
 .eg-mini-card {
   padding: 16px 18px;
