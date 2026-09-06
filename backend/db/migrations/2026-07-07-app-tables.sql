@@ -1,4 +1,4 @@
--- Migration: create all EduGenie app tables
+-- Migration: create all AcademiX app tables
 -- Idempotent (uses IF NOT EXISTS). Safe to re-run.
 -- Run after init.sql which creates students, messages, memories, homework.
 

@@ -1,4 +1,4 @@
-// Minimal API client for the EduGenie backend
+// Minimal API client for the AcademiX backend
 // If REACT_APP_USE_PROXY=1 prefer relative paths so CRA proxy (package.json) forwards to mock.
 import supabase from './supabaseClient';
 
@@ -31,7 +31,7 @@ function isJwtExpired(token) {
 function notifyExpiredAuth() {
   if (DISABLE_AUTH_EXPIRE_EVENTS) return;
   if (typeof window === 'undefined') return;
-  window.dispatchEvent(new CustomEvent('edugenie.authExpired'));
+  window.dispatchEvent(new CustomEvent('AcademiX.authExpired'));
 }
 
 function withQuery(path, params = {}) {
@@ -77,6 +77,26 @@ export async function schoolRegister(payload) {
   return res.json();
 }
 
+export async function schoolRegisterRequestOtp(payload) {
+  const url = `${API_BASE}/auth/school/register/request-otp`;
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload || {})
+  });
+  return res.json();
+}
+
+export async function schoolRegisterVerifyOtp(email, otp) {
+  const url = `${API_BASE}/auth/school/register/verify-otp`;
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email, otp })
+  });
+  return res.json();
+}
+
 export async function schoolLogin(email, password) {
   const url = `${API_BASE}/auth/school/login`;
   const res = await fetch(url, {
@@ -112,7 +132,7 @@ async function authHeaders() {
   // runtime token is rehydrated into memory.
   try {
     if (typeof window !== 'undefined') {
-      const raw = window.localStorage.getItem('edugenie.session');
+      const raw = window.localStorage.getItem('AcademiX.session');
       const parsed = raw ? JSON.parse(raw) : null;
       const sessionToken = String(parsed?.token || '').trim();
       if (sessionToken && !isJwtExpired(sessionToken)) {
@@ -1271,6 +1291,8 @@ const api = {
   studentLogin,
   teacherLogin,
   schoolRegister,
+  schoolRegisterRequestOtp,
+  schoolRegisterVerifyOtp,
   schoolLogin,
   getInviteInfo,
   acceptInvite,

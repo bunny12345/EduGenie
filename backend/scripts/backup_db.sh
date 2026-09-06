@@ -12,7 +12,7 @@ fi
 OUT_DIR="$DIR/backups"
 mkdir -p "$OUT_DIR"
 TS=$(date -u +"%Y%m%dT%H%M%SZ")
-OUT_FILE="$OUT_DIR/edugenie_backup_${TS}.sql.gz"
+OUT_FILE="$OUT_DIR/AcademiX_backup_${TS}.sql.gz"
 
 if command -v pg_dump >/dev/null 2>&1; then
   echo "Running pg_dump..."

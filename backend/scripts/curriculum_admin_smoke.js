@@ -165,7 +165,7 @@ function pruneLocalAccounts() {
     method: 'POST',
     body: {
       name: `Smoke Geo ${STAMP}`,
-      email: `smokecc-a${STAMP}@edugenie.test`,
+      email: `smokecc-a${STAMP}@AcademiX.test`,
       subject: SUBJECT_A,
       loginId: `smokecca${STAMP}`,
       password: 'Passw0rd!',
@@ -203,7 +203,7 @@ function pruneLocalAccounts() {
     method: 'POST',
     body: {
       name: `Smoke Civics ${STAMP}`,
-      email: `smokecc-b${STAMP}@edugenie.test`,
+      email: `smokecc-b${STAMP}@AcademiX.test`,
       subject: SUBJECT_B,
       loginId: `smokeccb${STAMP}`,
       password: 'Passw0rd!',

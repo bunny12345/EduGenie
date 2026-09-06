@@ -1,6 +1,6 @@
 # Local Free TTS (Option 2)
 
-This local service provides free server-generated voice audio for EduGenie without paid API calls.
+This local service provides free server-generated voice audio for AcademiX without paid API calls.
 
 ## Engine
 
@@ -51,8 +51,8 @@ Sample TTS request:
 ```bash
 curl -X POST http://127.0.0.1:5005/tts \
   -H 'Content-Type: application/json' \
-  -d '{"text":"Hello from EduGenie local TTS"}' \
-  --output /tmp/edugenie-tts.mp3
+  -d '{"text":"Hello from AcademiX local TTS"}' \
+  --output /tmp/AcademiX-tts.mp3
 ```
 
 ## Backend env config

@@ -222,7 +222,7 @@ export class ChatController {
           // lazy require to avoid startup issues
           // eslint-disable-next-line @typescript-eslint/no-var-requires
           const fetch = require('node-fetch');
-          const text = `EduGenie prune: deleted ${deletedCount} duplicate memories`;
+          const text = `AcademiX prune: deleted ${deletedCount} duplicate memories`;
           await fetch(slackUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text }) });
           console.log('prune_memories: slack notification sent');
         } catch (e) {

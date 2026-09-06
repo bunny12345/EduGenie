@@ -85,7 +85,7 @@ async function synthesizeWithPiper(text, modelPath, outWavPath, speed) {
 }
 
 async function synthesizeSpeechToBuffer(text, voice, speed) {
-  const tmpDir = path.join(os.tmpdir(), 'edugenie-tts');
+  const tmpDir = path.join(os.tmpdir(), 'AcademiX-tts');
   fs.mkdirSync(tmpDir, { recursive: true });
 
   const id = randomUUID();

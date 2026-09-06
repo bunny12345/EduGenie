@@ -2046,7 +2046,7 @@ export default function TeacherDashboard({ session, onLogout }) {
       <nav className="td-sidebar">
         <div className="td-sidebar-brand">
           <span className="td-sidebar-logo">🎓</span>
-          <span className="td-sidebar-title">EduGenie</span>
+          <span className="td-sidebar-title">AcademiX</span>
         </div>
 
         {/* Teacher profile card */}
@@ -3091,7 +3091,7 @@ export default function TeacherDashboard({ session, onLogout }) {
                       })}
                       {chatLoading ? (
                         <div className="ai-msg bot ai-msg-thinking">
-                          <span>EduGenie is thinking</span>
+                          <span>AcademiX is thinking</span>
                           <span className="eg-typing-dots" aria-hidden="true"><i /><i /><i /></span>
                         </div>
                       ) : null}

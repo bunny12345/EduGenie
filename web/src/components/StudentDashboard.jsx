@@ -1202,7 +1202,7 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
   // student (and their grade) even before/if the dashboard payload is thin.
   const sessionProfile = useMemo(() => {
     try {
-      return JSON.parse(window.localStorage.getItem('edugenie.session') || '{}') || {};
+      return JSON.parse(window.localStorage.getItem('AcademiX.session') || '{}') || {};
     } catch {
       return {};
     }
@@ -2956,7 +2956,7 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
         );})}
         {chatLoading ? (
           <div className="ai-msg bot ai-msg-thinking">
-            <span>EduGenie is thinking</span>
+            <span>AcademiX is thinking</span>
             <span className="eg-typing-dots" aria-hidden="true">
               <i />
               <i />
@@ -2965,7 +2965,7 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
           </div>
         ) : null}
         {!panelLoading.chat && !chatHistory.length && !chatLoading ? (
-          <div className="ai-msg bot">👋 Hi! I'm EduGenie, your AI tutor. Ask me anything about your subjects!</div>
+          <div className="ai-msg bot">👋 Hi! I'm AcademiX, your AI tutor. Ask me anything about your subjects!</div>
         ) : null}
         <div ref={chatEndRef} />
       </div>
@@ -3659,7 +3659,7 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
         <div className="eg-logo">
           <div className="eg-logo-mark">EG</div>
           <div>
-            <strong>EduGenie</strong>
+            <strong>AcademiX</strong>
             <p>Your AI Study Buddy</p>
           </div>
         </div>

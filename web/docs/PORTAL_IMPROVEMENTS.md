@@ -2,7 +2,7 @@
 
 ## Overview
 
-This document outlines the performance optimizations, UX improvements, and new features added to the StudentDashboard component as part of the EduGenie portal enhancement initiative.
+This document outlines the performance optimizations, UX improvements, and new features added to the StudentDashboard component as part of the AcademiX portal enhancement initiative.
 
 ## Completed Enhancements
 

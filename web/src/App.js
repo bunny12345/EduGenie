@@ -42,10 +42,10 @@ function secondsUntilExpiry(token) {
 function App() {
   const [session, setSession] = React.useState(() => {
     try {
-      const raw = localStorage.getItem('edugenie.session');
+      const raw = localStorage.getItem('AcademiX.session');
       const parsed = raw ? JSON.parse(raw) : null;
       if (parsed?.token && isExpiredToken(parsed.token)) {
-        localStorage.removeItem('edugenie.session');
+        localStorage.removeItem('AcademiX.session');
         return null;
       }
       return parsed;
@@ -70,7 +70,7 @@ function App() {
       if (secs <= 0) {
         setSessionExpired(true);
         setRuntimeDevToken('');
-        localStorage.removeItem('edugenie.session');
+        localStorage.removeItem('AcademiX.session');
       } else if (secs <= 120 && !sessionExpired) {
         setSessionExpired(true);
       }
@@ -84,17 +84,17 @@ function App() {
     function handleExpiredAuth() {
       setSessionExpired(true);
       setRuntimeDevToken('');
-      localStorage.removeItem('edugenie.session');
+      localStorage.removeItem('AcademiX.session');
     }
-    window.addEventListener('edugenie.authExpired', handleExpiredAuth);
-    return () => window.removeEventListener('edugenie.authExpired', handleExpiredAuth);
+    window.addEventListener('AcademiX.authExpired', handleExpiredAuth);
+    return () => window.removeEventListener('AcademiX.authExpired', handleExpiredAuth);
   }, []);
 
   function handleLogin(nextSession) {
     window.location.hash = '';
     setSession(nextSession);
     setSessionExpired(false);
-    localStorage.setItem('edugenie.session', JSON.stringify(nextSession));
+    localStorage.setItem('AcademiX.session', JSON.stringify(nextSession));
     setRuntimeDevToken(nextSession?.token || '');
   }
 
@@ -102,7 +102,7 @@ function App() {
     window.location.hash = '';
     setSession(null);
     setSessionExpired(false);
-    localStorage.removeItem('edugenie.session');
+    localStorage.removeItem('AcademiX.session');
     setRuntimeDevToken('');
   }
 
@@ -122,7 +122,7 @@ function App() {
                 onClick={() => {
                   setSessionExpired(false);
                   setSession(null);
-                  localStorage.removeItem('edugenie.session');
+                  localStorage.removeItem('AcademiX.session');
                   setRuntimeDevToken('');
                 }}
               >

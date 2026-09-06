@@ -1,4 +1,4 @@
-RLS policy guide — EduGenie
+RLS policy guide — AcademiX
 
 Overview
 - This file contains Row Level Security (RLS) SQL snippets to scope student data to the authenticated user.

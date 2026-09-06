@@ -134,7 +134,7 @@ function pruneLocalAccounts() {
     tok: schoolTok,
     body: {
       name: `Smoke Astro ${STAMP}`,
-      email: `smokeastro${STAMP}@edugenie.test`,
+      email: `smokeastro${STAMP}@AcademiX.test`,
       subject: SUBJECT,
       loginId: `smokeastro${STAMP}`,
       password: 'Passw0rd!',

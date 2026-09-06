@@ -124,6 +124,9 @@ export class SchoolController {
       loginId: body?.loginId,
       password: body?.password,
       gender: body?.gender || null,
+      dateOfBirth: body?.dateOfBirth || null,
+      phone: body?.phone || null,
+      email: body?.email || null,
       createdBy: req?.user?.sub || null
     });
     if (!res.ok) return { success: false, error: res.error };

@@ -4049,6 +4049,43 @@ textarea {
   font-weight: 600;
 }
 
+.rg-otp-note {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: #eef2ff;
+  color: #3448d2;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.5;
+}
+
+.rg-otp-actions {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.rg-link-btn {
+  border: none;
+  background: none;
+  padding: 0;
+  color: #3448d2;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.rg-link-btn:hover {
+  text-decoration: underline;
+}
+
+.rg-link-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  text-decoration: none;
+}
+
 .td-shell {
   min-height: 100vh;
   display: flex;
@@ -5819,15 +5856,33 @@ textarea {
 }
 
 .sd-form input,
+.sd-form select,
 .sd-form button {
   border-radius: 10px;
   font-family: 'Poppins', 'Avenir Next', 'Segoe UI', sans-serif;
 }
 
-.sd-form input {
+.sd-form input,
+.sd-form select {
   border: 1px solid #dfe5f7;
   padding: 9px 10px;
   font-size: 12px;
+}
+
+.sd-form select {
+  width: 100%;
+  box-sizing: border-box;
+  min-height: 38px;
+  background: #fff;
+  color: #2d3465;
+  cursor: pointer;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.sd-form select:focus {
+  outline: none;
+  border-color: #2a66b4;
+  box-shadow: 0 0 0 3px rgba(42, 102, 180, 0.14);
 }
 
 .sd-form button,

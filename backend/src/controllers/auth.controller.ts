@@ -18,6 +18,26 @@ export class AuthController {
     return { success: true, role: 'school_admin', token: res.token, school: res.school };
   }
 
+  @Post('school/register/request-otp')
+  async schoolRegisterRequestOtp(@Body() body: any) {
+    const res = await this.studentAuth.requestSchoolRegistrationOtp({
+      email: body?.email,
+      schoolName: body?.schoolName,
+      branch: body?.branch,
+      location: body?.location,
+      password: body?.password
+    });
+    if (!res.ok) return { success: false, error: res.error };
+    return { success: true, message: 'Verification code sent to your email.' };
+  }
+
+  @Post('school/register/verify-otp')
+  async schoolRegisterVerifyOtp(@Body() body: any) {
+    const res = await this.studentAuth.verifySchoolRegistrationOtp(body?.email, body?.otp);
+    if (!res.ok) return { success: false, error: res.error };
+    return { success: true, role: 'school_admin', token: res.token, school: res.school };
+  }
+
   @Post('school/login')
   async schoolLogin(@Body() body: any) {
     const res = await this.studentAuth.loginSchool(body?.email, body?.password);

@@ -92,7 +92,7 @@ export default function Chat({ studentId = 'test' }) {
       <Auth />
       <ProfileEditor studentId={studentId} onSaved={(s) => { /* could show toast */ }} />
       <div ref={messagesRef} style={{ flex: 1, overflowY: 'auto', padding: 12 }}>
-        {history.length === 0 && <div style={{ color: '#666' }}>Ask EduGenie a question about the student.</div>}
+        {history.length === 0 && <div style={{ color: '#666' }}>Ask AcademiX a question about the student.</div>}
         {history.map((m, i) => <MessageBubble key={i} role={m.role} text={m.text} ts={m.ts} />)}
         {typing && (
           <div className="typing" style={{ marginTop: 6 }}>

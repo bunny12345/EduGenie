@@ -22,7 +22,7 @@ It prints HTTP status and the JSON response. Exit code is non-zero on failure.
 Cron / Scheduling
 - Example crontab entry (runs daily at 03:00 and appends logs):
 ```cron
-0 3 * * * /Users/malavikaharidas/prem/EduGenie/backend/scripts/prune.sh >> /var/log/edugenie/prune.log 2>&1
+0 3 * * * /Users/malavikaharidas/prem/AcademiX/backend/scripts/prune.sh >> /var/log/AcademiX/prune.log 2>&1
 ```
 - Use `crontab -e` to add the line for your user. Ensure the backend server is running (pm2, systemd, screen/tmux, etc.).
 

@@ -2,6 +2,7 @@ import { Injectable, OnModuleInit } from '@nestjs/common';
 import { randomBytes, randomUUID, createHash } from 'crypto';
 import * as jwt from 'jsonwebtoken';
 import { SupabaseService } from '../supabase.service';
+import { EmailService } from './email.service';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -19,6 +20,9 @@ type StudentAccount = {
   teacherId?: string;
   schoolId?: string;
   gender?: string;
+  dateOfBirth?: string;
+  phone?: string;
+  email?: string;
 };
 
 type TeacherAccount = {
@@ -81,6 +85,17 @@ export class StudentAuthService implements OnModuleInit {
   private static teacherAccounts = new Map<string, TeacherAccount>();
   private static schoolAccounts = new Map<string, SchoolAccount>();
   private static invites = new Map<string, InviteRecord>();
+  // Pending school-registration OTPs, keyed by lowercased email. Holds the
+  // hashed code plus the registration payload so verifyOtp can finish creating
+  // the account without asking the admin to re-enter everything.
+  private static pendingSchoolOtps = new Map<string, {
+    otpSalt: string;
+    otpHash: string;
+    expiresAt: number;
+    attempts: number;
+    lastSentAt: number;
+    payload: { schoolName: string; branch: string; location: string; passwordSalt: string; passwordHash: string };
+  }>();
 
   // Bumped on every teacher add / edit / removal. Cached, teacher-derived
   // responses (e.g. the student dashboard) key off this so a newly registered
@@ -95,7 +110,7 @@ export class StudentAuthService implements OnModuleInit {
     StudentAuthService.rosterVersionValue += 1;
   }
 
-  constructor(private readonly db: SupabaseService) {}
+  constructor(private readonly db: SupabaseService, private readonly email: EmailService) {}
 
   onModuleInit() {
     // Restore persisted local accounts so logins work after server restart
@@ -409,6 +424,20 @@ export class StudentAuthService implements OnModuleInit {
     return StudentAuthService.schoolAccounts.get(String(email || '').toLowerCase()) || null;
   }
 
+  // Local memory only covers accounts created since the process last started —
+  // check the DB too so a restarted server still catches real duplicates.
+  private async schoolExistsAnywhere(email: string): Promise<boolean> {
+    const normalized = String(email || '').trim().toLowerCase();
+    if (!normalized) return false;
+    if (this.findSchoolByEmail(normalized)) return true;
+    try {
+      const res = await this.db.client.from('schools').select('id').eq('email', normalized).limit(1);
+      return Array.isArray((res as any)?.data) && (res as any).data.length > 0;
+    } catch (_e) {
+      return false;
+    }
+  }
+
   private inviteStatus(invite: {
     consumed?: boolean;
     revoked?: boolean;
@@ -446,7 +475,7 @@ export class StudentAuthService implements OnModuleInit {
     if (password.length < 8) {
       return { ok: false, error: 'Password must be at least 8 characters long' };
     }
-    if (this.findSchoolByEmail(email)) {
+    if (await this.schoolExistsAnywhere(email)) {
       return { ok: false, error: 'School email already registered' };
     }
 
@@ -483,6 +512,140 @@ export class StudentAuthService implements OnModuleInit {
         schoolName,
         branch,
         location
+      }
+    };
+  }
+
+  // ─── school registration by email OTP ───────────────────────────────────────
+  // Step 1: validate + duplicate-check + email a 6-digit code, holding the
+  // registration payload in memory until it's verified.
+  async requestSchoolRegistrationOtp(payload: {
+    email: string;
+    schoolName: string;
+    branch: string;
+    location: string;
+    password: string;
+  }) {
+    const email = String(payload.email || '').trim().toLowerCase();
+    const schoolName = String(payload.schoolName || '').trim();
+    const branch = String(payload.branch || '').trim();
+    const location = String(payload.location || '').trim();
+    const password = String(payload.password || '');
+
+    if (!email || !schoolName || !branch || !location || !password) {
+      return { ok: false, error: 'email, schoolName, branch, location and password are required' };
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      return { ok: false, error: 'Enter a valid email address' };
+    }
+    if (password.length < 8) {
+      return { ok: false, error: 'Password must be at least 8 characters long' };
+    }
+    if (await this.schoolExistsAnywhere(email)) {
+      return { ok: false, error: 'This email is already registered. Please log in instead.' };
+    }
+
+    const prior = StudentAuthService.pendingSchoolOtps.get(email);
+    if (prior && Date.now() - prior.lastSentAt < 30_000) {
+      return { ok: false, error: 'Please wait a few seconds before requesting another code.' };
+    }
+
+    const otp = String(Math.floor(100000 + Math.random() * 900000));
+    const otpSalt = randomBytes(8).toString('hex');
+    const passwordSalt = randomBytes(12).toString('hex');
+
+    const sendRes = await this.email.sendMail(
+      email,
+      'Your AcademiX verification code',
+      `<p>Your AcademiX school registration code is:</p>` +
+      `<p style="font-size:28px;font-weight:700;letter-spacing:6px;">${otp}</p>` +
+      `<p>This code expires in 10 minutes. If you didn't request this, you can ignore this email.</p>`,
+      `Your AcademiX school registration code is ${otp}. It expires in 10 minutes.`
+    );
+    if (!sendRes.ok) {
+      return { ok: false, error: sendRes.error || 'Could not send verification email.' };
+    }
+
+    StudentAuthService.pendingSchoolOtps.set(email, {
+      otpSalt,
+      otpHash: this.hashPassword(otp, otpSalt),
+      expiresAt: Date.now() + 10 * 60 * 1000,
+      attempts: 0,
+      lastSentAt: Date.now(),
+      payload: { schoolName, branch, location, passwordSalt, passwordHash: this.hashPassword(password, passwordSalt) }
+    });
+
+    return { ok: true };
+  }
+
+  // Step 2: check the code and, if correct, actually create the school account.
+  async verifySchoolRegistrationOtp(emailRaw: string, otpRaw: string) {
+    const email = String(emailRaw || '').trim().toLowerCase();
+    const otp = String(otpRaw || '').trim();
+    if (!email || !otp) return { ok: false, error: 'email and otp are required' };
+
+    const pending = StudentAuthService.pendingSchoolOtps.get(email);
+    if (!pending) return { ok: false, error: 'No pending verification for this email. Please request a new code.' };
+    if (Date.now() > pending.expiresAt) {
+      StudentAuthService.pendingSchoolOtps.delete(email);
+      return { ok: false, error: 'This code has expired. Please request a new one.' };
+    }
+    if (pending.attempts >= 5) {
+      StudentAuthService.pendingSchoolOtps.delete(email);
+      return { ok: false, error: 'Too many incorrect attempts. Please request a new code.' };
+    }
+    if (this.hashPassword(otp, pending.otpSalt) !== pending.otpHash) {
+      pending.attempts += 1;
+      return { ok: false, error: 'Incorrect code. Please try again.' };
+    }
+
+    // Re-check right before creating in case it was registered elsewhere in the meantime.
+    if (await this.schoolExistsAnywhere(email)) {
+      StudentAuthService.pendingSchoolOtps.delete(email);
+      return { ok: false, error: 'This email is already registered. Please log in instead.' };
+    }
+
+    const schoolId = randomUUID();
+    const school: SchoolAccount = {
+      schoolId,
+      email,
+      schoolName: pending.payload.schoolName,
+      branch: pending.payload.branch,
+      location: pending.payload.location,
+      passwordSalt: pending.payload.passwordSalt,
+      passwordHash: pending.payload.passwordHash
+    };
+    this.rememberSchool(school);
+
+    try {
+      await this.db.client.from('schools').insert([
+        {
+          id: schoolId,
+          email,
+          school_name: school.schoolName,
+          branch: school.branch,
+          location: school.location,
+          password_salt: school.passwordSalt,
+          password_hash: school.passwordHash,
+          created_at: new Date().toISOString()
+        }
+      ]);
+    } catch (e) {
+      // local fallback is sufficient for dev.
+    }
+
+    StudentAuthService.pendingSchoolOtps.delete(email);
+
+    const token = this.makeRoleToken(schoolId, 'school_admin', { schoolId });
+    return {
+      ok: true,
+      token,
+      school: {
+        id: schoolId,
+        email,
+        schoolName: school.schoolName,
+        branch: school.branch,
+        location: school.location
       }
     };
   }
@@ -1708,12 +1871,18 @@ export class StudentAuthService implements OnModuleInit {
     schoolId?: string;
     teacherId?: string;
     gender?: string;
+    dateOfBirth?: string;
+    phone?: string;
+    email?: string;
   }) {
     const loginId = String(payload.loginId || '').trim().toLowerCase();
     const password = String(payload.password || '');
     const name = String(payload.name || '').trim();
     const className = String(payload.className || '').trim() || 'Class';
     const gender = String(payload.gender || '').trim().toLowerCase() || null;
+    const dateOfBirth = String(payload.dateOfBirth || '').trim() || null;
+    const phone = String(payload.phone || '').trim() || null;
+    const email = String(payload.email || '').trim().toLowerCase() || null;
 
     if (!loginId || !password || !name) {
       return { ok: false, error: 'loginId, password and name are required' };
@@ -1736,7 +1905,10 @@ export class StudentAuthService implements OnModuleInit {
       name,
       className,
       schoolId: payload.schoolId,
-      teacherId: payload.teacherId
+      teacherId: payload.teacherId,
+      dateOfBirth: dateOfBirth || undefined,
+      phone: phone || undefined,
+      email: email || undefined
     };
 
     // Keep local copy so auth works even when backing table is absent in dev.
@@ -1758,6 +1930,9 @@ export class StudentAuthService implements OnModuleInit {
           name,
           class_name: className,
           gender,
+          date_of_birth: dateOfBirth,
+          phone,
+          email,
           school_id: payload.schoolId || null,
           teacher_id: payload.teacherId || null,
           created_by: payload.createdBy || null
@@ -1790,6 +1965,9 @@ export class StudentAuthService implements OnModuleInit {
             password_hash: passwordHash,
             name,
             gender,
+            date_of_birth: dateOfBirth,
+            phone,
+            email,
             class_name: className,
             school_id: payload.schoolId || null,
             teacher_id: payload.teacherId || null,
@@ -1807,7 +1985,10 @@ export class StudentAuthService implements OnModuleInit {
         id: studentId,
         loginId,
         name,
-        className
+        className,
+        dateOfBirth: dateOfBirth || null,
+        phone: phone || null,
+        email: email || null
       }
     };
   }
@@ -1904,6 +2085,9 @@ export class StudentAuthService implements OnModuleInit {
     loginId: string;
     password: string;
     gender?: string;
+    dateOfBirth?: string;
+    phone?: string;
+    email?: string;
     createdBy?: string;
   }) {
     const schoolId = String(payload.schoolId || '').trim();
@@ -1933,6 +2117,9 @@ export class StudentAuthService implements OnModuleInit {
       schoolId,
       teacherId,
       gender: payload.gender,
+      dateOfBirth: payload.dateOfBirth,
+      phone: payload.phone,
+      email: payload.email,
       createdBy: payload.createdBy
     });
   }

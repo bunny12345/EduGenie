@@ -1,4 +1,4 @@
-# EduGenie Backend Prototype
+# AcademiX Backend Prototype
 
 This is a small NestJS-style prototype intended to provide a `/chat` endpoint that forwards prompts to a local LLM service and stores minimal memory via Supabase.
 

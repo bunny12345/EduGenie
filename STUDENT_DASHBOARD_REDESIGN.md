@@ -61,7 +61,7 @@ The StudentDashboard component has been completely redesigned to provide a subje
 - **Less Cluttered**: Removed 15+ mini-cards from dashboard view
 - **Focus**: Subject-centric eliminates cognitive overload
 - **Microphone**: Proper icon-based button instead of emoji (🎤)
-- **Theme Consistency**: Matches TeduGenie brand colors and gradients
+- **Theme Consistency**: Matches TAcademiX brand colors and gradients
 - **Responsive**: Sidebar collapses on mobile, maintains core functionality
 - **Visual Hierarchy**: Clear sections with proper spacing and typography
 

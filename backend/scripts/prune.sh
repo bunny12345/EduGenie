@@ -13,7 +13,7 @@ if [ -z "$SUPABASE_SERVICE_ROLE_KEY" ]; then
 fi
 
 # Call prune endpoint and save output
-TMP_OUT="/tmp/edugenie_prune_last.json"
+TMP_OUT="/tmp/AcademiX_prune_last.json"
 HTTP_STATUS=$(curl -s -w "%{http_code}" -o "$TMP_OUT" -X POST "http://localhost:3000/chat/prune_memories" -H "x-service-role-key: $SUPABASE_SERVICE_ROLE_KEY")
 
 echo "Prune HTTP status: $HTTP_STATUS"

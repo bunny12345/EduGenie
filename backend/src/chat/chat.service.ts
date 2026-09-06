@@ -777,7 +777,7 @@ export class ChatService {
       : '';
 
     const systemPrompt =
-      `You are EduGenie, a friendly and encouraging AI tutor for school students.${nameGreet}${classLine}` +
+      `You are AcademiX, a friendly and encouraging AI tutor for school students.${nameGreet}${classLine}` +
       ` Your job is to help students understand their subjects clearly and build confidence.` +
       (lessonTitle ? ` Stay focused on the selected lesson: ${lessonTitle}${lessonSubject ? ` (${lessonSubject})` : ''}.` : '') +
       ` Always give clear, step-by-step explanations suited to a school student.` +
@@ -1349,7 +1349,7 @@ export class ChatService {
     };
     const fileExt = extByMime[safeMime] || 'webm';
     const model = String(process.env.OPENAI_STT_MODEL || 'gpt-4o-mini-transcribe').trim();
-    const boundary = `----EduGenieBoundary${Date.now()}${Math.random().toString(16).slice(2)}`;
+    const boundary = `----AcademiXBoundary${Date.now()}${Math.random().toString(16).slice(2)}`;
 
     const chunks: Buffer[] = [];
     const pushText = (text: string) => chunks.push(Buffer.from(text, 'utf8'));

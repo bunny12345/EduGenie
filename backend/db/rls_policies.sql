@@ -1,4 +1,4 @@
--- RLS policies for EduGenie (Supabase)
+-- RLS policies for AcademiX (Supabase)
 -- Run these in Supabase SQL editor or via psql as a privileged user.
 -- Policies assume authenticated JWTs where auth.uid() returns the student's id.
 

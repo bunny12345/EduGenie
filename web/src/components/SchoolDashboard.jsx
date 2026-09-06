@@ -6,15 +6,8 @@ import {
   listCurriculumLessonDocuments,
   listCurriculumLessons,
   listCurriculumSubjects,
-  resendSchoolStudentInvite,
-  resendSchoolTeacherInvite,
-  revokeSchoolStudentInvite,
-  revokeSchoolTeacherInvite,
   schoolDashboard,
   schoolDeleteStudent,
-  schoolInviteStudent,
-  schoolInviteTeacher,
-  schoolInvites,
   schoolRegisterStudent,
   schoolRegisterTeacher,
   schoolResetStudentPassword,
@@ -29,16 +22,6 @@ import {
   uploadCurriculumLessonDocument
 } from '../api';
 import './CurriculumContent.css';
-
-function inviteStatusLabel(invite) {
-  const status = String(invite?.status || '').toLowerCase();
-  if (status) return status;
-  if (invite?.revoked) return 'revoked';
-  if (invite?.consumed) return 'used';
-  const expiresAt = invite?.expiresAt ? new Date(invite.expiresAt).getTime() : null;
-  if (expiresAt && Date.now() > expiresAt) return 'expired';
-  return 'active';
-}
 
 function shortDate(value) {
   if (!value) return 'TBD';
@@ -114,15 +97,9 @@ export default function SchoolDashboard({ session, onLogout }) {
   const [note, setNote] = useState('');
   const [busy, setBusy] = useState('');
   const [createdTeacher, setCreatedTeacher] = useState(null);
-  const [inviteLink, setInviteLink] = useState('');
   const [dashboard, setDashboard] = useState({ summary: { teachers: 0, students: 0, activeInvites: 0 } });
   const [teachers, setTeachers] = useState([]);
-  const [invites, setInvites] = useState([]);
   const [students, setStudents] = useState([]);
-  const [inviteSearch, setInviteSearch] = useState('');
-  const [inviteStatusFilter, setInviteStatusFilter] = useState('all');
-  const [invitePage, setInvitePage] = useState(1);
-  const [inviteTotalPages, setInviteTotalPages] = useState(1);
   const [teacherSearch, setTeacherSearch] = useState('');
   const [teacherClassFilter, setTeacherClassFilter] = useState('');
   const [showTeacherClassFilter, setShowTeacherClassFilter] = useState(false);
@@ -150,13 +127,10 @@ export default function SchoolDashboard({ session, onLogout }) {
   const [studentLoginId, setStudentLoginId] = useState('');
   const [studentPassword, setStudentPassword] = useState('');
   const [studentGender, setStudentGender] = useState('');
+  const [studentDob, setStudentDob] = useState('');
+  const [studentPhone, setStudentPhone] = useState('');
+  const [studentEmail, setStudentEmail] = useState('');
   const [createdStudent, setCreatedStudent] = useState(null);
-  const [studentInviteLink, setStudentInviteLink] = useState('');
-  const [studentInvites, setStudentInvites] = useState([]);
-  const [studentInviteSearch, setStudentInviteSearch] = useState('');
-  const [studentInviteStatusFilter, setStudentInviteStatusFilter] = useState('all');
-  const [studentInvitePage, setStudentInvitePage] = useState(1);
-  const [studentInviteTotalPages, setStudentInviteTotalPages] = useState(1);
   // Student management (edit / reset password / delete) — mirrors the teacher list.
   const [editingStudentId, setEditingStudentId] = useState('');
   const [editStudentForm, setEditStudentForm] = useState({ name: '', className: '' });
@@ -208,7 +182,6 @@ export default function SchoolDashboard({ session, onLogout }) {
     return () => window.removeEventListener('hashchange', onHashChange);
   }, []);
 
-  const INVITES_PER_PAGE = 5;
   const TEACHERS_PER_PAGE = 6;
   const STUDENTS_PER_PAGE = 6;
 
@@ -273,12 +246,6 @@ export default function SchoolDashboard({ session, onLogout }) {
     setRefreshing('');
   }
 
-  async function refreshInvitesSection() {
-    setRefreshing('invites');
-    await loadInvites({ q: inviteSearch, status: inviteStatusFilter, page: invitePage, limit: INVITES_PER_PAGE });
-    setRefreshing('');
-  }
-
   async function refreshStudentsSection() {
     setRefreshing('students');
     try {
@@ -298,16 +265,9 @@ export default function SchoolDashboard({ session, onLogout }) {
     setRefreshing('all');
     await Promise.all([
       refreshTeachersSection(),
-      refreshInvitesSection(),
       refreshStudentsSection()
     ]);
     setRefreshing('');
-  }
-
-  function applyInvites(nextInvites, pagination) {
-    const safeInvites = Array.isArray(nextInvites) ? nextInvites : [];
-    setInvites(safeInvites);
-    setInviteTotalPages(Math.max(1, Number(pagination?.totalPages || 1)));
   }
 
   function applyTeachers(nextTeachers, pagination) {
@@ -323,12 +283,6 @@ export default function SchoolDashboard({ session, onLogout }) {
   }
 
   useEffect(() => {
-    if (invitePage > inviteTotalPages) {
-      setInvitePage(inviteTotalPages);
-    }
-  }, [invitePage, inviteTotalPages]);
-
-  useEffect(() => {
     if (teacherPage > teacherTotalPages) {
       setTeacherPage(teacherTotalPages);
     }
@@ -340,16 +294,6 @@ export default function SchoolDashboard({ session, onLogout }) {
     }
   }, [studentPage, studentTotalPages]);
 
-  async function loadInvites(params) {
-    const iRes = await schoolInvites(params || {
-      q: inviteSearch,
-      status: inviteStatusFilter,
-      page: invitePage,
-      limit: INVITES_PER_PAGE
-    });
-    applyInvites(Array.isArray(iRes?.invites) ? iRes.invites : [], iRes?.pagination || null);
-  }
-
   async function loadTeachers(params) {
     const tRes = await schoolTeachers(params || {
       q: teacherSearch,
@@ -360,19 +304,6 @@ export default function SchoolDashboard({ session, onLogout }) {
     // The roster decides which subjects a class may receive lessons for, so the
     // curriculum panel has to follow every teacher add / edit / removal.
     loadCurriculumSubjectMap();
-  }
-
-  async function loadStudentInvites(params) {
-    const query = params || {
-      q: studentInviteSearch,
-      status: studentInviteStatusFilter,
-      page: studentInvitePage,
-      limit: INVITES_PER_PAGE
-    };
-    const res = await schoolInvites({ ...query, role: 'student' });
-    const list = Array.isArray(res?.invites) ? res.invites : [];
-    setStudentInvites(list);
-    setStudentInviteTotalPages(Math.max(1, Number(res?.pagination?.totalPages || 1)));
   }
 
   const classOptions = Array.from(new Set([
@@ -698,17 +629,15 @@ export default function SchoolDashboard({ session, onLogout }) {
     async function load() {
       setError('');
       try {
-        const [dashRes, tRes, iRes, sRes] = await Promise.all([
+        const [dashRes, tRes, sRes] = await Promise.all([
           schoolDashboard(),
           schoolTeachers({ page: 1, limit: TEACHERS_PER_PAGE }),
-          schoolInvites({ page: 1, limit: INVITES_PER_PAGE }),
           schoolStudents({ page: 1, limit: STUDENTS_PER_PAGE })
         ]);
         if (!active) return;
         setDashboard(dashRes || { summary: { teachers: 0, students: 0, activeInvites: 0 } });
         const loadedTeachers = Array.isArray(tRes?.teachers) ? tRes.teachers : [];
         applyTeachers(loadedTeachers, tRes?.pagination || null);
-        applyInvites(Array.isArray(iRes?.invites) ? iRes.invites : [], iRes?.pagination || null);
         applyStudents(Array.isArray(sRes?.students) ? sRes.students : [], sRes?.pagination || null);
         // Which subjects exist per class drives the whole curriculum panel, so
         // it is loaded up front and the first class is pre-selected.
@@ -755,29 +684,6 @@ export default function SchoolDashboard({ session, onLogout }) {
     setCurriculumClassName(classOptions[0]);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [classOptions.join('|'), curriculumClassName]);
-
-  useEffect(() => {
-    let active = true;
-    async function refreshInvites() {
-      try {
-        const iRes = await schoolInvites({
-          q: inviteSearch,
-          status: inviteStatusFilter,
-          page: invitePage,
-          limit: INVITES_PER_PAGE
-        });
-        if (!active) return;
-        applyInvites(Array.isArray(iRes?.invites) ? iRes.invites : [], iRes?.pagination || null);
-      } catch (e) {
-        if (!active) return;
-        setError(e?.message || 'Failed to refresh invites');
-      }
-    }
-    refreshInvites();
-    return () => {
-      active = false;
-    };
-  }, [inviteSearch, inviteStatusFilter, invitePage]);
 
   useEffect(() => {
     if (!showClassFilter) return;
@@ -842,37 +748,6 @@ export default function SchoolDashboard({ session, onLogout }) {
       active = false;
     };
   }, [studentSearch, studentClassFilter, studentPage]);
-
-  useEffect(() => {
-    if (studentInvitePage > studentInviteTotalPages) {
-      setStudentInvitePage(studentInviteTotalPages);
-    }
-  }, [studentInvitePage, studentInviteTotalPages]);
-
-  useEffect(() => {
-    let active = true;
-    async function refreshStudentInvites() {
-      try {
-        const res = await schoolInvites({
-          q: studentInviteSearch,
-          status: studentInviteStatusFilter,
-          page: studentInvitePage,
-          limit: INVITES_PER_PAGE,
-          role: 'student'
-        });
-        if (!active) return;
-        setStudentInvites(Array.isArray(res?.invites) ? res.invites : []);
-        setStudentInviteTotalPages(Math.max(1, Number(res?.pagination?.totalPages || 1)));
-      } catch (e) {
-        if (!active) return;
-        setError(e?.message || 'Failed to refresh student invites');
-      }
-    }
-    refreshStudentInvites();
-    return () => {
-      active = false;
-    };
-  }, [studentInviteSearch, studentInviteStatusFilter, studentInvitePage]);
 
   async function onRegisterTeacher(e) {
     e.preventDefault();
@@ -1056,66 +931,6 @@ export default function SchoolDashboard({ session, onLogout }) {
     }
   }
 
-  async function onCreateInvite() {
-    setBusy('invite');
-    setNote('');
-    try {
-      const res = await schoolInviteTeacher({ expiresHours: 72 });
-      if (!res?.success) {
-        setNote(res?.error || 'Could not create invite link.');
-        return;
-      }
-      setInviteLink(res?.invite?.link || '');
-      await loadInvites({ q: inviteSearch, status: inviteStatusFilter, page: 1, limit: INVITES_PER_PAGE });
-      setInvitePage(1);
-      setNote('Teacher invite link generated. Share this link with teacher.');
-    } catch (e2) {
-      setNote('Unable to create invite link right now.');
-    } finally {
-      setBusy('');
-    }
-  }
-
-  async function onRevokeInvite(token) {
-    if (!token) return;
-    setBusy(`revoke-${token}`);
-    setNote('');
-    try {
-      const res = await revokeSchoolTeacherInvite(token);
-      if (!res?.success) {
-        setNote(res?.error || 'Could not revoke invite.');
-        return;
-      }
-      await loadInvites();
-      setNote('Invite revoked. The old link can no longer be used.');
-    } catch (e) {
-      setNote('Unable to revoke invite right now.');
-    } finally {
-      setBusy('');
-    }
-  }
-
-  async function onResendInvite(token) {
-    if (!token) return;
-    setBusy(`resend-${token}`);
-    setNote('');
-    try {
-      const res = await resendSchoolTeacherInvite(token, { expiresHours: 72 });
-      if (!res?.success || !res?.invite) {
-        setNote(res?.error || 'Could not resend invite.');
-        return;
-      }
-      await loadInvites({ q: inviteSearch, status: inviteStatusFilter, page: 1, limit: INVITES_PER_PAGE });
-      setInvitePage(1);
-      setInviteLink(res.invite.link || '');
-      setNote('New invite generated. Previous link was revoked.');
-    } catch (e) {
-      setNote('Unable to resend invite right now.');
-    } finally {
-      setBusy('');
-    }
-  }
-
   // ─── student accounts (owned by the school) ───────────────────────────────
 
   async function onRegisterStudent(e) {
@@ -1140,13 +955,23 @@ export default function SchoolDashboard({ session, onLogout }) {
         className: studentClassName,
         loginId: studentLoginId,
         password: studentPassword,
-        gender: studentGender || undefined
+        gender: studentGender || undefined,
+        dateOfBirth: studentDob || undefined,
+        phone: studentPhone || undefined,
+        email: studentEmail || undefined
       });
       if (!res?.success) {
         setNote(res?.error || 'Student registration failed.');
         return;
       }
-      setCreatedStudent({ ...res.student, className: studentClassName, password: studentPassword });
+      setCreatedStudent({
+        ...res.student,
+        className: studentClassName,
+        password: studentPassword,
+        dateOfBirth: studentDob || null,
+        phone: studentPhone || null,
+        email: studentEmail || null
+      });
       setDashboard((prev) => ({
         ...prev,
         summary: {
@@ -1158,6 +983,9 @@ export default function SchoolDashboard({ session, onLogout }) {
       setStudentLoginId('');
       setStudentPassword('');
       setStudentGender('');
+      setStudentDob('');
+      setStudentPhone('');
+      setStudentEmail('');
       setStudentPage(1);
       await refreshStudentsSection();
       setNote('Student account created. Share the login credentials with the student.');
@@ -1267,73 +1095,11 @@ export default function SchoolDashboard({ session, onLogout }) {
     }
   }
 
-  async function onCreateStudentInvite() {
-    setBusy('student-invite');
-    setNote('');
-    try {
-      const res = await schoolInviteStudent({ expiresHours: 72 });
-      if (!res?.success) {
-        setNote(res?.error || 'Could not create student invite link.');
-        return;
-      }
-      setStudentInviteLink(res?.invite?.link || '');
-      await loadStudentInvites({ q: studentInviteSearch, status: studentInviteStatusFilter, page: 1, limit: INVITES_PER_PAGE });
-      setStudentInvitePage(1);
-      setNote('Student invite link generated. Share this link with the student.');
-    } catch (e2) {
-      setNote('Unable to create student invite link right now.');
-    } finally {
-      setBusy('');
-    }
-  }
-
-  async function onRevokeStudentInvite(token) {
-    if (!token) return;
-    setBusy(`student-revoke-${token}`);
-    setNote('');
-    try {
-      const res = await revokeSchoolStudentInvite(token);
-      if (!res?.success) {
-        setNote(res?.error || 'Could not revoke student invite.');
-        return;
-      }
-      await loadStudentInvites();
-      setNote('Student invite revoked. The old link can no longer be used.');
-    } catch (e) {
-      setNote('Unable to revoke student invite right now.');
-    } finally {
-      setBusy('');
-    }
-  }
-
-  async function onResendStudentInvite(token) {
-    if (!token) return;
-    setBusy(`student-resend-${token}`);
-    setNote('');
-    try {
-      const res = await resendSchoolStudentInvite(token, { expiresHours: 72 });
-      if (!res?.success || !res?.invite) {
-        setNote(res?.error || 'Could not resend student invite.');
-        return;
-      }
-      await loadStudentInvites({ q: studentInviteSearch, status: studentInviteStatusFilter, page: 1, limit: INVITES_PER_PAGE });
-      setStudentInvitePage(1);
-      setStudentInviteLink(res.invite.link || '');
-      setNote('New student invite generated. Previous link was revoked.');
-    } catch (e) {
-      setNote('Unable to resend student invite right now.');
-    } finally {
-      setBusy('');
-    }
-  }
-
   const navItems = [
     { key: 'overview', label: 'Overview', icon: '📊' },
-    { key: 'registration', label: 'Teacher Registration', icon: '✏️' },
     { key: 'teachers', label: 'Teachers & Invites', icon: '👨‍🏫' },
     { key: 'curriculum', label: 'Curriculum Upload', icon: '📚' },
-    { key: 'studentRegistration', label: 'Student Registration', icon: '🧑‍🎓' },
-    { key: 'students', label: 'Students', icon: '👥' }
+    { key: 'studentRegistration', label: 'Student Registration', icon: '🧑‍🎓' }
   ];
 
   const sectionMeta = {
@@ -1341,13 +1107,9 @@ export default function SchoolDashboard({ session, onLogout }) {
       title: 'School Overview',
       subtitle: 'A snapshot of your teachers, students, classes and subjects.'
     },
-    registration: {
-      title: 'Teacher Registration',
-      subtitle: 'Create teacher accounts manually or send a self-registration link.'
-    },
     teachers: {
       title: 'Teachers & Invites',
-      subtitle: 'Search the roster, edit details, reset passwords and manage invite links.'
+      subtitle: 'Create teacher accounts manually, then search the roster, edit details and reset passwords.'
     },
     curriculum: {
       title: 'Curriculum Upload',
@@ -1355,11 +1117,7 @@ export default function SchoolDashboard({ session, onLogout }) {
     },
     studentRegistration: {
       title: 'Student Registration',
-      subtitle: 'Create student accounts manually or send a self-registration link.'
-    },
-    students: {
-      title: 'Students',
-      subtitle: 'Every student enrolled across the school — edit, reset passwords or remove accounts.'
+      subtitle: 'Create student accounts manually or send a self-registration link, and manage every enrolled student.'
     }
   };
 
@@ -1372,7 +1130,7 @@ export default function SchoolDashboard({ session, onLogout }) {
       <nav className="td-sidebar">
         <div className="td-sidebar-brand">
           <span className="td-sidebar-logo">🏫</span>
-          <span className="td-sidebar-title">EduGenie</span>
+          <span className="td-sidebar-title">AcademiX</span>
         </div>
 
         <div className="td-sidebar-profile">
@@ -1506,57 +1264,6 @@ export default function SchoolDashboard({ session, onLogout }) {
                   </li>
                 ) : null}
               </ul>
-            </article>
-          </section>
-        )}
-
-        {/* ══════════ TEACHER REGISTRATION ══════════ */}
-        {activeSection === 'registration' && (
-          <section className="sd-grid">
-            <article className="sd-card">
-              <h3>Manual Teacher Registration</h3>
-          <form className="sd-form" onSubmit={onRegisterTeacher}>
-            <input value={teacherName} onChange={(e) => setTeacherName(e.target.value)} placeholder="Teacher name" />
-            <input value={teacherEmail} onChange={(e) => setTeacherEmail(e.target.value)} placeholder="Teacher email" />
-            <input value={teacherSubject} onChange={(e) => setTeacherSubject(e.target.value)} placeholder="Subject" />
-            <label className="sd-field-label">Gender</label>
-            <select value={teacherGender} onChange={(e) => setTeacherGender(e.target.value)}>
-              <option value="">Select gender</option>
-              <option value="male">Male</option>
-              <option value="female">Female</option>
-              <option value="other">Other</option>
-            </select>
-            <input value={teacherLoginId} onChange={(e) => setTeacherLoginId(e.target.value)} placeholder="Teacher login ID" />
-            <input type="password" value={teacherPassword} onChange={(e) => setTeacherPassword(e.target.value)} placeholder="Strong password" />
-            <label className="sd-field-label">Classes (grades this teacher handles)</label>
-            <GradeMultiSelect selected={teacherGrades} onChange={setTeacherGrades} disabled={busy === 'manual'} />
-            <button type="submit" disabled={busy === 'manual'}>{busy === 'manual' ? 'Creating...' : 'Create Teacher Account'}</button>
-          </form>
-          {createdTeacher ? (
-            <div className="sd-credential-box">
-              <strong>Share with teacher:</strong>
-              <p>Name: {createdTeacher.name}</p>
-              <p>Email: {createdTeacher.email}</p>
-              <p>Login ID: {createdTeacher.loginId}</p>
-              <p>Password: {createdTeacher.password}</p>
-              {Array.isArray(createdTeacher.grades) && createdTeacher.grades.length ? (
-                <p>Classes: {createdTeacher.grades.join(', ')}</p>
-              ) : null}
-            </div>
-          ) : null}
-        </article>
-
-            <article className="sd-card">
-              <h3>Invite Teacher by Link</h3>
-              <p>Teacher can self-register using the link below.</p>
-              <button className="sd-invite-btn" onClick={onCreateInvite} disabled={busy === 'invite'}>
-                {busy === 'invite' ? 'Generating...' : 'Generate Teacher Invite Link'}
-              </button>
-              {inviteLink ? (
-                <div className="sd-link-box">
-                  <p>{inviteLink}</p>
-                </div>
-              ) : null}
             </article>
           </section>
         )}
@@ -1905,6 +1612,39 @@ export default function SchoolDashboard({ session, onLogout }) {
         {activeSection === 'teachers' && (
           <section className="sd-grid">
         <article className="sd-card">
+              <h3>Manual Teacher Registration</h3>
+          <form className="sd-form" onSubmit={onRegisterTeacher}>
+            <input value={teacherName} onChange={(e) => setTeacherName(e.target.value)} placeholder="Teacher name" />
+            <input value={teacherEmail} onChange={(e) => setTeacherEmail(e.target.value)} placeholder="Teacher email" />
+            <input value={teacherSubject} onChange={(e) => setTeacherSubject(e.target.value)} placeholder="Subject" />
+            <label className="sd-field-label">Gender</label>
+            <select value={teacherGender} onChange={(e) => setTeacherGender(e.target.value)}>
+              <option value="">Select gender</option>
+              <option value="male">Male</option>
+              <option value="female">Female</option>
+              <option value="other">Other</option>
+            </select>
+            <input value={teacherLoginId} onChange={(e) => setTeacherLoginId(e.target.value)} placeholder="Teacher login ID" />
+            <input type="password" value={teacherPassword} onChange={(e) => setTeacherPassword(e.target.value)} placeholder="Strong password" />
+            <label className="sd-field-label">Classes (grades this teacher handles)</label>
+            <GradeMultiSelect selected={teacherGrades} onChange={setTeacherGrades} disabled={busy === 'manual'} />
+            <button type="submit" disabled={busy === 'manual'}>{busy === 'manual' ? 'Creating...' : 'Create Teacher Account'}</button>
+          </form>
+          {createdTeacher ? (
+            <div className="sd-credential-box">
+              <strong>Share with teacher:</strong>
+              <p>Name: {createdTeacher.name}</p>
+              <p>Email: {createdTeacher.email}</p>
+              <p>Login ID: {createdTeacher.loginId}</p>
+              <p>Password: {createdTeacher.password}</p>
+              {Array.isArray(createdTeacher.grades) && createdTeacher.grades.length ? (
+                <p>Classes: {createdTeacher.grades.join(', ')}</p>
+              ) : null}
+            </div>
+          ) : null}
+        </article>
+
+        <article className="sd-card">
           <h3>Teachers</h3>
           <button 
             className="sd-inline-btn" 
@@ -2054,96 +1794,6 @@ export default function SchoolDashboard({ session, onLogout }) {
             </button>
           </div>
         </article>
-
-        <article className="sd-card">
-          <h3>Recent Teacher Invites</h3>
-          <button 
-            className="sd-inline-btn" 
-            onClick={refreshInvitesSection}
-            disabled={refreshing === 'invites'}
-            style={{ float: 'right', fontSize: '12px' }}
-          >
-            {refreshing === 'invites' ? '...' : '↻'}
-          </button>
-          <div className="invite-toolbar">
-            <input
-              className="invite-search"
-              value={inviteSearch}
-              onChange={(e) => {
-                setInviteSearch(e.target.value);
-                setInvitePage(1);
-              }}
-              placeholder="Search by token or role"
-            />
-            <select
-              className="invite-filter"
-              value={inviteStatusFilter}
-              onChange={(e) => {
-                setInviteStatusFilter(e.target.value);
-                setInvitePage(1);
-              }}
-            >
-              <option value="all">All statuses</option>
-              <option value="active">Active</option>
-              <option value="used">Used</option>
-              <option value="revoked">Revoked</option>
-              <option value="expired">Expired</option>
-            </select>
-          </div>
-          <div className="sd-student-scroll">
-          <ul className="sd-invite-list">
-            {(invites.length ? invites : []).map((i) => (
-              <li key={i.token}>
-                <div className="sd-invite-row">
-                  <div>
-                    <strong>{i.role} invite</strong>
-                    <p>Expires: {shortDate(i.expiresAt)}</p>
-                  </div>
-                  <span className={`invite-badge ${inviteStatusLabel(i)}`}>{inviteStatusLabel(i)}</span>
-                </div>
-                <div className="sd-invite-actions">
-                  <button
-                    type="button"
-                    className="sd-inline-btn"
-                    onClick={() => onResendInvite(i.token)}
-                    disabled={busy === `resend-${i.token}` || inviteStatusLabel(i) === 'used'}
-                  >
-                    {busy === `resend-${i.token}` ? 'Resending...' : 'Resend'}
-                  </button>
-                  <button
-                    type="button"
-                    className="sd-inline-btn danger"
-                    onClick={() => onRevokeInvite(i.token)}
-                    disabled={busy === `revoke-${i.token}` || inviteStatusLabel(i) !== 'active'}
-                  >
-                    {busy === `revoke-${i.token}` ? 'Revoking...' : 'Revoke'}
-                  </button>
-                </div>
-              </li>
-            ))}
-            {!invites.length ? <li>No invites match the current filters.</li> : null}
-          </ul>
-          </div>
-          <div className="invite-pager">
-            <button
-              type="button"
-              className="sd-inline-btn"
-              onClick={() => setInvitePage((p) => Math.max(1, p - 1))}
-              disabled={invitePage === 1}
-            >
-              Previous
-            </button>
-            <span>Page {invitePage} of {inviteTotalPages}</span>
-            <button
-              type="button"
-              className="sd-inline-btn"
-              onClick={() => setInvitePage((p) => Math.min(inviteTotalPages, p + 1))}
-              disabled={invitePage >= inviteTotalPages}
-            >
-              Next
-            </button>
-          </div>
-        </article>
           </section>
         )}
 
@@ -2168,6 +1818,12 @@ export default function SchoolDashboard({ session, onLogout }) {
                     <option key={cls} value={cls}>{cls}</option>
                   ))}
                 </select>
+                <label className="sd-field-label">Date of Birth (optional)</label>
+                <input type="date" value={studentDob} onChange={(e) => setStudentDob(e.target.value)} />
+                <label className="sd-field-label">Mobile Number (optional)</label>
+                <input type="tel" value={studentPhone} onChange={(e) => setStudentPhone(e.target.value)} placeholder="Mobile number" />
+                <label className="sd-field-label">Email Address (optional)</label>
+                <input type="email" value={studentEmail} onChange={(e) => setStudentEmail(e.target.value)} placeholder="Email address" />
                 <input value={studentLoginId} onChange={(e) => setStudentLoginId(e.target.value)} placeholder="Student login ID" />
                 <input
                   type="password"
@@ -2186,108 +1842,13 @@ export default function SchoolDashboard({ session, onLogout }) {
                   <p>Class: {createdStudent.className}</p>
                   <p>Login ID: {createdStudent.loginId}</p>
                   <p>Password: {createdStudent.password}</p>
+                  {createdStudent.dateOfBirth ? <p>Date of Birth: {createdStudent.dateOfBirth}</p> : null}
+                  {createdStudent.phone ? <p>Mobile: {createdStudent.phone}</p> : null}
+                  {createdStudent.email ? <p>Email: {createdStudent.email}</p> : null}
                 </div>
               ) : null}
             </article>
 
-            <article className="sd-card">
-              <h3>Invite Student by Link</h3>
-              <p>Student can self-register using the link below.</p>
-              <button className="sd-invite-btn" onClick={onCreateStudentInvite} disabled={busy === 'student-invite'}>
-                {busy === 'student-invite' ? 'Generating...' : 'Generate Student Invite Link'}
-              </button>
-              {studentInviteLink ? (
-                <div className="sd-link-box">
-                  <p>{studentInviteLink}</p>
-                </div>
-              ) : null}
-            </article>
-
-            <article className="sd-card">
-              <h3>Recent Student Invites</h3>
-              <div className="invite-toolbar">
-                <input
-                  className="invite-search"
-                  value={studentInviteSearch}
-                  onChange={(e) => {
-                    setStudentInviteSearch(e.target.value);
-                    setStudentInvitePage(1);
-                  }}
-                  placeholder="Search by token or role"
-                />
-                <select
-                  className="invite-filter"
-                  value={studentInviteStatusFilter}
-                  onChange={(e) => {
-                    setStudentInviteStatusFilter(e.target.value);
-                    setStudentInvitePage(1);
-                  }}
-                >
-                  <option value="all">All statuses</option>
-                  <option value="active">Active</option>
-                  <option value="used">Used</option>
-                  <option value="revoked">Revoked</option>
-                  <option value="expired">Expired</option>
-                </select>
-              </div>
-              <ul className="sd-invite-list">
-                {(studentInvites.length ? studentInvites : []).map((i) => (
-                  <li key={i.token}>
-                    <div className="sd-invite-row">
-                      <div>
-                        <strong>{i.role} invite</strong>
-                        <p>Expires: {shortDate(i.expiresAt)}</p>
-                      </div>
-                      <span className={`invite-badge ${inviteStatusLabel(i)}`}>{inviteStatusLabel(i)}</span>
-                    </div>
-                    <div className="sd-invite-actions">
-                      <button
-                        type="button"
-                        className="sd-inline-btn"
-                        onClick={() => onResendStudentInvite(i.token)}
-                        disabled={busy === `student-resend-${i.token}` || inviteStatusLabel(i) === 'used'}
-                      >
-                        {busy === `student-resend-${i.token}` ? 'Resending...' : 'Resend'}
-                      </button>
-                      <button
-                        type="button"
-                        className="sd-inline-btn danger"
-                        onClick={() => onRevokeStudentInvite(i.token)}
-                        disabled={busy === `student-revoke-${i.token}` || inviteStatusLabel(i) !== 'active'}
-                      >
-                        {busy === `student-revoke-${i.token}` ? 'Revoking...' : 'Revoke'}
-                      </button>
-                    </div>
-                  </li>
-                ))}
-                {!studentInvites.length ? <li>No student invites match the current filters.</li> : null}
-              </ul>
-              <div className="invite-pager">
-                <button
-                  type="button"
-                  className="sd-inline-btn"
-                  onClick={() => setStudentInvitePage((p) => Math.max(1, p - 1))}
-                  disabled={studentInvitePage === 1}
-                >
-                  Previous
-                </button>
-                <span>Page {studentInvitePage} of {studentInviteTotalPages}</span>
-                <button
-                  type="button"
-                  className="sd-inline-btn"
-                  onClick={() => setStudentInvitePage((p) => Math.min(studentInviteTotalPages, p + 1))}
-                  disabled={studentInvitePage >= studentInviteTotalPages}
-                >
-                  Next
-                </button>
-              </div>
-            </article>
-          </section>
-        )}
-
-        {/* ══════════ STUDENTS ══════════ */}
-        {activeSection === 'students' && (
-          <section className="sd-grid">
         <article className="sd-card">
           <h3>Students (School-wide)</h3>
           <button 

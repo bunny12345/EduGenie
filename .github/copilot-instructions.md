@@ -1,8 +1,8 @@
-# EduGenie — Copilot Instructions
+# AcademiX — Copilot Instructions
 
 ## Project Overview
 
-EduGenie is a school/teacher/student portal with an integrated AI Tutor. It has three user roles, each with its own dashboard. The backend is NestJS + Supabase (PostgreSQL with RLS). The web frontend is React (CRA). There is also a Flutter mobile app (early stage).
+AcademiX is a school/teacher/student portal with an integrated AI Tutor. It has three user roles, each with its own dashboard. The backend is NestJS + Supabase (PostgreSQL with RLS). The web frontend is React (CRA). There is also a Flutter mobile app (early stage).
 
 ## Architecture
 

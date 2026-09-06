@@ -26,7 +26,7 @@ app.post('/v1/chat', (req, res) => {
   } else {
     const q = question.toLowerCase();
     if (q.includes('hi') || q.includes('hello')) {
-      teacherReply = `Hi${studentName ? ' ' + studentName : ''}! I'm EduGenie — how can I help you learn today?`;
+      teacherReply = `Hi${studentName ? ' ' + studentName : ''}! I'm AcademiX — how can I help you learn today?`;
     } else if (q.startsWith('why') || q.includes('why')) {
       teacherReply = 'Great question — usually the sky looks blue because molecules in the atmosphere scatter blue light more than red.';
     } else if (q.includes('how') || q.includes('explain')) {
@@ -88,7 +88,7 @@ app.post('/v1/chat', (req, res) => {
     followups = `\n\nFollow-up suggestions for ${studentName}: 1) Want a short practice quiz? 2) Want a simpler explanation?`;
   }
 
-  const reply = `EduGenie Mock Teacher: ${teacherReply}${followups}`;
+  const reply = `AcademiX Mock Teacher: ${teacherReply}${followups}`;
   res.json({ reply });
 });
 
