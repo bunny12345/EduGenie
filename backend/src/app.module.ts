@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ChatModule } from './chat/chat.module';
 import { DashboardController } from './controllers/dashboard.controller';
+import { HealthController } from './controllers/health.controller';
 import { HomeworkController } from './controllers/homework.controller';
 import { TestsController } from './controllers/tests.controller';
 import { ProgressController } from './controllers/progress.controller';
@@ -30,6 +31,7 @@ import { SharedModule } from './shared/shared.module';
 @Module({
   imports: [ChatModule, SharedModule],
   controllers: [
+    HealthController,
     DashboardController,
     HomeworkController,
     TestsController,
