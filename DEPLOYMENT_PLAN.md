@@ -1,5 +1,11 @@
 # AcademiX Deployment Plan — academix.now on AWS
 
+> **Infrastructure is now managed as code.** See [`infra/aws/`](infra/aws/README.md)
+> for the Terraform config covering every resource below, plus `deploy.sh` for
+> app-level deploys. `terraform plan` in that directory should always show
+> "No changes" if nothing has drifted — use it as the first diagnostic step
+> whenever something's wrong in production.
+
 ## TL;DR on the proposed plan
 
 Hosting the **backend** on AWS is the right call. Using **API Gateway to host
@@ -112,14 +118,29 @@ up first.
 - [x] **Verified live**: `https://academix.now`, `https://www.academix.now`, and
       `http://api.academix.now/health` all return `200`
 - [ ] ALB ACM cert (`api.academix.now`, ap-south-1) still `PENDING_VALIDATION` —
-      DNS record is correct and publicly resolvable, just needs more time to validate.
-      Once `ISSUED`: add an HTTPS:443 listener to the ALB with this cert (currently HTTP:80 only)
+      **no longer blocking**, since the frontend now calls the API through the
+      same CloudFront domain (see below) instead of `api.academix.now` directly
+- [x] Fixed a real login bug: the frontend build initially called
+      `https://api.academix.now` directly, but the ALB only had an HTTP:80
+      listener (no HTTPS cert yet) — logins hung then reverted. Fixed by adding
+      the ALB as a **second CloudFront origin** and routing every backend route
+      prefix (`auth*`, `chat*`, `dashboard*`, `orchard*`, `games*`, `homework*`,
+      `progress*`, `calendar*`, `rewards*`, `tests*`, `library*`, `settings*`,
+      `teacher*`, `school*`, `curriculum*`, `uploads*`, `health*`) to it via
+      CloudFront cache behaviors (caching disabled, all methods, all viewer
+      headers forwarded). Rebuilt frontend with `REACT_APP_API_URL=https://academix.now`
+      so the app now calls the API on the same domain as the site — no CORS,
+      no mixed content, no dependency on the `api.academix.now` cert at all.
+      Verified with `curl` (`GET /health` → 200, `POST /auth/student/login` → 201).
 - [ ] Smoke test all three portals (school/teacher/student) against `https://academix.now`
 - [ ] Confirm OTP emails send from the production server
 - [ ] CloudWatch alarms (ALB 5xx rate, EC2 status checks)
 - [ ] Move `local-data/uploads` to S3 later (currently on the EC2 instance disk)
 - [ ] Commit + push the Dockerfile/health-controller/CORS changes to GitHub so future
       deploys can `git pull` on the server instead of manual `scp`/`rsync`
+- [ ] Optional cleanup: the `api.academix.now` DNS record + ALB HTTP listener can stay
+      as a direct backend entry point, or be removed later once everything only goes
+      through CloudFront
 
 ## Provisioned resource reference
 
