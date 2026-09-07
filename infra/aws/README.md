@@ -43,13 +43,15 @@ recreate everything already live in production.
 
 ## GitHub Actions
 
-[`.github/workflows/aws-infra.yml`](../../.github/workflows/aws-infra.yml) runs:
+[`.github/workflows/aws-infra.yml`](../../.github/workflows/aws-infra.yml) is
+**manual-trigger only** (`workflow_dispatch`) — it never runs on push or pull
+request, since every run can affect real, billable production infrastructure.
 
-- **On every PR/push touching `infra/aws/**`:** `terraform plan` only (posts
-  the plan as a PR comment). Never changes real infrastructure automatically.
-- **On manual trigger (`workflow_dispatch`) with `action: apply`:** actually
-  runs `terraform apply -auto-approve`. This is the "run the pipeline to fix
-  it" button — go to Actions → AWS Infra (Terraform) → Run workflow → choose `apply`.
+Go to Actions → "AWS Infra (Terraform)" → Run workflow, and choose:
+
+- **`plan`** — shows what would change, makes no changes.
+- **`apply`** — actually runs `terraform apply -auto-approve`. This is the
+  "run the pipeline to fix it" button.
 
 Required repository secrets (Settings → Secrets and variables → Actions):
 

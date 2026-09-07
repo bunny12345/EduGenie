@@ -9,13 +9,6 @@ on:
         type: choice
         options: [plan, apply]
         default: plan
-  pull_request:
-    paths:
-      - 'infra/aws/**'
-  push:
-    branches: [main]
-    paths:
-      - 'infra/aws/**'
 
 # Avoid two runs racing to write/lock the same remote state.
 concurrency:
@@ -29,11 +22,10 @@ jobs:
     defaults:
       run:
         working-directory: infra/aws
-    # 'apply' only ever runs via manual workflow_dispatch — pull_request and
-    # push-to-main events always just plan, never change real infra unattended.
+    # This workflow is manual-trigger only (workflow_dispatch) — no push/PR
+    # events, since every run can affect real, billable production infra.
     permissions:
       contents: read
-      pull-requests: write
 
     steps:
       - name: Checkout repository
@@ -61,7 +53,7 @@ jobs:
 
       - name: Terraform plan
         id: plan
-        if: github.event_name != 'workflow_dispatch' || github.event.inputs.action == 'plan'
+        if: github.event.inputs.action == 'plan'
         run: terraform plan -input=false -no-color -out=tfplan
         continue-on-error: true
 
@@ -69,28 +61,12 @@ jobs:
         if: steps.plan.outcome != 'skipped'
         run: terraform show -no-color tfplan
 
-      - name: Comment plan on PR
-        if: github.event_name == 'pull_request' && steps.plan.outcome != 'skipped'
-        uses: actions/github-script@v7
-        with:
-          script: |
-            const { execSync } = require('child_process');
-            const output = execSync('terraform show -no-color tfplan', { cwd: 'infra/aws' }).toString();
-            const body = `#### Terraform Plan\n\`\`\`\n${output.slice(0, 60000)}\n\`\`\``;
-            await github.rest.issues.createComment({
-              issue_number: context.issue.number,
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              body,
-            });
-
       - name: Fail if plan errored
         if: steps.plan.outcome == 'failure'
         run: exit 1
 
       # Only runs when someone manually triggers this workflow and explicitly
-      # chooses "apply" — never on a push or PR, since this changes real,
-      # billable, production infrastructure.
+      # chooses "apply" — this changes real, billable, production infrastructure.
       - name: Terraform apply
-        if: github.event_name == 'workflow_dispatch' && github.event.inputs.action == 'apply'
+        if: github.event.inputs.action == 'apply'
         run: terraform apply -input=false -auto-approve
