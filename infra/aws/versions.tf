@@ -19,15 +19,20 @@ terraform {
   }
 }
 
+# Credentials are intentionally NOT pinned to a specific profile here — the
+# provider follows the standard AWS credential chain instead: env vars
+# (AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY, as set by GitHub Actions'
+# configure-aws-credentials) take priority, falling back to the shared
+# ~/.aws/credentials file locally (respecting AWS_PROFILE if you set it).
+# Hardcoding profile = "default" here previously broke CI, which has no
+# shared config file at all — only env-var credentials.
 provider "aws" {
-  region  = var.aws_region
-  profile = var.aws_profile
+  region = var.aws_region
 }
 
 # CloudFront + its ACM certificate must be requested in us-east-1 regardless of
 # where the rest of the infra (EC2/ALB/API cert) lives.
 provider "aws" {
-  alias   = "us_east_1"
-  region  = "us-east-1"
-  profile = var.aws_profile
+  alias  = "us_east_1"
+  region = "us-east-1"
 }

@@ -4,12 +4,6 @@ variable "aws_region" {
   default     = "ap-south-1"
 }
 
-variable "aws_profile" {
-  description = "AWS CLI profile to use. Must be a least-privilege IAM user, never the account root user."
-  type        = string
-  default     = "default"
-}
-
 variable "domain_name" {
   description = "Root domain for the app."
   type        = string
