@@ -2,9 +2,13 @@ import 'package:dio/dio.dart';
 
 import '../models/calendar_event.dart';
 import '../models/dashboard.dart';
+import '../models/flashcard_models.dart';
+import '../models/game_catalog_entry.dart';
 import '../models/homework_item.dart';
+import '../models/learning_score.dart';
 import '../models/library_resource.dart';
 import '../models/orchard_data.dart';
+import '../models/quiz_rush_models.dart';
 import '../models/rewards_data.dart';
 import '../models/subject_score.dart';
 import '../models/test_item.dart';
@@ -64,6 +68,11 @@ class StudentApiService {
     final json = await _get('/progress', {'studentId': studentId, 'period': period});
     final list = json['subjectScores'] as List? ?? [];
     return list.map((s) => SubjectScore.fromJson(Map<String, dynamic>.from(s as Map))).toList();
+  }
+
+  Future<LearningScoreData> getLearningScore(String studentId) async {
+    final json = await _get('/progress/learning-score', {'studentId': studentId});
+    return LearningScoreData.fromJson(json);
   }
 
   Future<RewardsData> getRewards(String studentId) async {
@@ -140,5 +149,78 @@ class StudentApiService {
 
   Future<Map<String, dynamic>> saveSettings(String studentId, Map<String, dynamic> prefs) {
     return _post('/settings', {'studentId': studentId, 'prefs': prefs});
+  }
+
+  Future<List<GameCatalogEntry>> getGamesCatalog() async {
+    final json = await _get('/games', const {});
+    final list = json['games'] as List? ?? [];
+    return list.map((g) => GameCatalogEntry.fromJson(Map<String, dynamic>.from(g as Map))).toList();
+  }
+
+  Future<List<FlashcardSubject>> getFlashcardOverview(String studentId) async {
+    final json = await _get('/games/flashcards/overview', {'studentId': studentId});
+    final list = json['subjects'] as List? ?? [];
+    return list.map((s) => FlashcardSubject.fromJson(Map<String, dynamic>.from(s as Map))).toList();
+  }
+
+  Future<List<FlashcardCard>> getFlashcardCards(
+    String studentId, {
+    required String subject,
+    String? deckId,
+    String scope = 'all',
+    String mode = 'review',
+    int limit = 20,
+  }) async {
+    final json = await _get('/games/flashcards/cards', {
+      'studentId': studentId,
+      'subject': subject,
+      'deckId': ?deckId,
+      'scope': scope,
+      'mode': mode,
+      'limit': limit,
+    });
+    final list = json['cards'] as List? ?? [];
+    return list.map((c) => FlashcardCard.fromJson(Map<String, dynamic>.from(c as Map))).toList();
+  }
+
+  Future<FlashcardSchedule?> submitFlashcardReview(String flashcardId, String rating) async {
+    final json = await _post('/games/flashcards/review', {'flashcardId': flashcardId, 'rating': rating});
+    final schedule = json['schedule'];
+    return schedule is Map ? FlashcardSchedule.fromJson(Map<String, dynamic>.from(schedule)) : null;
+  }
+
+  Future<void> logGameSession(Map<String, dynamic> payload) => _post('/games/session', payload);
+
+  Future<Map<String, dynamic>> completeFlashcardChapter(String studentId, String deckId, {String? subjectKey, String? chapterTitle}) {
+    return _post('/games/flashcards/complete-chapter', {
+      'studentId': studentId,
+      'deckId': deckId,
+      'subjectKey': ?subjectKey,
+      'chapterTitle': ?chapterTitle,
+    });
+  }
+
+  Future<List<QuizRushSubject>> getQuizRushOverview(String studentId) async {
+    final json = await _get('/games/quiz-rush/overview', {'studentId': studentId});
+    final list = json['subjects'] as List? ?? [];
+    return list.map((s) => QuizRushSubject.fromJson(Map<String, dynamic>.from(s as Map))).toList();
+  }
+
+  Future<List<QuizRushQuestion>> getQuizRushQuestions(
+    String studentId, {
+    required String subject,
+    String? deckId,
+    String scope = 'all',
+    int limit = 10,
+  }) async {
+    final json = await _get('/games/quiz-rush/questions', {
+      'studentId': studentId,
+      'subject': subject,
+      'deckId': ?deckId,
+      'scope': scope,
+      'limit': limit,
+    });
+    final list = json['questions'] as List? ?? [];
+    return list.map((q) => QuizRushQuestion.fromJson(Map<String, dynamic>.from(q as Map))).toList();
   }
 }

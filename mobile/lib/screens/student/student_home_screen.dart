@@ -2,18 +2,25 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../models/dashboard.dart';
-import '../../models/homework_item.dart';
-import '../../models/subject_score.dart';
 import '../../state/session_provider.dart';
 import '../../state/student_providers.dart';
 import '../../theme/app_colors.dart';
 import '../../widgets/section_card.dart';
+import 'student_ai_tutor_screen.dart';
+import 'student_calendar_screen.dart';
+import 'student_games_screen.dart';
+import 'student_library_screen.dart';
+import 'student_orchard_screen.dart';
+import 'student_progress_screen.dart';
 import 'student_rewards_screen.dart';
+import 'student_tasks_screen.dart';
 
-/// Student Home — Phase 3. Surfaces the most useful info first: streak,
-/// homework due, subject progress, announcements. Mirrors the content of
-/// `StudentDashboard.jsx`'s home view, redesigned as stacked mobile cards
-/// instead of a multi-column desktop grid.
+/// Student Home — mirrors the web app's home page content (streak + weekly
+/// goal + the "Academics" quick-access icon grid) with the sidebar dropped
+/// and everything sized down for mobile. Other home sections (homework
+/// summary, subjects row, announcements, teachers) are intentionally left
+/// off per the current redesign scope — other pages are being redesigned
+/// separately next.
 class StudentHomeScreen extends ConsumerWidget {
   const StudentHomeScreen({super.key});
 
@@ -21,8 +28,6 @@ class StudentHomeScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final session = ref.watch(sessionProvider).value;
     final dashboardAsync = ref.watch(dashboardProvider);
-    final homeworkAsync = ref.watch(homeworkProvider);
-    final progressAsync = ref.watch(progressProvider);
 
     return Scaffold(
       appBar: AppBar(
@@ -32,8 +37,6 @@ class StudentHomeScreen extends ConsumerWidget {
       body: RefreshIndicator(
         onRefresh: () async {
           ref.invalidate(dashboardProvider);
-          ref.invalidate(homeworkProvider);
-          ref.invalidate(progressProvider);
           ref.invalidate(rewardsProvider);
         },
         child: ListView(
@@ -44,24 +47,8 @@ class StudentHomeScreen extends ConsumerWidget {
               error: (e, _) => SectionCard(child: ErrorInline(message: 'Unable to load streak: $e')),
               data: (d) => _StreakCard(streak: d.streak),
             ),
-            homeworkAsync.when(
-              loading: () => const SectionCard(title: '📝 Homework', child: SkeletonBox(height: 60)),
-              error: (e, _) => SectionCard(title: '📝 Homework', child: ErrorInline(message: 'Unable to load homework: $e')),
-              data: (items) => _HomeworkSummaryCard(items: items),
-            ),
-            progressAsync.when(
-              loading: () => const SectionCard(title: '📈 Subjects', child: SkeletonBox(height: 60)),
-              error: (e, _) => SectionCard(title: '📈 Subjects', child: ErrorInline(message: 'Unable to load progress: $e')),
-              data: (scores) => _SubjectsRow(scores: scores),
-            ),
-            dashboardAsync.maybeWhen(
-              data: (d) => _AnnouncementsCard(dashboard: d),
-              orElse: () => const SizedBox.shrink(),
-            ),
-            dashboardAsync.maybeWhen(
-              data: (d) => _MyTeachersCard(dashboard: d),
-              orElse: () => const SizedBox.shrink(),
-            ),
+            const SizedBox(height: 4),
+            const _AcademicsGrid(),
           ],
         ),
       ),
@@ -169,151 +156,165 @@ class _StreakCard extends StatelessWidget {
   }
 }
 
-class _HomeworkSummaryCard extends StatelessWidget {
-  final List<HomeworkItem> items;
+class _AcademicItem {
+  final String gifAsset;
+  final String label;
+  final Color background;
+  final WidgetBuilder builder;
 
-  const _HomeworkSummaryCard({required this.items});
-
-  @override
-  Widget build(BuildContext context) {
-    final pendingBySubject = <String, int>{};
-    for (final h in items) {
-      if (h.submitted || h.expired) continue;
-      pendingBySubject[h.subject] = (pendingBySubject[h.subject] ?? 0) + 1;
-    }
-
-    return SectionCard(
-      title: '📝 Homework',
-      child: pendingBySubject.isEmpty
-          ? const Text('🎉 No homework assigned for today. Have fun!', style: TextStyle(color: AppColors.muted, fontSize: 13))
-          : Column(
-              children: pendingBySubject.entries
-                  .map((e) => Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 4),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Text('📚 ${e.key}', style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
-                            Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                              decoration:
-                                  BoxDecoration(color: AppColors.danger.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(10)),
-                              child: Text('${e.value} pending',
-                                  style: const TextStyle(color: AppColors.danger, fontSize: 11, fontWeight: FontWeight.w700)),
-                            ),
-                          ],
-                        ),
-                      ))
-                  .toList(),
-            ),
-    );
-  }
+  const _AcademicItem({
+    required this.gifAsset,
+    required this.label,
+    required this.background,
+    required this.builder,
+  });
 }
 
-class _SubjectsRow extends StatelessWidget {
-  final List<SubjectScore> scores;
+/// Mirrors the web home page's "Academics" quick-access grid
+/// (`eg-academ-grid`/`eg-academ-card`/`eg-academ-icon` in
+/// `StudentDashboard.jsx`/`App.css`) exactly — same 9 destinations, same
+/// bundled GIF icons, same white bordered card panel and icon-tile
+/// background tints, and a press-down "3D button" tactile effect standing in
+/// for web's hover-lift/active-flatten (mobile has no hover).
+class _AcademicsGrid extends StatelessWidget {
+  const _AcademicsGrid();
 
-  const _SubjectsRow({required this.scores});
+  static final _items = <_AcademicItem>[
+    _AcademicItem(
+      gifAsset: 'assets/gifs/ai-tutor.gif',
+      label: 'AI Tutor',
+      background: const Color(0xFFEEF0FF),
+      builder: (_) => const StudentAiTutorScreen(),
+    ),
+    _AcademicItem(
+      gifAsset: 'assets/gifs/homework.gif',
+      label: 'Homework',
+      background: const Color(0xFFFEF3E2),
+      builder: (_) => const StudentTasksScreen(),
+    ),
+    _AcademicItem(
+      gifAsset: 'assets/gifs/my-orchard.gif',
+      label: 'My Orchard',
+      background: const Color(0xFFE8F8EE),
+      builder: (_) => const StudentOrchardScreen(),
+    ),
+    _AcademicItem(
+      gifAsset: 'assets/gifs/mock-tests.gif',
+      label: 'Mock Tests',
+      background: const Color(0xFFFDE8EE),
+      builder: (_) => const StudentTasksScreen(initialTabIndex: 1),
+    ),
+    _AcademicItem(
+      gifAsset: 'assets/gifs/progress.gif',
+      label: 'Progress',
+      background: const Color(0xFFE0F2FE),
+      builder: (_) => const StudentProgressScreen(),
+    ),
+    _AcademicItem(
+      gifAsset: 'assets/gifs/games.gif',
+      label: 'Games',
+      background: const Color(0xFFFEF9E7),
+      builder: (_) => const StudentGamesScreen(),
+    ),
+    _AcademicItem(
+      gifAsset: 'assets/gifs/calendar.gif',
+      label: 'Calendar',
+      background: const Color(0xFFF0E6FF),
+      builder: (_) => const StudentCalendarScreen(),
+    ),
+    _AcademicItem(
+      gifAsset: 'assets/gifs/rewards.gif',
+      label: 'Rewards',
+      background: const Color(0xFFFFF7ED),
+      builder: (_) => const StudentRewardsScreen(),
+    ),
+    _AcademicItem(
+      gifAsset: 'assets/gifs/library.gif',
+      label: 'Library',
+      background: const Color(0xFFECFDF5),
+      builder: (_) => const StudentLibraryScreen(),
+    ),
+  ];
 
   @override
   Widget build(BuildContext context) {
-    if (scores.isEmpty) {
-      return const SectionCard(
-          title: '📈 Subjects', child: Text('No subjects yet.', style: TextStyle(color: AppColors.muted, fontSize: 13)));
-    }
     return SectionCard(
-      title: '📈 Subjects',
-      padding: const EdgeInsets.symmetric(vertical: 16),
-      child: SizedBox(
-        height: 84,
-        child: ListView.separated(
-          scrollDirection: Axis.horizontal,
-          padding: const EdgeInsets.symmetric(horizontal: 16),
-          itemCount: scores.length,
-          separatorBuilder: (_, _) => const SizedBox(width: 10),
-          itemBuilder: (context, i) => _SubjectChip(score: scores[i]),
+      title: 'Academics',
+      child: GridView.builder(
+        shrinkWrap: true,
+        physics: const NeverScrollableScrollPhysics(),
+        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount: 3,
+          mainAxisSpacing: 10,
+          crossAxisSpacing: 10,
+          childAspectRatio: 0.82,
         ),
+        itemCount: _items.length,
+        itemBuilder: (context, i) => _AcademicCard(item: _items[i]),
       ),
     );
   }
 }
 
-class _SubjectChip extends StatelessWidget {
-  final SubjectScore score;
+/// One "eg-academ-card" tile — white bordered panel, colored icon tile with
+/// the bundled GIF, label below, and a tactile press-down scale/border effect.
+class _AcademicCard extends StatefulWidget {
+  final _AcademicItem item;
 
-  const _SubjectChip({required this.score});
+  const _AcademicCard({required this.item});
 
   @override
-  Widget build(BuildContext context) {
-    final color = SubjectPalette.colorFor(score.subject);
-    return Container(
-      width: 100,
-      padding: const EdgeInsets.all(10),
-      decoration: BoxDecoration(color: color.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(12)),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Text(score.subject,
-              maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: color, fontWeight: FontWeight.w700, fontSize: 12)),
-          Text('${score.score}%', style: TextStyle(color: color, fontWeight: FontWeight.w800, fontSize: 18)),
-        ],
-      ),
-    );
-  }
+  State<_AcademicCard> createState() => _AcademicCardState();
 }
 
-class _AnnouncementsCard extends StatelessWidget {
-  final DashboardData dashboard;
-
-  const _AnnouncementsCard({required this.dashboard});
+class _AcademicCardState extends State<_AcademicCard> {
+  bool _pressed = false;
 
   @override
   Widget build(BuildContext context) {
-    final items = dashboard.announcements.take(4).toList();
-    return SectionCard(
-      title: '📣 Announcements',
-      child: items.isEmpty
-          ? const Text('No announcements yet.', style: TextStyle(color: AppColors.muted, fontSize: 13))
-          : Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: items
-                  .map((a) => Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 4),
-                        child: RichText(
-                          text: TextSpan(
-                            style: const TextStyle(fontSize: 13, color: AppColors.text),
-                            children: [
-                              TextSpan(text: '${a.title}: ', style: const TextStyle(fontWeight: FontWeight.w700)),
-                              TextSpan(text: a.message),
-                            ],
-                          ),
-                        ),
-                      ))
-                  .toList(),
-            ),
-    );
-  }
-}
-
-class _MyTeachersCard extends StatelessWidget {
-  final DashboardData dashboard;
-
-  const _MyTeachersCard({required this.dashboard});
-
-  @override
-  Widget build(BuildContext context) {
-    if (dashboard.classTeachers.isEmpty) return const SizedBox.shrink();
-    return SectionCard(
-      title: '👩‍🏫 My Teachers',
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: dashboard.classTeachers
-            .map((t) => Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 3),
-                  child: Text('${t.subject} — ${t.name}', style: const TextStyle(fontSize: 13)),
-                ))
-            .toList(),
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTapDown: (_) => setState(() => _pressed = true),
+      onTapCancel: () => setState(() => _pressed = false),
+      onTapUp: (_) => setState(() => _pressed = false),
+      onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: widget.item.builder)),
+      child: AnimatedScale(
+        scale: _pressed ? 0.94 : 1.0,
+        duration: const Duration(milliseconds: 110),
+        curve: Curves.easeOut,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 110),
+          curve: Curves.easeOut,
+          padding: const EdgeInsets.fromLTRB(8, 14, 8, 10),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: _pressed ? const Color(0xFFC7C0FF) : const Color(0xFFECE8FF)),
+            boxShadow: _pressed
+                ? const [BoxShadow(color: Color(0x21636EF1), blurRadius: 10, offset: Offset(0, 2))]
+                : const [],
+          ),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Container(
+                width: 52,
+                height: 52,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(color: widget.item.background, borderRadius: BorderRadius.circular(14)),
+                child: Image.asset(widget.item.gifAsset, width: 36, height: 36, fit: BoxFit.contain),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                widget.item.label,
+                textAlign: TextAlign.center,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Color(0xFF374151)),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }

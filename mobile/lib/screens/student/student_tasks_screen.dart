@@ -13,12 +13,15 @@ enum _HwFilter { all, submitted, notSubmitted, overdue }
 
 /// "Tasks" tab — homework + mock tests.
 class StudentTasksScreen extends StatelessWidget {
-  const StudentTasksScreen({super.key});
+  final int initialTabIndex;
+
+  const StudentTasksScreen({super.key, this.initialTabIndex = 0});
 
   @override
   Widget build(BuildContext context) {
     return DefaultTabController(
       length: 2,
+      initialIndex: initialTabIndex,
       child: Scaffold(
         appBar: AppBar(
           title: const Text('Tasks'),

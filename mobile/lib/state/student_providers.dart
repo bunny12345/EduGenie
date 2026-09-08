@@ -2,7 +2,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../models/calendar_event.dart';
 import '../models/dashboard.dart';
+import '../models/game_catalog_entry.dart';
 import '../models/homework_item.dart';
+import '../models/learning_score.dart';
 import '../models/library_resource.dart';
 import '../models/orchard_data.dart';
 import '../models/rewards_data.dart';
@@ -36,6 +38,11 @@ final homeworkProvider = FutureProvider.autoDispose<List<HomeworkItem>>((ref) {
 final progressProvider = FutureProvider.autoDispose<List<SubjectScore>>((ref) {
   final id = _requireStudentId(ref);
   return ref.watch(studentApiServiceProvider).getProgress(id);
+});
+
+final learningScoreProvider = FutureProvider.autoDispose<LearningScoreData>((ref) {
+  final id = _requireStudentId(ref);
+  return ref.watch(studentApiServiceProvider).getLearningScore(id);
 });
 
 final rewardsProvider = FutureProvider.autoDispose<RewardsData>((ref) {
@@ -82,4 +89,9 @@ final libraryProvider = FutureProvider.autoDispose<List<LibraryResource>>((ref) 
 final settingsProvider = FutureProvider.autoDispose<Map<String, dynamic>>((ref) {
   final id = _requireStudentId(ref);
   return ref.watch(studentApiServiceProvider).getSettings(id);
+});
+
+final gamesCatalogProvider = FutureProvider.autoDispose<List<GameCatalogEntry>>((ref) {
+  _requireStudentId(ref); // auth-gated, catalog itself isn't per-student
+  return ref.watch(studentApiServiceProvider).getGamesCatalog();
 });

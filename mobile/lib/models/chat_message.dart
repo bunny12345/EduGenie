@@ -5,23 +5,30 @@ class ChatMessage {
   final String role; // 'user' | 'ai'
   final String text;
   final String ts;
+  final List<String> imageDataUrls;
 
-  const ChatMessage({required this.id, required this.role, required this.text, required this.ts});
+  const ChatMessage({required this.id, required this.role, required this.text, required this.ts, this.imageDataUrls = const []});
 
   bool get isUser => role == 'user';
 
-  factory ChatMessage.fromJson(Map<String, dynamic> json) => ChatMessage(
-        id: json['id']?.toString() ?? '',
-        role: json['role'] as String? ?? 'user',
-        text: (json['text'] ?? json['message'])?.toString() ?? '',
-        ts: json['ts'] as String? ?? DateTime.now().toIso8601String(),
-      );
+  factory ChatMessage.fromJson(Map<String, dynamic> json) {
+    final urls = (json['imageDataUrls'] as List? ?? []).map((u) => u.toString()).where((u) => u.isNotEmpty).toList();
+    final singleUrl = json['imageDataUrl'] as String?;
+    return ChatMessage(
+      id: json['id']?.toString() ?? '',
+      role: json['role'] as String? ?? 'user',
+      text: (json['text'] ?? json['message'])?.toString() ?? '',
+      ts: json['ts'] as String? ?? DateTime.now().toIso8601String(),
+      imageDataUrls: urls.isNotEmpty ? urls : (singleUrl != null && singleUrl.isNotEmpty ? [singleUrl] : const []),
+    );
+  }
 
-  factory ChatMessage.optimisticUser(String text) => ChatMessage(
+  factory ChatMessage.optimisticUser(String text, {List<String> imageDataUrls = const []}) => ChatMessage(
         id: 'tmp-${DateTime.now().millisecondsSinceEpoch}',
         role: 'user',
         text: text,
         ts: DateTime.now().toIso8601String(),
+        imageDataUrls: imageDataUrls,
       );
 
   factory ChatMessage.ai(String text) => ChatMessage(
