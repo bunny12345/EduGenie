@@ -14,6 +14,7 @@ import 'student_orchard_screen.dart';
 import 'student_progress_screen.dart';
 import 'student_rewards_screen.dart';
 import 'student_tasks_screen.dart';
+import 'homework/homework_screen.dart';
 
 /// Student Home — mirrors the web app's home page content (streak + weekly
 /// goal + the "Academics" quick-access icon grid) with the sidebar dropped
@@ -190,7 +191,7 @@ class _AcademicsGrid extends StatelessWidget {
       gifAsset: 'assets/gifs/homework.gif',
       label: 'Homework',
       background: const Color(0xFFFEF3E2),
-      builder: (_) => const StudentTasksScreen(),
+      builder: (_) => const HomeworkScreen(),
     ),
     _AcademicItem(
       gifAsset: 'assets/gifs/my-orchard.gif',
@@ -240,17 +241,23 @@ class _AcademicsGrid extends StatelessWidget {
   Widget build(BuildContext context) {
     return SectionCard(
       title: 'Academics',
-      child: GridView.builder(
-        shrinkWrap: true,
-        physics: const NeverScrollableScrollPhysics(),
-        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-          crossAxisCount: 3,
-          mainAxisSpacing: 10,
-          crossAxisSpacing: 10,
-          childAspectRatio: 0.82,
+      // `SectionCard`'s Column uses `crossAxisAlignment.start` (loose width
+      // constraints) — without forcing full width here, GridView can shrink
+      // to a tiny width instead of filling the card, squeezing every tile.
+      child: SizedBox(
+        width: double.infinity,
+        child: GridView.builder(
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: 3,
+            mainAxisSpacing: 10,
+            crossAxisSpacing: 10,
+            childAspectRatio: 0.82,
+          ),
+          itemCount: _items.length,
+          itemBuilder: (context, i) => _AcademicCard(item: _items[i]),
         ),
-        itemCount: _items.length,
-        itemBuilder: (context, i) => _AcademicCard(item: _items[i]),
       ),
     );
   }
@@ -285,7 +292,7 @@ class _AcademicCardState extends State<_AcademicCard> {
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 110),
           curve: Curves.easeOut,
-          padding: const EdgeInsets.fromLTRB(8, 14, 8, 10),
+          padding: const EdgeInsets.fromLTRB(6, 10, 6, 8),
           decoration: BoxDecoration(
             color: Colors.white,
             borderRadius: BorderRadius.circular(14),
@@ -296,21 +303,22 @@ class _AcademicCardState extends State<_AcademicCard> {
           ),
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
+            mainAxisSize: MainAxisSize.min,
             children: [
               Container(
-                width: 52,
-                height: 52,
+                width: 48,
+                height: 48,
                 alignment: Alignment.center,
                 decoration: BoxDecoration(color: widget.item.background, borderRadius: BorderRadius.circular(14)),
-                child: Image.asset(widget.item.gifAsset, width: 36, height: 36, fit: BoxFit.contain),
+                child: Image.asset(widget.item.gifAsset, width: 32, height: 32, fit: BoxFit.contain),
               ),
-              const SizedBox(height: 6),
+              const SizedBox(height: 5),
               Text(
                 widget.item.label,
                 textAlign: TextAlign.center,
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
-                style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Color(0xFF374151)),
+                style: const TextStyle(fontSize: 10.5, fontWeight: FontWeight.w600, color: Color(0xFF374151), height: 1.15),
               ),
             ],
           ),

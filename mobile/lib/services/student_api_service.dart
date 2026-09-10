@@ -96,6 +96,33 @@ class StudentApiService {
     });
   }
 
+  /// Full submission incl. image attachments — mirrors `submitHomework()` in
+  /// `web/src/api.js` exactly.
+  Future<Map<String, dynamic>> submitHomework(
+    String homeworkId,
+    String studentId, {
+    String? answerText,
+    List<String> attachmentUrls = const [],
+  }) {
+    return _post('/homework/${Uri.encodeComponent(homeworkId)}/submit', {
+      'studentId': studentId,
+      'answers': {'summary': 'Completed in mobile app', 'text': answerText},
+      'attachmentUrls': attachmentUrls,
+      'attachmentUrl': attachmentUrls.isNotEmpty ? attachmentUrls.first : null,
+    });
+  }
+
+  /// Uploads one image (base64 data URL) — mirrors `uploadHomeworkImage()` in
+  /// `web/src/api.js`. Returns the hosted URL.
+  Future<String> uploadHomeworkImage({required String fileName, required String mimeType, required String dataUrl}) async {
+    final json = await _post('/homework/upload', {
+      'fileName': fileName,
+      'mimeType': mimeType,
+      'data': dataUrl,
+    });
+    return json['url']?.toString() ?? '';
+  }
+
   /// Returns `{attemptId, questions: [...]}` — see `start()` in
   /// `backend/src/controllers/tests.controller.ts`.
   Future<Map<String, dynamic>> startTest(String testId, String studentId) {
