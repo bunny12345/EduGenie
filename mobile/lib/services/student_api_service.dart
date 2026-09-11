@@ -158,6 +158,16 @@ class StudentApiService {
     return _post('/calendar', {'studentId': studentId, 'title': title, 'start': iso, 'end': iso, 'type': 'study'});
   }
 
+  /// Mirrors `updateCalendarEvent()` in `web/src/api.js` — `PATCH /calendar/:id`.
+  Future<void> updateCalendarEvent(String eventId, String title, DateTime date) async {
+    final iso = date.toIso8601String();
+    try {
+      await _client.dio.patch('/calendar/${Uri.encodeComponent(eventId)}', data: {'title': title, 'start': iso, 'end': iso});
+    } on DioException catch (e) {
+      throw Exception(e.message ?? 'updateCalendarEvent failed');
+    }
+  }
+
   Future<void> deleteCalendarEvent(String eventId, String studentId) async {
     try {
       await _client.dio.delete('/calendar/${Uri.encodeComponent(eventId)}', queryParameters: {'studentId': studentId});

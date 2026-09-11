@@ -2,12 +2,11 @@ import 'package:flutter/material.dart';
 
 import '../screens/student/student_ai_tutor_screen.dart';
 import '../screens/student/student_home_screen.dart';
-import '../screens/student/student_learn_screen.dart';
 import '../screens/student/student_more_screen.dart';
-import '../screens/student/student_tasks_screen.dart';
+import '../screens/student/student_services_screen.dart';
 
 /// Student portal shell — native bottom navigation (NOT the desktop sidebar).
-/// 5 primary destinations per the agreed IA: Home / Learn / AI Tutor / Tasks / More.
+/// 4 primary destinations per the agreed IA: Home / Services / AI Tutor / More.
 class StudentShell extends StatefulWidget {
   const StudentShell({super.key});
 
@@ -20,9 +19,8 @@ class _StudentShellState extends State<StudentShell> {
 
   static const _screens = [
     StudentHomeScreen(),
-    StudentLearnScreen(),
+    StudentServicesScreen(),
     StudentAiTutorScreen(),
-    StudentTasksScreen(),
     StudentMoreScreen(),
   ];
 
@@ -35,9 +33,8 @@ class _StudentShellState extends State<StudentShell> {
         onDestinationSelected: (i) => setState(() => _index = i),
         destinations: const [
           NavigationDestination(icon: Icon(Icons.home_outlined), selectedIcon: Icon(Icons.home_rounded), label: 'Home'),
-          NavigationDestination(icon: Icon(Icons.menu_book_outlined), selectedIcon: Icon(Icons.menu_book_rounded), label: 'Learn'),
+          NavigationDestination(icon: Icon(Icons.miscellaneous_services_outlined), selectedIcon: Icon(Icons.miscellaneous_services_rounded), label: 'Services'),
           NavigationDestination(icon: Icon(Icons.smart_toy_outlined), selectedIcon: Icon(Icons.smart_toy_rounded), label: 'AI Tutor'),
-          NavigationDestination(icon: Icon(Icons.assignment_outlined), selectedIcon: Icon(Icons.assignment_rounded), label: 'Tasks'),
           NavigationDestination(icon: Icon(Icons.more_horiz_rounded), selectedIcon: Icon(Icons.more_horiz_rounded), label: 'More'),
         ],
       ),

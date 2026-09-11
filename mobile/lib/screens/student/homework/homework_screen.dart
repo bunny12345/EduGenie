@@ -84,6 +84,35 @@ Color _subjectAccent(String subject) {
   return const Color(0xFF5B47FF);
 }
 
+/// The site-wide "3D button" frame — a light-black ring border + soft drop
+/// shadow, ported from `.eg-subject-hw-card button` in `App.css`. Layers on
+/// top of whatever fill color/shape a button already has.
+const Color _frame3dColor = Color(0xFF46464E);
+
+Border _frame3dBorder({double alpha = 0.35, double width = 1.5}) => Border.all(color: _frame3dColor.withValues(alpha: alpha), width: width);
+
+List<BoxShadow> _frame3dShadow({double alpha = 0.18, double blur = 10}) => [BoxShadow(color: Colors.black.withValues(alpha: alpha), blurRadius: blur, offset: const Offset(0, 4))];
+
+/// Small text-link style button (e.g. "Open history", "Close") wrapped in the
+/// same 3D frame as every other button in the Homework panel.
+class _FramedTextButton extends StatelessWidget {
+  final String label;
+  final VoidCallback? onPressed;
+  const _FramedTextButton({required this.label, required this.onPressed});
+
+  @override
+  Widget build(BuildContext context) {
+    return PressableScale(
+      onTap: onPressed,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(10), border: _frame3dBorder(), boxShadow: _frame3dShadow()),
+        child: Text(label, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: Color(0xFF5B47FF))),
+      ),
+    );
+  }
+}
+
 /// Homework — mirrors web's per-subject Homework tab in `StudentDashboard.jsx`
 /// exactly: subject switcher, submitted/not-submitted/overdue filter chips,
 /// "View history by date" mini calendar, expandable teacher instructions +
@@ -333,9 +362,9 @@ class _HomeworkScreenState extends ConsumerState<HomeworkScreen> {
                                 Expanded(
                                   child: Text('${_selectedSubject ?? ''} Homework', style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800, color: Color(0xFF111827))),
                                 ),
-                                TextButton(
+                                _FramedTextButton(
+                                  label: _showHistory ? 'Hide history' : 'Open history',
                                   onPressed: () => setState(() => _showHistory = !_showHistory),
-                                  child: Text(_showHistory ? 'Hide history' : 'Open history'),
                                 ),
                               ],
                             ),
@@ -382,12 +411,12 @@ class _HomeworkScreenState extends ConsumerState<HomeworkScreen> {
                                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                       children: [
                                         const Text('📅 View history by date', style: TextStyle(fontWeight: FontWeight.w700, color: Color(0xFF334155))),
-                                        TextButton(
+                                        _FramedTextButton(
+                                          label: 'Close',
                                           onPressed: () => setState(() {
                                             _showHistory = false;
                                             _historyFromDate = null;
                                           }),
-                                          child: const Text('Close'),
                                         ),
                                       ],
                                     ),
@@ -506,7 +535,7 @@ class _HomeworkScreenState extends ConsumerState<HomeworkScreen> {
                                         onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => TestTakingScreen(test: t))),
                                         child: Container(
                                           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
-                                          decoration: BoxDecoration(color: iconColor, borderRadius: BorderRadius.circular(999)),
+                                          decoration: BoxDecoration(color: iconColor, borderRadius: BorderRadius.circular(999), border: _frame3dBorder(alpha: 0.3), boxShadow: _frame3dShadow()),
                                           child: const Text('Start', style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w700)),
                                         ),
                                       ),
@@ -622,7 +651,12 @@ class _FilterPill extends StatelessWidget {
       onTap: onTap,
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
-        decoration: BoxDecoration(color: active ? activeColor : inactiveBg, borderRadius: BorderRadius.circular(999)),
+        decoration: BoxDecoration(
+          color: active ? activeColor : inactiveBg,
+          borderRadius: BorderRadius.circular(999),
+          border: _frame3dBorder(),
+          boxShadow: _frame3dShadow(),
+        ),
         child: Text(label, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: active ? Colors.white : inactiveColor)),
       ),
     );
@@ -752,9 +786,11 @@ class _HomeworkCard extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           InkWell(
+            borderRadius: BorderRadius.circular(10),
             onTap: onToggleTeacherInfo,
-            child: Padding(
-              padding: const EdgeInsets.symmetric(vertical: 4),
+            child: Container(
+              decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(10), border: _frame3dBorder(alpha: 0.28), boxShadow: _frame3dShadow(alpha: 0.12, blur: 8)),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
               child: Wrap(
                 crossAxisAlignment: WrapCrossAlignment.center,
                 spacing: 8,
@@ -795,7 +831,10 @@ class _HomeworkCard extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  TextButton(onPressed: onToggleSubmission, child: Text(expandedSubmission ? 'Hide your submission homework' : 'Show your submission homework')),
+                  _FramedTextButton(
+                    label: expandedSubmission ? 'Hide your submission homework' : 'Show your submission homework',
+                    onPressed: onToggleSubmission,
+                  ),
                   if (expandedSubmission) ...[
                     if (h.latestAttachmentUrls.isNotEmpty) ...[
                       const Text('✅ Submitted images:', style: TextStyle(fontSize: 11, color: Color(0xFF166534))),
@@ -833,7 +872,8 @@ class _HomeworkCard extends StatelessWidget {
                 decoration: BoxDecoration(
                   color: Colors.white,
                   borderRadius: BorderRadius.circular(999),
-                  border: Border.all(color: const Color(0xFFECE8FF)),
+                  border: _frame3dBorder(),
+                  boxShadow: _frame3dShadow(),
                 ),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
@@ -851,18 +891,21 @@ class _HomeworkCard extends StatelessWidget {
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   Text('${pendingAttachments.length} image(s) selected', style: const TextStyle(fontSize: 12, color: Color(0xFF666666))),
-                  TextButton(onPressed: () {
-                    for (final u in List<String>.from(pendingAttachments)) {
-                      onRemoveImage(u);
-                    }
-                  }, child: const Text('Remove all')),
+                  _FramedTextButton(
+                    label: 'Remove all',
+                    onPressed: () {
+                      for (final u in List<String>.from(pendingAttachments)) {
+                        onRemoveImage(u);
+                      }
+                    },
+                  ),
                 ],
               ),
               _ImageThumbRow(urls: pendingAttachments, borderColor: const Color(0xFF7C3AED), borderWidth: 2, onRemove: onRemoveImage),
             ],
             if (canResubmitWindow && editingResubmit) ...[
               const SizedBox(height: 6),
-              Align(alignment: Alignment.centerRight, child: TextButton(onPressed: onCancelEditResubmit, child: const Text('Cancel edit'))),
+              Align(alignment: Alignment.centerRight, child: _FramedTextButton(label: 'Cancel edit', onPressed: onCancelEditResubmit)),
             ],
             const SizedBox(height: 10),
             PressableScale(
@@ -874,7 +917,8 @@ class _HomeworkCard extends StatelessWidget {
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(999),
                   gradient: const LinearGradient(colors: [Color(0xFF6D5EFC), Color(0xFF4B3FB8)]),
-                  boxShadow: const [BoxShadow(color: Color(0x3D5A46C8), blurRadius: 16, offset: Offset(0, 6))],
+                  border: _frame3dBorder(alpha: 0.3),
+                  boxShadow: [..._frame3dShadow(), const BoxShadow(color: Color(0x3D5A46C8), blurRadius: 16, offset: Offset(0, 6))],
                 ),
                 child: submitting
                     ? const SizedBox(height: 18, width: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
@@ -892,7 +936,7 @@ class _HomeworkCard extends StatelessWidget {
                     style: const TextStyle(fontSize: 12, color: Color(0xFF1D4ED8), fontWeight: FontWeight.w600),
                   ),
                 ),
-                TextButton(onPressed: onStartEditResubmit, child: const Text('Edit resubmission')),
+                _FramedTextButton(label: 'Edit resubmission', onPressed: onStartEditResubmit),
               ],
             ),
           ],
@@ -912,7 +956,7 @@ class _HomeworkCard extends StatelessWidget {
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       const Text('Teacher feedback', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Color(0xFF1D4ED8))),
-                      TextButton(onPressed: onToggleFeedback, child: Text(expandedFeedback ? 'Hide feedback' : 'Show feedback')),
+                      _FramedTextButton(label: expandedFeedback ? 'Hide feedback' : 'Show feedback', onPressed: onToggleFeedback),
                     ],
                   ),
                   if (expandedFeedback) ...[

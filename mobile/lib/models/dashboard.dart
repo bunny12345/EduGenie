@@ -92,6 +92,8 @@ class DashboardData {
   final String? greetingName;
   final String? className;
   final String? schoolName;
+  final String? gender;
+  final String? loginId;
   final List<ClassTeacher> classTeachers;
   final StreakInfo streak;
   final List<AnnouncementItem> announcements;
@@ -100,6 +102,8 @@ class DashboardData {
     this.greetingName,
     this.className,
     this.schoolName,
+    this.gender,
+    this.loginId,
     this.classTeachers = const [],
     this.streak = const StreakInfo(),
     this.announcements = const [],
@@ -109,6 +113,8 @@ class DashboardData {
         greetingName: json['greetingName'] as String?,
         className: json['className'] as String?,
         schoolName: json['schoolName'] as String?,
+        gender: json['gender'] as String?,
+        loginId: json['loginId'] as String?,
         classTeachers: (json['classTeachers'] as List? ?? [])
             .map((t) => ClassTeacher.fromJson(Map<String, dynamic>.from(t as Map)))
             .toList(),

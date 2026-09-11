@@ -3,16 +3,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../state/session_provider.dart';
 import '../../theme/app_colors.dart';
-import 'student_calendar_screen.dart';
-import 'student_games_screen.dart';
-import 'student_library_screen.dart';
-import 'student_orchard_screen.dart';
-import 'student_rewards_screen.dart';
 import 'student_settings_screen.dart';
 
-/// "More" tab — houses every secondary student feature that doesn't get its
-/// own bottom-nav slot (Orchard, Games, Rewards, Calendar, Library, Settings)
-/// plus Logout. Mobile equivalent of the remaining desktop sidebar items.
+/// "More" tab — Settings + Logout. Orchard/Games/Rewards/Calendar/Library
+/// moved out of here since they're already reachable from the home page's
+/// Academics grid — no need to duplicate them.
 class StudentMoreScreen extends ConsumerWidget {
   const StudentMoreScreen({super.key});
 
@@ -21,11 +16,6 @@ class StudentMoreScreen extends ConsumerWidget {
     final session = ref.watch(sessionProvider).value;
 
     final items = <_MoreItem>[
-      _MoreItem(Icons.park_rounded, 'My Orchard', (ctx) => const StudentOrchardScreen()),
-      _MoreItem(Icons.videogame_asset_rounded, 'Games', (ctx) => const StudentGamesScreen()),
-      _MoreItem(Icons.emoji_events_rounded, 'Rewards', (ctx) => const StudentRewardsScreen()),
-      _MoreItem(Icons.calendar_month_rounded, 'Calendar', (ctx) => const StudentCalendarScreen()),
-      _MoreItem(Icons.local_library_rounded, 'Library', (ctx) => const StudentLibraryScreen()),
       _MoreItem(Icons.settings_rounded, 'Settings', (ctx) => const StudentSettingsScreen()),
     ];
 
