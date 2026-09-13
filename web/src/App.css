@@ -77,11 +77,15 @@ textarea {
   width: 34px;
   height: 34px;
   border-radius: 10px;
-  background: linear-gradient(135deg, #ff8d6c, #6b62ff);
   display: grid;
   place-items: center;
-  font-size: 12px;
-  font-weight: 700;
+  overflow: hidden;
+}
+
+.eg-logo-mark img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
 }
 
 .eg-logo strong {
@@ -3454,6 +3458,13 @@ textarea {
   margin: 6px 0 0;
 }
 
+.rg-logo {
+  display: block;
+  height: 48px;
+  width: auto;
+  margin-bottom: 10px;
+}
+
 .rg-kicker {
   margin: 0 0 6px;
   text-transform: uppercase;
@@ -4124,8 +4135,9 @@ textarea {
 }
 
 .td-sidebar-logo {
-  font-size: 22px;
-  line-height: 1;
+  width: 28px;
+  height: 28px;
+  object-fit: contain;
 }
 
 .td-sidebar-title {

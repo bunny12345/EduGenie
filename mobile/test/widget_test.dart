@@ -27,7 +27,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('AcademiX'), findsOneWidget);
-    expect(find.text('School'), findsWidgets);
+    expect(find.text('Teacher'), findsWidgets);
   });
 }
 

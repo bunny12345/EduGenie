@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
 
+import '../../../config/env.dart';
 import '../../../models/homework_item.dart';
 import '../../../state/session_provider.dart';
 import '../../../state/student_providers.dart';
@@ -15,6 +16,22 @@ import 'lightbox.dart';
 import '../../../widgets/pressable_scale.dart';
 
 enum _HwFilter { all, submitted, notSubmitted, overdue }
+
+/// The backend returns attachment paths relative to its own host (e.g.
+/// `/uploads/homework/x.jpg`) — the website resolves these fine since the
+/// page and API share an origin, but Flutter's `Image.network` needs a full
+/// URL, so relative paths must be resolved against the configured API host.
+/// Some older records were also saved with a plain `http://` scheme (a
+/// backend proxy-header bug, now fixed at the source) — upgrade those to
+/// `https://` too, since the site is HTTPS-only and both the browser and
+/// native Android reject cleartext requests to it.
+String _resolveAttachmentUrl(String url) {
+  if (url.startsWith('http://')) return 'https://${url.substring(7)}';
+  if (url.startsWith('https://')) return url;
+  final base = Env.apiBaseUrl.endsWith('/') ? Env.apiBaseUrl.substring(0, Env.apiBaseUrl.length - 1) : Env.apiBaseUrl;
+  final path = url.startsWith('/') ? url : '/$url';
+  return '$base$path';
+}
 
 /// Muted per-subject header/border theme — ports `getSubjectTheme()` in
 /// `StudentDashboard.jsx` (kept separate from `SubjectPalette`, which mirrors
@@ -1005,21 +1022,28 @@ class _ImageThumbRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final resolvedUrls = urls.map(_resolveAttachmentUrl).toList();
     return Wrap(
       spacing: 8,
       runSpacing: 8,
       children: [
-        for (final url in urls)
+        for (var i = 0; i < urls.length; i++)
           Stack(
             clipBehavior: Clip.none,
             children: [
               GestureDetector(
-                onTap: () => showImageLightbox(context, url),
+                onTap: () => showImageLightbox(context, resolvedUrls, i),
                 child: ClipRRect(
                   borderRadius: BorderRadius.circular(6),
                   child: Container(
                     decoration: BoxDecoration(border: Border.all(color: borderColor, width: borderWidth)),
-                    child: Image.network(url, width: 64, height: 64, fit: BoxFit.cover, errorBuilder: (_, _, _) => Container(width: 64, height: 64, color: const Color(0xFFEEEEEE))),
+                    child: Image.network(
+                      resolvedUrls[i],
+                      width: 64,
+                      height: 64,
+                      fit: BoxFit.cover,
+                      errorBuilder: (_, _, _) => Container(width: 64, height: 64, color: const Color(0xFFEEEEEE)),
+                    ),
                   ),
                 ),
               ),
@@ -1028,7 +1052,7 @@ class _ImageThumbRow extends StatelessWidget {
                   top: -6,
                   right: -6,
                   child: GestureDetector(
-                    onTap: () => onRemove!(url),
+                    onTap: () => onRemove!(urls[i]),
                     child: Container(
                       width: 18,
                       height: 18,

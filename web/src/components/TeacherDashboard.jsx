@@ -2045,7 +2045,7 @@ export default function TeacherDashboard({ session, onLogout }) {
       {/* ── Sidebar ── */}
       <nav className="td-sidebar">
         <div className="td-sidebar-brand">
-          <span className="td-sidebar-logo">🎓</span>
+          <img src="/logo.png" alt="AcademiX" className="td-sidebar-logo" />
           <span className="td-sidebar-title">AcademiX</span>
         </div>
 

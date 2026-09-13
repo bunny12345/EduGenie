@@ -62,8 +62,9 @@ export class CurriculumController {
 
   private buildPublicUrl(req: any, relativeUrl: string) {
     const host = String(req?.headers?.['x-forwarded-host'] || req?.headers?.host || '').trim();
-    const protoHeader = String(req?.headers?.['x-forwarded-proto'] || '').trim();
-    const protocol = protoHeader || (req?.protocol || 'http');
+    // Same fix as homework.controller.ts's upload handler — see comment there.
+    const isLocalHost = /^(localhost|127\.0\.0\.1)(:\d+)?$/i.test(host);
+    const protocol = isLocalHost ? 'http' : 'https';
     return host ? `${protocol}://${host}${relativeUrl}` : relativeUrl;
   }
 

@@ -5,12 +5,13 @@ import '../../models/session.dart';
 import '../../state/session_provider.dart';
 import '../../theme/app_colors.dart';
 
-enum _Role { school, teacher, student }
+enum _Role { teacher, student }
 
-/// Mobile port of `web/src/components/RoleGateway.jsx`. Same three roles,
-/// same backend endpoints/contracts — native form UI instead of a desktop
-/// card layout. Invite-link acceptance is intentionally out of scope for
-/// this first pass (needs mobile deep-linking) — see /memories/repo/mobile-app-plan.md.
+/// Mobile port of `web/src/components/RoleGateway.jsx` — Teacher and Student
+/// only. The School Admin portal is web-only (school admins manage things
+/// from a desktop), so that role/registration flow is intentionally absent
+/// here. Invite-link acceptance is intentionally out of scope for this first
+/// pass (needs mobile deep-linking) — see /memories/repo/mobile-app-plan.md.
 class RoleGatewayScreen extends ConsumerStatefulWidget {
   const RoleGatewayScreen({super.key});
 
@@ -19,98 +20,18 @@ class RoleGatewayScreen extends ConsumerStatefulWidget {
 }
 
 class _RoleGatewayScreenState extends ConsumerState<RoleGatewayScreen> {
-  _Role _role = _Role.school;
-  bool _schoolLoginMode = false;
+  _Role _role = _Role.student;
   bool _busy = false;
   String _error = '';
 
-  // School
-  final _schoolNameCtrl = TextEditingController();
-  final _branchCtrl = TextEditingController(text: 'Main Branch');
-  final _locationCtrl = TextEditingController();
-  final _schoolEmailCtrl = TextEditingController();
-  final _schoolPasswordCtrl = TextEditingController();
-  String _registerStep = 'form'; // 'form' | 'otp'
-  final _otpCtrl = TextEditingController();
-  String _otpNote = '';
-
-  // Teacher / Student
   final _loginIdCtrl = TextEditingController();
   final _passwordCtrl = TextEditingController();
 
   @override
   void dispose() {
-    _schoolNameCtrl.dispose();
-    _branchCtrl.dispose();
-    _locationCtrl.dispose();
-    _schoolEmailCtrl.dispose();
-    _schoolPasswordCtrl.dispose();
-    _otpCtrl.dispose();
     _loginIdCtrl.dispose();
     _passwordCtrl.dispose();
     super.dispose();
-  }
-
-  Future<void> _submitSchool() async {
-    setState(() {
-      _busy = true;
-      _error = '';
-    });
-    try {
-      final auth = ref.read(authServiceProvider);
-      if (_schoolLoginMode) {
-        final res = await auth.schoolLogin(_schoolEmailCtrl.text.trim(), _schoolPasswordCtrl.text);
-        if (res['success'] != true || res['token'] == null) {
-          setState(() => _error = res['error']?.toString() ?? 'School authentication failed');
-          return;
-        }
-        final school = res['school'] as Map? ?? {};
-        await ref.read(sessionProvider.notifier).login(Session(
-              role: 'school_admin',
-              token: res['token'].toString(),
-              schoolId: school['id']?.toString() ?? '',
-              name: school['schoolName']?.toString() ?? _schoolNameCtrl.text.trim(),
-              email: school['email']?.toString() ?? _schoolEmailCtrl.text.trim(),
-            ));
-        return;
-      }
-
-      if (_registerStep == 'form') {
-        final res = await auth.schoolRegisterRequestOtp(
-          email: _schoolEmailCtrl.text.trim(),
-          schoolName: _schoolNameCtrl.text.trim(),
-          branch: _branchCtrl.text.trim(),
-          location: _locationCtrl.text.trim(),
-          password: _schoolPasswordCtrl.text,
-        );
-        if (res['success'] != true) {
-          setState(() => _error = res['error']?.toString() ?? 'Could not send a verification code.');
-          return;
-        }
-        setState(() {
-          _otpNote = 'We sent a 6-digit code to ${_schoolEmailCtrl.text.trim()}.';
-          _otpCtrl.clear();
-          _registerStep = 'otp';
-        });
-        return;
-      }
-
-      final res = await auth.schoolRegisterVerifyOtp(_schoolEmailCtrl.text.trim(), _otpCtrl.text.trim());
-      if (res['success'] != true || res['token'] == null) {
-        setState(() => _error = res['error']?.toString() ?? 'Verification failed');
-        return;
-      }
-      final school = res['school'] as Map? ?? {};
-      await ref.read(sessionProvider.notifier).login(Session(
-            role: 'school_admin',
-            token: res['token'].toString(),
-            schoolId: school['id']?.toString() ?? '',
-            name: school['schoolName']?.toString() ?? _schoolNameCtrl.text.trim(),
-            email: school['email']?.toString() ?? _schoolEmailCtrl.text.trim(),
-          ));
-    } finally {
-      if (mounted) setState(() => _busy = false);
-    }
   }
 
   Future<void> _submitTeacher() async {
@@ -177,7 +98,6 @@ class _RoleGatewayScreenState extends ConsumerState<RoleGatewayScreen> {
               const SizedBox(height: 20),
               if (_error.isNotEmpty) _buildErrorBanner(),
               switch (_role) {
-                _Role.school => _buildSchoolForm(),
                 _Role.teacher => _buildSimpleLoginForm(onSubmit: _submitTeacher, label: 'Teacher'),
                 _Role.student => _buildSimpleLoginForm(onSubmit: _submitStudent, label: 'Student'),
               },
@@ -202,17 +122,22 @@ class _RoleGatewayScreenState extends ConsumerState<RoleGatewayScreen> {
                 borderRadius: BorderRadius.circular(12),
               ),
               alignment: Alignment.center,
-              child: const Text('EG', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800)),
+              clipBehavior: Clip.antiAlias,
+              child: Image.asset(
+                'assets/branding/logo.png',
+                fit: BoxFit.contain,
+                errorBuilder: (_, _, _) => const Text('EG', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800)),
+              ),
             ),
             const SizedBox(width: 12),
             const Text('AcademiX', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800)),
           ],
         ),
         const SizedBox(height: 16),
-        const Text('School, Teacher and Student Access', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w700)),
+        const Text('Teacher and Student Access', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w700)),
         const SizedBox(height: 6),
         const Text(
-          'School admins onboard teachers, teachers onboard students, and invite links support self-registration.',
+          'Log in with the ID and password your school gave you.',
           style: TextStyle(color: AppColors.muted, fontSize: 13),
         ),
       ],
@@ -222,9 +147,8 @@ class _RoleGatewayScreenState extends ConsumerState<RoleGatewayScreen> {
   Widget _buildRoleToggle() {
     return SegmentedButton<_Role>(
       segments: const [
-        ButtonSegment(value: _Role.school, label: Text('School')),
-        ButtonSegment(value: _Role.teacher, label: Text('Teacher')),
         ButtonSegment(value: _Role.student, label: Text('Student')),
+        ButtonSegment(value: _Role.teacher, label: Text('Teacher')),
       ],
       selected: {_role},
       onSelectionChanged: (s) => setState(() {
@@ -244,68 +168,6 @@ class _RoleGatewayScreenState extends ConsumerState<RoleGatewayScreen> {
         border: Border.all(color: AppColors.danger.withValues(alpha: 0.3)),
       ),
       child: Text(_error, style: const TextStyle(color: AppColors.danger, fontSize: 13)),
-    );
-  }
-
-  Widget _buildSchoolForm() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        SegmentedButton<bool>(
-          segments: const [
-            ButtonSegment(value: false, label: Text('Register School')),
-            ButtonSegment(value: true, label: Text('School Login')),
-          ],
-          selected: {_schoolLoginMode},
-          onSelectionChanged: (s) => setState(() {
-            _schoolLoginMode = s.first;
-            _registerStep = 'form';
-            _error = '';
-            _otpNote = '';
-          }),
-        ),
-        const SizedBox(height: 16),
-        if (!_schoolLoginMode && _registerStep == 'form') ...[
-          TextField(controller: _schoolNameCtrl, decoration: const InputDecoration(labelText: 'School name')),
-          const SizedBox(height: 10),
-          TextField(controller: _branchCtrl, decoration: const InputDecoration(labelText: 'Branch')),
-          const SizedBox(height: 10),
-          TextField(controller: _locationCtrl, decoration: const InputDecoration(labelText: 'Location')),
-          const SizedBox(height: 10),
-        ],
-        if (!_schoolLoginMode && _registerStep == 'otp') ...[
-          Text(_otpNote, style: const TextStyle(color: AppColors.muted, fontSize: 13)),
-          const SizedBox(height: 10),
-          TextField(
-            controller: _otpCtrl,
-            keyboardType: TextInputType.number,
-            decoration: const InputDecoration(labelText: '6-digit code'),
-          ),
-          const SizedBox(height: 10),
-        ],
-        if (_schoolLoginMode || _registerStep == 'form') ...[
-          TextField(
-            controller: _schoolEmailCtrl,
-            keyboardType: TextInputType.emailAddress,
-            decoration: const InputDecoration(labelText: 'Email'),
-          ),
-          const SizedBox(height: 10),
-          TextField(
-            controller: _schoolPasswordCtrl,
-            obscureText: true,
-            decoration: const InputDecoration(labelText: 'Password'),
-          ),
-          const SizedBox(height: 16),
-        ],
-        ElevatedButton(
-          onPressed: _busy ? null : _submitSchool,
-          child: _busy
-              ? const SizedBox(height: 18, width: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-              : Text(_schoolLoginMode
-                  ? 'Log In'
-                  : (_registerStep == 'form' ? 'Send Verification Code' : 'Verify & Create Account')),
-        ),
-      ],
     );
   }
 

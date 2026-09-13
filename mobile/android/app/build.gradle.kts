@@ -6,7 +6,9 @@ plugins {
 
 android {
     namespace = "com.example.mobile"
-    compileSdk = flutter.compileSdkVersion
+    // flutter_secure_storage requires compiling against API 37+ (bumped from
+    // the Flutter-plugin default of 36) — see flutter-doctor/build error.
+    compileSdk = 37
     ndkVersion = flutter.ndkVersion
 
     compileOptions {

@@ -49,12 +49,19 @@ deploy_backend() {
   fi
 
   echo "==> Building and restarting the container..."
+  # local-data (student/teacher account fallback, homework fallback feed,
+  # uploaded attachment files) is bind-mounted from the host so it survives
+  # container rebuilds/restarts across deploys instead of living only in the
+  # image's own ephemeral filesystem.
   ssh -i "$KEY_PATH" "ec2-user@${ip}" '
     set -e
     cd ~/EduGenie/backend
+    mkdir -p ~/EduGenie/backend/local-data
     sudo docker build -t academix-backend:latest .
     sudo docker rm -f academix-backend 2>/dev/null || true
-    sudo docker run -d --name academix-backend --restart unless-stopped -p 3000:3000 --env-file .env academix-backend:latest
+    sudo docker run -d --name academix-backend --restart unless-stopped -p 3000:3000 \
+      -v ~/EduGenie/backend/local-data:/app/local-data \
+      --env-file .env academix-backend:latest
     sleep 3
     sudo docker ps
   '

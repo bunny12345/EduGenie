@@ -233,6 +233,7 @@ export default function RoleGateway({ onLogin }) {
 
       <main className="rg-card">
         <header className="rg-head">
+          <img src="/logo.png" alt="AcademiX" className="rg-logo" />
           <p className="rg-kicker">AcademiX Portal</p>
           <h1>School, Teacher and Student Access</h1>
           <p>School admins onboard teachers, teachers onboard students, and invite links support self-registration.</p>

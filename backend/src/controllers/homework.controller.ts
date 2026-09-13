@@ -53,8 +53,13 @@ export class HomeworkController {
     try {
       const relativeUrl = this.saveHomeworkUpload(body);
       const host = String(req?.headers?.['x-forwarded-host'] || req?.headers?.host || '').trim();
-      const protoHeader = String(req?.headers?.['x-forwarded-proto'] || '').trim();
-      const protocol = protoHeader || (req?.protocol || 'http');
+      // CloudFront terminates HTTPS from viewers but forwards to the ALB over
+      // plain HTTP (http-only origin), so x-forwarded-proto/req.protocol always
+      // truthfully report 'http' for that hop — they can never be trusted here.
+      // Every real viewer request is guaranteed HTTPS, so force it for any
+      // non-local host instead of reading the (misleading) header at all.
+      const isLocalHost = /^(localhost|127\.0\.0\.1)(:\d+)?$/i.test(host);
+      const protocol = isLocalHost ? 'http' : 'https';
       const url = host ? `${protocol}://${host}${relativeUrl}` : relativeUrl;
       return { success: true, url };
     } catch (e) {

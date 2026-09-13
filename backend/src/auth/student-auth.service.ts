@@ -1593,7 +1593,14 @@ export class StudentAuthService implements OnModuleInit {
     const scopeByGrades = gradeSet.size > 0 && !!schoolId;
     const queryText = String(scope.q || '').trim().toLowerCase();
     const classNameFilter = String(scope.className || '').trim().toLowerCase();
-    const hasPaging = scope.page !== undefined || scope.limit !== undefined || !!queryText || !!classNameFilter;
+    // A bare className filter (no explicit page/limit — e.g. "assign this
+    // homework to the whole class" or "list this class's students") means
+    // "give me everyone in that class", not a paginated page — capping it at
+    // the default page size of 10 would silently drop older students once a
+    // school has 10+ more-recently-created students in any class. Only
+    // paginate when the caller explicitly asked for a page/limit or a
+    // free-text search.
+    const hasPaging = scope.page !== undefined || scope.limit !== undefined || !!queryText;
     const page = Math.max(1, Number(scope.page || 1));
     const limit = hasPaging
       ? Math.min(100, Math.max(1, Number(scope.limit || 10)))
@@ -1614,6 +1621,11 @@ export class StudentAuthService implements OnModuleInit {
       else if (schoolId) q = q.eq('school_id', schoolId);
       if (queryText) {
         q = q.or(`name.ilike.%${queryText}%,full_name.ilike.%${queryText}%,class_name.ilike.%${queryText}%,class.ilike.%${queryText}%,grade.ilike.%${queryText}%`);
+      }
+      // Push the class filter into the query itself so the range/limit above
+      // applies to the already-filtered set, not an unfiltered recency page.
+      if (classNameFilter) {
+        q = q.or(`class_name.ilike.${classNameFilter},class.ilike.${classNameFilter},grade.ilike.${classNameFilter}`);
       }
       const res = await q.order('created_at', { ascending: false }).range(from, to);
       const rowsRaw = Array.isArray((res as any)?.data) ? (res as any).data : [];

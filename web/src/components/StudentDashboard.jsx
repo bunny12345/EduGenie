@@ -3657,7 +3657,7 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
     <div className="eg-shell">
       <aside className="eg-sidebar">
         <div className="eg-logo">
-          <div className="eg-logo-mark">EG</div>
+          <div className="eg-logo-mark"><img src="/logo.png" alt="AcademiX" /></div>
           <div>
             <strong>AcademiX</strong>
             <p>Your AI Study Buddy</p>
