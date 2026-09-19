@@ -80,6 +80,18 @@ export class LocalFeedService implements OnModuleInit {
     return next;
   }
 
+  /** Removes every homework row whose id is in the given set — used when deleting
+   *  a whole assignment group (one row per student who received it). */
+  removeHomeworkByIds(ids: string[]) {
+    const idSet = new Set((Array.isArray(ids) ? ids : []).map((id) => String(id || '').trim()).filter(Boolean));
+    if (!idSet.size) return 0;
+    const before = this.homeworkAssignments.length;
+    this.homeworkAssignments = this.homeworkAssignments.filter((h) => !idSet.has(String(h?.id || '').trim()));
+    const removed = before - this.homeworkAssignments.length;
+    if (removed) this.persistFeed();
+    return removed;
+  }
+
   getHomeworkById(id: string) {
     const targetId = String(id || '').trim();
     if (!targetId) return null;

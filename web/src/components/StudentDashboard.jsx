@@ -3808,7 +3808,7 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
             <section className="eg-main-grid eg-main-grid-home">
               <div className="eg-left-stack">
               <section className="cardish eg-hero-card eg-grad-hero eg-home-glass">
-                <h1>Good Morning, {greetingName}! 👋</h1>
+                <h1>Good day, {greetingName}! 👋</h1>
                 <p>Ready to learn something amazing today?</p>
               <div className="eg-hero-inner">
                 <div className="eg-bot-quote">

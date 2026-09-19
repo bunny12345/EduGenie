@@ -4187,6 +4187,15 @@ textarea {
   font-size: 16px;
   line-height: 1;
   flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.td-nav-icon svg {
+  width: 18px;
+  height: 18px;
+  display: block;
 }
 
 .td-nav-label {

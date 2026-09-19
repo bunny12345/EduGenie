@@ -1,4 +1,4 @@
-import { Body, Controller, ForbiddenException, Get, Param, Post, Query, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, ForbiddenException, Get, Param, Post, Query, Req, UseGuards } from '@nestjs/common';
 import { SupabaseService } from '../supabase.service';
 import { AuthGuard } from '../auth/auth.guard';
 import { StudentAuthService } from '../auth/student-auth.service';
@@ -1591,6 +1591,76 @@ export class TeacherController {
         return { success: true, updated: localUpdated || 1 };
       }
       return { success: false, error: 'Failed to update homework' };
+    }
+  }
+
+  /**
+   * Deletes an assigned homework — removes the whole assignment group (one row
+   * per student who received it), not just the single row identified by `id`.
+   * Uses the same assignmentGroupId-or-signature matching as `updateHomework`.
+   */
+  @Delete('homework/:id')
+  async deleteHomework(@Param('id') hwId: string, @Req() req: any) {
+    this.ensureTeacher(req);
+    const teacherId = this.actorId(req);
+
+    try {
+      const seedRes = await this.db.client.from('homework').select('*').eq('id', hwId).maybeSingle();
+      const seedRow = (seedRes as any)?.data || null;
+
+      if (!seedRow) {
+        const localSeed = this.localFeed.listHomeworkByTeacher(teacherId).find((h: any) => String(h?.id || '') === String(hwId));
+        if (!localSeed) return { success: false, error: 'Homework not found' };
+        const seedMeta = this.readHomeworkMeta(localSeed);
+        const groupId = String(seedMeta?.assignmentGroupId || '').trim();
+        const groupIds = groupId
+          ? this.localFeed.listHomeworkByTeacher(teacherId)
+              .filter((h: any) => String(this.readHomeworkMeta(h)?.assignmentGroupId || '').trim() === groupId)
+              .map((h: any) => String(h?.id || ''))
+          : [String(hwId)];
+        const removed = this.localFeed.removeHomeworkByIds(groupIds);
+        return { success: true, deleted: removed || 1 };
+      }
+
+      const seedMeta = this.readHomeworkMeta(seedRow);
+      const seedAssignmentGroupId = String(seedMeta?.assignmentGroupId || '').trim();
+      const seedCreatedBy = String(seedRow?.created_by || teacherId || '').trim();
+      const seedTitle = String(seedRow?.title || '').trim();
+      const seedSubject = String(seedRow?.subject || '').trim();
+      const seedClassName = String(seedMeta?.className || '').trim();
+      const seedStartAt = String(seedMeta?.startAt || '').trim();
+      const seedDueAt = String(seedMeta?.dueAt || '').trim();
+
+      const allForTeacherRes = await this.db.client
+        .from('homework')
+        .select('id,title,subject,class_name,created_by,tasks')
+        .eq('created_by', seedCreatedBy)
+        .limit(2000);
+      const allForTeacher = Array.isArray((allForTeacherRes as any)?.data) ? (allForTeacherRes as any).data : [];
+
+      const matchedIds = allForTeacher
+        .filter((row: any) => {
+          const rowMeta = this.readHomeworkMeta(row);
+          const rowAssignmentGroupId = String(rowMeta?.assignmentGroupId || '').trim();
+          if (seedAssignmentGroupId && rowAssignmentGroupId) {
+            return rowAssignmentGroupId === seedAssignmentGroupId;
+          }
+          return String(row?.title || '').trim() === seedTitle
+            && String(row?.subject || '').trim() === seedSubject
+            && String(rowMeta?.className || '').trim() === seedClassName
+            && String(rowMeta?.startAt || '').trim() === seedStartAt
+            && String(rowMeta?.dueAt || '').trim() === seedDueAt;
+        })
+        .map((row: any) => String(row?.id || '').trim())
+        .filter(Boolean);
+
+      const targetIds = matchedIds.length ? matchedIds : [String(hwId)];
+      await this.db.client.from('homework').delete().in('id', targetIds);
+      const localRemoved = this.localFeed.removeHomeworkByIds(targetIds);
+
+      return { success: true, deleted: targetIds.length || localRemoved };
+    } catch (_e) {
+      return { success: false, error: 'Failed to delete homework' };
     }
   }
 
