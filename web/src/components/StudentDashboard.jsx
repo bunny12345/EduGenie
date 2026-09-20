@@ -3009,7 +3009,7 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
                 <button
                   type="button"
                   className="eg-ai-action-btn eg-ai-action-explain"
-                  onClick={onStartExplainBack}
+                  onClick={() => onStartExplainBack()}
                 >
                   🗣️ Explain Back
                 </button>
