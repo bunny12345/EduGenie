@@ -59,6 +59,31 @@ export class LocalFeedService implements OnModuleInit {
     return [...this.announcements];
   }
 
+  /** Drops announcements whose visible-until time has passed. */
+  removeExpiredAnnouncements(nowIso: string) {
+    const before = this.announcements.length;
+    this.announcements = this.announcements.filter((a) => !a?.endAt || a.endAt >= nowIso);
+    return before - this.announcements.length;
+  }
+
+  updateAnnouncement(id: string, patch: any) {
+    const targetId = String(id || '').trim();
+    if (!targetId) return null;
+    const index = this.announcements.findIndex((a) => String(a?.id || '').trim() === targetId);
+    if (index < 0) return null;
+    const next = { ...this.announcements[index], ...(patch || {}) };
+    this.announcements[index] = next;
+    return next;
+  }
+
+  removeAnnouncementById(id: string) {
+    const targetId = String(id || '').trim();
+    if (!targetId) return false;
+    const before = this.announcements.length;
+    this.announcements = this.announcements.filter((a) => String(a?.id || '').trim() !== targetId);
+    return this.announcements.length < before;
+  }
+
   addHomework(items: any[]) {
     const next = Array.isArray(items) ? items : [];
     if (!next.length) return;

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
@@ -36,6 +37,52 @@ List<String> _asUrlList(dynamic value, dynamic fallbackSingle) {
   }
   final single = fallbackSingle?.toString().trim() ?? '';
   return single.isNotEmpty ? [single] : [];
+}
+
+/// Stable identity for one assignment *group* (all students who received the
+/// same homework) — mirrors `assignmentStableKey()` in `TeacherDashboard.jsx`.
+String _assignmentStableKey(Map<String, dynamic> item) {
+  final groupId = item['assignmentGroupId']?.toString().trim() ?? '';
+  if (groupId.isNotEmpty) return groupId;
+  return [
+    item['subject']?.toString() ?? '',
+    item['title']?.toString() ?? '',
+    item['className'] ?? item['class_name'] ?? '',
+    item['startAt'] ?? item['start_at'] ?? '',
+    item['dueAt'] ?? item['due_at'] ?? '',
+    item['createdAt'] ?? item['created_at'] ?? '',
+  ].join('|');
+}
+
+/// The backend returns one homework row per student; collapse those into one
+/// card per assignment group, keeping the most recently created row as the
+/// representative — mirrors web's `loadHomeworkHistory()` dedup step.
+List<Map<String, dynamic>> _dedupeAssignments(List<Map<String, dynamic>> items) {
+  final byKey = <String, Map<String, dynamic>>{};
+  for (final item in items) {
+    final key = _assignmentStableKey(item);
+    byKey[key] = item;
+  }
+  return byKey.values.toList();
+}
+
+/// True while the assignment is still active (mirrors web's auto-vanish rule:
+/// once `dueAt` passes, it drops out of "Recently assigned" and only remains
+/// visible via "View History").
+bool _isAssignmentActive(Map<String, dynamic> item) {
+  final due = _parseDate(item['dueAt'] ?? item['due_at']);
+  return due == null || due.isAfter(DateTime.now());
+}
+
+/// Mirrors `announcementScheduleLabel()` in `TeacherDashboard.jsx`.
+String _announcementScheduleLabel(Map<String, dynamic> a) {
+  final start = _parseDate(a['startAt'] ?? a['start_at']);
+  final end = _parseDate(a['endAt'] ?? a['end_at']);
+  final fmt = DateFormat('MMM d, h:mm a');
+  if (start != null && end != null) return 'Visible ${fmt.format(start)} \u2192 ${fmt.format(end)}';
+  if (start != null) return 'Visible from ${fmt.format(start)}';
+  if (end != null) return 'Visible until ${fmt.format(end)}';
+  return 'Always visible';
 }
 
 Future<DateTime?> _pickDateTime(BuildContext context, {DateTime? initial}) async {
@@ -205,10 +252,20 @@ class _AnnouncementsPanelState extends ConsumerState<_AnnouncementsPanel> {
   bool _posting = false;
   String? _error;
 
+  String? _editingAnnId;
+  final _editingTitleCtrl = TextEditingController();
+  final _editingMessageCtrl = TextEditingController();
+  DateTime? _editingVisibleFrom;
+  DateTime? _editingVisibleUntil;
+  bool _editingSaving = false;
+  String? _editingError;
+
   @override
   void dispose() {
     _titleCtrl.dispose();
     _messageCtrl.dispose();
+    _editingTitleCtrl.dispose();
+    _editingMessageCtrl.dispose();
     super.dispose();
   }
 
@@ -251,11 +308,91 @@ class _AnnouncementsPanelState extends ConsumerState<_AnnouncementsPanel> {
     }
   }
 
+  void _startEdit(Map<String, dynamic> a) {
+    setState(() {
+      _editingAnnId = a['id']?.toString();
+      _editingTitleCtrl.text = a['title']?.toString() ?? '';
+      _editingMessageCtrl.text = a['message']?.toString() ?? '';
+      _editingVisibleFrom = _parseDate(a['startAt'] ?? a['start_at']);
+      _editingVisibleUntil = _parseDate(a['endAt'] ?? a['end_at']);
+      _editingError = null;
+    });
+  }
+
+  void _cancelEdit() {
+    setState(() {
+      _editingAnnId = null;
+      _editingTitleCtrl.clear();
+      _editingMessageCtrl.clear();
+      _editingVisibleFrom = null;
+      _editingVisibleUntil = null;
+      _editingError = null;
+    });
+  }
+
+  Future<void> _saveEdit() async {
+    final id = _editingAnnId;
+    if (id == null || _editingTitleCtrl.text.trim().isEmpty || _editingMessageCtrl.text.trim().isEmpty) return;
+    if (_editingVisibleFrom != null && _editingVisibleUntil != null && !_editingVisibleUntil!.isAfter(_editingVisibleFrom!)) {
+      setState(() => _editingError = 'End time must be after the start time.');
+      return;
+    }
+    setState(() {
+      _editingSaving = true;
+      _editingError = null;
+    });
+    try {
+      await ref.read(teacherApiServiceProvider).updateAnnouncement(
+            id,
+            title: _editingTitleCtrl.text.trim(),
+            message: _editingMessageCtrl.text.trim(),
+            className: widget.targetClass == 'all' ? null : widget.targetClass,
+            startAt: _editingVisibleFrom?.toIso8601String(),
+            endAt: _editingVisibleUntil?.toIso8601String(),
+          );
+      ref.invalidate(teacherAnnouncementsProvider);
+      _cancelEdit();
+    } catch (e) {
+      setState(() => _editingError = e.toString().replaceFirst('Exception: ', ''));
+    } finally {
+      if (mounted) setState(() => _editingSaving = false);
+    }
+  }
+
+  Future<void> _deleteAnnouncement(String id) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Delete announcement?'),
+        content: const Text('This cannot be undone.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Delete', style: TextStyle(color: AppColors.danger))),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    try {
+      await ref.read(teacherApiServiceProvider).deleteAnnouncement(id);
+      if (_editingAnnId == id) _cancelEdit();
+      ref.invalidate(teacherAnnouncementsProvider);
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _error = e.toString().replaceFirst('Exception: ', ''));
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    final announcements = (ref.watch(teacherAnnouncementsProvider).value ?? const <Map<String, dynamic>>[])
-        .where((a) => widget.targetClass == 'all' || _sameClass(a['className'] ?? a['class_name'], widget.targetClass))
-        .toList();
+    // Unlike other panels, announcements have no useful "all classes" view —
+    // show nothing until a specific class is selected.
+    // Web only ever shows the 5 most recent per class — mirror that here too.
+    final announcements = widget.targetClass == 'all'
+        ? const <Map<String, dynamic>>[]
+        : (ref.watch(teacherAnnouncementsProvider).value ?? const <Map<String, dynamic>>[])
+            .where((a) => _sameClass(a['className'] ?? a['class_name'], widget.targetClass))
+            .take(5)
+            .toList();
 
     return _SectionCard(
       title: 'Announcements',
@@ -308,34 +445,133 @@ class _AnnouncementsPanelState extends ConsumerState<_AnnouncementsPanel> {
           ],
           const SizedBox(height: 14),
           if (announcements.isEmpty)
-            const Text('No announcements posted yet.', style: TextStyle(fontSize: 12, color: AppColors.muted))
+            Text(
+              widget.targetClass == 'all' ? 'Select a class to see its announcements.' : 'No announcements posted yet.',
+              style: const TextStyle(fontSize: 12, color: AppColors.muted),
+            )
           else
-            for (final a in announcements) _AnnouncementTile(announcement: a),
+            for (final a in announcements)
+              _AnnouncementTile(
+                announcement: a,
+                onEdit: () => _startEdit(a),
+                onDelete: () => _deleteAnnouncement(a['id']?.toString() ?? ''),
+              ),
+          if (_editingAnnId != null) ...[
+            const SizedBox(height: 14),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: AppColors.brandSoft,
+                border: Border.all(color: AppColors.brand, width: 2),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  const Text('Edit Announcement', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w800)),
+                  const SizedBox(height: 10),
+                  TextField(controller: _editingTitleCtrl, decoration: const InputDecoration(hintText: 'Announcement title')),
+                  const SizedBox(height: 8),
+                  TextField(controller: _editingMessageCtrl, maxLines: 3, decoration: const InputDecoration(hintText: 'Type announcement message')),
+                  const SizedBox(height: 10),
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(child: _DateTimeField(label: 'VISIBLE FROM (OPTIONAL)', value: _editingVisibleFrom, onChanged: (v) => setState(() => _editingVisibleFrom = v))),
+                      const SizedBox(width: 10),
+                      Expanded(child: _DateTimeField(label: 'VISIBLE UNTIL (OPTIONAL)', value: _editingVisibleUntil, onChanged: (v) => setState(() => _editingVisibleUntil = v))),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton(
+                          onPressed: _editingSaving ? null : _cancelEdit,
+                          child: const Text('Cancel'),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        flex: 2,
+                        child: ElevatedButton(
+                          onPressed: _editingSaving ? null : _saveEdit,
+                          child: Text(_editingSaving ? 'Saving...' : 'Save Changes'),
+                        ),
+                      ),
+                    ],
+                  ),
+                  if (_editingError != null) ...[
+                    const SizedBox(height: 8),
+                    Text(_editingError!, style: const TextStyle(fontSize: 12, color: AppColors.danger)),
+                  ],
+                ],
+              ),
+            ),
+          ],
         ],
       ),
     );
   }
 }
 
-class _AnnouncementTile extends StatelessWidget {
+class _AnnouncementTile extends StatefulWidget {
   final Map<String, dynamic> announcement;
+  final VoidCallback onEdit;
+  final VoidCallback onDelete;
 
-  const _AnnouncementTile({required this.announcement});
+  const _AnnouncementTile({required this.announcement, required this.onEdit, required this.onDelete});
+
+  @override
+  State<_AnnouncementTile> createState() => _AnnouncementTileState();
+}
+
+class _AnnouncementTileState extends State<_AnnouncementTile> {
+  bool _expanded = false;
 
   @override
   Widget build(BuildContext context) {
-    final title = announcement['title']?.toString() ?? '';
-    final message = announcement['message']?.toString() ?? '';
+    final title = widget.announcement['title']?.toString() ?? '';
+    final message = widget.announcement['message']?.toString() ?? '';
     return Container(
       margin: const EdgeInsets.only(top: 8),
-      padding: const EdgeInsets.all(10),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
       decoration: BoxDecoration(color: AppColors.background, borderRadius: BorderRadius.circular(8)),
-      child: Column(
+      child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(title, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
-          const SizedBox(height: 2),
-          Text(message, style: const TextStyle(fontSize: 12, color: AppColors.text)),
+          Expanded(
+            child: InkWell(
+              onTap: () => setState(() => _expanded = !_expanded),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Icon(_expanded ? Icons.keyboard_arrow_down_rounded : Icons.chevron_right_rounded, size: 16, color: AppColors.muted),
+                      Expanded(child: Text(title, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13))),
+                    ],
+                  ),
+                  if (_expanded) ...[
+                    const SizedBox(height: 2),
+                    Text(message, style: const TextStyle(fontSize: 12, color: AppColors.text)),
+                    const SizedBox(height: 4),
+                    Text(_announcementScheduleLabel(widget.announcement), style: const TextStyle(fontSize: 11, color: AppColors.muted)),
+                  ],
+                ],
+              ),
+            ),
+          ),
+          IconButton(
+            icon: const Icon(Icons.edit_outlined, color: AppColors.brand, size: 20),
+            tooltip: 'Edit',
+            onPressed: widget.onEdit,
+          ),
+          IconButton(
+            icon: const Icon(Icons.delete_outline_rounded, color: AppColors.danger, size: 20),
+            tooltip: 'Delete',
+            onPressed: widget.onDelete,
+          ),
         ],
       ),
     );
@@ -381,8 +617,22 @@ class _AssignHomeworkPanelState extends ConsumerState<_AssignHomeworkPanel> {
   bool _editingSaving = false;
   String? _editingInfo;
 
+  // Re-checks due dates every minute so an assignment quietly drops out of
+  // "Recently assigned" once it expires, without needing a manual refresh —
+  // mirrors the web's `setInterval(..., 60000)` active-assignment pruning.
+  Timer? _pruneTimer;
+
+  @override
+  void initState() {
+    super.initState();
+    _pruneTimer = Timer.periodic(const Duration(minutes: 1), (_) {
+      if (mounted) setState(() {});
+    });
+  }
+
   @override
   void dispose() {
+    _pruneTimer?.cancel();
     _titleCtrl.dispose();
     _noteCtrl.dispose();
     _editingTitleCtrl.dispose();
@@ -607,10 +857,23 @@ class _AssignHomeworkPanelState extends ConsumerState<_AssignHomeworkPanel> {
   Widget build(BuildContext context) {
     final subject = ref.watch(teacherProfileProvider).value?['subject']?.toString() ?? '';
     final lessons = ref.watch(teacherLessonsProvider).value ?? const <Map<String, dynamic>>[];
-    final classScoped = (ref.watch(teacherHomeworkProvider).value ?? const <Map<String, dynamic>>[])
-        .where((h) => widget.targetClass == 'all' || _sameClass(h['className'] ?? h['class_name'], widget.targetClass))
-        .toList();
-    final recent = classScoped.take(2).toList();
+    // Backend returns one row per student; collapse to one card per assignment
+    // group, same as web's `loadHomeworkHistory()` — this feeds both "View
+    // History" (full list) and "Recently assigned" (active-only, below).
+    final classScoped = _dedupeAssignments(
+      (ref.watch(teacherHomeworkProvider).value ?? const <Map<String, dynamic>>[])
+          .where((h) => widget.targetClass == 'all' || _sameClass(h['className'] ?? h['class_name'], widget.targetClass))
+          .toList(),
+    );
+    // "Recently assigned" only shows still-active assignments (due date not yet
+    // passed, or no due date), newest first — mirrors web's `activeAssignments`.
+    final recent = classScoped.where(_isAssignmentActive).toList()
+      ..sort((a, b) {
+        final aCreated = _parseDate(a['createdAt'] ?? a['created_at']) ?? DateTime(0);
+        final bCreated = _parseDate(b['createdAt'] ?? b['created_at']) ?? DateTime(0);
+        return bCreated.compareTo(aCreated);
+      });
+    final recentTop2 = recent.take(2).toList();
 
     return _SectionCard(
       title: '📝 Assign Homework',
@@ -749,10 +1012,10 @@ class _AssignHomeworkPanelState extends ConsumerState<_AssignHomeworkPanel> {
             const SizedBox(height: 8),
             Text(_info!, style: TextStyle(fontSize: 12, color: _info!.startsWith('✅') ? AppColors.ok : AppColors.danger)),
           ],
-          if (recent.isNotEmpty) ...[
+          if (recentTop2.isNotEmpty) ...[
             const SizedBox(height: 14),
             const Text('Recently assigned', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: AppColors.muted)),
-            for (final h in recent)
+            for (final h in recentTop2)
               _HomeworkTile(
                 homework: h,
                 onEdit: () => _startEdit(h),

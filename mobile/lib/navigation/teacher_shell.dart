@@ -1,20 +1,31 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../screens/teacher/teacher_ai_assistant_tab.dart';
 import '../screens/teacher/teacher_home_tab.dart';
+import '../screens/teacher/teacher_progress_tab.dart';
+import '../screens/teacher/teacher_students_tab.dart';
 import '../state/session_provider.dart';
 import '../state/teacher_providers.dart';
 import '../theme/app_colors.dart';
-import '../widgets/coming_soon_view.dart';
+import '../theme/subject_background.dart';
 
 /// The site-wide "3D button" frame — a light-black ring border + soft drop
 /// shadow, ported from `.eg-subject-hw-card button`/the Academics panel.
 const Color _frame3dColor = Color(0xFF46464E);
 
-Border _frame3dBorder({double alpha = 0.35, double width = 1.5}) => Border.all(color: _frame3dColor.withValues(alpha: alpha), width: width);
+Border _frame3dBorder({double alpha = 0.35, double width = 1.5}) => Border.all(
+  color: _frame3dColor.withValues(alpha: alpha),
+  width: width,
+);
 
-List<BoxShadow> _frame3dShadow({double alpha = 0.18, double blur = 10}) =>
-    [BoxShadow(color: Colors.black.withValues(alpha: alpha), blurRadius: blur, offset: const Offset(0, 4))];
+List<BoxShadow> _frame3dShadow({double alpha = 0.18, double blur = 10}) => [
+  BoxShadow(
+    color: Colors.black.withValues(alpha: alpha),
+    blurRadius: blur,
+    offset: const Offset(0, 4),
+  ),
+];
 
 class _TeacherNavItem {
   final IconData icon;
@@ -95,39 +106,64 @@ class _TeacherShellState extends ConsumerState<TeacherShell> {
   Widget build(BuildContext context) {
     final session = ref.watch(sessionProvider).value;
     final item = _navItems[_index];
+    final subject = ref
+        .watch(teacherProfileProvider)
+        .value?['subject']
+        ?.toString();
+    final palette = subjectBgPalette(subject);
     return Scaffold(
+      backgroundColor: palette.bg,
       appBar: AppBar(
-        title: Text(_index == 0
-            ? 'Hi, ${session?.name.isNotEmpty == true ? session!.name : 'Teacher'}'
-            : item.label),
+        title: Text(
+          _index == 0
+              ? 'Hi, ${session?.name.isNotEmpty == true ? session!.name : 'Teacher'}'
+              : item.label,
+        ),
         actions: [
-          IconButton(
-            icon: const Icon(Icons.logout_rounded),
-            onPressed: () => ref.read(sessionProvider.notifier).logout(),
+          PopupMenuButton<String>(
+            icon: const Icon(Icons.more_vert_rounded),
+            onSelected: (_) => ref.read(sessionProvider.notifier).logout(),
+            itemBuilder: (context) => [
+              const PopupMenuItem(
+                value: 'logout',
+                child: ListTile(
+                  leading: Icon(Icons.logout_rounded),
+                  title: Text('Logout'),
+                  contentPadding: EdgeInsets.zero,
+                ),
+              ),
+            ],
           ),
         ],
       ),
-      body: NotificationListener<ScrollNotification>(
-        onNotification: _onScrollNotification,
-        child: IndexedStack(
-          index: _index,
-          children: [
-            TeacherHomeTab(
-              activeClassBanner: _ActiveClassBanner(
-                classOptions: ref.watch(teacherClassOptionsProvider).value ?? const <String>[],
-                targetClass: ref.watch(teacherTargetClassProvider),
-                onChanged: (value) => ref.read(teacherTargetClassProvider.notifier).set(value),
-              ),
+      body: Stack(
+        children: [
+          SubjectBackground(subject: subject),
+          NotificationListener<ScrollNotification>(
+            onNotification: _onScrollNotification,
+            child: IndexedStack(
+              index: _index,
+              children: [
+                TeacherHomeTab(
+                  activeClassBanner: _ActiveClassBanner(
+                    classOptions:
+                        ref.watch(teacherClassOptionsProvider).value ??
+                        const <String>[],
+                    targetClass: ref.watch(teacherTargetClassProvider),
+                    onChanged: (value) => ref
+                        .read(teacherTargetClassProvider.notifier)
+                        .set(value),
+                  ),
+                ),
+                const TeacherAiAssistantTab(),
+                const TeacherStudentsTab(),
+                const TeacherProgressTab(),
+              ],
             ),
-            for (final navItem in _navItems.skip(1))
-              ComingSoonView(
-                icon: navItem.comingSoonIcon,
-                title: navItem.label,
-                subtitle: navItem.comingSoonSubtitle,
-              ),
-          ],
-        ),
+          ),
+        ],
       ),
+
       bottomNavigationBar: SafeArea(
         minimum: const EdgeInsets.fromLTRB(16, 0, 16, 10),
         child: _FloatingNavBar(
@@ -150,7 +186,12 @@ class _FloatingNavBar extends StatelessWidget {
   final List<_TeacherNavItem> items;
   final ValueChanged<int> onSelected;
 
-  const _FloatingNavBar({required this.compact, required this.selectedIndex, required this.items, required this.onSelected});
+  const _FloatingNavBar({
+    required this.compact,
+    required this.selectedIndex,
+    required this.items,
+    required this.onSelected,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -169,7 +210,12 @@ class _FloatingNavBar extends StatelessWidget {
         mainAxisAlignment: MainAxisAlignment.spaceEvenly,
         children: [
           for (var i = 0; i < items.length; i++)
-            _NavIconButton(item: items[i], selected: i == selectedIndex, compact: compact, onTap: () => onSelected(i)),
+            _NavIconButton(
+              item: items[i],
+              selected: i == selectedIndex,
+              compact: compact,
+              onTap: () => onSelected(i),
+            ),
         ],
       ),
     );
@@ -184,7 +230,12 @@ class _NavIconButton extends StatefulWidget {
   final bool compact;
   final VoidCallback onTap;
 
-  const _NavIconButton({required this.item, required this.selected, required this.compact, required this.onTap});
+  const _NavIconButton({
+    required this.item,
+    required this.selected,
+    required this.compact,
+    required this.onTap,
+  });
 
   @override
   State<_NavIconButton> createState() => _NavIconButtonState();
@@ -219,17 +270,31 @@ class _NavIconButtonState extends State<_NavIconButton> {
               width: size,
               height: size,
               decoration: BoxDecoration(
-                color: widget.selected ? AppColors.brandSoft : Colors.transparent,
+                color: widget.selected
+                    ? AppColors.brandSoft
+                    : Colors.transparent,
                 shape: BoxShape.circle,
                 border: _pressed ? _frame3dBorder(alpha: 0.4) : null,
                 boxShadow: _pressed ? _frame3dShadow(blur: 6) : null,
               ),
               alignment: Alignment.center,
-              child: Icon(widget.selected ? widget.item.selectedIcon : widget.item.icon, size: iconSize, color: color),
+              child: Icon(
+                widget.selected ? widget.item.selectedIcon : widget.item.icon,
+                size: iconSize,
+                color: color,
+              ),
             ),
             if (!widget.compact) ...[
               const SizedBox(height: 2),
-              Text(widget.item.label, style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: color), textAlign: TextAlign.center),
+              Text(
+                widget.item.label,
+                style: TextStyle(
+                  fontSize: 10,
+                  fontWeight: FontWeight.w600,
+                  color: color,
+                ),
+                textAlign: TextAlign.center,
+              ),
             ],
           ],
         ),
@@ -247,7 +312,11 @@ class _ActiveClassBanner extends StatelessWidget {
   final String targetClass;
   final ValueChanged<String> onChanged;
 
-  const _ActiveClassBanner({required this.classOptions, required this.targetClass, required this.onChanged});
+  const _ActiveClassBanner({
+    required this.classOptions,
+    required this.targetClass,
+    required this.onChanged,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -270,14 +339,22 @@ class _ActiveClassBanner extends StatelessWidget {
         children: [
           const Text(
             '📚 ACTIVE CLASS',
-            style: TextStyle(color: Colors.white70, fontSize: 11, fontWeight: FontWeight.w700, letterSpacing: 1.0),
+            style: TextStyle(
+              color: Colors.white70,
+              fontSize: 11,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 1.0,
+            ),
           ),
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 12),
             decoration: BoxDecoration(
               color: Colors.white.withValues(alpha: 0.1),
               borderRadius: BorderRadius.circular(9),
-              border: Border.all(color: Colors.white.withValues(alpha: 0.25), width: 1.5),
+              border: Border.all(
+                color: Colors.white.withValues(alpha: 0.25),
+                width: 1.5,
+              ),
             ),
             child: DropdownButtonHideUnderline(
               child: DropdownButton<String>(
@@ -285,10 +362,18 @@ class _ActiveClassBanner extends StatelessWidget {
                 dropdownColor: const Color(0xFF1B1E3C),
                 iconEnabledColor: Colors.white,
                 isDense: true,
-                style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w600),
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                ),
                 items: [
-                  const DropdownMenuItem(value: 'all', child: Text('— Select a class —')),
-                  for (final className in classOptions) DropdownMenuItem(value: className, child: Text(className)),
+                  const DropdownMenuItem(
+                    value: 'all',
+                    child: Text('— Select a class —'),
+                  ),
+                  for (final className in classOptions)
+                    DropdownMenuItem(value: className, child: Text(className)),
                 ],
                 onChanged: (value) {
                   if (value != null) onChanged(value);
@@ -301,20 +386,31 @@ class _ActiveClassBanner extends StatelessWidget {
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
               decoration: BoxDecoration(
                 // web: .td-class-banner-badge { background: linear-gradient(120deg, #5764c9, #7c5be6); }
-                gradient: const LinearGradient(colors: [Color(0xFF5764C9), Color(0xFF7C5BE6)]),
+                gradient: const LinearGradient(
+                  colors: [Color(0xFF5764C9), Color(0xFF7C5BE6)],
+                ),
                 borderRadius: BorderRadius.circular(20),
               ),
-              child: Text(targetClass, style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w700)),
+              child: Text(
+                targetClass,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
             ),
           Text(
             hasClass
                 ? 'All announcements, homework and tests below go to $targetClass.'
                 : 'Select a class — all actions below will apply to it.',
-            style: TextStyle(color: Colors.white.withValues(alpha: 0.5), fontSize: 11),
+            style: TextStyle(
+              color: Colors.white.withValues(alpha: 0.5),
+              fontSize: 11,
+            ),
           ),
         ],
       ),
     );
   }
 }
-

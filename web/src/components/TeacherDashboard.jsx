@@ -27,6 +27,8 @@ import {
   getTests,
   listTestQuestions,
   postTeacherAnnouncement,
+  updateTeacherAnnouncement,
+  deleteTeacherAnnouncement,
   updateTest,
   deleteTestQuestion,
   updateTestQuestion,
@@ -278,6 +280,12 @@ export default function TeacherDashboard({ session, onLogout }) {
   const [announcementMessage, setAnnouncementMessage] = useState('');
   const [announcementStartAt, setAnnouncementStartAt] = useState('');
   const [announcementEndAt, setAnnouncementEndAt] = useState('');
+  const [editingAnnId, setEditingAnnId] = useState(null);
+  const [editingAnnTitle, setEditingAnnTitle] = useState('');
+  const [editingAnnMessage, setEditingAnnMessage] = useState('');
+  const [editingAnnStartAt, setEditingAnnStartAt] = useState('');
+  const [editingAnnEndAt, setEditingAnnEndAt] = useState('');
+  const [expandedAnnouncementById, setExpandedAnnouncementById] = useState({});
 
   // Student accounts are created and managed by the school admin, so the
   // teacher portal only reads the roster — no registration or invite state here.
@@ -1239,8 +1247,10 @@ export default function TeacherDashboard({ session, onLogout }) {
     (clampedStudentPage + 1) * STUDENTS_PAGE_SIZE
   );
 
+  // Unlike other sections, announcements have no useful "all classes" view —
+  // show nothing until a specific class is selected.
   const classScopedAnnouncements = useMemo(
-    () => safeArray(announcements).filter((a) => isInTargetClass(a, teacherTargetClass)),
+    () => (teacherTargetClass === 'all' ? [] : safeArray(announcements).filter((a) => isInTargetClass(a, teacherTargetClass))),
     [announcements, teacherTargetClass]
   );
 
@@ -2010,6 +2020,67 @@ export default function TeacherDashboard({ session, onLogout }) {
     }
   }
 
+  function onStartEditAnnouncement(a) {
+    if (!a?.id) return;
+    setEditingAnnId(a.id);
+    setEditingAnnTitle(a.title || '');
+    setEditingAnnMessage(a.message || '');
+    setEditingAnnStartAt(a.startAt ? toLocalDateTimeInputValue(new Date(a.startAt)) : '');
+    setEditingAnnEndAt(a.endAt ? toLocalDateTimeInputValue(new Date(a.endAt)) : '');
+    setNote('');
+  }
+
+  function onCancelEditAnnouncement() {
+    setEditingAnnId(null);
+    setEditingAnnTitle('');
+    setEditingAnnMessage('');
+    setEditingAnnStartAt('');
+    setEditingAnnEndAt('');
+  }
+
+  async function onSaveAnnouncementEdit(e) {
+    e.preventDefault();
+    if (!editingAnnId || !editingAnnTitle.trim() || !editingAnnMessage.trim()) return;
+    if (editingAnnStartAt && editingAnnEndAt && new Date(editingAnnEndAt) <= new Date(editingAnnStartAt)) {
+      setNote('End time must be after the start time.');
+      return;
+    }
+    setBusy('editAnnouncement');
+    setNote('');
+    try {
+      await updateTeacherAnnouncement(editingAnnId, {
+        title: editingAnnTitle,
+        message: editingAnnMessage,
+        className: teacherTargetClass === 'all' ? undefined : teacherTargetClass,
+        startAt: editingAnnStartAt || null,
+        endAt: editingAnnEndAt || null
+      });
+      onCancelEditAnnouncement();
+      setNote('✅ Announcement updated.');
+      await loadAnnouncementsPanel();
+    } catch (e2) {
+      setNote(e2?.message || 'Failed to update announcement.');
+    } finally {
+      setBusy('');
+    }
+  }
+
+  async function onDeleteAnnouncement(id) {
+    if (!id) return;
+    if (!window.confirm('Delete this announcement? This cannot be undone.')) return;
+    setBusy(`deleteAnnouncement-${id}`);
+    try {
+      await deleteTeacherAnnouncement(id);
+      if (editingAnnId === id) onCancelEditAnnouncement();
+      setNote('Announcement deleted.');
+      await loadAnnouncementsPanel();
+    } catch (e2) {
+      setNote(e2?.message || 'Failed to delete announcement.');
+    } finally {
+      setBusy('');
+    }
+  }
+
   function exportCSV(filename, headers, rows) {
     const lines = [
       headers.join(','),
@@ -2184,16 +2255,73 @@ export default function TeacherDashboard({ session, onLogout }) {
                   {busy === 'announce' ? 'Posting...' : teacherTargetClass === 'all' ? 'Select a class first' : `Post to ${teacherTargetClass}`}
                 </button>
               </form>
+              {editingAnnId && (
+                <form className="td-form" style={{ background: '#f0f4ff', border: '2px solid #4f46e5', borderRadius: 8, padding: 12, marginTop: 10 }} onSubmit={onSaveAnnouncementEdit}>
+                  <h4 style={{ margin: '0 0 8px' }}>Edit Announcement</h4>
+                  <input value={editingAnnTitle} onChange={(e) => setEditingAnnTitle(e.target.value)} placeholder="Announcement title" />
+                  <textarea rows={3} value={editingAnnMessage} onChange={(e) => setEditingAnnMessage(e.target.value)} placeholder="Type announcement message" />
+                  <div className="td-announce-schedule">
+                    <div>
+                      <label className="td-field-label">Visible From (optional)</label>
+                      <input
+                        type="datetime-local"
+                        className="td-input"
+                        value={editingAnnStartAt}
+                        onChange={(e) => setEditingAnnStartAt(e.target.value)}
+                      />
+                    </div>
+                    <div>
+                      <label className="td-field-label">Visible Until (optional)</label>
+                      <input
+                        type="datetime-local"
+                        className="td-input"
+                        value={editingAnnEndAt}
+                        min={editingAnnStartAt || undefined}
+                        onChange={(e) => setEditingAnnEndAt(e.target.value)}
+                      />
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+                    <button type="button" onClick={onCancelEditAnnouncement} style={{ background: '#94a3b8' }}>Cancel</button>
+                    <button type="submit" disabled={busy === 'editAnnouncement'}>
+                      {busy === 'editAnnouncement' ? 'Saving...' : 'Save Changes'}
+                    </button>
+                  </div>
+                </form>
+              )}
               {panelError.announcements ? <p className="td-empty">{panelError.announcements}</p> : null}
               <ul className="td-announcements">
-                {classScopedAnnouncements.slice(0, 5).map((a) => (
-                  <li key={a.id || `${a.title}-${a.createdAt}`}>
-                    <strong>{a.title}</strong>
-                    <p>{a.message}</p>
-                    <span className="td-announce-schedule-badge">{announcementScheduleLabel(a)}</span>
-                  </li>
-                ))}
-                {!panelLoading.announcements && !classScopedAnnouncements.length ? <p className="td-empty">No announcements posted yet.</p> : null}
+                {classScopedAnnouncements.slice(0, 5).map((a) => {
+                  const annId = String(a.id || `${a.title}-${a.createdAt}`);
+                  const annExpanded = !!expandedAnnouncementById[annId];
+                  return (
+                    <li key={annId}>
+                      <button
+                        type="button"
+                        className="td-inline-btn"
+                        style={{ display: 'block', width: '100%', textAlign: 'left', padding: 0, background: 'none', border: 'none' }}
+                        onClick={() => setExpandedAnnouncementById((prev) => ({ ...prev, [annId]: !prev[annId] }))}
+                      >
+                        <strong>{annExpanded ? '▾' : '▸'} {a.title}</strong>
+                      </button>
+                      {annExpanded && (
+                        <>
+                          <p>{a.message}</p>
+                          <span className="td-announce-schedule-badge">{announcementScheduleLabel(a)}</span>
+                        </>
+                      )}
+                      <div style={{ display: 'flex', gap: 6, marginTop: 6 }}>
+                        <button type="button" onClick={() => onStartEditAnnouncement(a)} style={{ background: '#3498db', fontSize: 12, padding: '4px 10px' }}>Edit</button>
+                        <button type="button" onClick={() => onDeleteAnnouncement(a.id)} disabled={busy === `deleteAnnouncement-${a.id}`} style={{ background: '#e74c3c', fontSize: 12, padding: '4px 10px' }}>
+                          {busy === `deleteAnnouncement-${a.id}` ? 'Deleting...' : 'Delete'}
+                        </button>
+                      </div>
+                    </li>
+                  );
+                })}
+                {!panelLoading.announcements && !classScopedAnnouncements.length ? (
+                  <p className="td-empty">{teacherTargetClass === 'all' ? 'Select a class to see its announcements.' : 'No announcements posted yet.'}</p>
+                ) : null}
               </ul>
             </article>
 

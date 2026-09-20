@@ -1667,18 +1667,29 @@ export class TeacherController {
   @Get('announcements')
   async listAnnouncements(@Req() req: any) {
     this.ensureTeacher(req);
+    const nowIso = new Date().toISOString();
+    // `target_class` is the source of truth; older rows only carry it inside `audience` ("class:Class 8").
+    const classNameFromRow = (a: any) => a?.target_class || (String(a?.audience || '').startsWith('class:') ? String(a.audience).slice(6) : null);
     try {
+      // Auto-expire: once the visible-until time has passed, the announcement is gone for good.
+      await this.db.client.from('announcements').delete().lt('end_at', nowIso);
+      this.localFeed.removeExpiredAnnouncements(nowIso);
+
       const res = await this.db.client.from('announcements').select('*').order('created_at', { ascending: false }).limit(100);
       const rows = Array.isArray((res as any)?.data) ? (res as any).data : [];
-      const normalized = rows.map((a: any) => ({
-        id: a.id,
-        title: a.title || 'Announcement',
-        message: a.message || '',
-        audience: a.audience || 'students',
-        startAt: a.start_at || null,
-        endAt: a.end_at || null,
-        createdAt: a.created_at || null
-      }));
+      const normalized = rows
+        .filter((a: any) => !a.end_at || a.end_at >= nowIso)
+        .map((a: any) => ({
+          id: a.id,
+          title: a.title || 'Announcement',
+          message: a.message || '',
+          audience: a.audience || 'students',
+          className: classNameFromRow(a),
+          createdBy: a.created_by || null,
+          startAt: a.start_at || null,
+          endAt: a.end_at || null,
+          createdAt: a.created_at || null
+        }));
       return { success: true, announcements: normalized.length ? normalized : this.localFeed.listAnnouncements() };
     } catch (e) {
       return { success: true, announcements: this.localFeed.listAnnouncements() };
@@ -1710,6 +1721,8 @@ export class TeacherController {
           title: inserted.title,
           message: inserted.message,
           audience: inserted.audience,
+          className: targetClass,
+          createdBy: row.created_by,
           startAt: inserted.start_at ?? row.start_at,
           endAt: inserted.end_at ?? row.end_at,
           createdAt: inserted.created_at || row.created_at
@@ -1722,6 +1735,8 @@ export class TeacherController {
           title: inserted.title,
           message: inserted.message,
           audience: inserted.audience,
+          className: targetClass,
+          createdBy: row.created_by,
           startAt: inserted.start_at ?? row.start_at,
           endAt: inserted.end_at ?? row.end_at,
           createdAt: inserted.created_at || row.created_at
@@ -1733,6 +1748,8 @@ export class TeacherController {
         title: row.title,
         message: row.message,
         audience: row.audience,
+        className: targetClass,
+        createdBy: row.created_by,
         startAt: row.start_at,
         endAt: row.end_at,
         createdAt: row.created_at
@@ -1743,6 +1760,95 @@ export class TeacherController {
         error: String((e as any)?.message || e || 'announcement post failed'),
         announcement: local
       };
+    }
+  }
+
+  @Post('announcements/:id/update')
+  async updateAnnouncement(@Param('id') id: string, @Req() req: any, @Body() body: any) {
+    this.ensureTeacher(req);
+    const actorId = this.actorId(req);
+    const targetClass: string | null = body?.className || null;
+    const startAt = body?.startAt ? new Date(body.startAt).toISOString() : null;
+    const endAt = body?.endAt ? new Date(body.endAt).toISOString() : null;
+    const patch = {
+      title: body?.title || 'Announcement',
+      message: body?.message || '',
+      audience: targetClass ? `class:${targetClass}` : (body?.audience || 'students'),
+      target_class: targetClass,
+      start_at: startAt,
+      end_at: endAt,
+    };
+
+    try {
+      const seedRes = await this.db.client.from('announcements').select('*').eq('id', id).maybeSingle();
+      const seedRow = (seedRes as any)?.data || null;
+      if (seedRow) {
+        if (seedRow.created_by && String(seedRow.created_by) !== actorId) {
+          return { success: false, error: 'You can only edit announcements you created.' };
+        }
+        const res = await this.db.client.from('announcements').update(patch).eq('id', id).select();
+        const updated = (res as any)?.data?.[0] || { ...seedRow, ...patch };
+        return {
+          success: true,
+          announcement: {
+            id: updated.id,
+            title: updated.title,
+            message: updated.message,
+            audience: updated.audience,
+            className: targetClass,
+            createdBy: updated.created_by || null,
+            startAt: updated.start_at || null,
+            endAt: updated.end_at || null,
+            createdAt: updated.created_at || null
+          }
+        };
+      }
+
+      const localRow = this.localFeed.listAnnouncements().find((a: any) => String(a?.id || '') === String(id));
+      if (!localRow) return { success: false, error: 'Announcement not found' };
+      if (localRow.createdBy && String(localRow.createdBy) !== actorId) {
+        return { success: false, error: 'You can only edit announcements you created.' };
+      }
+      const updated = this.localFeed.updateAnnouncement(id, {
+        title: patch.title,
+        message: patch.message,
+        audience: patch.audience,
+        className: targetClass,
+        startAt,
+        endAt,
+      });
+      return { success: true, announcement: updated };
+    } catch (e) {
+      return { success: false, error: String((e as any)?.message || e || 'Failed to update announcement') };
+    }
+  }
+
+  @Delete('announcements/:id')
+  async deleteAnnouncement(@Param('id') id: string, @Req() req: any) {
+    this.ensureTeacher(req);
+    const actorId = this.actorId(req);
+
+    try {
+      const seedRes = await this.db.client.from('announcements').select('*').eq('id', id).maybeSingle();
+      const seedRow = (seedRes as any)?.data || null;
+      if (seedRow) {
+        if (seedRow.created_by && String(seedRow.created_by) !== actorId) {
+          return { success: false, error: 'You can only delete announcements you created.' };
+        }
+        await this.db.client.from('announcements').delete().eq('id', id);
+        this.localFeed.removeAnnouncementById(id);
+        return { success: true, deleted: 1 };
+      }
+
+      const localRow = this.localFeed.listAnnouncements().find((a: any) => String(a?.id || '') === String(id));
+      if (!localRow) return { success: false, error: 'Announcement not found' };
+      if (localRow.createdBy && String(localRow.createdBy) !== actorId) {
+        return { success: false, error: 'You can only delete announcements you created.' };
+      }
+      const removed = this.localFeed.removeAnnouncementById(id);
+      return { success: removed, deleted: removed ? 1 : 0 };
+    } catch (e) {
+      return { success: false, error: String((e as any)?.message || e || 'Failed to delete announcement') };
     }
   }
 

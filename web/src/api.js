@@ -1047,6 +1047,29 @@ export async function postTeacherAnnouncement(payload) {
   return res.json();
 }
 
+export async function updateTeacherAnnouncement(id, payload) {
+  const headers = await authHeaders();
+  const res = await fetch(`${API_BASE}/teacher/announcements/${encodeURIComponent(id)}/update`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify(payload || {})
+  });
+  if (!res.ok) throw new Error(`updateTeacherAnnouncement failed: ${res.status}`);
+  const data = await res.json();
+  return checkSuccess(data, 'updateTeacherAnnouncement');
+}
+
+export async function deleteTeacherAnnouncement(id) {
+  const headers = await authHeaders();
+  const res = await fetch(`${API_BASE}/teacher/announcements/${encodeURIComponent(id)}`, {
+    method: 'DELETE',
+    headers
+  });
+  if (!res.ok) throw new Error(`deleteTeacherAnnouncement failed: ${res.status}`);
+  const data = await res.json();
+  return checkSuccess(data, 'deleteTeacherAnnouncement');
+}
+
 export async function askTeacherAi(prompt) {
   const headers = await authHeaders();
   const url = `${API_BASE}/teacher/ai/assist`;
@@ -1278,6 +1301,8 @@ const api = {
   getTeacherHomeworkAttempts,
   getTeacherAnnouncements,
   postTeacherAnnouncement,
+  updateTeacherAnnouncement,
+  deleteTeacherAnnouncement,
   askTeacherAi,
   createCurriculumLesson,
   listCurriculumLessons,
