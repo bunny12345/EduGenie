@@ -1271,9 +1271,26 @@ export class ChatService {
 
     // Keep request payload bounded to avoid oversized TTS calls.
     const spokenText = sourceText.slice(0, 2200);
-    const ttsVoice = String(voice || process.env.OPENAI_TTS_VOICE || 'ash').trim();
-    const ttsModel = String(process.env.OPENAI_TTS_MODEL || 'tts-1').trim();
+    // 'shimmer' is OpenAI's brighter, younger-sounding female voice — used as
+    // Sam's default voice across web and mobile.
+    const ttsVoice = String(voice || process.env.OPENAI_TTS_VOICE || 'shimmer').trim();
+    // 'gpt-4o-mini-tts' (unlike tts-1/tts-1-hd) supports the `instructions`
+    // field below, which is what actually makes Sam sound energetic/
+    // storytelling rather than just picking a different named voice.
+    const ttsModel = String(process.env.OPENAI_TTS_MODEL || 'gpt-4o-mini-tts').trim();
     const ttsSpeed = Number.isFinite(Number(speed)) ? Math.max(0.25, Math.min(4, Number(speed))) : 1.15;
+    // Sam's speaking style — energetic, warm, and interactive like she's
+    // telling an exciting story to a kid, not a flat narrator. Only honored
+    // by gpt-4o-mini-tts; harmless no-op if OPENAI_TTS_MODEL is set to an
+    // older tts-1/tts-1-hd model.
+    const ttsInstructions = String(
+      process.env.OPENAI_TTS_INSTRUCTIONS ||
+      "Speak as Sam, a warm, upbeat teenage girl who is a friendly school tutor for kids. " +
+      "Sound genuinely excited and interactive, like you're chatting one-on-one with a curious " +
+      "student — lots of energy, warmth, and encouragement. When explaining something or telling " +
+      "a story, lean into it: vary your pacing and tone for dramatic or fun moments, like an " +
+      "engaging storyteller, but keep it clear and easy for a child to follow."
+    ).trim();
 
     const apiKey = String(process.env.OPENAI_API_KEY || '').trim();
     if (!apiKey) {
@@ -1294,6 +1311,7 @@ export class ChatService {
           voice: ttsVoice,
           speed: ttsSpeed,
           response_format: 'mp3',
+          ...(ttsModel.startsWith('gpt-4o-mini-tts') ? { instructions: ttsInstructions } : {}),
         })
       });
 

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../models/chat_message.dart';
@@ -169,8 +171,13 @@ class TutorState {
 /// `StudentDashboard.jsx` (getCurrentTutorConversationId, loadChatPanel,
 /// onSendTutorMessage) but scoped to a single notifier for mobile.
 class TutorNotifier extends Notifier<TutorState> {
+  Timer? _pollTimer;
+
   @override
-  TutorState build() => const TutorState();
+  TutorState build() {
+    ref.onDispose(() => _pollTimer?.cancel());
+    return const TutorState();
+  }
 
   /// Called once the student's subject list resolves, to pick a default —
   /// mirrors the "reset to first subject" effect in StudentDashboard.jsx.
@@ -181,13 +188,21 @@ class TutorNotifier extends Notifier<TutorState> {
 
   void setSubject(String subject) {
     if (subject == state.subject) return;
+    _pollTimer?.cancel();
     state = TutorState(subject: subject);
     loadDueReviewNudge();
   }
 
   Future<void> selectLesson(CurriculumLesson? lesson) async {
     state = TutorState(subject: state.subject, lesson: lesson);
-    if (lesson != null) await loadHistory();
+    _pollTimer?.cancel();
+    if (lesson != null) {
+      await loadHistory();
+      // Keeps this conversation in sync with web (or other clients) sending
+      // messages on the same conversationId — same idea as web's chat poll,
+      // just on the mobile side too.
+      _pollTimer = Timer.periodic(const Duration(seconds: 6), (_) => _pollHistory());
+    }
     loadDueReviewNudge();
   }
 
@@ -202,6 +217,27 @@ class TutorNotifier extends Notifier<TutorState> {
       state = state.copyWith(messages: messages, loadingHistory: false);
     } catch (e) {
       state = state.copyWith(loadingHistory: false, error: e.toString());
+    }
+  }
+
+  /// Silent background re-fetch used by the poll timer — unlike `loadHistory()`,
+  /// skips while a send is in flight (so it can't clobber the optimistic
+  /// message) and no-ops if nothing actually changed, to avoid needless rebuilds.
+  Future<void> _pollHistory() async {
+    final studentId = ref.read(sessionProvider).value?.userId ?? '';
+    final lesson = state.lesson;
+    if (studentId.isEmpty || lesson == null || state.sending) return;
+    try {
+      final convId = conversationIdFor(studentId, state.subject, lesson.id);
+      final messages = await ref.read(chatApiServiceProvider).getChatHistory(studentId, convId);
+      final unchanged = messages.length == state.messages.length &&
+          (messages.isEmpty || messages.last.id == state.messages.last.id) &&
+          (messages.isEmpty || messages.last.text == state.messages.last.text);
+      if (!unchanged) {
+        state = state.copyWith(messages: messages);
+      }
+    } catch (_) {
+      /* best-effort — a poll failing silently is fine, the next tick retries */
     }
   }
 

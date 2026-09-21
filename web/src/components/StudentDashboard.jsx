@@ -1060,6 +1060,31 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
     }
   }
 
+  // Lightweight re-fetch used by the polling effect below — unlike
+  // loadChatPanel(), this does NOT reset follow-up chips or re-run the
+  // once-per-day auto-greeting, so it can run silently in the background
+  // without disturbing whatever the student is currently looking at. Keeps
+  // the web and mobile apps' chat views in sync when the same conversation
+  // is used from both (e.g. a message sent on mobile shows up here too).
+  async function pollChatHistory() {
+    if (chatLoading) return; // don't clobber an in-flight send
+    try {
+      const conversationId = getCurrentTutorConversationId();
+      const res = await getChatHistory(studentId, conversationId);
+      const history = withoutAutoStarters(res?.messages);
+      setChatHistory((prev) => {
+        const prevLast = prev[prev.length - 1];
+        const nextLast = history[history.length - 1];
+        const unchanged = prev.length === history.length
+          && prevLast?.id === nextLast?.id
+          && prevLast?.text === nextLast?.text;
+        return unchanged ? prev : history;
+      });
+    } catch {
+      /* best-effort — a poll failing silently is fine, the next tick retries */
+    }
+  }
+
   useEffect(() => {
     let active = true;
     async function loadAll() {
@@ -1099,6 +1124,17 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
     loadChatPanel(getCurrentTutorConversationId());
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [studentId, tutorSubject, selectedTutorLesson?.id, tutorLessons]);
+
+  // Keeps this conversation's chat in sync with the mobile app (and other
+  // browser tabs) — polls the same history endpoint every few seconds while
+  // a lesson is open, same pattern as the dashboard/homework/progress poll
+  // below just on a shorter interval since chat is more time-sensitive.
+  useEffect(() => {
+    if (!selectedTutorLesson) return;
+    const timer = setInterval(pollChatHistory, 6000);
+    return () => clearInterval(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedTutorLesson?.id, studentId]);
 
   useEffect(() => {
     // Follow the class's actual subjects: pick the first one, and clear the
@@ -2388,7 +2424,7 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
 
       let played = false;
       try {
-        const tts = await generateLocalTtsAudio(speechText, 'en-US', studentId, 'ash', 1.15);
+        const tts = await generateLocalTtsAudio(speechText, 'en-US', studentId, 'shimmer', 1.15);
         // If Sam was closed while awaiting TTS, abort playback
         if (!samSessionActiveRef.current) { setTalkToSamSpeaking(false); return; }
         const audioBase64 = String(tts?.audioBase64 || '').trim();

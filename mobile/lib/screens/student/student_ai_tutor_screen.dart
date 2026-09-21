@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -10,6 +11,7 @@ import '../../state/student_providers.dart';
 import '../../state/talk_to_sam_provider.dart';
 import '../../state/tutor_providers.dart';
 import '../../theme/ai_tutor_colors.dart';
+import '../../widgets/pressable_scale.dart';
 import '../../widgets/section_card.dart';
 
 /// AI Tutor — full mirror of the web app's tutor panel (StudentDashboard.jsx
@@ -142,24 +144,19 @@ class _StudentAiTutorScreenState extends ConsumerState<StudentAiTutorScreen> {
               Expanded(
                 child: tutorState.lesson == null
                     ? const _SelectLessonPrompt()
-                    : Stack(
-                        children: [
-                          _ChatArea(tutorState: tutorState, scrollCtrl: _scrollCtrl, onFollowupTap: _send, speed: _speed),
-                          if (tutorState.checkQuestion != null)
-                            Align(alignment: Alignment.bottomCenter, child: _CheckQuestionCard()),
-                          if (tutorState.explainBackActive)
-                            Align(
-                              alignment: Alignment.bottomCenter,
-                              child: _ExplainBackPanel(controller: _explainBackCtrl),
-                            ),
-                          if (tutorState.storyActive) Align(alignment: Alignment.bottomCenter, child: _StoryPanel()),
-                        ],
-                      ),
+                    : _ChatArea(tutorState: tutorState, scrollCtrl: _scrollCtrl, onFollowupTap: _send, speed: _speed),
               ),
+              // Rendered in-flow (not overlaid on the chat like before) so this text
+              // never visually collides with chat bubbles behind it — matches web,
+              // where these panels are normal blocks below the chat.
+              if (tutorState.checkQuestion != null) _CheckQuestionCard(),
+              if (tutorState.explainBackActive) _ExplainBackPanel(controller: _explainBackCtrl),
+              if (tutorState.storyActive) _StoryPanel(),
               if (tutorState.quizRushActive) _QuizRushPanel(),
               if (tutorState.lesson != null &&
                   !tutorState.sending &&
                   tutorState.messages.isNotEmpty &&
+                  tutorState.checkQuestion == null &&
                   !tutorState.quizRushActive &&
                   !tutorState.explainBackActive &&
                   !tutorState.storyActive)
@@ -248,14 +245,19 @@ class _DarkDropdown<T> extends StatelessWidget {
       decoration: BoxDecoration(
         color: AiTutorColors.selectBg,
         border: Border.all(color: AiTutorColors.border),
-        borderRadius: BorderRadius.circular(9),
+        // Matches web's `.eg-ai-select { border-radius: 11px }` exactly.
+        borderRadius: BorderRadius.circular(11),
       ),
       child: DropdownButtonHideUnderline(
         child: DropdownButton<T>(
           value: value,
           isExpanded: true,
           isDense: true,
-          dropdownColor: const Color(0xFF12205E),
+          // Same dark-navy family as the closed select box (`AiTutorColors.selectBg`)
+          // and web's `.eg-ai-select` background, with rounded corners on the
+          // popup itself (Flutter's default dropdown menu has square corners).
+          dropdownColor: const Color(0xFF0E1D60),
+          borderRadius: BorderRadius.circular(11),
           icon: const Icon(Icons.keyboard_arrow_down_rounded, color: AiTutorColors.selectText, size: 16),
           hint: Text(hint, style: const TextStyle(fontSize: 12.5, color: AiTutorColors.mutedText)),
           items: items,
@@ -398,57 +400,98 @@ class _MessageBubble extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final isUser = message.isUser;
+    final talkState = ref.watch(talkToSamProvider);
+    final isPlaying = talkState.playingMessageId == message.id;
+    final isLoading = talkState.loadingMessageId == message.id;
+    // Disabled if some OTHER audio (another message's Play Voice, or Sam's
+    // own voice-loop reply) is currently loading/playing — mirrors web's
+    // `disabled={(chatVoiceLoadingId && !isVoicePlaying) || (talkToSamSpeaking
+    // && !isVoicePlaying)}`.
+    final voiceDisabled = !isPlaying && (talkState.loadingMessageId != null || talkState.speaking);
+    final voiceLabel = isLoading ? 'Generating Voice...' : (isPlaying ? 'Stop Voice' : 'Play Voice');
+    final voiceTextColor = const Color(0xFFD8FFF3).withValues(alpha: voiceDisabled ? 0.58 : 1);
+
     return Align(
       alignment: isUser ? Alignment.centerRight : Alignment.centerLeft,
-      child: Column(
-        crossAxisAlignment: isUser ? CrossAxisAlignment.end : CrossAxisAlignment.start,
-        children: [
-          Container(
-            constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.78),
-            margin: const EdgeInsets.only(top: 4),
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-            decoration: BoxDecoration(
-              gradient: isUser
-                  ? const LinearGradient(colors: [AiTutorColors.userBubbleStart, AiTutorColors.userBubbleEnd])
-                  : null,
-              color: isUser ? null : AiTutorColors.botBubble,
-              border: Border.all(color: isUser ? Colors.transparent : AiTutorColors.botBubbleBorder),
-              borderRadius: BorderRadius.circular(14),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                if (message.imageDataUrls.isNotEmpty)
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 8),
-                    child: Wrap(
-                      spacing: 6,
-                      runSpacing: 6,
-                      children: message.imageDataUrls
-                          .map((url) => ClipRRect(
-                                borderRadius: BorderRadius.circular(8),
-                                child: Image.memory(base64Decode(url.split(',').last), width: 90, height: 90, fit: BoxFit.cover),
-                              ))
-                          .toList(),
+      child: Container(
+        constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.78),
+        margin: const EdgeInsets.only(top: 4),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+        decoration: BoxDecoration(
+          gradient: isUser
+              ? const LinearGradient(colors: [AiTutorColors.userBubbleStart, AiTutorColors.userBubbleEnd])
+              : null,
+          color: isUser ? null : AiTutorColors.botBubble,
+          border: Border.all(color: isUser ? Colors.transparent : AiTutorColors.botBubbleBorder),
+          // "Message tail" shape — matches web's `.ai-msg.bot`/`.ai-msg.user`
+          // (sharp corner on the side that points to the avatar/edge, 14px
+          // everywhere else) instead of a uniform rounded rectangle.
+          borderRadius: isUser
+              ? const BorderRadius.only(topLeft: Radius.circular(14), topRight: Radius.circular(14), bottomLeft: Radius.circular(14), bottomRight: Radius.circular(5))
+              : const BorderRadius.only(topLeft: Radius.circular(14), topRight: Radius.circular(14), bottomRight: Radius.circular(14), bottomLeft: Radius.circular(5)),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (message.imageDataUrls.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: Wrap(
+                  spacing: 6,
+                  runSpacing: 6,
+                  children: message.imageDataUrls
+                      .map((url) => ClipRRect(
+                            borderRadius: BorderRadius.circular(8),
+                            child: Image.memory(base64Decode(url.split(',').last), width: 90, height: 90, fit: BoxFit.cover),
+                          ))
+                      .toList(),
+                ),
+              ),
+            Text(message.text, style: TextStyle(color: isUser ? Colors.white : AiTutorColors.botText, fontSize: 14, height: 1.5)),
+            // Rendered inside the same bubble (matches web's `.eg-ai-msg-actions`
+            // sitting inside `.ai-msg`) instead of as a separate row below it —
+            // saves vertical space in the chat so more messages fit on screen.
+            if (!isUser)
+              Padding(
+                padding: const EdgeInsets.only(top: 10),
+                child: Align(
+                  alignment: Alignment.centerRight,
+                  child: PressableScale(
+                    onTap: voiceDisabled
+                        ? null
+                        : () {
+                            if (isPlaying) {
+                              ref.read(talkToSamProvider.notifier).stopSpeaking();
+                            } else {
+                              ref.read(talkToSamProvider.notifier).speak(message.text, messageId: message.id);
+                            }
+                          },
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+                      decoration: BoxDecoration(
+                        gradient: const LinearGradient(
+                          begin: Alignment.topCenter,
+                          end: Alignment.bottomCenter,
+                          colors: [Color(0x471EAB88), Color(0x33118A73)],
+                        ),
+                        border: Border.all(color: const Color(0x7A92FFDF)),
+                        borderRadius: BorderRadius.circular(9),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.volume_up_rounded, size: 13, color: voiceTextColor),
+                          const SizedBox(width: 4),
+                          Text(voiceLabel, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: voiceTextColor)),
+                        ],
+                      ),
                     ),
                   ),
-                Text(message.text, style: TextStyle(color: isUser ? Colors.white : AiTutorColors.botText, fontSize: 14, height: 1.5)),
-              ],
-            ),
-          ),
-          if (!isUser)
-            Consumer(builder: (context, ref, _) {
-              final talkState = ref.watch(talkToSamProvider);
-              final speaking = talkState.speaking;
-              return TextButton.icon(
-                onPressed: speaking ? null : () => ref.read(talkToSamProvider.notifier).speak(message.text),
-                icon: const Icon(Icons.volume_up_rounded, size: 13, color: Color(0xFFD8FFF3)),
-                label: Text(speaking ? 'Sam is talking…' : 'Play Voice', style: const TextStyle(fontSize: 11, color: Color(0xFFD8FFF3), fontWeight: FontWeight.w700)),
-                style: TextButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 4), minimumSize: const Size(0, 26)),
-              );
-            }),
-        ],
+                ),
+              ),
+          ],
+        ),
       ),
     );
   }
@@ -466,6 +509,7 @@ class _ActionsToggle extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final quizRushLoading = ref.watch(tutorProvider.select((s) => s.quizRushLoading));
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12),
       child: Column(
@@ -515,9 +559,9 @@ class _ActionsToggle extends ConsumerWidget {
                         onPressed: () => ref.read(tutorProvider.notifier).startExplainBack(),
                       ),
                       _ActionButton(
-                        label: '⚡ Quiz Rush',
+                        label: quizRushLoading ? '⏳ Loading...' : '⚡ Quiz Rush',
                         color: AiTutorColors.rushAction,
-                        onPressed: () => ref.read(tutorProvider.notifier).startQuizRush(),
+                        onPressed: quizRushLoading ? null : () => ref.read(tutorProvider.notifier).startQuizRush(),
                       ),
                       _ActionButton(
                         label: '📖 Story Mode',
@@ -573,6 +617,11 @@ class _ActionButton extends StatelessWidget {
       style: ElevatedButton.styleFrom(
         backgroundColor: color,
         foregroundColor: Colors.white,
+        // Keep the button's own brand color while disabled (dimmed, like web's
+        // `.eg-ai-action-btn:disabled { opacity: 0.5 }`) instead of Flutter's
+        // default grey disabled style, which blended into the dark background.
+        disabledBackgroundColor: color.withValues(alpha: 0.5),
+        disabledForegroundColor: Colors.white.withValues(alpha: 0.7),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
       ),
@@ -986,35 +1035,199 @@ class _AttachButton extends StatelessWidget {
   }
 }
 
-class _TalkToSamMicButton extends ConsumerWidget {
+class _TalkToSamMicButton extends ConsumerStatefulWidget {
   final TalkToSamState talkState;
 
   const _TalkToSamMicButton({required this.talkState});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<_TalkToSamMicButton> createState() => _TalkToSamMicButtonState();
+}
+
+class _TalkToSamMicButtonState extends ConsumerState<_TalkToSamMicButton> with SingleTickerProviderStateMixin {
+  late final AnimationController _pulseCtrl;
+
+  bool get _active => widget.talkState.recording || widget.talkState.speaking;
+
+  @override
+  void initState() {
+    super.initState();
+    _pulseCtrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 1200));
+    if (_active) _pulseCtrl.repeat(reverse: true);
+  }
+
+  @override
+  void didUpdateWidget(covariant _TalkToSamMicButton oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (_active && !_pulseCtrl.isAnimating) {
+      _pulseCtrl.repeat(reverse: true);
+    } else if (!_active && _pulseCtrl.isAnimating) {
+      _pulseCtrl.stop();
+      _pulseCtrl.value = 0;
+    }
+  }
+
+  @override
+  void dispose() {
+    _pulseCtrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final talkState = widget.talkState;
     final disabled = !talkState.open && (talkState.speaking || talkState.busy);
-    return GestureDetector(
-      onTap: disabled ? null : () => ref.read(talkToSamProvider.notifier).togglePopup(),
-      child: Container(
-        width: 42,
-        height: 42,
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          gradient: talkState.recording
-              ? const LinearGradient(colors: [Color(0xFFDC3C50), Color(0xFFB4283C)])
-              : const LinearGradient(colors: [Color(0xFF4A7CF7), Color(0xFF2D5FD4)]),
-          border: Border.all(color: const Color(0xB278A0FF), width: 2),
-        ),
-        alignment: Alignment.center,
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(talkState.open ? Icons.close_rounded : Icons.mic_rounded, color: Colors.white, size: 16),
-            const Text('SAM', style: TextStyle(color: Colors.white, fontSize: 6, fontWeight: FontWeight.w700)),
-          ],
-        ),
-      ),
+    // Red while recording, green while Sam is speaking, blue otherwise — mirrors
+    // web's `.eg-talk-sam-mic.recording`/`.speaking` gradients.
+    final gradientColors = talkState.recording
+        ? const [Color(0xFFDC3C50), Color(0xFFB4283C)]
+        : talkState.speaking
+            ? const [Color(0xFF28B464), Color(0xFF1E8C50)]
+            : const [Color(0xFF4A7CF7), Color(0xFF2D5FD4)];
+    final glowColor = talkState.recording
+        ? const Color(0xFFFF6478)
+        : talkState.speaking
+            ? const Color(0xFF64DC96)
+            : const Color(0xFF648CFF);
+
+    return AnimatedBuilder(
+      animation: _pulseCtrl,
+      builder: (context, _) {
+        final pulse = _active ? _pulseCtrl.value : 0.0;
+        return GestureDetector(
+          onTap: disabled ? null : () => ref.read(talkToSamProvider.notifier).togglePopup(),
+          child: Container(
+            width: 42,
+            height: 42,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              gradient: LinearGradient(colors: gradientColors),
+              border: Border.all(color: const Color(0xB278A0FF), width: 2),
+              // Two-layer pulsing glow — mirrors web's `egMicPulse` keyframes
+              // (`0 4px 16-24px` soft blur + `0 0 0 3-6px` expanding ring).
+              boxShadow: _active
+                  ? [
+                      BoxShadow(
+                        color: glowColor.withValues(alpha: 0.4 + 0.2 * pulse),
+                        offset: const Offset(0, 4),
+                        blurRadius: 16 + 8 * pulse,
+                      ),
+                      BoxShadow(
+                        color: glowColor.withValues(alpha: 0.2 + 0.1 * pulse),
+                        spreadRadius: 3 + 3 * pulse,
+                      ),
+                    ]
+                  : null,
+            ),
+            alignment: Alignment.center,
+            child: Stack(
+              clipBehavior: Clip.none,
+              alignment: Alignment.center,
+              children: [
+                Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(talkState.open ? Icons.close_rounded : Icons.mic_rounded, color: Colors.white, size: 16),
+                    const Text('SAM', style: TextStyle(color: Colors.white, fontSize: 6, fontWeight: FontWeight.w700)),
+                  ],
+                ),
+                if (_active)
+                  const Positioned(
+                    bottom: -8,
+                    child: _Waveform(active: true, barCount: 5, minHeight: 4, maxHeight: 10, barWidth: 2.5, spacing: 2, colors: [Colors.white]),
+                  ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+/// Animated bar waveform — mirrors web's `egWaveBarBounce`/`egPopupWave`
+/// keyframes (staggered bars bouncing between a min/max height). Used both
+/// on the mic button (5 white bars) and the status panel (12 colored bars).
+class _Waveform extends StatefulWidget {
+  final bool active;
+  final int barCount;
+  final double minHeight;
+  final double maxHeight;
+  final double barWidth;
+  final double spacing;
+  final List<Color> colors;
+  final Duration duration;
+
+  const _Waveform({
+    required this.active,
+    this.barCount = 5,
+    this.minHeight = 4,
+    this.maxHeight = 12,
+    this.barWidth = 3,
+    this.spacing = 2,
+    required this.colors,
+    this.duration = const Duration(milliseconds: 700),
+  });
+
+  @override
+  State<_Waveform> createState() => _WaveformState();
+}
+
+class _WaveformState extends State<_Waveform> with SingleTickerProviderStateMixin {
+  late final AnimationController _ctrl;
+
+  @override
+  void initState() {
+    super.initState();
+    _ctrl = AnimationController(vsync: this, duration: widget.duration);
+    if (widget.active) _ctrl.repeat();
+  }
+
+  @override
+  void didUpdateWidget(covariant _Waveform oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.active && !_ctrl.isAnimating) {
+      _ctrl.repeat();
+    } else if (!widget.active && _ctrl.isAnimating) {
+      _ctrl.stop();
+    }
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _ctrl,
+      builder: (context, _) {
+        return Row(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: List.generate(widget.barCount, (i) {
+            final phase = (_ctrl.value + i / widget.barCount) % 1.0;
+            final t = widget.active ? (0.5 + 0.5 * math.sin(phase * 2 * math.pi)) : 0.0;
+            final height = widget.minHeight + (widget.maxHeight - widget.minHeight) * t;
+            return Padding(
+              padding: EdgeInsets.only(right: i == widget.barCount - 1 ? 0 : widget.spacing),
+              child: Container(
+                width: widget.barWidth,
+                height: widget.active ? height : widget.minHeight,
+                decoration: BoxDecoration(
+                  color: widget.colors.length == 1 ? widget.colors.first : null,
+                  gradient: widget.colors.length > 1
+                      ? LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: widget.colors)
+                      : null,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+            );
+          }),
+        );
+      },
     );
   }
 }
@@ -1066,6 +1279,22 @@ class _TalkToSamPanel extends ConsumerWidget {
             : talkState.busy
                 ? '💭 Sam is thinking...'
                 : '✨ Sam is ready';
+    // Colors/animation speed per state — mirrors web's
+    // `.eg-talk-sam-status-bar.recording/.speaking/.thinking` classes.
+    final waveActive = talkState.recording || talkState.speaking || talkState.busy;
+    final waveColors = talkState.recording
+        ? const [Color(0xFFFF788C), Color(0xFFDC5064)]
+        : talkState.speaking
+            ? const [Color(0xFF64DCA0), Color(0xFF3CB478)]
+            : talkState.busy
+                ? const [Color(0x80C8B4FF)]
+                : const [Color(0x59A0C0FF)];
+    final waveDuration = talkState.busy ? const Duration(milliseconds: 800) : const Duration(milliseconds: 500);
+    final labelColor = talkState.recording
+        ? const Color(0xFFFFB4BE)
+        : talkState.speaking
+            ? const Color(0xFF96FFBE)
+            : Colors.white70;
 
     return Container(
       padding: const EdgeInsets.all(12),
@@ -1097,7 +1326,23 @@ class _TalkToSamPanel extends ConsumerWidget {
             ],
           ),
           const SizedBox(height: 6),
-          Text(statusLabel, style: const TextStyle(color: Colors.white70, fontSize: 12)),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              _Waveform(
+                active: waveActive,
+                barCount: 12,
+                minHeight: 6,
+                maxHeight: 20,
+                barWidth: 3,
+                spacing: 2,
+                colors: waveColors,
+                duration: waveDuration,
+              ),
+              const SizedBox(width: 10),
+              Expanded(child: Text(statusLabel, style: TextStyle(color: labelColor, fontSize: 12, fontWeight: FontWeight.w500))),
+            ],
+          ),
           if (talkState.transcript.isNotEmpty)
             Padding(
               padding: const EdgeInsets.only(top: 6),
@@ -1105,8 +1350,24 @@ class _TalkToSamPanel extends ConsumerWidget {
             ),
           if (talkState.error?.isNotEmpty == true)
             Padding(
-              padding: const EdgeInsets.only(top: 6),
-              child: Text(talkState.error!, style: const TextStyle(color: Color(0xFFFFB0C0), fontSize: 12)),
+              padding: const EdgeInsets.only(top: 8),
+              child: Row(
+                children: [
+                  Expanded(child: Text(talkState.error!, style: const TextStyle(color: Color(0xFFFFB0C0), fontSize: 12))),
+                  const SizedBox(width: 10),
+                  ElevatedButton(
+                    onPressed:
+                        (talkState.busy || talkState.recording) ? null : () => ref.read(talkToSamProvider.notifier).startRecording(),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xCC325AB4),
+                      foregroundColor: const Color(0xFFF0F6FF),
+                      side: const BorderSide(color: Color(0x8078B4FF)),
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                    ),
+                    child: const Text('Try Again', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+                  ),
+                ],
+              ),
             ),
           if (talkState.recording)
             Padding(
