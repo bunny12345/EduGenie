@@ -9,6 +9,7 @@ import '../../../models/homework_item.dart';
 import '../../../state/session_provider.dart';
 import '../../../state/student_providers.dart';
 import '../../../theme/app_colors.dart';
+import '../../../widgets/section_card.dart';
 import '../test_taking_screen.dart';
 import 'homework_history_calendar.dart';
 import 'homework_state.dart';
@@ -336,7 +337,7 @@ class _HomeworkScreenState extends ConsumerState<HomeworkScreen> {
                     ),
                   ),
                   homeworkAsync.when(
-                    loading: () => const SizedBox.shrink(),
+                    loading: () => const SkeletonBox(height: 60),
                     error: (e, _) => Text('Unable to load homework: $e', style: const TextStyle(color: Colors.red, fontSize: 12)),
                     data: (all) {
                       final subjectHomework = all.where((h) => h.subject == _selectedSubject).toList();
@@ -515,7 +516,7 @@ class _HomeworkScreenState extends ConsumerState<HomeworkScreen> {
                     },
                   ),
                   testsAsync.when(
-                    loading: () => const SizedBox.shrink(),
+                    loading: () => const SkeletonBox(height: 50),
                     error: (e, _) => Text('Unable to load tests: $e', style: const TextStyle(color: Colors.red, fontSize: 12)),
                     data: (tests) {
                       final subjectTests = tests.where((t) => t.subject == _selectedSubject).toList();

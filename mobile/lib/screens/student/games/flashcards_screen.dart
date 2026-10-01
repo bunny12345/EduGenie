@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../models/flashcard_models.dart';
 import '../../../state/session_provider.dart';
 import '../../../state/student_providers.dart';
+import '../../../widgets/shimmer_wave.dart';
 
 enum _FcPhase { loading, picker, playing, summary, empty }
 
@@ -238,7 +239,7 @@ class _FlashcardsScreenState extends ConsumerState<FlashcardsScreen> {
   Widget _buildPhase() {
     switch (_phase) {
       case _FcPhase.loading:
-        return const SizedBox.shrink();
+        return const GamePickerSkeleton();
       case _FcPhase.empty:
         return _EmptyView(message: _error, onRefresh: _loadOverview);
       case _FcPhase.picker:

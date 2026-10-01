@@ -7,6 +7,7 @@ import '../../state/session_provider.dart';
 import '../../state/student_providers.dart';
 import '../../theme/app_colors.dart';
 import '../../widgets/section_card.dart';
+import '../../widgets/shimmer_wave.dart';
 
 /// One-question-at-a-time mobile test-taking flow (per the mobile design
 /// brief — not a copy of web's layout, which doesn't have this at all yet).
@@ -105,7 +106,25 @@ class _TestTakingScreenState extends ConsumerState<TestTakingScreen> {
   }
 
   Widget _buildBody() {
-    if (_loading) return const Center(child: CircularProgressIndicator());
+    if (_loading) {
+      return ShimmerGroup(
+        child: ListView(
+          padding: const EdgeInsets.all(16),
+          physics: const NeverScrollableScrollPhysics(),
+          children: [
+            const SkeletonBlock(height: 8, radius: 4),
+            const SizedBox(height: 20),
+            const SkeletonCard(child: SkeletonBlock(height: 60, radius: 10)),
+            const SizedBox(height: 14),
+            for (var i = 0; i < 4; i++)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 10),
+                child: const SkeletonBlock(height: 46, radius: 12),
+              ),
+          ],
+        ),
+      );
+    }
     if (_error != null) {
       return Center(
         child: Padding(

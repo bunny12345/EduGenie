@@ -6,6 +6,7 @@ import '../../models/subject_score.dart';
 import '../../state/student_providers.dart';
 import '../../theme/app_colors.dart';
 import '../../widgets/section_card.dart';
+import '../../widgets/shimmer_wave.dart';
 import 'subject_detail_screen.dart';
 
 /// "Learn" tab — subject grid derived from the class's registered teachers
@@ -84,17 +85,17 @@ class _LoadingGrid extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GridView.builder(
-      padding: const EdgeInsets.all(16),
-      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: 2,
-        mainAxisSpacing: 12,
-        crossAxisSpacing: 12,
-        childAspectRatio: 1.3,
-      ),
-      itemCount: 4,
-      itemBuilder: (context, i) => Container(
-        decoration: BoxDecoration(color: AppColors.line, borderRadius: BorderRadius.circular(14)),
+    return ShimmerGroup(
+      child: GridView.builder(
+        padding: const EdgeInsets.all(16),
+        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount: 2,
+          mainAxisSpacing: 12,
+          crossAxisSpacing: 12,
+          childAspectRatio: 1.3,
+        ),
+        itemCount: 4,
+        itemBuilder: (context, i) => const SkeletonBlock(radius: 14),
       ),
     );
   }

@@ -37,18 +37,58 @@ class SectionCard extends StatelessWidget {
 }
 
 /// Skeleton placeholder — never a bare "Loading..." string, per AcademiX's
-/// silent-loading convention.
-class SkeletonBox extends StatelessWidget {
+/// silent-loading convention. Self-animates a light "wave" sweep across
+/// itself (Teams/YouTube-style skeleton), so every existing call site gets
+/// the shimmer effect for free.
+class SkeletonBox extends StatefulWidget {
   final double height;
 
   const SkeletonBox({super.key, this.height = 16});
 
   @override
+  State<SkeletonBox> createState() => _SkeletonBoxState();
+}
+
+class _SkeletonBoxState extends State<SkeletonBox> with SingleTickerProviderStateMixin {
+  late final AnimationController _c;
+
+  @override
+  void initState() {
+    super.initState();
+    _c = AnimationController(vsync: this, duration: const Duration(milliseconds: 1300))..repeat();
+  }
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     return Container(
-      height: height,
+      height: widget.height,
+      width: double.infinity,
       margin: const EdgeInsets.symmetric(vertical: 4),
-      decoration: BoxDecoration(color: AppColors.line, borderRadius: BorderRadius.circular(6)),
+      child: AnimatedBuilder(
+        animation: _c,
+        builder: (context, child) {
+          return ShaderMask(
+            blendMode: BlendMode.srcATop,
+            shaderCallback: (bounds) {
+              final sweep = -0.6 + _c.value * 2.2;
+              return LinearGradient(
+                begin: Alignment(sweep - 0.5, -1),
+                end: Alignment(sweep + 0.5, 1),
+                colors: const [Color(0xFFE2E2EE), Color(0xFFF8F8FC), Color(0xFFE2E2EE)],
+                stops: const [0.35, 0.5, 0.65],
+              ).createShader(bounds);
+            },
+            child: child,
+          );
+        },
+        child: DecoratedBox(decoration: BoxDecoration(color: AppColors.line, borderRadius: BorderRadius.circular(6))),
+      ),
     );
   }
 }

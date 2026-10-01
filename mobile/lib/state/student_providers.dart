@@ -76,6 +76,12 @@ final orchardProvider = FutureProvider.autoDispose<OrchardData>((ref) {
   return ref.watch(studentApiServiceProvider).getOrchard(id);
 });
 
+/// Single-tree detail (chapters/milestones) — mirrors `GET /orchard/:subjectKey`.
+final orchardTreeProvider = FutureProvider.autoDispose.family<OrchardTreeDetailData, String>((ref, subjectKey) {
+  final id = _requireStudentId(ref);
+  return ref.watch(studentApiServiceProvider).getOrchardTree(id, subjectKey);
+});
+
 final calendarEventsProvider = FutureProvider.autoDispose<List<CalendarEvent>>((ref) {
   final id = _requireStudentId(ref);
   return ref.watch(studentApiServiceProvider).getCalendar(id);

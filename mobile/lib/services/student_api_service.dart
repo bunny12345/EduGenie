@@ -143,6 +143,48 @@ class StudentApiService {
     return OrchardData.fromJson(json);
   }
 
+  /// Single tree detail with its chapters (seeds) — mirrors `getOrchardTree()`
+  /// in `web/src/api.js`.
+  Future<OrchardTreeDetailData> getOrchardTree(String studentId, String subjectKey) async {
+    final json = await _get('/orchard/${Uri.encodeComponent(subjectKey)}', {'studentId': studentId});
+    return OrchardTreeDetailData.fromJson(json);
+  }
+
+  /// Records a learning activity that drives tree growth — mirrors
+  /// `recordOrchardActivity()` in `web/src/api.js`. Best-effort: callers
+  /// should not block the main action on this.
+  Future<Map<String, dynamic>> recordOrchardActivity({
+    required String studentId,
+    required String subjectKey,
+    String? chapterId,
+    required String activityType,
+    bool? correct,
+  }) {
+    return _post('/orchard/activity', {
+      'studentId': studentId,
+      'subjectKey': subjectKey,
+      'chapterId': ?chapterId,
+      'activityType': activityType,
+      'correct': ?correct,
+    });
+  }
+
+  /// Completes a spaced-repetition retention review (week/month) — mirrors
+  /// `completeOrchardReview()` in `web/src/api.js`.
+  Future<Map<String, dynamic>> completeOrchardReview({
+    required String studentId,
+    required String chapterId,
+    required String reviewType,
+    required bool passed,
+  }) {
+    return _post('/orchard/review/complete', {
+      'studentId': studentId,
+      'chapterId': chapterId,
+      'reviewType': reviewType,
+      'passed': passed,
+    });
+  }
+
   Future<Map<String, dynamic>> checkInReward(String studentId) {
     return _post('/rewards/checkin', {'studentId': studentId});
   }

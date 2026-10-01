@@ -73,6 +73,12 @@ flutter:
   assets:
     - assets/gifs/
     - assets/branding/
+    - assets/orchard/oak/
+    - assets/orchard/crystal/
+    - assets/orchard/cherry_blossom/
+    - assets/orchard/banyan/
+    - assets/orchard/digital/
+    - assets/orchard/mango/
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images

@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../models/flashcard_models.dart';
 import '../../../state/session_provider.dart';
 import '../../../state/student_providers.dart';
+import '../../../widgets/shimmer_wave.dart';
 import 'game_widgets.dart';
 
 enum _MmPhase { loading, picker, playing, summary, empty }
@@ -264,7 +265,7 @@ class _MemoryMazeScreenState extends ConsumerState<MemoryMazeScreen> {
   Widget _buildPhase() {
     switch (_phase) {
       case _MmPhase.loading:
-        return const SizedBox.shrink();
+        return const GamePickerSkeleton();
       case _MmPhase.empty:
         return GameEmptyView(
           emoji: '🌀',

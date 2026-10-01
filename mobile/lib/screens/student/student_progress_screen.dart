@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../models/learning_score.dart';
 import '../../state/student_providers.dart';
 import '../../widgets/section_card.dart';
+import '../../widgets/shimmer_wave.dart';
 import 'progress/progress_charts.dart';
 import 'progress/progress_helpers.dart';
 import 'progress/subject_progress_detail_screen.dart';
@@ -43,7 +44,7 @@ class _StudentProgressScreenState extends ConsumerState<StudentProgressScreen> {
       body: RefreshIndicator(
         onRefresh: () async => ref.invalidate(learningScoreProvider),
         child: dataAsync.when(
-          loading: () => const SizedBox.shrink(),
+          loading: () => const _ProgressSkeleton(),
           error: (e, _) => ListView(
             padding: const EdgeInsets.all(16),
             children: [
@@ -945,6 +946,60 @@ class _StatusChip extends StatelessWidget {
           fontWeight: FontWeight.w800,
           color: kStatusChipText[status] ?? const Color(0xFF6B7194),
         ),
+      ),
+    );
+  }
+}
+
+/// Loading placeholder mirroring the real page's shape (score card, trend
+/// chart, radar card, subject cards).
+class _ProgressSkeleton extends StatelessWidget {
+  const _ProgressSkeleton();
+
+  @override
+  Widget build(BuildContext context) {
+    return ShimmerGroup(
+      child: ListView(
+        padding: const EdgeInsets.all(16),
+        physics: const NeverScrollableScrollPhysics(),
+        children: [
+          SkeletonCard(
+            child: Column(
+              children: [
+                const SkeletonBlock(width: 160, height: 160, radius: 80),
+                const SizedBox(height: 12),
+                const SkeletonBlock(width: 140, height: 14),
+              ],
+            ),
+          ),
+          const SizedBox(height: 12),
+          const SkeletonCard(child: SkeletonBlock(height: 170, radius: 12)),
+          const SizedBox(height: 12),
+          const SkeletonCard(child: SkeletonBlock(height: 220, radius: 12)),
+          const SizedBox(height: 12),
+          for (var i = 0; i < 3; i++)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: SkeletonCard(
+                child: Row(
+                  children: const [
+                    SkeletonBlock(width: 56, height: 56, radius: 28),
+                    SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          SkeletonBlock(width: 120, height: 13),
+                          SizedBox(height: 8),
+                          SkeletonBlock(height: 8),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+        ],
       ),
     );
   }
