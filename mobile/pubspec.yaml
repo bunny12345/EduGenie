@@ -79,6 +79,8 @@ flutter:
     - assets/orchard/banyan/
     - assets/orchard/digital/
     - assets/orchard/mango/
+    - assets/orchard_ambience/birds/
+    - assets/orchard_ambience/clouds/
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images

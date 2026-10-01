@@ -110,10 +110,10 @@ class _OrchardAmbienceState extends State<OrchardAmbience> with SingleTickerProv
                       child: Text(widget.night ? '🌙' : '☀️', style: const TextStyle(fontSize: 38)),
                     ),
                   ),
-                  // Clouds drifting left -> right
-                  _drift(w, top: 36, size: 32, period: 46, opacity: widget.night ? 0.35 : 0.85, glyph: '☁️'),
-                  _drift(w, top: 86, size: 24, period: 62, offset: 15, opacity: widget.night ? 0.35 : 0.85, glyph: '☁️'),
-                  _drift(w, top: 18, size: 28, period: 74, offset: 30, opacity: widget.night ? 0.35 : 0.85, glyph: '⛅'),
+                  // Clouds drifting left -> right — art from assets/orchard_ambience/clouds/.
+                  _drift(w, top: 36, size: 56, period: 46, opacity: widget.night ? 0.35 : 0.85, asset: 'assets/orchard_ambience/clouds/cloud_1.png'),
+                  _drift(w, top: 86, size: 42, period: 62, offset: 15, opacity: widget.night ? 0.35 : 0.85, asset: 'assets/orchard_ambience/clouds/cloud_2.png'),
+                  _drift(w, top: 18, size: 48, period: 74, offset: 30, opacity: widget.night ? 0.35 : 0.85, asset: 'assets/orchard_ambience/clouds/cloud_3.png'),
                   // Birds
                   for (var i = 0; i < birdCount; i++) _bird(w, i),
                   // Butterflies
@@ -158,19 +158,45 @@ class _OrchardAmbienceState extends State<OrchardAmbience> with SingleTickerProv
     );
   }
 
-  Widget _drift(double w, {required double top, required double size, required double period, double offset = 0, required double opacity, required String glyph}) {
+  Widget _drift(double w, {required double top, required double size, required double period, double offset = 0, required double opacity, required String asset}) {
     final t = _phase(period, offset);
     final x = -0.2 * w + t * 1.3 * w;
-    return Positioned(top: top, left: x, child: Opacity(opacity: opacity, child: Text(glyph, style: TextStyle(fontSize: size))));
+    return Positioned(
+      top: top,
+      left: x,
+      child: Opacity(
+        opacity: opacity,
+        child: Image.asset(
+          asset,
+          width: size,
+          height: size,
+          fit: BoxFit.contain,
+          errorBuilder: (context, error, stack) => const SizedBox.shrink(),
+        ),
+      ),
+    );
   }
 
+  // Bird art from assets/orchard_ambience/birds/ (bird_1.png, bird_2.png) —
+  // draw them facing right, since they always travel left -> right here.
   Widget _bird(double w, int i) {
     final period = i == 0 ? 24.0 : 32.0;
     final offset = i == 0 ? 3.0 : 12.0;
     final t = _phase(period, offset);
     final x = -0.08 * w + t * 1.22 * w;
     final y = (i == 0 ? 60.0 : 120.0) + 10 * math.sin(t * 2 * math.pi * 2);
-    return Positioned(top: y, left: x, child: Text('🐦', style: TextStyle(fontSize: i == 0 ? 20 : 16)));
+    final size = i == 0 ? 30.0 : 24.0;
+    return Positioned(
+      top: y,
+      left: x,
+      child: Image.asset(
+        'assets/orchard_ambience/birds/bird_${i + 1}.png',
+        width: size,
+        height: size,
+        fit: BoxFit.contain,
+        errorBuilder: (context, error, stack) => const SizedBox.shrink(),
+      ),
+    );
   }
 
   Widget _butterfly(double w, double h, int i) {
@@ -217,21 +243,29 @@ class _OrchardAmbienceState extends State<OrchardAmbience> with SingleTickerProv
     );
   }
 
+  // Each leaf/petal/snowflake gets its own deterministic pseudo-random lane,
+  // speed, drift, and rotation (keyed off its index) so they scatter across
+  // the whole width instead of repeating in a handful of fixed columns.
   Widget _fallingParticle(double w, double h, int i, _Particle particle) {
-    final period = 11.0 + (i % 6) * 1.0;
-    final offset = (i % 6) * 2.0;
+    final rnd = math.Random(i * 97 + 13);
+    final period = 9.0 + rnd.nextDouble() * 7.0;
+    final offset = rnd.nextDouble() * period;
+    final leftFrac = rnd.nextDouble();
+    final drift = (rnd.nextDouble() - 0.5) * 70;
+    final rotateDir = rnd.nextBool() ? 1 : -1;
+    final sizeJitter = 0.8 + rnd.nextDouble() * 0.4;
     final t = _phase(period, offset);
-    final left = ([0.08, 0.24, 0.42, 0.58, 0.74, 0.90][i % 6]) * w;
+    final left = leftFrac * w;
     final y = -10 + t * (h + 60);
     final opacity = t < 0.1 ? t / 0.1 : (t > 0.9 ? (1 - t) / 0.1 : 1.0);
     return Positioned(
       top: y,
-      left: left + t * 40,
+      left: left + drift * t,
       child: Opacity(
         opacity: (0.85 * opacity).clamp(0.0, 0.85),
         child: Transform.rotate(
-          angle: t * 320 * math.pi / 180,
-          child: Text(particle.glyph, style: TextStyle(fontSize: particle.fontSize)),
+          angle: rotateDir * t * 320 * math.pi / 180,
+          child: Text(particle.glyph, style: TextStyle(fontSize: particle.fontSize * sizeJitter)),
         ),
       ),
     );

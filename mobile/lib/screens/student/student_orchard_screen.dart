@@ -295,42 +295,45 @@ class _TreeCard extends StatelessWidget {
               ],
             ),
             Expanded(
-              child: Center(
-                child: Stack(
-                  alignment: Alignment.center,
-                  children: [
-                    TreeSprite(treeType: tree.treeType, stage: tree.stage, size: 92, accentColor: accent, health: tree.health),
-                    if (tree.stage == 'golden_fruit')
-                      Positioned(
-                        top: 2,
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                          decoration: BoxDecoration(gradient: const LinearGradient(colors: [Color(0xFFFFE066), Color(0xFFFFC93C)]), borderRadius: BorderRadius.circular(999)),
-                          child: const Text('🧺 Ready to harvest', style: TextStyle(fontSize: 8.5, fontWeight: FontWeight.w800, color: Color(0xFF7A4D00))),
-                        ),
+              child: Stack(
+                fit: StackFit.expand,
+                alignment: Alignment.center,
+                children: [
+                  // Badges anchor to the full card area (not the artwork's own
+                  // bounds), so they never collide with wherever a given piece
+                  // of art happens to draw its visible pixels — works the same
+                  // no matter what artwork is dropped into any tree type later.
+                  Center(child: TreeSprite(treeType: tree.treeType, stage: tree.stage, size: 92, accentColor: accent, health: tree.health)),
+                  if (tree.stage == 'golden_fruit')
+                    Positioned(
+                      top: 4,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                        decoration: BoxDecoration(gradient: const LinearGradient(colors: [Color(0xFFFFE066), Color(0xFFFFC93C)]), borderRadius: BorderRadius.circular(999)),
+                        child: const Text('🧺 Ready to harvest', style: TextStyle(fontSize: 8.5, fontWeight: FontWeight.w800, color: Color(0xFF7A4D00))),
                       ),
-                    if (tree.health != 'healthy')
-                      Positioned(
-                        bottom: 0,
-                        right: 0,
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                          decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.92), borderRadius: BorderRadius.circular(10)),
-                          child: Text(tree.health == 'thirsty' ? '💧 Thirsty' : '🍂 Needs care', style: const TextStyle(fontSize: 8.5)),
-                        ),
+                    ),
+                  if (tree.health != 'healthy')
+                    Positioned(
+                      bottom: 4,
+                      right: 4,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                        decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.92), borderRadius: BorderRadius.circular(10)),
+                        child: Text(tree.health == 'thirsty' ? '💧 Thirsty' : '🍂 Needs care', style: const TextStyle(fontSize: 8.5)),
                       ),
-                    if (tree.dueReviewCount > 0)
-                      Positioned(
-                        top: 0,
-                        right: 0,
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                          decoration: BoxDecoration(color: AppColors.brand, borderRadius: BorderRadius.circular(999)),
-                          child: Text('📋 ${tree.dueReviewCount}', style: const TextStyle(fontSize: 8.5, color: Colors.white, fontWeight: FontWeight.w700)),
-                        ),
+                    ),
+                  if (tree.dueReviewCount > 0)
+                    Positioned(
+                      top: 4,
+                      right: 4,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                        decoration: BoxDecoration(color: AppColors.brand, borderRadius: BorderRadius.circular(999)),
+                        child: Text('📋 ${tree.dueReviewCount}', style: const TextStyle(fontSize: 8.5, color: Colors.white, fontWeight: FontWeight.w700)),
                       ),
-                  ],
-                ),
+                    ),
+                ],
               ),
             ),
             Row(
