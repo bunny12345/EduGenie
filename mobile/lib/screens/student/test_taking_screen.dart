@@ -142,7 +142,7 @@ class _TestTakingScreenState extends ConsumerState<TestTakingScreen> {
     }
     if (_result != null) return _ResultView(result: _result!, onDone: () => Navigator.of(context).pop());
     if (_questions.isEmpty) {
-      return const Center(child: Text('No questions available for this test.', style: TextStyle(color: AppColors.muted)));
+      return Center(child: Text('No questions available for this test.', style: TextStyle(color: AppColors.muted)));
     }
 
     final question = _questions[_index];
@@ -153,7 +153,7 @@ class _TestTakingScreenState extends ConsumerState<TestTakingScreen> {
         LinearProgressIndicator(value: (_index + 1) / _questions.length, backgroundColor: AppColors.line),
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-          child: Text('Question ${_index + 1} of ${_questions.length}', style: const TextStyle(color: AppColors.muted, fontSize: 12)),
+          child: Text('Question ${_index + 1} of ${_questions.length}', style: TextStyle(color: AppColors.muted, fontSize: 12)),
         ),
         Expanded(
           child: ListView(
@@ -219,7 +219,7 @@ class _ResultView extends StatelessWidget {
           children: [
             Text('$score%', style: const TextStyle(fontSize: 40, fontWeight: FontWeight.w800, color: AppColors.brand)),
             const SizedBox(height: 8),
-            Text(feedback, textAlign: TextAlign.center, style: const TextStyle(color: AppColors.muted, fontSize: 14)),
+            Text(feedback, textAlign: TextAlign.center, style: TextStyle(color: AppColors.muted, fontSize: 14)),
             const SizedBox(height: 20),
             ElevatedButton(onPressed: onDone, child: const Text('Done')),
           ],

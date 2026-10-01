@@ -154,8 +154,8 @@ class _RetentionCheckDialogState extends ConsumerState<_RetentionCheckDialog> {
                 child: SingleChildScrollView(
                   padding: const EdgeInsets.all(18),
                   child: _loading
-                      ? const Padding(
-                          padding: EdgeInsets.symmetric(vertical: 24),
+                      ? Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 24),
                           child: Center(child: Text('Preparing your memory check…', style: TextStyle(color: AppColors.muted))),
                         )
                       : _error.isNotEmpty && _result == null
@@ -243,7 +243,7 @@ class _QuestionBlock extends StatelessWidget {
       children: [
         RichText(
           text: TextSpan(
-            style: const TextStyle(color: AppColors.text, fontSize: 13.5),
+            style: TextStyle(color: AppColors.text, fontSize: 13.5),
             children: [
               TextSpan(text: 'Q${index + 1}. ', style: const TextStyle(fontWeight: FontWeight.w800)),
               TextSpan(text: question.question),

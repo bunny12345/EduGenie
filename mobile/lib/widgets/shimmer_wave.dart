@@ -64,8 +64,8 @@ class SkeletonBlock extends StatelessWidget {
           shaderCallback: (bounds) {
             final sweep = -0.6 + controller.value * 2.2;
             return LinearGradient(
-              begin: Alignment(sweep - 0.5, -1),
-              end: Alignment(sweep + 0.5, 1),
+              begin: Alignment(-1, sweep - 0.5),
+              end: Alignment(1, sweep + 0.5),
               colors: const [Color(0xFFE2E2EE), Color(0xFFF8F8FC), Color(0xFFE2E2EE)],
               stops: const [0.35, 0.5, 0.65],
             ).createShader(bounds);

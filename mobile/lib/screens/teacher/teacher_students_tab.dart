@@ -7,6 +7,7 @@ import 'package:intl/intl.dart';
 import '../../models/learning_score.dart';
 import '../../state/teacher_providers.dart';
 import '../../theme/app_colors.dart';
+import '../../widgets/section_card.dart';
 import '../student/progress/progress_charts.dart';
 
 /// The site-wide "3D button/card" frame — a light-black ring border + soft
@@ -56,14 +57,14 @@ class _Frame3dCard extends StatelessWidget {
 class _Frame3dButton extends StatefulWidget {
   final Widget child;
   final VoidCallback? onTap;
-  final Color background;
-  final Color foreground;
+  final Color? background;
+  final Color? foreground;
 
   const _Frame3dButton({
     required this.child,
     required this.onTap,
-    this.background = AppColors.card,
-    this.foreground = AppColors.text,
+    this.background,
+    this.foreground,
   });
 
   @override
@@ -76,6 +77,8 @@ class _Frame3dButtonState extends State<_Frame3dButton> {
   @override
   Widget build(BuildContext context) {
     final disabled = widget.onTap == null;
+    final background = widget.background ?? AppColors.card;
+    final foreground = widget.foreground ?? AppColors.text;
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTapDown: disabled ? null : (_) => setState(() => _pressed = true),
@@ -89,13 +92,13 @@ class _Frame3dButtonState extends State<_Frame3dButton> {
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
           decoration: BoxDecoration(
-            color: disabled ? widget.background.withValues(alpha: 0.5) : widget.background,
+            color: disabled ? background.withValues(alpha: 0.5) : background,
             borderRadius: BorderRadius.circular(999),
             border: _frame3dBorder(alpha: _pressed ? 0.45 : 0.25),
             boxShadow: _pressed ? [] : _frame3dShadow(alpha: 0.12, blur: 6),
           ),
           child: DefaultTextStyle(
-            style: TextStyle(color: widget.foreground, fontSize: 12, fontWeight: FontWeight.w700),
+            style: TextStyle(color: foreground, fontSize: 12, fontWeight: FontWeight.w700),
             child: widget.child,
           ),
         ),
@@ -318,9 +321,9 @@ class _TeacherStudentsTabState extends ConsumerState<TeacherStudentsTab> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                const Text('Students', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: AppColors.text)),
+                Text('Students', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: AppColors.text)),
                 const SizedBox(height: 4),
-                const Text('Filter by class, select a student, and view their homework status.', style: TextStyle(fontSize: 12, color: AppColors.muted)),
+                Text('Filter by class, select a student, and view their homework status.', style: TextStyle(fontSize: 12, color: AppColors.muted)),
                 const SizedBox(height: 12),
                 TextField(
                   controller: _searchCtrl,
@@ -358,8 +361,12 @@ class _TeacherStudentsTabState extends ConsumerState<TeacherStudentsTab> {
                 const SizedBox(height: 10),
                 if (_studentsError != null)
                   Text(_studentsError!, style: const TextStyle(fontSize: 12, color: AppColors.danger))
-                else if (!_loadingStudents && paged.isEmpty)
-                  const Text('No students available yet for this class.', style: TextStyle(fontSize: 12, color: AppColors.muted))
+                else if (_loadingStudents && _students.isEmpty) ...[
+                  const SkeletonBox(height: 44),
+                  const SkeletonBox(height: 44),
+                  const SkeletonBox(height: 44),
+                ] else if (!_loadingStudents && paged.isEmpty)
+                  Text('No students available yet for this class.', style: TextStyle(fontSize: 12, color: AppColors.muted))
                 else
                   for (final s in paged) _StudentRow(student: s, selected: _selectedStudentId == s['id']?.toString(), onTap: () => _selectStudent(s)),
                 if (_students.length > _studentsPageSize) ...[
@@ -371,7 +378,7 @@ class _TeacherStudentsTabState extends ConsumerState<TeacherStudentsTab> {
                         onTap: clampedPage == 0 ? null : () => setState(() => _page = clampedPage - 1),
                         child: const Text('\u2190 Previous'),
                       ),
-                      Text('Page ${clampedPage + 1} of $pageCount', style: const TextStyle(fontSize: 12, color: AppColors.muted)),
+                      Text('Page ${clampedPage + 1} of $pageCount', style: TextStyle(fontSize: 12, color: AppColors.muted)),
                       _Frame3dButton(
                         onTap: clampedPage >= pageCount - 1 ? null : () => setState(() => _page = clampedPage + 1),
                         child: const Text('Next \u2192'),
@@ -455,7 +462,7 @@ class _StudentRow extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(name, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
-                    Text(className, style: const TextStyle(fontSize: 11, color: AppColors.muted)),
+                    Text(className, style: TextStyle(fontSize: 11, color: AppColors.muted)),
                   ],
                 ),
               ),
@@ -542,7 +549,7 @@ class _HomeworkStatusPanel extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        const Text('Homework Status', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: AppColors.text)),
+        Text('Homework Status', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: AppColors.text)),
         const SizedBox(height: 8),
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 10),
@@ -551,7 +558,7 @@ class _HomeworkStatusPanel extends StatelessWidget {
             child: DropdownButton<String>(
               value: selectedStudentId,
               isExpanded: true,
-              hint: const Text('Select a student to view homework', style: TextStyle(fontSize: 13, color: AppColors.muted)),
+              hint: Text('Select a student to view homework', style: TextStyle(fontSize: 13, color: AppColors.muted)),
               items: [
                 for (final s in students)
                   DropdownMenuItem(
@@ -572,7 +579,7 @@ class _HomeworkStatusPanel extends StatelessWidget {
             children: [
               _Frame3dButton(onTap: selectedIndex <= 0 ? null : () => _goToAdjacent(-1), child: const Text('\u2190 Prev')),
               const SizedBox(width: 10),
-              Text('${selectedIndex + 1}/${students.length}', style: const TextStyle(fontSize: 12, color: AppColors.muted, fontWeight: FontWeight.w700)),
+              Text('${selectedIndex + 1}/${students.length}', style: TextStyle(fontSize: 12, color: AppColors.muted, fontWeight: FontWeight.w700)),
               const SizedBox(width: 10),
               _Frame3dButton(
                 onTap: (selectedIndex == -1 || selectedIndex >= students.length - 1) ? null : () => _goToAdjacent(1),
@@ -584,7 +591,7 @@ class _HomeworkStatusPanel extends StatelessWidget {
         const SizedBox(height: 10),
         Text(
           selectedStudentId != null ? '\ud83d\udcdd All homework for ${selectedStudentName ?? 'student'}' : 'Select a student to view homework.',
-          style: const TextStyle(fontSize: 12, color: AppColors.muted, fontWeight: FontWeight.w600),
+          style: TextStyle(fontSize: 12, color: AppColors.muted, fontWeight: FontWeight.w600),
         ),
         if (error != null) ...[
           const SizedBox(height: 8),
@@ -605,8 +612,11 @@ class _HomeworkStatusPanel extends StatelessWidget {
         const SizedBox(height: 10),
         if (selectedStudentId == null)
           const SizedBox()
-        else if (!loading && homework.isEmpty)
-          const Text('No homework assigned to this student yet.', style: TextStyle(fontSize: 12, color: AppColors.muted))
+        else if (loading && homework.isEmpty) ...[
+          const SkeletonBox(height: 50),
+          const SkeletonBox(height: 50),
+        ] else if (!loading && homework.isEmpty)
+          Text('No homework assigned to this student yet.', style: TextStyle(fontSize: 12, color: AppColors.muted))
         else
           for (final hw in visible)
             _HomeworkStatusTile(
@@ -659,14 +669,14 @@ class _ProgressSnapshotPanel extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        const Text('Progress Snapshot', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: AppColors.text)),
+        Text('Progress Snapshot', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: AppColors.text)),
         const SizedBox(height: 8),
         Row(
           children: [
             Expanded(
               child: Text(
                 selectedStudentId != null ? '\ud83d\udcca ${selectedStudentName ?? 'student'}' : 'Select a student to see metrics.',
-                style: const TextStyle(fontSize: 12, color: AppColors.muted, fontWeight: FontWeight.w600),
+                style: TextStyle(fontSize: 12, color: AppColors.muted, fontWeight: FontWeight.w600),
               ),
             ),
             if (subject != null)
@@ -740,10 +750,10 @@ class _ProgressSnapshotPanel extends StatelessWidget {
             Container(
               padding: const EdgeInsets.symmetric(vertical: 24),
               alignment: Alignment.center,
-              child: const Column(
+              child: Column(
                 children: [
-                  Text('\ud83d\udcc8', style: TextStyle(fontSize: 32)),
-                  SizedBox(height: 8),
+                  const Text('\ud83d\udcc8', style: TextStyle(fontSize: 32)),
+                  const SizedBox(height: 8),
                   Text(
                     'No activity yet \u2014 the growth line appears here once this student studies the subject.',
                     textAlign: TextAlign.center,
@@ -756,11 +766,14 @@ class _ProgressSnapshotPanel extends StatelessWidget {
             GrowthLineChart(points: series, maxY: 100, gridVals: const [25, 50, 75, 100], color: subject!.accent, mode: view, percentSuffix: true),
           if (subject!.tip.isNotEmpty) ...[
             const SizedBox(height: 10),
-            Text('\ud83d\udca1 ${subject!.tip}', style: const TextStyle(fontSize: 12, color: AppColors.muted)),
+            Text('\ud83d\udca1 ${subject!.tip}', style: TextStyle(fontSize: 12, color: AppColors.muted)),
           ],
+        ] else if (selectedStudentId != null && loading) ...[
+          const SizedBox(height: 10),
+          const SkeletonBox(height: 70),
         ] else if (selectedStudentId != null && !loading) ...[
           const SizedBox(height: 10),
-          const Text('No progress data yet.', style: TextStyle(fontSize: 12, color: AppColors.muted)),
+          Text('No progress data yet.', style: TextStyle(fontSize: 12, color: AppColors.muted)),
         ],
       ],
     );
@@ -834,7 +847,7 @@ class _HomeworkStatusTile extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(title, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
-                    Text('$subject \u00b7 Due ${_shortDate(homework['dueAt'])}', style: const TextStyle(fontSize: 11, color: AppColors.muted)),
+                    Text('$subject \u00b7 Due ${_shortDate(homework['dueAt'])}', style: TextStyle(fontSize: 11, color: AppColors.muted)),
                   ],
                 ),
               ),
@@ -847,14 +860,14 @@ class _HomeworkStatusTile extends StatelessWidget {
           ),
           if (remark != null && remark.isNotEmpty) ...[
             const SizedBox(height: 4),
-            Text(remark, style: const TextStyle(fontSize: 11, color: AppColors.muted)),
+            Text(remark, style: TextStyle(fontSize: 11, color: AppColors.muted)),
           ],
           const SizedBox(height: 6),
           Row(
             children: [
-              Text('Grade: ${grade != null ? '$grade/100' : '\u2014'}', style: const TextStyle(fontSize: 11, color: AppColors.text)),
+              Text('Grade: ${grade != null ? '$grade/100' : '\u2014'}', style: TextStyle(fontSize: 11, color: AppColors.text)),
               const SizedBox(width: 12),
-              Text('Attempts: $attemptCount', style: const TextStyle(fontSize: 11, color: AppColors.text)),
+              Text('Attempts: $attemptCount', style: TextStyle(fontSize: 11, color: AppColors.text)),
               const Spacer(),
               if (canGrade) _Frame3dButton(onTap: onToggleGrade, child: Text(expanded ? 'Cancel' : 'Grade')),
             ],

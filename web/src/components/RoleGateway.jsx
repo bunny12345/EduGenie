@@ -9,6 +9,30 @@ import {
   teacherLogin
 } from '../api';
 
+// Press-and-hold-to-reveal password field — the password stays masked while
+// idle, and is shown only while the eye button is actively pressed/held.
+function PasswordField({ value, onChange, placeholder, visible, onShow, onHide }) {
+  return (
+    <div className="rg-password-field">
+      <input type={visible ? 'text' : 'password'} value={value} onChange={onChange} placeholder={placeholder} />
+      <button
+        type="button"
+        className="rg-eye-btn"
+        aria-label={visible ? 'Release to hide password' : 'Press and hold to show password'}
+        tabIndex={-1}
+        onMouseDown={onShow}
+        onMouseUp={onHide}
+        onMouseLeave={onHide}
+        onTouchStart={(e) => { e.preventDefault(); onShow(); }}
+        onTouchEnd={onHide}
+        onContextMenu={(e) => e.preventDefault()}
+      >
+        {visible ? '🙈' : '👁️'}
+      </button>
+    </div>
+  );
+}
+
 export default function RoleGateway({ onLogin }) {
   const [role, setRole] = useState('school');
   const [schoolMode, setSchoolMode] = useState('register');
@@ -26,6 +50,10 @@ export default function RoleGateway({ onLogin }) {
 
   const [loginId, setLoginId] = useState('');
   const [password, setPassword] = useState('');
+
+  const [showSchoolPassword, setShowSchoolPassword] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+  const [showInvitePassword, setShowInvitePassword] = useState(false);
 
   const [inviteToken, setInviteToken] = useState('');
   const [inviteInfo, setInviteInfo] = useState(null);
@@ -307,7 +335,14 @@ export default function RoleGateway({ onLogin }) {
                 </label>
                 <label>
                   Password
-                  <input type="password" value={schoolPassword} onChange={(e) => setSchoolPassword(e.target.value)} placeholder="Strong password" />
+                  <PasswordField
+                    value={schoolPassword}
+                    onChange={(e) => setSchoolPassword(e.target.value)}
+                    placeholder="Strong password"
+                    visible={showSchoolPassword}
+                    onShow={() => setShowSchoolPassword(true)}
+                    onHide={() => setShowSchoolPassword(false)}
+                  />
                 </label>
 
                 {error ? <p className="rg-error">{error}</p> : null}
@@ -327,7 +362,14 @@ export default function RoleGateway({ onLogin }) {
             </label>
             <label>
               Password
-              <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="teacher password" />
+              <PasswordField
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="teacher password"
+                visible={showPassword}
+                onShow={() => setShowPassword(true)}
+                onHide={() => setShowPassword(false)}
+              />
             </label>
             {error ? <p className="rg-error">{error}</p> : null}
             <button className="rg-submit" type="submit" disabled={busy}>{busy ? 'Please wait...' : 'Login as Teacher'}</button>
@@ -342,7 +384,14 @@ export default function RoleGateway({ onLogin }) {
             </label>
             <label>
               Password
-              <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="student password" />
+              <PasswordField
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="student password"
+                visible={showPassword}
+                onShow={() => setShowPassword(true)}
+                onHide={() => setShowPassword(false)}
+              />
             </label>
             {error ? <p className="rg-error">{error}</p> : null}
             <button className="rg-submit" type="submit" disabled={busy}>{busy ? 'Please wait...' : 'Login as Student'}</button>
@@ -380,7 +429,14 @@ export default function RoleGateway({ onLogin }) {
             </label>
             <label>
               Password
-              <input type="password" value={invitePassword} onChange={(e) => setInvitePassword(e.target.value)} placeholder="Choose strong password" />
+              <PasswordField
+                value={invitePassword}
+                onChange={(e) => setInvitePassword(e.target.value)}
+                placeholder="Choose strong password"
+                visible={showInvitePassword}
+                onShow={() => setShowInvitePassword(true)}
+                onHide={() => setShowInvitePassword(false)}
+              />
             </label>
             {error ? <p className="rg-error">{error}</p> : null}
             <button className="rg-submit" type="submit" disabled={busy}>{busy ? 'Please wait...' : 'Complete Registration'}</button>

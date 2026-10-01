@@ -194,7 +194,7 @@ class _OrchardTreeDetailScreenState extends ConsumerState<OrchardTreeDetailScree
                     const SizedBox(height: 4),
                     Text(
                       tree.rootsPct >= 90 ? 'Deep roots — golden fruit ready!' : 'Deeper roots grow taller trees.',
-                      style: const TextStyle(fontSize: 11, color: AppColors.muted),
+                      style: TextStyle(fontSize: 11, color: AppColors.muted),
                     ),
                   ],
                 ),
@@ -215,7 +215,7 @@ class _OrchardTreeDetailScreenState extends ConsumerState<OrchardTreeDetailScree
             children: [
               Text('${detail.subject} lessons — every seed becomes a fruit', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
               const SizedBox(height: 4),
-              const Text('Each uploaded lesson grows on its own. Care for it and it ripens over weeks.',
+              Text('Each uploaded lesson grows on its own. Care for it and it ripens over weeks.',
                   style: TextStyle(fontSize: 12.5, color: AppColors.muted)),
               const SizedBox(height: 14),
               if (chapters.isEmpty)
@@ -236,7 +236,7 @@ class _OrchardTreeDetailScreenState extends ConsumerState<OrchardTreeDetailScree
                       Text(
                         'Your school hasn\u2019t uploaded any ${detail.subject} lessons for your class yet. As soon as they do, each lesson appears here as a seed you can grow.',
                         textAlign: TextAlign.center,
-                        style: const TextStyle(fontSize: 12.5, color: AppColors.muted),
+                        style: TextStyle(fontSize: 12.5, color: AppColors.muted),
                       ),
                     ],
                   ),
@@ -271,7 +271,7 @@ class _OrchardTreeDetailScreenState extends ConsumerState<OrchardTreeDetailScree
                               overflow: TextOverflow.ellipsis,
                               style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, height: 1.15),
                             ),
-                            Text(ch.stageLabel, style: const TextStyle(fontSize: 9.5, color: AppColors.muted, height: 1)),
+                            Text(ch.stageLabel, style: TextStyle(fontSize: 9.5, color: AppColors.muted, height: 1)),
                             ClipRRect(
                               borderRadius: BorderRadius.circular(5),
                               child: LinearProgressIndicator(
@@ -325,7 +325,7 @@ class _OrchardTreeDetailScreenState extends ConsumerState<OrchardTreeDetailScree
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           Text('${icon != null ? '$icon ' : ''}$value', style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800)),
-          Text(label, style: const TextStyle(fontSize: 10.5, color: AppColors.muted)),
+          Text(label, style: TextStyle(fontSize: 10.5, color: AppColors.muted)),
         ],
       ),
     );
@@ -370,7 +370,7 @@ class _ChapterMilestonePanel extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(chapter.title, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14)),
-                    Text('${chapter.stageLabel} · Roots ${chapter.rootsPct}%', style: const TextStyle(fontSize: 11.5, color: AppColors.muted)),
+                    Text('${chapter.stageLabel} · Roots ${chapter.rootsPct}%', style: TextStyle(fontSize: 11.5, color: AppColors.muted)),
                   ],
                 ),
               ),
@@ -402,7 +402,7 @@ class _ChapterMilestonePanel extends StatelessWidget {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Text('${group.emoji} ${group.title}', style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700)),
-              Text('$done/${group.items.length}', style: const TextStyle(fontSize: 12, color: AppColors.muted)),
+              Text('$done/${group.items.length}', style: TextStyle(fontSize: 12, color: AppColors.muted)),
             ],
           ),
           const SizedBox(height: 8),

@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { getLearningScore } from '../api';
+import { Skel } from './Skeleton';
 import './StudentProgress.css';
 
 /**
@@ -92,7 +93,27 @@ export default function StudentProgress({ studentId, greetingName, fetchFn }) {
       </div>
     );
   }
-  if (!data) return null;
+  if (!data) {
+    return (
+      <div className="eg-pg-page" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12 }}>
+          <Skel height={160} width={160} radius={80} />
+          <Skel height={14} width={140} />
+        </div>
+        <Skel height={170} radius={12} />
+        <Skel height={220} radius={12} />
+        {[0, 1, 2].map((i) => (
+          <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 12, background: '#fff', borderRadius: 14, padding: 14, boxShadow: '0 4px 14px rgba(31,35,64,0.06)' }}>
+            <Skel height={56} width={56} radius={28} />
+            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <Skel height={13} width={120} />
+              <Skel height={8} />
+            </div>
+          </div>
+        ))}
+      </div>
+    );
+  }
 
   const {
     score = 0, maxScore = 1000, color, momentumDelta = 0, dimensions = [],

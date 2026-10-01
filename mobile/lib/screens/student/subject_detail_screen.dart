@@ -42,7 +42,7 @@ class SubjectDetailScreen extends ConsumerWidget {
               data: (scores) {
                 final matches = scores.where((s) => s.subject == subject);
                 if (matches.isEmpty) {
-                  return const SectionCard(
+                  return SectionCard(
                       title: '📈 Progress', child: Text('No progress recorded yet.', style: TextStyle(color: AppColors.muted, fontSize: 13)));
                 }
                 final score = matches.first;
@@ -52,7 +52,7 @@ class SubjectDetailScreen extends ConsumerWidget {
                     children: [
                       Text('${score.score}%', style: TextStyle(color: color, fontWeight: FontWeight.w800, fontSize: 24)),
                       const SizedBox(width: 8),
-                      Text('Average score', style: const TextStyle(color: AppColors.muted, fontSize: 12)),
+                      Text('Average score', style: TextStyle(color: AppColors.muted, fontSize: 12)),
                     ],
                   ),
                 );
@@ -101,7 +101,7 @@ class _HomeworkSection extends StatelessWidget {
     return SectionCard(
       title: '📝 Homework',
       child: items.isEmpty
-          ? const Text('No homework for this subject.', style: TextStyle(color: AppColors.muted, fontSize: 13))
+          ? Text('No homework for this subject.', style: TextStyle(color: AppColors.muted, fontSize: 13))
           : Column(
               children: items
                   .map((h) => Padding(
@@ -142,7 +142,7 @@ class _TestsSection extends StatelessWidget {
     return SectionCard(
       title: '🧪 Mock Tests',
       child: items.isEmpty
-          ? const Text('No tests available for this subject.', style: TextStyle(color: AppColors.muted, fontSize: 13))
+          ? Text('No tests available for this subject.', style: TextStyle(color: AppColors.muted, fontSize: 13))
           : Column(
               children: items
                   .map((t) => Padding(
@@ -150,7 +150,7 @@ class _TestsSection extends StatelessWidget {
                         child: Row(
                           children: [
                             Expanded(child: Text(t.title, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13))),
-                            Text('${t.durationMinutes} min', style: const TextStyle(color: AppColors.muted, fontSize: 12)),
+                            Text('${t.durationMinutes} min', style: TextStyle(color: AppColors.muted, fontSize: 12)),
                           ],
                         ),
                       ))

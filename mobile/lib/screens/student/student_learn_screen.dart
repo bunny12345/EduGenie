@@ -46,7 +46,7 @@ class StudentLearnScreen extends ConsumerWidget {
             if (subjects.isEmpty) {
               return ListView(
                 padding: const EdgeInsets.all(16),
-                children: const [
+                children: [
                   Text("No subjects yet — your school hasn't registered a teacher for your class.",
                       style: TextStyle(color: AppColors.muted, fontSize: 13)),
                 ],

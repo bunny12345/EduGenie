@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../screens/student/student_ai_tutor_screen.dart';
 import '../screens/student/student_home_screen.dart';
 import '../screens/student/student_more_screen.dart';
 import '../screens/student/student_services_screen.dart';
+import '../state/focus_lock_provider.dart';
 import '../theme/app_colors.dart';
 
 /// The site-wide "3D button" frame — a light-black ring border + soft drop
@@ -69,22 +72,68 @@ class _StudentShellState extends State<StudentShell> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      body: NotificationListener<ScrollNotification>(
-        onNotification: _onScrollNotification,
-        child: IndexedStack(index: _index, children: _screens),
-      ),
-      bottomNavigationBar: SafeArea(
-        minimum: const EdgeInsets.fromLTRB(16, 0, 16, 10),
-        child: _FloatingNavBar(
-          compact: _compact,
-          selectedIndex: _index,
-          items: _navItems,
-          onSelected: (i) => setState(() => _index = i),
-        ),
-      ),
+    return Consumer(
+      builder: (context, ref, _) {
+        final focusLock = ref.watch(focusLockProvider);
+        return PopScope(
+          canPop: !focusLock.enabled,
+          onPopInvokedWithResult: (didPop, result) async {
+            if (didPop) return;
+            final unlocked = await _requestFocusModePinToExit(context, ref);
+            if (unlocked && context.mounted) SystemNavigator.pop();
+          },
+          child: Scaffold(
+            body: NotificationListener<ScrollNotification>(
+              onNotification: _onScrollNotification,
+              child: IndexedStack(index: _index, children: _screens),
+            ),
+            bottomNavigationBar: SafeArea(
+              minimum: const EdgeInsets.fromLTRB(16, 0, 16, 10),
+              child: _FloatingNavBar(
+                compact: _compact,
+                selectedIndex: _index,
+                items: _navItems,
+                onSelected: (i) => setState(() => _index = i),
+              ),
+            ),
+          ),
+        );
+      },
     );
   }
+}
+
+/// While Focus Mode is on, the system/app back button is intercepted here —
+/// entering the correct parent PIN both unlocks AND exits in one step.
+Future<bool> _requestFocusModePinToExit(BuildContext context, WidgetRef ref) async {
+  final controller = TextEditingController();
+  final pin = await showDialog<String>(
+    context: context,
+    builder: (ctx) => AlertDialog(
+      title: const Text('Enter parent PIN to exit Focus Mode'),
+      content: TextField(
+        controller: controller,
+        autofocus: true,
+        obscureText: true,
+        keyboardType: TextInputType.number,
+        maxLength: 6,
+        inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+        decoration: const InputDecoration(labelText: '6-digit PIN', border: OutlineInputBorder(), counterText: ''),
+      ),
+      actions: [
+        TextButton(onPressed: () => Navigator.of(ctx).pop(), child: const Text('Cancel')),
+        ElevatedButton(onPressed: () => Navigator.of(ctx).pop(controller.text.trim()), child: const Text('Confirm')),
+      ],
+    ),
+  );
+  if (pin == null) return false;
+  final correct = await ref.read(focusLockProvider.notifier).verifyPin(pin);
+  if (!correct) {
+    if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Incorrect PIN.')));
+    return false;
+  }
+  await ref.read(focusLockProvider.notifier).disable();
+  return true;
 }
 
 /// The floating pill frame — curvy borderRadius, light-black 3D ring border

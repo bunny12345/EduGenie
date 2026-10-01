@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../models/learning_score.dart';
 import '../../state/teacher_providers.dart';
 import '../../theme/app_colors.dart';
+import '../../widgets/section_card.dart';
 import '../student/student_progress_screen.dart';
 
 /// The site-wide "3D button/card" frame — duplicated per-file per this
@@ -82,7 +83,7 @@ class _Frame3dButtonState extends State<_Frame3dButton> {
             boxShadow: _pressed ? [] : _frame3dShadow(alpha: 0.12, blur: 6),
           ),
           child: DefaultTextStyle(
-            style: const TextStyle(
+            style: TextStyle(
               color: AppColors.text,
               fontSize: 12,
               fontWeight: FontWeight.w700,
@@ -232,7 +233,7 @@ class _TeacherProgressTabState extends ConsumerState<TeacherProgressTab> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                const Text(
+                Text(
                   'Students',
                   style: TextStyle(
                     fontSize: 16,
@@ -241,7 +242,7 @@ class _TeacherProgressTabState extends ConsumerState<TeacherProgressTab> {
                   ),
                 ),
                 const SizedBox(height: 4),
-                const Text(
+                Text(
                   'Select a student to see their full progress report \u2014 every subject, just like they see it.',
                   style: TextStyle(fontSize: 12, color: AppColors.muted),
                 ),
@@ -299,8 +300,12 @@ class _TeacherProgressTabState extends ConsumerState<TeacherProgressTab> {
                       color: AppColors.danger,
                     ),
                   )
-                else if (!_loadingStudents && paged.isEmpty)
-                  const Text(
+                else if (_loadingStudents && _students.isEmpty) ...[
+                  const SkeletonBox(height: 44),
+                  const SkeletonBox(height: 44),
+                  const SkeletonBox(height: 44),
+                ] else if (!_loadingStudents && paged.isEmpty)
+                  Text(
                     'No students available yet for this class.',
                     style: TextStyle(fontSize: 12, color: AppColors.muted),
                   )
@@ -324,7 +329,7 @@ class _TeacherProgressTabState extends ConsumerState<TeacherProgressTab> {
                       ),
                       Text(
                         'Page ${clampedPage + 1} of $pageCount',
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: 12,
                           color: AppColors.muted,
                         ),
@@ -344,17 +349,20 @@ class _TeacherProgressTabState extends ConsumerState<TeacherProgressTab> {
           const SizedBox(height: 14),
           _Frame3dCard(
             child: _selectedStudentId == null
-                ? const Padding(
-                    padding: EdgeInsets.symmetric(vertical: 24),
+                ? Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 24),
                     child: Text(
                       'Select a student above to see their full progress report.',
                       style: TextStyle(fontSize: 13, color: AppColors.muted),
                     ),
                   )
                 : _loadingReport && _report == null
-                ? const Padding(
-                    padding: EdgeInsets.symmetric(vertical: 40),
-                    child: Center(child: CircularProgressIndicator()),
+                ? Column(
+                    children: const [
+                      SkeletonBox(height: 160),
+                      SkeletonBox(height: 120),
+                      SkeletonBox(height: 160),
+                    ],
                   )
                 : _reportError != null
                 ? Padding(
@@ -437,7 +445,7 @@ class _ProgressStudentRow extends StatelessWidget {
               ),
               Text(
                 className,
-                style: const TextStyle(fontSize: 11, color: AppColors.muted),
+                style: TextStyle(fontSize: 11, color: AppColors.muted),
               ),
             ],
           ),

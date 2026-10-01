@@ -3,6 +3,7 @@ import { getOrchardTree } from '../../api';
 import TreeSprite from './TreeSprite';
 import { STAGE_EMOJI } from './treeAssets';
 import RetentionCheckModal from './RetentionCheckModal';
+import { Skel } from '../Skeleton';
 
 // Milestone keys that are unlocked via a retention-check modal rather than a
 // normal in-app activity, mapped to the review type completeOrchardReview expects.
@@ -120,9 +121,17 @@ export default function OrchardTreeDetail({ studentId, subjectKey, initialTree, 
   const golden = chapters.filter((c) => c.isGolden).length;
 
   if (loading && !detail) {
-    // The tree loads silently in the background. Nothing is rendered while the
-    // fetch is in flight so the "could not load" message can't flash first.
-    return null;
+    return (
+      <div className="eg-tree-detail">
+        <Skel height={300} radius={22} />
+        <Skel height={20} width={220} style={{ marginTop: 18 }} />
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(132px, 1fr))', gap: 12, marginTop: 14 }}>
+          {[0, 1, 2, 3, 4, 5].map((i) => (
+            <Skel key={i} height={128} radius={16} />
+          ))}
+        </div>
+      </div>
+    );
   }
   if (!detail) {
     return (

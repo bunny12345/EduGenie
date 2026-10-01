@@ -34,7 +34,7 @@ class ComingSoonView extends StatelessWidget {
             const SizedBox(height: 16),
             Text(title, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700)),
             const SizedBox(height: 6),
-            Text(subtitle, textAlign: TextAlign.center, style: const TextStyle(color: AppColors.muted, fontSize: 13)),
+            Text(subtitle, textAlign: TextAlign.center, style: TextStyle(color: AppColors.muted, fontSize: 13)),
           ],
         ),
       ),

@@ -67,7 +67,7 @@ class _StudentServicesScreenState extends State<StudentServicesScreen> {
               children: [
                 const Text('School Services', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700)),
                 const SizedBox(height: 2),
-                const Text(
+                Text(
                   'Helpful school tools, customizable to your school',
                   style: TextStyle(fontSize: 11, color: AppColors.muted),
                 ),
@@ -211,7 +211,7 @@ class _ServiceDemoPanel extends StatelessWidget {
             style: TextStyle(fontSize: 11, color: Color(0xFF374151)),
           ),
           const SizedBox(height: 4),
-          const Text(
+          Text(
             'For now, this is a client demo preview. Your school can define the fields, approvals, notifications, and workflows.',
             style: TextStyle(fontSize: 10, color: AppColors.muted),
           ),

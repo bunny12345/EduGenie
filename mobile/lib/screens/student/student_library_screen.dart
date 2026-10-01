@@ -23,7 +23,7 @@ class StudentLibraryScreen extends ConsumerWidget {
             if (resources.isEmpty) {
               return ListView(
                 padding: const EdgeInsets.all(16),
-                children: const [Text('No resources available.', style: TextStyle(color: AppColors.muted, fontSize: 13))],
+                children: [Text('No resources available.', style: TextStyle(color: AppColors.muted, fontSize: 13))],
               );
             }
             return ListView(

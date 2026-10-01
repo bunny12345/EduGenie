@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { getFlashcardOverview, getFlashcardCards, submitFlashcardReview, logGameSession, completeFlashcardChapter } from '../../api';
+import { Skel } from '../Skeleton';
 
 /**
  * AI Flashcards — pick a subject + chapter (or all chapters) and study a deck of
@@ -204,9 +205,28 @@ export default function Flashcards({ studentId, onAskTutor, onCoinsEarned, onArc
   const progressPct = totalToStudy ? Math.min(100, Math.round((studied / totalToStudy) * 100)) : 0;
 
   // ── render ────────────────────────────────────────────────────────────────
-  // Cards are fetched in the background — nothing announces the wait, the deck
-  // just appears once it is ready.
-  if (phase === 'loading') return null;
+  if (phase === 'loading') {
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <Skel height={30} width={70} radius={999} />
+          <Skel height={30} width={80} radius={999} />
+          <Skel height={30} width={75} radius={999} />
+        </div>
+        <Skel height={70} radius={14} />
+        {[0, 1, 2, 3].map((i) => (
+          <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 12, background: '#fff', borderRadius: 12, padding: 12, boxShadow: '0 4px 14px rgba(31,35,64,0.06)' }}>
+            <Skel height={44} width={44} radius={12} />
+            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <Skel height={13} width={140} />
+              <Skel height={10} width={90} />
+            </div>
+            <Skel height={20} width={44} radius={999} />
+          </div>
+        ))}
+      </div>
+    );
+  }
 
   if (phase === 'empty') {
     return (

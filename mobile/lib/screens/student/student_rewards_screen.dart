@@ -58,7 +58,7 @@ class _StudentRewardsScreenState extends ConsumerState<StudentRewardsScreen> {
                   children: [
                     const Text('⭐', style: TextStyle(fontSize: 36)),
                     Text('${rewards.coins} Coins', style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w800)),
-                    Text('${rewards.badges.length} badges earned', style: const TextStyle(color: AppColors.muted, fontSize: 13)),
+                    Text('${rewards.badges.length} badges earned', style: TextStyle(color: AppColors.muted, fontSize: 13)),
                     const SizedBox(height: 14),
                     ElevatedButton(
                       onPressed: _checkingIn ? null : _checkIn,

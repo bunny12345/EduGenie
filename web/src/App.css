@@ -31,6 +31,35 @@ textarea {
   font-family: 'Poppins', 'Avenir Next', 'Segoe UI', sans-serif;
 }
 
+/* ── Shared shimmer/skeleton loading utility ──────────────────────────────
+   Reusable "wave" loading placeholder (Teams/YouTube-style) — a flat tinted
+   block with a vertical, top-to-bottom light sweep looping through it.
+   Used only in spots that previously rendered nothing while loading. */
+.eg-skel {
+  position: relative;
+  display: block;
+  background: #e2e2ee;
+  overflow: hidden;
+}
+
+.eg-skel::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, transparent 35%, rgba(255, 255, 255, 0.85) 50%, transparent 65%);
+  background-size: 100% 260%;
+  animation: eg-skel-wave 1.3s linear infinite;
+}
+
+@keyframes eg-skel-wave {
+  0% { background-position: 0 -160%; }
+  100% { background-position: 0 160%; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .eg-skel::after { animation: none; }
+}
+
 .eg-shell {
   height: 100vh;
   height: 100dvh;
@@ -3557,6 +3586,64 @@ textarea {
   padding: 10px 11px;
   font-size: 13px;
   font-family: 'Poppins', 'Avenir Next', 'Segoe UI', sans-serif;
+}
+
+.rg-password-field {
+  position: relative;
+  display: flex;
+}
+
+.rg-password-field input {
+  flex: 1;
+  min-width: 0;
+  padding-right: 40px;
+}
+
+/* Hide every browser-native password reveal/autofill icon (Edge's built-in
+   eye, Chrome/Safari's credentials icon) so only our custom eye button
+   shows — otherwise the two overlap and look like a stray divider line. */
+.rg-password-field input::-ms-reveal,
+.rg-password-field input::-ms-clear {
+  display: none;
+  width: 0;
+  height: 0;
+}
+
+.rg-password-field input::-webkit-credentials-auto-fill-button,
+.rg-password-field input::-webkit-strong-password-auto-fill-button,
+.rg-password-field input::-webkit-caps-lock-indicator {
+  display: none !important;
+  visibility: hidden;
+  pointer-events: none;
+  position: absolute;
+  right: 0;
+}
+
+.rg-eye-btn {
+  position: absolute;
+  right: 4px;
+  top: 50%;
+  transform: translateY(-50%);
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  font-size: 16px;
+  line-height: 1;
+  padding: 6px 8px;
+  border-radius: 8px;
+  color: #6b7194;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+  touch-action: manipulation;
+}
+
+.rg-eye-btn:hover {
+  background: #f1f3fb;
+}
+
+.rg-eye-btn:active {
+  background: #e7eaf8;
 }
 
 .rg-submit {

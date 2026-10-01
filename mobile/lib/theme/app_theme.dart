@@ -8,54 +8,84 @@ import 'app_colors.dart';
 class AppTheme {
   AppTheme._();
 
-  static ThemeData light() {
+  static ThemeData light() => _build(
+        background: AppColors.backgroundLight,
+        text: AppColors.textLight,
+        muted: AppColors.mutedLight,
+        card: AppColors.cardLight,
+        line: AppColors.lineLight,
+        brandSoft: AppColors.brandSoftLight,
+        brightness: Brightness.light,
+      );
+
+  static ThemeData dark() => _build(
+        background: AppColors.backgroundDark,
+        text: AppColors.textDark,
+        muted: AppColors.mutedDark,
+        card: AppColors.cardDark,
+        line: AppColors.lineDark,
+        brandSoft: AppColors.brandSoftDark,
+        brightness: Brightness.dark,
+      );
+
+  static ThemeData _build({
+    required Color background,
+    required Color text,
+    required Color muted,
+    required Color card,
+    required Color line,
+    required Color brandSoft,
+    required Brightness brightness,
+  }) {
     final base = ThemeData(
       useMaterial3: true,
+      brightness: brightness,
       colorScheme: ColorScheme.fromSeed(
         seedColor: AppColors.brand,
+        brightness: brightness,
         primary: AppColors.brand,
         secondary: AppColors.brand2,
-        surface: AppColors.card,
+        surface: card,
         error: AppColors.danger,
       ),
-      scaffoldBackgroundColor: AppColors.background,
-      textTheme: GoogleFonts.poppinsTextTheme().apply(
-        bodyColor: AppColors.text,
-        displayColor: AppColors.text,
+      scaffoldBackgroundColor: background,
+      textTheme: (brightness == Brightness.dark ? GoogleFonts.poppinsTextTheme(ThemeData(brightness: Brightness.dark).textTheme) : GoogleFonts.poppinsTextTheme()).apply(
+        bodyColor: text,
+        displayColor: text,
       ),
     );
 
     return base.copyWith(
       appBarTheme: AppBarTheme(
-        backgroundColor: AppColors.background,
-        foregroundColor: AppColors.text,
+        backgroundColor: background,
+        foregroundColor: text,
         elevation: 0,
         centerTitle: false,
         titleTextStyle: GoogleFonts.poppins(
-          color: AppColors.text,
+          color: text,
           fontSize: 18,
           fontWeight: FontWeight.w700,
         ),
       ),
       cardTheme: CardThemeData(
-        color: AppColors.card,
+        color: card,
         elevation: 0,
         margin: EdgeInsets.zero,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(12),
-          side: const BorderSide(color: AppColors.line),
+          side: BorderSide(color: line),
         ),
       ),
       navigationBarTheme: NavigationBarThemeData(
-        backgroundColor: AppColors.card,
-        indicatorColor: AppColors.brandSoft,
+        backgroundColor: card,
+        indicatorColor: brandSoft,
         elevation: 2,
         labelTextStyle: WidgetStateProperty.resolveWith((states) {
           final selected = states.contains(WidgetState.selected);
           return GoogleFonts.poppins(
             fontSize: 11,
             fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
-            color: selected ? AppColors.brand : AppColors.muted,
+            color: selected ? AppColors.brand : muted,
           );
         }),
       ),
@@ -70,15 +100,15 @@ class AppTheme {
       ),
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
-        fillColor: AppColors.card,
+        fillColor: card,
         contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(10),
-          borderSide: const BorderSide(color: AppColors.line),
+          borderSide: BorderSide(color: line),
         ),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(10),
-          borderSide: const BorderSide(color: AppColors.line),
+          borderSide: BorderSide(color: line),
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(10),

@@ -8,6 +8,7 @@ import 'package:intl/intl.dart';
 
 import '../../state/teacher_providers.dart';
 import '../../theme/app_colors.dart';
+import '../../widgets/section_card.dart';
 
 String _normalizeClassName(String value) => value.trim().toLowerCase().replaceAll(RegExp(r'\s+'), ' ');
 
@@ -167,12 +168,12 @@ class _SectionCardState extends State<_SectionCard> {
               child: Row(
                 children: [
                   Expanded(
-                    child: Text(widget.title, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: AppColors.text)),
+                    child: Text(widget.title, style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: AppColors.text)),
                   ),
                   AnimatedRotation(
                     turns: _expanded ? 0.5 : 0,
                     duration: const Duration(milliseconds: 180),
-                    child: const Icon(Icons.keyboard_arrow_down_rounded, color: AppColors.muted),
+                    child: Icon(Icons.keyboard_arrow_down_rounded, color: AppColors.muted),
                   ),
                 ],
               ),
@@ -203,7 +204,7 @@ class _DateTimeField extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(label, style: const TextStyle(fontSize: 10, color: AppColors.muted, fontWeight: FontWeight.w700, letterSpacing: 0.4)),
+        Text(label, style: TextStyle(fontSize: 10, color: AppColors.muted, fontWeight: FontWeight.w700, letterSpacing: 0.4)),
         const SizedBox(height: 4),
         InkWell(
           borderRadius: BorderRadius.circular(8),
@@ -223,7 +224,7 @@ class _DateTimeField extends StatelessWidget {
                     overflow: TextOverflow.ellipsis,
                   ),
                 ),
-                const Icon(Icons.calendar_today_rounded, size: 14, color: AppColors.muted),
+                Icon(Icons.calendar_today_rounded, size: 14, color: AppColors.muted),
               ],
             ),
           ),
@@ -387,9 +388,10 @@ class _AnnouncementsPanelState extends ConsumerState<_AnnouncementsPanel> {
     // Unlike other panels, announcements have no useful "all classes" view —
     // show nothing until a specific class is selected.
     // Web only ever shows the 5 most recent per class — mirror that here too.
+    final announcementsAsync = ref.watch(teacherAnnouncementsProvider);
     final announcements = widget.targetClass == 'all'
         ? const <Map<String, dynamic>>[]
-        : (ref.watch(teacherAnnouncementsProvider).value ?? const <Map<String, dynamic>>[])
+        : (announcementsAsync.value ?? const <Map<String, dynamic>>[])
             .where((a) => _sameClass(a['className'] ?? a['class_name'], widget.targetClass))
             .take(5)
             .toList();
@@ -402,11 +404,11 @@ class _AnnouncementsPanelState extends ConsumerState<_AnnouncementsPanel> {
           Text.rich(
             TextSpan(
               text: 'Broadcast an update to ',
-              style: const TextStyle(fontSize: 13, color: AppColors.muted),
+              style: TextStyle(fontSize: 13, color: AppColors.muted),
               children: [
                 TextSpan(
                   text: widget.targetClass == 'all' ? 'the selected class' : widget.targetClass,
-                  style: const TextStyle(fontWeight: FontWeight.w700, color: AppColors.text),
+                  style: TextStyle(fontWeight: FontWeight.w700, color: AppColors.text),
                 ),
                 const TextSpan(text: '.'),
               ],
@@ -426,7 +428,7 @@ class _AnnouncementsPanelState extends ConsumerState<_AnnouncementsPanel> {
             ],
           ),
           const SizedBox(height: 6),
-          const Text('Leave blank to post immediately and keep it visible indefinitely.', style: TextStyle(fontSize: 11, color: AppColors.muted)),
+          Text('Leave blank to post immediately and keep it visible indefinitely.', style: TextStyle(fontSize: 11, color: AppColors.muted)),
           const SizedBox(height: 12),
           SizedBox(
             width: double.infinity,
@@ -444,10 +446,13 @@ class _AnnouncementsPanelState extends ConsumerState<_AnnouncementsPanel> {
             Text(_error!, style: const TextStyle(color: AppColors.danger, fontSize: 12)),
           ],
           const SizedBox(height: 14),
-          if (announcements.isEmpty)
+          if (announcementsAsync.isLoading && !announcementsAsync.hasValue) ...[
+            const SkeletonBox(height: 46),
+            const SkeletonBox(height: 46),
+          ] else if (announcements.isEmpty)
             Text(
               widget.targetClass == 'all' ? 'Select a class to see its announcements.' : 'No announcements posted yet.',
-              style: const TextStyle(fontSize: 12, color: AppColors.muted),
+              style: TextStyle(fontSize: 12, color: AppColors.muted),
             )
           else
             for (final a in announcements)
@@ -554,9 +559,9 @@ class _AnnouncementTileState extends State<_AnnouncementTile> {
                   ),
                   if (_expanded) ...[
                     const SizedBox(height: 2),
-                    Text(message, style: const TextStyle(fontSize: 12, color: AppColors.text)),
+                    Text(message, style: TextStyle(fontSize: 12, color: AppColors.text)),
                     const SizedBox(height: 4),
-                    Text(_announcementScheduleLabel(widget.announcement), style: const TextStyle(fontSize: 11, color: AppColors.muted)),
+                    Text(_announcementScheduleLabel(widget.announcement), style: TextStyle(fontSize: 11, color: AppColors.muted)),
                   ],
                 ],
               ),
@@ -857,11 +862,12 @@ class _AssignHomeworkPanelState extends ConsumerState<_AssignHomeworkPanel> {
   Widget build(BuildContext context) {
     final subject = ref.watch(teacherProfileProvider).value?['subject']?.toString() ?? '';
     final lessons = ref.watch(teacherLessonsProvider).value ?? const <Map<String, dynamic>>[];
+    final homeworkAsync = ref.watch(teacherHomeworkProvider);
     // Backend returns one row per student; collapse to one card per assignment
     // group, same as web's `loadHomeworkHistory()` — this feeds both "View
     // History" (full list) and "Recently assigned" (active-only, below).
     final classScoped = _dedupeAssignments(
-      (ref.watch(teacherHomeworkProvider).value ?? const <Map<String, dynamic>>[])
+      (homeworkAsync.value ?? const <Map<String, dynamic>>[])
           .where((h) => widget.targetClass == 'all' || _sameClass(h['className'] ?? h['class_name'], widget.targetClass))
           .toList(),
     );
@@ -905,11 +911,11 @@ class _AssignHomeworkPanelState extends ConsumerState<_AssignHomeworkPanel> {
           Text.rich(
             TextSpan(
               text: 'Send homework to every student in ',
-              style: const TextStyle(fontSize: 13, color: AppColors.muted),
+              style: TextStyle(fontSize: 13, color: AppColors.muted),
               children: [
                 TextSpan(
                   text: widget.targetClass == 'all' ? 'the selected class' : widget.targetClass,
-                  style: const TextStyle(fontWeight: FontWeight.w700, color: AppColors.text),
+                  style: TextStyle(fontWeight: FontWeight.w700, color: AppColors.text),
                 ),
                 const TextSpan(text: '.'),
               ],
@@ -921,7 +927,7 @@ class _AssignHomeworkPanelState extends ConsumerState<_AssignHomeworkPanel> {
           IgnorePointer(
             child: TextField(
               controller: TextEditingController(text: subject),
-              decoration: const InputDecoration(hintText: 'Subject', filled: true, fillColor: AppColors.background),
+              decoration: InputDecoration(hintText: 'Subject', filled: true, fillColor: AppColors.background),
             ),
           ),
           const SizedBox(height: 8),
@@ -1014,13 +1020,17 @@ class _AssignHomeworkPanelState extends ConsumerState<_AssignHomeworkPanel> {
           ],
           if (recentTop2.isNotEmpty) ...[
             const SizedBox(height: 14),
-            const Text('Recently assigned', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: AppColors.muted)),
+            Text('Recently assigned', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: AppColors.muted)),
             for (final h in recentTop2)
               _HomeworkTile(
                 homework: h,
                 onEdit: () => _startEdit(h),
                 onDelete: () => _deleteHomework(h['id']?.toString() ?? ''),
               ),
+          ] else if (homeworkAsync.isLoading && !homeworkAsync.hasValue) ...[
+            const SizedBox(height: 14),
+            const SkeletonBox(height: 56),
+            const SkeletonBox(height: 56),
           ],
           if (_editingHwId != null) ...[
             const SizedBox(height: 14),
@@ -1041,7 +1051,7 @@ class _AssignHomeworkPanelState extends ConsumerState<_AssignHomeworkPanel> {
                   IgnorePointer(
                     child: TextField(
                       controller: TextEditingController(text: subject),
-                      decoration: const InputDecoration(hintText: 'Subject', filled: true, fillColor: AppColors.card),
+                      decoration: InputDecoration(hintText: 'Subject', filled: true, fillColor: AppColors.card),
                     ),
                   ),
                   const SizedBox(height: 8),
@@ -1222,7 +1232,7 @@ class _LessonPicker extends StatelessWidget {
             ),
             child: Row(
               children: [
-                const Icon(Icons.menu_book_outlined, size: 16, color: AppColors.muted),
+                Icon(Icons.menu_book_outlined, size: 16, color: AppColors.muted),
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
@@ -1233,7 +1243,7 @@ class _LessonPicker extends StatelessWidget {
                 AnimatedRotation(
                   turns: expanded ? 0.5 : 0,
                   duration: const Duration(milliseconds: 150),
-                  child: const Icon(Icons.keyboard_arrow_down_rounded, size: 18, color: AppColors.muted),
+                  child: Icon(Icons.keyboard_arrow_down_rounded, size: 18, color: AppColors.muted),
                 ),
               ],
             ),
@@ -1246,14 +1256,14 @@ class _LessonPicker extends StatelessWidget {
             constraints: const BoxConstraints(maxHeight: 220),
             decoration: BoxDecoration(border: Border.all(color: AppColors.line), borderRadius: BorderRadius.circular(8)),
             child: !classSelected
-                ? const Padding(
-                    padding: EdgeInsets.all(12),
+                ? Padding(
+                    padding: const EdgeInsets.all(12),
                     child: Text('Select a class to see chapters, or no lessons uploaded yet.', style: TextStyle(fontSize: 12, color: AppColors.muted)),
                   )
                 : lessons.isEmpty
                     ? Padding(
                         padding: const EdgeInsets.all(12),
-                        child: Text('No lessons uploaded for this subject in $targetClass yet. Upload lessons from the school portal first.', style: const TextStyle(fontSize: 12, color: AppColors.muted)),
+                        child: Text('No lessons uploaded for this subject in $targetClass yet. Upload lessons from the school portal first.', style: TextStyle(fontSize: 12, color: AppColors.muted)),
                       )
                     : ListView(
                         shrinkWrap: true,
@@ -1350,7 +1360,7 @@ class _HistoryCalendarSheetState extends State<_HistoryCalendarSheet> {
       expand: false,
       builder: (context, scrollController) {
         return Container(
-          decoration: const BoxDecoration(color: AppColors.card, borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+          decoration: BoxDecoration(color: AppColors.card, borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
           child: ListView(
             controller: scrollController,
             padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
@@ -1379,7 +1389,7 @@ class _HistoryCalendarSheetState extends State<_HistoryCalendarSheet> {
               Row(
                 children: [
                   for (final l in const ['M', 'T', 'W', 'T', 'F', 'S', 'S'])
-                    Expanded(child: Center(child: Text(l, style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: AppColors.muted)))),
+                    Expanded(child: Center(child: Text(l, style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: AppColors.muted)))),
                 ],
               ),
               GridView.count(
@@ -1403,11 +1413,11 @@ class _HistoryCalendarSheetState extends State<_HistoryCalendarSheet> {
               ],
               const Divider(height: 24),
               if (widget.history.isEmpty)
-                const Text('No homework assigned yet.', style: TextStyle(fontSize: 13, color: AppColors.muted))
+                Text('No homework assigned yet.', style: TextStyle(fontSize: 13, color: AppColors.muted))
               else if (visible.isEmpty)
                 Text(
                   _filterDate != null ? 'No homework found for the selected date.' : 'No homework assigned yet.',
-                  style: const TextStyle(fontSize: 13, color: AppColors.muted),
+                  style: TextStyle(fontSize: 13, color: AppColors.muted),
                 )
               else
                 for (var i = 0; i < visible.length; i++) _buildHistoryRow(visible[i], i),
@@ -1485,17 +1495,17 @@ class _HistoryCalendarSheetState extends State<_HistoryCalendarSheet> {
             startAt != null
                 ? 'Start: ${DateFormat('d MMM, h:mm a').format(startAt)}${dueAt != null ? ' · Due: ${DateFormat('d MMM, h:mm a').format(dueAt)}' : ''}'
                 : (dueAt != null ? 'Due: ${DateFormat('d MMM, h:mm a').format(dueAt)}' : (createdAt != null ? 'Assigned: ${DateFormat('d MMM yyyy').format(createdAt)}' : '–')),
-            style: const TextStyle(fontSize: 11, color: AppColors.muted),
+            style: TextStyle(fontSize: 11, color: AppColors.muted),
           ),
           if (expanded) ...[
             const SizedBox(height: 8),
             if (note.isNotEmpty) ...[
-              const Text('Instructions', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: AppColors.muted)),
+              Text('Instructions', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: AppColors.muted)),
               Text(note, style: const TextStyle(fontSize: 12)),
               const SizedBox(height: 6),
             ],
             if (attachments.isNotEmpty) ...[
-              const Text('Teacher attachments', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: AppColors.muted)),
+              Text('Teacher attachments', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: AppColors.muted)),
               const SizedBox(height: 4),
               Wrap(
                 spacing: 6,
@@ -1646,7 +1656,8 @@ class _MockTestsPanelState extends ConsumerState<_MockTestsPanel> {
 
   @override
   Widget build(BuildContext context) {
-    final tests = (ref.watch(teacherTestsProvider).value ?? const <Map<String, dynamic>>[])
+    final testsAsync = ref.watch(teacherTestsProvider);
+    final tests = (testsAsync.value ?? const <Map<String, dynamic>>[])
         .where((t) => widget.targetClass == 'all' || _sameClass(t['className'] ?? t['class_name'], widget.targetClass))
         .toList();
 
@@ -1655,10 +1666,13 @@ class _MockTestsPanelState extends ConsumerState<_MockTestsPanel> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          const Text('Create tests and add questions for your students.', style: TextStyle(fontSize: 13, color: AppColors.muted)),
+          Text('Create tests and add questions for your students.', style: TextStyle(fontSize: 13, color: AppColors.muted)),
           const SizedBox(height: 10),
-          if (tests.isEmpty)
-            const Text('No tests yet. Create one below.', style: TextStyle(fontSize: 12, color: AppColors.muted))
+          if (testsAsync.isLoading && !testsAsync.hasValue) ...[
+            const SkeletonBox(height: 50),
+            const SkeletonBox(height: 50),
+          ] else if (tests.isEmpty)
+            Text('No tests yet. Create one below.', style: TextStyle(fontSize: 12, color: AppColors.muted))
           else
             for (final t in tests) _TestTile(test: t, onDelete: () => _deleteTest(t['id']?.toString() ?? '')),
           const SizedBox(height: 14),
@@ -1713,13 +1727,13 @@ class _MockTestsPanelState extends ConsumerState<_MockTestsPanel> {
             ),
             if (_questions.isNotEmpty) ...[
               const SizedBox(height: 8),
-              Text('${_questions.length} question(s) added so far.', style: const TextStyle(fontSize: 12, color: AppColors.muted)),
+              Text('${_questions.length} question(s) added so far.', style: TextStyle(fontSize: 12, color: AppColors.muted)),
               for (var i = 0; i < _questions.length; i++) _QuestionTile(index: i, question: _questions[i]),
             ],
           ],
           if (_note != null) ...[
             const SizedBox(height: 8),
-            Text(_note!, style: const TextStyle(fontSize: 12, color: AppColors.muted)),
+            Text(_note!, style: TextStyle(fontSize: 12, color: AppColors.muted)),
           ],
         ],
       ),
@@ -1749,7 +1763,7 @@ class _TestTile extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(title, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
-                Text('$subject · $status', style: const TextStyle(fontSize: 11, color: AppColors.muted)),
+                Text('$subject · $status', style: TextStyle(fontSize: 11, color: AppColors.muted)),
               ],
             ),
           ),

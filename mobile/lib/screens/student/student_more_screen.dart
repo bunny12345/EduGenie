@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../state/session_provider.dart';
 import '../../theme/app_colors.dart';
+import '../shared/parental_lock_screen.dart';
 import 'student_settings_screen.dart';
 
 /// "More" tab — Settings + Logout. Orchard/Games/Rewards/Calendar/Library
@@ -17,6 +18,7 @@ class StudentMoreScreen extends ConsumerWidget {
 
     final items = <_MoreItem>[
       _MoreItem(Icons.settings_rounded, 'Settings', (ctx) => const StudentSettingsScreen()),
+      _MoreItem(Icons.lock_outline_rounded, 'Parental Lock', (ctx) => const ParentalLockScreen()),
     ];
 
     return Scaffold(
@@ -41,7 +43,7 @@ class StudentMoreScreen extends ConsumerWidget {
                     children: [
                       Text(session.name, style: const TextStyle(fontWeight: FontWeight.w700)),
                       if (session.className.isNotEmpty)
-                        Text(session.className, style: const TextStyle(color: AppColors.muted, fontSize: 12)),
+                        Text(session.className, style: TextStyle(color: AppColors.muted, fontSize: 12)),
                     ],
                   ),
                 ],
@@ -52,7 +54,7 @@ class StudentMoreScreen extends ConsumerWidget {
             ListTile(
               leading: Icon(item.icon, color: AppColors.brand),
               title: Text(item.label),
-              trailing: const Icon(Icons.chevron_right_rounded, color: AppColors.muted),
+              trailing: Icon(Icons.chevron_right_rounded, color: AppColors.muted),
               onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: item.builder)),
             ),
           const Divider(height: 1),

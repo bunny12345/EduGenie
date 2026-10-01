@@ -134,11 +134,11 @@ class _StudentOrchardScreenState extends ConsumerState<StudentOrchardScreen> {
                     children: [
                       const Text('🌳', style: TextStyle(fontSize: 32)),
                       const SizedBox(width: 12),
-                      const Expanded(
+                      Expanded(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text('Your Learning Orchard', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
+                            const Text('Your Learning Orchard', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
                             Text('Each tree represents your growth in a subject.', style: TextStyle(fontSize: 12, color: AppColors.muted)),
                           ],
                         ),
@@ -169,7 +169,7 @@ class _StudentOrchardScreenState extends ConsumerState<StudentOrchardScreen> {
                       Column(
                         crossAxisAlignment: CrossAxisAlignment.end,
                         children: [
-                          const Text('Overall Progress', style: TextStyle(fontSize: 11, color: AppColors.muted)),
+                          Text('Overall Progress', style: TextStyle(fontSize: 11, color: AppColors.muted)),
                           Text('${data.overallProgress}%', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
                         ],
                       ),
@@ -182,8 +182,8 @@ class _StudentOrchardScreenState extends ConsumerState<StudentOrchardScreen> {
 
             // Tree grid
             if (trees.isEmpty)
-              const Padding(
-                padding: EdgeInsets.symmetric(vertical: 24),
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 24),
                 child: Text('No orchard trees yet — start learning to grow one!', textAlign: TextAlign.center, style: TextStyle(color: AppColors.muted)),
               )
             else
@@ -253,7 +253,7 @@ class _CounterCard extends StatelessWidget {
           Text(icon, style: const TextStyle(fontSize: 20)),
           const SizedBox(height: 4),
           Text('$value', style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14)),
-          Text(label, style: const TextStyle(fontSize: 9.5, color: AppColors.muted), textAlign: TextAlign.center, maxLines: 1, overflow: TextOverflow.ellipsis),
+          Text(label, style: TextStyle(fontSize: 9.5, color: AppColors.muted), textAlign: TextAlign.center, maxLines: 1, overflow: TextOverflow.ellipsis),
         ],
       ),
     );
@@ -342,7 +342,7 @@ class _TreeCard extends StatelessWidget {
                 Text(tree.stageLabel, style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700, color: accent)),
                 Text(
                   tree.totalChapters > 0 ? '${tree.completedChapters} / ${tree.totalChapters} Lessons' : 'No lessons yet',
-                  style: const TextStyle(fontSize: 9.5, color: AppColors.muted),
+                  style: TextStyle(fontSize: 9.5, color: AppColors.muted),
                 ),
               ],
             ),
@@ -409,14 +409,14 @@ class _DetailPanel extends StatelessWidget {
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Text(tree.stageLabel, style: TextStyle(fontWeight: FontWeight.w700, color: accent)),
-                Text('Level ${tree.level} of ${tree.maxLevel}', style: const TextStyle(fontSize: 12, color: AppColors.muted)),
+                Text('Level ${tree.level} of ${tree.maxLevel}', style: TextStyle(fontSize: 12, color: AppColors.muted)),
               ],
             ),
           ),
           const SizedBox(height: 8),
           Text(
             tree.totalChapters > 0 ? '${tree.completedChapters} / ${tree.totalChapters} Lessons Completed' : 'No lessons uploaded for your class yet',
-            style: const TextStyle(fontSize: 12.5, color: AppColors.muted),
+            style: TextStyle(fontSize: 12.5, color: AppColors.muted),
           ),
           const SizedBox(height: 14),
           const Text('Tree Needs', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
@@ -467,7 +467,7 @@ class _NeedBar extends StatelessWidget {
         children: [
           Text(icon, style: const TextStyle(fontSize: 13)),
           const SizedBox(width: 6),
-          SizedBox(width: 58, child: Text(label, style: const TextStyle(fontSize: 11.5, color: AppColors.muted))),
+          SizedBox(width: 58, child: Text(label, style: TextStyle(fontSize: 11.5, color: AppColors.muted))),
           Expanded(
             child: ClipRRect(
               borderRadius: BorderRadius.circular(8),
@@ -475,7 +475,7 @@ class _NeedBar extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 8),
-          SizedBox(width: 32, child: Text('$value%', textAlign: TextAlign.right, style: const TextStyle(fontSize: 11.5, color: AppColors.muted))),
+          SizedBox(width: 32, child: Text('$value%', textAlign: TextAlign.right, style: TextStyle(fontSize: 11.5, color: AppColors.muted))),
         ],
       ),
     );
@@ -546,7 +546,7 @@ class _WeekStrip extends StatelessWidget {
                 decoration: BoxDecoration(color: isToday ? const Color(0xFFF0ECFF) : null, borderRadius: BorderRadius.circular(10)),
                 child: Column(
                   children: [
-                    Text(labels[i], style: const TextStyle(fontSize: 10, color: AppColors.muted)),
+                    Text(labels[i], style: TextStyle(fontSize: 10, color: AppColors.muted)),
                     Text('${d.day}', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
                     Text(mark, style: const TextStyle(fontSize: 12)),
                   ],
@@ -558,7 +558,7 @@ class _WeekStrip extends StatelessWidget {
         const SizedBox(height: 10),
         Align(
           alignment: Alignment.centerLeft,
-          child: Text('🔥 $dayStreak day streak — keep it going!', style: const TextStyle(fontSize: 12, color: AppColors.muted)),
+          child: Text('🔥 $dayStreak day streak — keep it going!', style: TextStyle(fontSize: 12, color: AppColors.muted)),
         ),
       ],
     );
@@ -610,8 +610,8 @@ class _GrowthChart extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (trees.isEmpty) {
-      return const Padding(
-        padding: EdgeInsets.symmetric(vertical: 24),
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 24),
         child: Text('No growth yet', style: TextStyle(color: AppColors.muted, fontSize: 13)),
       );
     }

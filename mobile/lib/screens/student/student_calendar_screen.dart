@@ -348,15 +348,15 @@ class _MonthCard extends StatelessWidget {
             },
           ),
           const SizedBox(height: 10),
-          const Divider(height: 1, color: AppColors.line),
+          Divider(height: 1, color: AppColors.line),
           const SizedBox(height: 10),
           Text(
             isSelectedToday ? 'Today' : _weekdayDateLabel(DateTime.parse(selectedDate)),
-            style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: AppColors.text),
+            style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: AppColors.text),
           ),
           const SizedBox(height: 6),
           if (selectedEvents.isEmpty)
-            const Text('No events on this day.', style: TextStyle(color: AppColors.muted, fontSize: 12))
+            Text('No events on this day.', style: TextStyle(color: AppColors.muted, fontSize: 12))
           else
             for (final e in selectedEvents)
               Padding(
@@ -521,7 +521,7 @@ class _UpcomingEventsCard extends StatelessWidget {
           const Text('📌 Upcoming Events', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700)),
           const SizedBox(height: 10),
           if (upcoming.isEmpty)
-            const Text('No upcoming events. Add one from the calendar!', style: TextStyle(color: AppColors.muted, fontSize: 12))
+            Text('No upcoming events. Add one from the calendar!', style: TextStyle(color: AppColors.muted, fontSize: 12))
           else
             for (final e in upcoming) ...[
               _UpcomingEventRow(

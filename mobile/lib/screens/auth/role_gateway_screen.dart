@@ -22,6 +22,7 @@ class RoleGatewayScreen extends ConsumerStatefulWidget {
 class _RoleGatewayScreenState extends ConsumerState<RoleGatewayScreen> {
   _Role _role = _Role.student;
   bool _busy = false;
+  bool _showPassword = false;
   String _error = '';
 
   final _loginIdCtrl = TextEditingController();
@@ -136,7 +137,7 @@ class _RoleGatewayScreenState extends ConsumerState<RoleGatewayScreen> {
         const SizedBox(height: 16),
         const Text('Teacher and Student Access', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w700)),
         const SizedBox(height: 6),
-        const Text(
+        Text(
           'Log in with the ID and password your school gave you.',
           style: TextStyle(color: AppColors.muted, fontSize: 13),
         ),
@@ -177,7 +178,24 @@ class _RoleGatewayScreenState extends ConsumerState<RoleGatewayScreen> {
       children: [
         TextField(controller: _loginIdCtrl, decoration: const InputDecoration(labelText: 'Login ID')),
         const SizedBox(height: 10),
-        TextField(controller: _passwordCtrl, obscureText: true, decoration: const InputDecoration(labelText: 'Password')),
+        TextField(
+          controller: _passwordCtrl,
+          obscureText: !_showPassword,
+          decoration: InputDecoration(
+            labelText: 'Password',
+            suffixIcon: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTapDown: (_) => setState(() => _showPassword = true),
+              onTapUp: (_) => setState(() => _showPassword = false),
+              onTapCancel: () => setState(() => _showPassword = false),
+              child: Icon(
+                _showPassword ? Icons.visibility_off_rounded : Icons.visibility_rounded,
+                size: 20,
+                color: AppColors.muted,
+              ),
+            ),
+          ),
+        ),
         const SizedBox(height: 16),
         ElevatedButton(
           onPressed: _busy ? null : onSubmit,

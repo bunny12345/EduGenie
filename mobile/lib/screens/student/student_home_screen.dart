@@ -196,7 +196,7 @@ class _AnnouncementBell extends ConsumerWidget {
         child: Stack(
           clipBehavior: Clip.none,
           children: [
-            const Icon(Icons.notifications_outlined, size: 16, color: AppColors.text),
+            Icon(Icons.notifications_outlined, size: 16, color: AppColors.text),
             if (count > 0)
               Positioned(
                 top: -4,
@@ -393,7 +393,7 @@ class _ProfileChipState extends ConsumerState<_ProfileChip> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Text('Hi, $name', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, height: 1.1, color: AppColors.text)),
+                  Text('Hi, $name', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, height: 1.1, color: AppColors.text)),
                   Text(
                     className.isNotEmpty ? 'Student · $className' : 'Student',
                     style: const TextStyle(fontSize: 10, color: Color(0xFF7C82A7), height: 1.1),
@@ -455,7 +455,7 @@ class _StreakCard extends StatelessWidget {
         children: [
           Text(
             'Current Streak${doneToday ? ' ✅' : ''}',
-            style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: AppColors.text),
+            style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: AppColors.text),
           ),
           const SizedBox(height: 2),
           Text('$days', style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800, color: AppColors.brand, height: 1)),
