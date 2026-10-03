@@ -2080,10 +2080,26 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
     }
   }
 
-  // Scroll AI chat to bottom whenever messages change
+  // Scroll AI chat to bottom only when a lesson's chat is first opened, and
+  // while the AI is actively replying (chatLoading) — NOT on every
+  // chatHistory change, since the background poll (every 6s, see
+  // pollChatHistory) also updates chatHistory and must not yank the student
+  // back down if they scrolled up on their own to read earlier messages.
+  const lastAutoScrollConvRef = useRef('');
   useEffect(() => {
+    const conversationId = getCurrentTutorConversationId();
+    if (!conversationId || conversationId === lastAutoScrollConvRef.current) return;
+    lastAutoScrollConvRef.current = conversationId;
+    chatEndRef.current?.scrollIntoView({ behavior: 'auto' });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedTutorLesson?.id, chatHistory]);
+
+  useEffect(() => {
+    // Fires on every chatLoading transition — both "AI started replying"
+    // (typing indicator appears) and "reply just landed" (indicator clears),
+    // so the student always sees the live exchange without needing to scroll.
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [chatHistory, chatLoading]);
+  }, [chatLoading]);
 
   async function onSendTutorMessage(overrideMsg, opts = {}) {
     const msg = (typeof overrideMsg === 'string' ? overrideMsg : chatInput).trim();

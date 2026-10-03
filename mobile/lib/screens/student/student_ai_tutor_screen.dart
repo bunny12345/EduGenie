@@ -54,7 +54,6 @@ class _StudentAiTutorScreenState extends ConsumerState<StudentAiTutorScreen> {
     _inputCtrl.clear();
     setState(() => _showActions = false);
     await ref.read(tutorProvider.notifier).sendMessage(text);
-    _scrollToBottom();
   }
 
   Future<void> _pickImages() async {
@@ -73,8 +72,19 @@ class _StudentAiTutorScreenState extends ConsumerState<StudentAiTutorScreen> {
   @override
   Widget build(BuildContext context) {
     final subjects = ref.watch(studentSubjectsProvider);
-    final tutorState = ref.watch(tutorProvider);
     final talkState = ref.watch(talkToSamProvider);
+
+    // Auto-scroll only when a lesson's chat finishes loading, or while the AI
+    // is actively replying (sending toggles true->false) — NOT on every
+    // background poll refresh (which only updates `messages`, never
+    // `loadingHistory`/`sending`), so a manual scroll-up to read earlier
+    // messages is never overridden.
+    ref.listen<TutorState>(tutorProvider, (previous, next) {
+      final historyJustLoaded = previous?.loadingHistory == true && !next.loadingHistory;
+      final sendingChanged = previous?.sending != next.sending;
+      if (historyJustLoaded || sendingChanged) _scrollToBottom();
+    });
+    final tutorState = ref.watch(tutorProvider);
 
     // Default to the first subject once the class's subject list resolves —
     // mirrors the equivalent effect in StudentDashboard.jsx.
