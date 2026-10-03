@@ -17,6 +17,12 @@ import React, { useMemo } from 'react';
  *   golden     number — count of golden-fruit trees (adds celebration fireflies)
  *   treehouse  boolean — show the cosy treehouse once a tree is mature+
  */
+// Hides a cloud/bird image gracefully if its asset is missing instead of
+// showing a broken-image icon (mirrors the mobile app's errorBuilder).
+function hideOnError(e) {
+  e.currentTarget.style.display = 'none';
+}
+
 export default function OrchardAmbience({
   season = 'spring',
   night = false,
@@ -27,7 +33,7 @@ export default function OrchardAmbience({
   // How many butterflies/fireflies to sprinkle in, based on orchard health.
   const butterflyCount = night ? 0 : Math.round(vibrancy * 3); // 0..3 by day
   const fireflyCount = night ? 4 + Math.min(4, golden * 2) : Math.min(4, golden * 2);
-  const birdCount = night ? 0 : 2;
+  const birdCount = night ? 0 : 3;
 
   // Seasonal falling particles: petals (spring), leaves (autumn), snow (winter).
   const particle = useMemo(() => {
@@ -51,14 +57,20 @@ export default function OrchardAmbience({
       <div className="eg-amb-sky" />
       <div className={`eg-amb-celestial ${night ? 'moon' : 'sun'}`}>{night ? '🌙' : '☀️'}</div>
 
-      {/* Drifting clouds */}
-      <span className="eg-amb-cloud c1">☁️</span>
-      <span className="eg-amb-cloud c2">☁️</span>
-      <span className="eg-amb-cloud c3">⛅</span>
+      {/* Drifting clouds — real art, mirrors the mobile app's assets/orchard_ambience/clouds/ */}
+      <img className="eg-amb-cloud c1" src="/assets/orchard_ambience/clouds/cloud_1.png" alt="" onError={hideOnError} />
+      <img className="eg-amb-cloud c2" src="/assets/orchard_ambience/clouds/cloud_2.png" alt="" onError={hideOnError} />
+      <img className="eg-amb-cloud c3" src="/assets/orchard_ambience/clouds/cloud_3.png" alt="" onError={hideOnError} />
 
-      {/* Birds gliding across the sky (day) */}
+      {/* Birds gliding across the sky (day) — real art, mirrors the mobile app's assets/orchard_ambience/birds/ */}
       {birds.map((_, i) => (
-        <span key={`bird-${i}`} className={`eg-amb-bird b${i + 1}`}>🐦</span>
+        <img
+          key={`bird-${i}`}
+          className={`eg-amb-bird b${i + 1}`}
+          src={`/assets/orchard_ambience/birds/bird_${i + 1}.png`}
+          alt=""
+          onError={hideOnError}
+        />
       ))}
 
       {/* Butterflies fluttering near healthy trees (day) */}

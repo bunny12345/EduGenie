@@ -927,31 +927,34 @@
   50% { transform: scale(1.08); opacity: 1; }
 }
 
-/* ── Clouds ───────────────────────────────────────────────────────────────── */
+/* ── Clouds — real art from /assets/orchard_ambience/clouds/ ─────────────── */
 .eg-amb-cloud {
   position: absolute;
-  font-size: 34px;
+  width: 56px;
+  height: auto;
   opacity: 0.85;
   will-change: transform;
 }
 .is-night .eg-amb-cloud { opacity: 0.35; }
 .eg-amb-cloud.c1 { top: 40px; left: -12%; animation: eg-amb-drift 46s linear infinite; }
-.eg-amb-cloud.c2 { top: 92px; left: -18%; font-size: 26px; animation: eg-amb-drift 62s linear infinite 8s; }
-.eg-amb-cloud.c3 { top: 22px; left: -22%; font-size: 30px; animation: eg-amb-drift 74s linear infinite 20s; }
+.eg-amb-cloud.c2 { top: 92px; left: -18%; width: 42px; animation: eg-amb-drift 62s linear infinite 8s; }
+.eg-amb-cloud.c3 { top: 22px; left: -22%; width: 48px; animation: eg-amb-drift 74s linear infinite 20s; }
 @keyframes eg-amb-drift {
   0% { transform: translateX(0); }
   100% { transform: translateX(130vw); }
 }
 
-/* ── Birds gliding across the sky ─────────────────────────────────────────── */
+/* ── Birds gliding across the sky — real art from /assets/orchard_ambience/birds/ */
 .eg-amb-bird {
   position: absolute;
-  font-size: 20px;
+  width: 30px;
+  height: auto;
   opacity: 0.9;
   will-change: transform;
 }
 .eg-amb-bird.b1 { top: 60px; left: -8%; animation: eg-amb-fly 24s linear infinite 3s; }
-.eg-amb-bird.b2 { top: 120px; left: -8%; font-size: 16px; animation: eg-amb-fly 32s linear infinite 12s; }
+.eg-amb-bird.b2 { top: 120px; left: -8%; width: 24px; animation: eg-amb-fly 32s linear infinite 12s; }
+.eg-amb-bird.b3 { top: 90px; left: -8%; width: 20px; animation: eg-amb-fly 28s linear infinite 18s; }
 @keyframes eg-amb-fly {
   0% { transform: translateX(0) translateY(0); }
   25% { transform: translateX(30vw) translateY(-12px); }

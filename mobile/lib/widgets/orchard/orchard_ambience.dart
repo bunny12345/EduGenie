@@ -79,7 +79,7 @@ class _OrchardAmbienceState extends State<OrchardAmbience> with SingleTickerProv
   Widget build(BuildContext context) {
     final butterflyCount = widget.night ? 0 : (widget.vibrancy * 3).round();
     final fireflyCount = widget.night ? (4 + math.min(4, widget.golden * 2)) : math.min(4, widget.golden * 2);
-    final birdCount = widget.night ? 0 : 2;
+    final birdCount = widget.night ? 0 : 3;
     final particle = _particleSpec();
 
     return IgnorePointer(
@@ -177,15 +177,20 @@ class _OrchardAmbienceState extends State<OrchardAmbience> with SingleTickerProv
     );
   }
 
-  // Bird art from assets/orchard_ambience/birds/ (bird_1.png, bird_2.png) —
-  // draw them facing right, since they always travel left -> right here.
+  // Bird art from assets/orchard_ambience/birds/ (bird_1.png, bird_2.png,
+  // bird_3.png) — draw them facing right, since they always travel left -> right here.
+  static const _birdPeriods = [24.0, 32.0, 28.0];
+  static const _birdOffsets = [3.0, 12.0, 18.0];
+  static const _birdBaseY = [60.0, 120.0, 90.0];
+  static const _birdSizes = [30.0, 24.0, 20.0];
+
   Widget _bird(double w, int i) {
-    final period = i == 0 ? 24.0 : 32.0;
-    final offset = i == 0 ? 3.0 : 12.0;
+    final period = _birdPeriods[i];
+    final offset = _birdOffsets[i];
     final t = _phase(period, offset);
     final x = -0.08 * w + t * 1.22 * w;
-    final y = (i == 0 ? 60.0 : 120.0) + 10 * math.sin(t * 2 * math.pi * 2);
-    final size = i == 0 ? 30.0 : 24.0;
+    final y = _birdBaseY[i] + 10 * math.sin(t * 2 * math.pi * 2);
+    final size = _birdSizes[i];
     return Positioned(
       top: y,
       left: x,
