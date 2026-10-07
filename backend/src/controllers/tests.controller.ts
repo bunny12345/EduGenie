@@ -2,13 +2,69 @@ import { Controller, Get, Post, Patch, Delete, Param, Body, Query, UseGuards, Re
 import { SupabaseService } from '../supabase.service';
 import { AuthGuard } from '../auth/auth.guard';
 import { LocalFeedService } from '../shared/local-feed.service';
+import { StudentAuthService } from '../auth/student-auth.service';
 
 @Controller('tests')
 export class TestsController {
   constructor(
     private readonly db: SupabaseService,
-    private readonly localFeed: LocalFeedService
+    private readonly localFeed: LocalFeedService,
+    private readonly studentAuth: StudentAuthService
   ) {}
+
+  // Students only ever see tests their teacher has explicitly assigned
+  // (status 'assigned'), scoped to their own class. Teachers (filter 'all')
+  // and the 'completed' filter are unaffected.
+  private async filterTestsForRequest(tests: any[], filter: string | undefined, studentId: string) {
+    const rows = Array.isArray(tests) ? tests : [];
+    if (!filter) return rows;
+    if (filter === 'completed') return rows.filter((t: any) => t.status === 'completed');
+    if (filter === 'upcoming') {
+      let scoped = rows.filter((t: any) => t.status === 'assigned');
+      const id = String(studentId || '').trim();
+      if (id) {
+        const profile = await this.studentAuth.resolveStudentProfile(id);
+        const studentClass = String(profile?.className || '').trim().toLowerCase();
+        if (studentClass) {
+          scoped = scoped.filter((t: any) => {
+            const testClass = String(t.class_name || t.className || '').trim().toLowerCase();
+            return !testClass || testClass === studentClass;
+          });
+        }
+      }
+      return scoped;
+    }
+    return rows;
+  }
+
+  // Once a student has submitted an attempt for a test, mark it so the
+  // frontend can lock the "Start" button instead of letting them retake it.
+  private async attachAttemptStatus(tests: any[], studentId: string) {
+    const rows = Array.isArray(tests) ? tests : [];
+    const id = String(studentId || '').trim();
+    if (!id || !rows.length) return rows.map((t: any) => ({ ...t, attempted: false }));
+    try {
+      const testIds = rows.map((t: any) => String(t?.id || '')).filter(Boolean);
+      const res = await this.db.client.from('test_attempts').select('*').eq('student_id', id).in('test_id', testIds);
+      const attemptRows = Array.isArray((res as any)?.data) ? (res as any).data : [];
+      const latestByTest = new Map<string, any>();
+      attemptRows.forEach((a: any) => {
+        if (a.score === null || a.score === undefined) return; // only a submitted attempt counts
+        const key = String(a.test_id || '');
+        const existing = latestByTest.get(key);
+        const time = new Date(a.submitted_at || a.finished_at || a.created_at || 0).getTime();
+        const existingTime = existing ? new Date(existing.submitted_at || existing.finished_at || existing.created_at || 0).getTime() : -1;
+        if (!existing || time >= existingTime) latestByTest.set(key, a);
+      });
+      return rows.map((t: any) => {
+        const attempt = latestByTest.get(String(t?.id || ''));
+        if (!attempt) return { ...t, attempted: false };
+        return { ...t, attempted: true, lastScore: attempt.score, lastFeedback: attempt.feedback, attemptId: attempt.id };
+      });
+    } catch {
+      return rows.map((t: any) => ({ ...t, attempted: false }));
+    }
+  }
 
   @Get()
   @UseGuards(AuthGuard)
@@ -18,17 +74,13 @@ export class TestsController {
       const res = await this.db.client.from('tests').select('*');
       let tests = (res && (res as any).data) || [];
       if (!Array.isArray(tests) || !tests.length) tests = this.localFeed.listTests();
-      if (filter && Array.isArray(tests)) {
-        if (filter === 'completed') tests = tests.filter((t: any) => t.status === 'completed');
-        if (filter === 'upcoming') tests = tests.filter((t: any) => t.status !== 'completed');
-      }
+      tests = await this.filterTestsForRequest(tests, filter, id);
+      if (filter === 'upcoming') tests = await this.attachAttemptStatus(tests, id);
       return { success: true, tests: Array.isArray(tests) ? tests : [] };
     } catch (e) {
       let tests = this.localFeed.listTests();
-      if (filter && Array.isArray(tests)) {
-        if (filter === 'completed') tests = tests.filter((t: any) => t.status === 'completed');
-        if (filter === 'upcoming') tests = tests.filter((t: any) => t.status !== 'completed');
-      }
+      tests = await this.filterTestsForRequest(tests, filter, id);
+      if (filter === 'upcoming') tests = await this.attachAttemptStatus(tests, id);
       return { success: true, error: String((e as any)?.message || e || 'tests list fallback'), tests };
     }
   }
@@ -45,7 +97,7 @@ export class TestsController {
         school_id: req?.user?.schoolId || body.schoolId || null,
         teacher_id: req?.user?.sub || body.teacherId || null,
         duration_minutes: Math.max(1, Number(body.durationMinutes || 30)),
-        status: 'upcoming',
+        status: 'draft',
         created_at: new Date().toISOString()
       };
       const res = await this.db.client.from('tests').insert([row]).select();
@@ -56,12 +108,47 @@ export class TestsController {
         subject: test.subject,
         class_name: test.class_name || row.class_name,
         duration_minutes: test.duration_minutes || row.duration_minutes,
-        status: test.status || 'upcoming'
+        status: test.status || 'draft'
       };
       this.localFeed.upsertTest(normalized);
       return { success: true, test: { id: test.id || null, title: test.title, subject: test.subject, status: test.status } };
     } catch (e) {
       return { success: false, error: String((e as any)?.message || e || 'test create failed'), test: null };
+    }
+  }
+
+  // Teacher: assign a test so it becomes visible to students in its class
+  @Post(':testId/assign')
+  @UseGuards(AuthGuard)
+  async assign(@Param('testId') testId: string) {
+    try {
+      const questionsRes = await this.db.client.from('test_questions').select('id').eq('test_id', testId);
+      const dbQuestionCount = Array.isArray((questionsRes as any)?.data) ? (questionsRes as any).data.length : 0;
+      const questionCount = dbQuestionCount || this.localFeed.listQuestions(testId).length;
+      if (!questionCount) {
+        return { success: false, error: 'Add at least one question before assigning this test.', test: null };
+      }
+
+      const res = await this.db.client.from('tests').update({ status: 'assigned' }).eq('id', testId).select();
+      const test = (res as any)?.data?.[0] || null;
+      if (!test) {
+        const localTest = this.localFeed.listTests().find((t: any) => String(t?.id || '') === String(testId));
+        if (!localTest) return { success: false, error: 'Test not found', test: null };
+        const updated = { ...localTest, status: 'assigned' };
+        this.localFeed.upsertTest(updated);
+        return { success: true, test: { id: updated.id, title: updated.title, subject: updated.subject, status: 'assigned' } };
+      }
+      this.localFeed.upsertTest({
+        id: test.id || testId,
+        title: test.title,
+        subject: test.subject,
+        class_name: test.class_name || test.className || '',
+        duration_minutes: test.duration_minutes || 30,
+        status: 'assigned'
+      });
+      return { success: true, test: { id: test.id || testId, title: test.title, subject: test.subject, status: 'assigned' } };
+    } catch (e) {
+      return { success: false, error: String((e as any)?.message || e || 'test assign failed'), test: null };
     }
   }
 
@@ -133,7 +220,7 @@ export class TestsController {
         school_id: sourceFinal.school_id || req?.user?.schoolId || null,
         teacher_id: sourceFinal.teacher_id || req?.user?.sub || null,
         duration_minutes: Math.max(1, Number(body.durationMinutes || sourceFinal.duration_minutes || 30)),
-        status: 'upcoming',
+        status: 'draft',
         created_at: new Date().toISOString()
       };
 
@@ -359,19 +446,27 @@ export class TestsController {
   @UseGuards(AuthGuard)
   async start(@Req() req: any, @Param('testId') testId: string, @Body() body: any) {
     try {
+      const sId = body.studentId || req.studentId;
+      const existingRes = await this.db.client.from('test_attempts').select('*').eq('test_id', testId).eq('student_id', sId);
+      const existingRows = Array.isArray((existingRes as any)?.data) ? (existingRes as any).data : [];
+      const alreadySubmitted = existingRows.some((a: any) => a.score !== null && a.score !== undefined);
+      if (alreadySubmitted) {
+        return { success: false, error: 'You have already submitted this test.', attemptId: null, questions: [] };
+      }
+
       const questionsRes = await this.db.client.from('test_questions').select('*').eq('test_id', testId);
       const questions = ((questionsRes && (questionsRes as any).data) || []).length
         ? (questionsRes as any).data
         : this.localFeed.listQuestions(testId);
-      const attempt = { test_id: testId, student_id: body.studentId || req.studentId, started_at: new Date().toISOString() };
+      const attempt = { test_id: testId, student_id: sId, started_at: new Date().toISOString() };
       const ins = await this.db.client.from('test_attempts').insert([attempt]).select();
-      const attemptRow = (ins && (ins as any).data && (ins as any).data[0]) || this.localFeed.createAttempt(testId, body.studentId || req.studentId);
+      const attemptRow = (ins && (ins as any).data && (ins as any).data[0]) || this.localFeed.createAttempt(testId, sId);
       const normalizedQuestions = (Array.isArray(questions) ? questions : []).map((q: any) => ({
         id: q.id,
         text: q.text || q.question || 'Question',
         options: q.options || []
       }));
-      this.localFeed.logStudentActivity(body.studentId || req.studentId, {
+      this.localFeed.logStudentActivity(sId, {
         type: 'test',
         action: 'started',
         title: `Test ${testId}`,

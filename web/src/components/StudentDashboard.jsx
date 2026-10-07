@@ -16,7 +16,6 @@ import {
   getProgress,
   getRewards,
   getSettings,
-  getTestAttempt,
   getTests,
   listCurriculumLessons,
   recordProgress,
@@ -572,6 +571,11 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
   const [dueReviewNudge, setDueReviewNudge] = useState(null);
 
   const [testResult, setTestResult] = useState(null);
+  const [activeMockTest, setActiveMockTest] = useState(null); // { testId, attemptId, title, subject, questions }
+  const [mockTestAnswers, setMockTestAnswers] = useState({}); // questionId -> selected option index
+  const [mockTestResult, setMockTestResult] = useState(null); // { score, feedback, perQuestionFeedback }
+  const [mockTestSubmitting, setMockTestSubmitting] = useState(false);
+  const [mockTestError, setMockTestError] = useState('');
   const [homeworkInfo, setHomeworkInfo] = useState('');
   const [selectedResource, setSelectedResource] = useState(null);
   const [settingsSaving, setSettingsSaving] = useState(false);
@@ -1693,39 +1697,83 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
 
   async function onStartTest(testId) {
     if (!testId) return;
+    const testItem = tests.find((t) => t.id === testId);
+    if (testItem?.attempted) {
+      setPanelErrorKey('tests', 'You have already submitted this test.');
+      return;
+    }
     setStartingTestId(testId);
     try {
       const started = await startTest(testId, studentId);
-      const attemptId = started?.attemptId;
-      if (attemptId) {
-        const questionList = Array.isArray(started?.questions) ? started.questions : [];
-        const generatedAnswers = {};
-        questionList.forEach((q) => {
-          if (q?.id !== undefined && q?.id !== null) generatedAnswers[q.id] = 0;
-        });
-        const submitRes = await submitTestAttempt(attemptId, studentId, generatedAnswers);
-        const resultRes = await getTestAttempt(attemptId);
-        const result = resultRes?.result || null;
-        const score = result?.score ?? submitRes?.score ?? null;
-        if (score !== null) {
-          setTestResult({ score, feedback: result?.feedback || submitRes?.feedback || 'Submitted' });
-          // Record progress for this test attempt silently
-          const testItem = tests.find((t) => t.id === testId);
-          recordProgress({
-            studentId,
-            subject: testItem?.subject || testItem?.title || 'Test',
-            score: Number(score),
-            source: 'test'
-          }).catch(() => {});
-        }
+      if (started?.success === false) {
+        setPanelErrorKey('tests', started?.error || 'Unable to start test.');
+        await loadTestsPanel();
+        return;
       }
-      await loadTestsPanel();
-      await loadProgressPanel();
+      const attemptId = started?.attemptId;
+      const questionList = Array.isArray(started?.questions) ? started.questions : [];
+      if (!attemptId || !questionList.length) {
+        setPanelErrorKey('tests', 'This test has no questions yet. Please check back later.');
+        return;
+      }
+      setActiveMockTest({
+        testId,
+        attemptId,
+        title: testItem?.title || testItem?.name || 'Mock Test',
+        subject: testItem?.subject || activeView,
+        questions: questionList
+      });
+      setMockTestAnswers({});
+      setMockTestResult(null);
+      setMockTestError('');
     } catch (e) {
       setPanelErrorKey('tests', e?.message || 'Test flow failed.');
     } finally {
       setStartingTestId('');
     }
+  }
+
+  function onSelectMockTestAnswer(questionId, optionIndex) {
+    setMockTestAnswers((prev) => ({ ...prev, [questionId]: optionIndex }));
+  }
+
+  async function onSubmitMockTest() {
+    if (!activeMockTest) return;
+    const { attemptId, questions, subject } = activeMockTest;
+    const unanswered = questions.filter((q) => mockTestAnswers[q.id] === undefined);
+    if (unanswered.length) {
+      setMockTestError(`Please answer all questions (${unanswered.length} remaining).`);
+      return;
+    }
+    setMockTestSubmitting(true);
+    setMockTestError('');
+    try {
+      const submitRes = await submitTestAttempt(attemptId, studentId, mockTestAnswers);
+      const score = submitRes?.score ?? 0;
+      const feedback = submitRes?.feedback || 'Submitted';
+      const perQuestionFeedback = Array.isArray(submitRes?.perQuestionFeedback) ? submitRes.perQuestionFeedback : [];
+      setMockTestResult({ score, feedback, perQuestionFeedback });
+      setTestResult({ score, feedback });
+      recordProgress({
+        studentId,
+        subject: subject || 'Test',
+        score: Number(score),
+        source: 'test'
+      }).catch(() => {});
+      await loadTestsPanel();
+      await loadProgressPanel();
+    } catch (e) {
+      setMockTestError(e?.message || 'Unable to submit test.');
+    } finally {
+      setMockTestSubmitting(false);
+    }
+  }
+
+  function onCloseMockTest() {
+    setActiveMockTest(null);
+    setMockTestAnswers({});
+    setMockTestResult(null);
+    setMockTestError('');
   }
 
   async function onSubmitHomework(hwId, flags = {}) {
@@ -4852,9 +4900,15 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
                 {(testsBySubject.get(activeView) || []).map((t) => (
                   <li key={t.id} className="eg-list-with-action">
                     <span>{t.title || t.name || 'Mock Test'}</span>
-                    <button className="eg-inline-btn" onClick={() => onStartTest(t.id)} disabled={startingTestId === t.id}>
-                      {startingTestId === t.id ? '...' : 'Start'}
-                    </button>
+                    {t.attempted ? (
+                      <span className="eg-inline-btn eg-inline-btn-done" title="You have already submitted this test">
+                        Completed ({t.lastScore}%)
+                      </span>
+                    ) : (
+                      <button className="eg-inline-btn" onClick={() => onStartTest(t.id)} disabled={startingTestId === t.id}>
+                        {startingTestId === t.id ? '...' : 'Start'}
+                      </button>
+                    )}
                   </li>
                 ))}
                 {!panelLoading.tests && !(testsBySubject.get(activeView) || []).length ? <li>No tests available for this subject.</li> : null}
@@ -4923,6 +4977,78 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
             onClick={() => setLightboxUrl('')}
             style={{ position: 'absolute', top: 18, right: 24, background: 'rgba(255,255,255,0.15)', border: 'none', color: '#fff', fontSize: 28, cursor: 'pointer', borderRadius: '50%', width: 44, height: 44, lineHeight: '44px', textAlign: 'center' }}
           >✕</button>
+        </div>
+      ) : null}
+
+      {/* Mock Test — full MCQ-taking flow: answer every question, then see results */}
+      {activeMockTest ? (
+        <div className="eg-mocktest-overlay" role="dialog" aria-modal="true">
+          <div className="eg-mocktest-card">
+            <div className="eg-mocktest-head">
+              <div>
+                <h3>{activeMockTest.title}</h3>
+                <span className="eg-mocktest-subject">{activeMockTest.subject}</span>
+              </div>
+              <button type="button" className="eg-mocktest-close" onClick={onCloseMockTest} aria-label="Close test">✕</button>
+            </div>
+
+            {!mockTestResult ? (
+              <>
+                <div className="eg-mocktest-body">
+                  {activeMockTest.questions.map((q, idx) => (
+                    <div key={q.id} className="eg-mocktest-question">
+                      <p className="eg-mocktest-question-text"><strong>{idx + 1}.</strong> {q.text}</p>
+                      <div className="eg-mocktest-options">
+                        {(q.options || []).map((opt, optIdx) => (
+                          <button
+                            type="button"
+                            key={optIdx}
+                            className={`eg-mocktest-option${mockTestAnswers[q.id] === optIdx ? ' is-selected' : ''}`}
+                            onClick={() => onSelectMockTestAnswer(q.id, optIdx)}
+                          >
+                            {opt}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                {mockTestError ? <p className="eg-mocktest-error">{mockTestError}</p> : null}
+                <div className="eg-mocktest-footer">
+                  <span className="eg-mocktest-progress">
+                    {Object.keys(mockTestAnswers).length}/{activeMockTest.questions.length} answered
+                  </span>
+                  <button type="button" className="eg-mocktest-submit" disabled={mockTestSubmitting} onClick={onSubmitMockTest}>
+                    {mockTestSubmitting ? 'Submitting...' : 'Submit Test'}
+                  </button>
+                </div>
+              </>
+            ) : (
+              <div className="eg-mocktest-result">
+                <div className="eg-mocktest-score-badge">
+                  <strong>{mockTestResult.score}%</strong>
+                  <span>{mockTestResult.feedback}</span>
+                </div>
+                <div className="eg-mocktest-review">
+                  {activeMockTest.questions.map((q, idx) => {
+                    const fb = mockTestResult.perQuestionFeedback.find((f) => String(f.questionId) === String(q.id)) || {};
+                    return (
+                      <div key={q.id} className={`eg-mocktest-review-row${fb.isCorrect ? ' is-correct' : ' is-wrong'}`}>
+                        <p className="eg-mocktest-question-text"><strong>{idx + 1}.</strong> {q.text}</p>
+                        <p className="eg-mocktest-review-answer">
+                          Your answer: {q.options?.[fb.selectedOption] ?? 'Not answered'} {fb.isCorrect ? '✓' : '✗'}
+                        </p>
+                        {!fb.isCorrect ? (
+                          <p className="eg-mocktest-review-correct">Correct answer: {q.options?.[fb.correctOption] ?? '—'}</p>
+                        ) : null}
+                      </div>
+                    );
+                  })}
+                </div>
+                <button type="button" className="eg-mocktest-submit" onClick={onCloseMockTest}>Done</button>
+              </div>
+            )}
+          </div>
         </div>
       ) : null}
     </div>

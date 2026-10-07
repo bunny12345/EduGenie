@@ -4,6 +4,7 @@ import TeacherSubjectProgressChart from './TeacherSubjectProgressChart';
 import StudentProgress from './StudentProgress';
 import {
   addTestQuestion,
+  assignTest,
   assignTeacherHomework,
   updateTeacherHomework,
   getTeacherAssignedHomework,
@@ -1033,6 +1034,21 @@ export default function TeacherDashboard({ session, onLogout }) {
       await loadTestQuestions(createdTestId);
     } catch (e2) {
       setTestsNote(e2?.message || 'Unable to delete question.');
+    } finally {
+      setBusy('');
+    }
+  }
+
+  async function onAssignTest(testId) {
+    if (!testId) return;
+    setBusy(`assignTest-${testId}`);
+    setTestsNote('');
+    try {
+      const res = await assignTest(testId);
+      setTestsNote(`Test "${res.test?.title || 'Test'}" assigned — students in its class can now take it.`);
+      await loadTestsPanel();
+    } catch (e2) {
+      setTestsNote(e2?.message || 'Unable to assign test.');
     } finally {
       setBusy('');
     }
@@ -3003,7 +3019,7 @@ export default function TeacherDashboard({ session, onLogout }) {
                     <li key={t.id} className="td-invite-row">
                       <div>
                         <strong>{t.title}</strong>
-                        <span className="td-invite-status">{t.subject || 'General'} &middot; {t.status || 'upcoming'}</span>
+                        <span className="td-invite-status">{t.subject || 'General'} &middot; {t.status === 'assigned' ? 'Assigned' : t.status === 'completed' ? 'Completed' : 'Draft (not visible to students yet)'}</span>
                       </div>
                       <div className="td-invite-actions">
                         <button
@@ -3011,6 +3027,12 @@ export default function TeacherDashboard({ session, onLogout }) {
                           className="td-inline-btn"
                           onClick={() => { setCreatedTestId(t.id); setCreatedTestTitle(t.title); setTestsNote(`Adding questions to "${t.title}"`); }}
                         >Add Questions</button>
+                        <button
+                          type="button"
+                          className="td-inline-btn"
+                          onClick={() => onAssignTest(t.id)}
+                          disabled={busy === `assignTest-${t.id}` || t.status === 'assigned'}
+                        >{busy === `assignTest-${t.id}` ? 'Assigning...' : t.status === 'assigned' ? 'Assigned ✓' : 'Assign'}</button>
                         <button type="button" className="td-inline-btn" onClick={() => onStartEdit(t)}>Edit</button>
                         <button
                           type="button"

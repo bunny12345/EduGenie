@@ -3109,6 +3109,13 @@ textarea {
   padding: 4px 7px;
 }
 
+.eg-inline-btn-done {
+  background: #dcfce7;
+  color: #15803d;
+  display: inline-block;
+  white-space: nowrap;
+}
+
 .eg-inline-note {
   margin: 8px 0 0;
   font-size: 10px;
@@ -3134,6 +3141,206 @@ textarea {
   color: #42528a;
   background: #f7f8ff;
   font-family: inherit;
+}
+
+/* ── Mock Test — full MCQ-taking modal ────────────────────────────────── */
+.eg-mocktest-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9998;
+  background: rgba(15, 23, 42, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+
+.eg-mocktest-card {
+  width: min(640px, 100%);
+  max-height: 86vh;
+  display: flex;
+  flex-direction: column;
+  background: #ffffff;
+  border-radius: 16px;
+  box-shadow: 0 20px 60px rgba(15, 23, 42, 0.35);
+  overflow: hidden;
+}
+
+.eg-mocktest-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 16px 20px;
+  border-bottom: 1px solid #eef1fa;
+}
+
+.eg-mocktest-head h3 {
+  margin: 0 0 2px;
+  font-size: 16px;
+  color: #1f2347;
+}
+
+.eg-mocktest-subject {
+  font-size: 11px;
+  color: #6b7280;
+}
+
+.eg-mocktest-close {
+  border: 0;
+  background: #f1f3fb;
+  color: #42528a;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  font-size: 14px;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.eg-mocktest-body {
+  padding: 16px 20px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.eg-mocktest-question-text {
+  margin: 0 0 8px;
+  font-size: 13.5px;
+  color: #1f2347;
+  line-height: 1.5;
+}
+
+.eg-mocktest-options {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.eg-mocktest-option {
+  text-align: left;
+  border: 1.5px solid #e2e6f5;
+  border-radius: 9px;
+  padding: 9px 12px;
+  background: #f8f9ff;
+  color: #2a2f52;
+  font-size: 12.5px;
+  cursor: pointer;
+  font-family: inherit;
+  transition: all 0.15s;
+}
+
+.eg-mocktest-option:hover {
+  border-color: #b7bdf0;
+  background: #f0f1ff;
+}
+
+.eg-mocktest-option.is-selected {
+  border-color: #4f54c7;
+  background: #e9eafe;
+  color: #2f3399;
+  font-weight: 600;
+}
+
+.eg-mocktest-error {
+  margin: 0 20px;
+  color: #dc2626;
+  font-size: 12px;
+}
+
+.eg-mocktest-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 20px;
+  border-top: 1px solid #eef1fa;
+}
+
+.eg-mocktest-progress {
+  font-size: 11.5px;
+  color: #6b7280;
+}
+
+.eg-mocktest-submit {
+  border: 0;
+  border-radius: 10px;
+  background: linear-gradient(135deg, #4f54c7, #6366f1);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 700;
+  padding: 10px 20px;
+  cursor: pointer;
+}
+
+.eg-mocktest-submit:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.eg-mocktest-result {
+  padding: 18px 20px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.eg-mocktest-score-badge {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: #f1f3fb;
+}
+
+.eg-mocktest-score-badge strong {
+  font-size: 26px;
+  color: #4f54c7;
+}
+
+.eg-mocktest-score-badge span {
+  font-size: 12.5px;
+  color: #4b547f;
+}
+
+.eg-mocktest-review {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-height: 320px;
+  overflow-y: auto;
+}
+
+.eg-mocktest-review-row {
+  border-radius: 10px;
+  padding: 10px 12px;
+  border: 1px solid #eef1fa;
+}
+
+.eg-mocktest-review-row.is-correct {
+  background: rgba(34, 197, 94, 0.08);
+  border-color: rgba(34, 197, 94, 0.25);
+}
+
+.eg-mocktest-review-row.is-wrong {
+  background: rgba(239, 68, 68, 0.08);
+  border-color: rgba(239, 68, 68, 0.25);
+}
+
+.eg-mocktest-review-answer {
+  margin: 0;
+  font-size: 12px;
+  color: #374151;
+}
+
+.eg-mocktest-review-correct {
+  margin: 4px 0 0;
+  font-size: 12px;
+  color: #047857;
 }
 
 .eg-link-btn {

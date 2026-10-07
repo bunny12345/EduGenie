@@ -573,6 +573,18 @@ export async function recordProgress(payload) {
   return data;
 }
 
+export async function assignTest(testId) {
+  const headers = await authHeaders();
+  const res = await fetch(`${API_BASE}/tests/${encodeURIComponent(testId)}/assign`, {
+    method: 'POST',
+    headers
+  });
+  if (!res.ok) throw new Error(`assignTest failed: ${res.status}`);
+  const data = await res.json();
+  if (data && data.success === false) throw new Error(data.error || 'assignTest failed');
+  return data;
+}
+
 export async function createTest(payload) {
   const headers = await authHeaders();
   const res = await fetch(`${API_BASE}/tests/create`, {
@@ -1277,6 +1289,7 @@ const api = {
   submitTestAttempt,
   getTestAttempt,
   createTest,
+  assignTest,
   addTestQuestion,
   updateTestQuestion,
   deleteTestQuestion,
