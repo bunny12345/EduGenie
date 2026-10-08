@@ -530,6 +530,11 @@ export async function getTestAttempt(attemptId) {
   return getJsonChecked(url, 'getTestAttempt');
 }
 
+export async function getTestReview(testId, studentId) {
+  const url = `${API_BASE}/tests/${encodeURIComponent(testId)}/review?studentId=${encodeURIComponent(studentId)}`;
+  return getJsonChecked(url, 'getTestReview');
+}
+
 export async function getLibrary(topic, level, page = 1) {
   const params = new URLSearchParams();
   if (topic) params.set('topic', topic);
@@ -573,11 +578,12 @@ export async function recordProgress(payload) {
   return data;
 }
 
-export async function assignTest(testId) {
+export async function assignTest(testId, payload) {
   const headers = await authHeaders();
   const res = await fetch(`${API_BASE}/tests/${encodeURIComponent(testId)}/assign`, {
     method: 'POST',
-    headers
+    headers,
+    body: JSON.stringify(payload || {})
   });
   if (!res.ok) throw new Error(`assignTest failed: ${res.status}`);
   const data = await res.json();
@@ -1288,6 +1294,7 @@ const api = {
   startTest,
   submitTestAttempt,
   getTestAttempt,
+  getTestReview,
   createTest,
   assignTest,
   addTestQuestion,

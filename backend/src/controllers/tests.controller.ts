@@ -39,31 +39,139 @@ export class TestsController {
 
   // Once a student has submitted an attempt for a test, mark it so the
   // frontend can lock the "Start" button instead of letting them retake it.
+  // Also attaches the scheduled attempt window (if any) and auto-finalizes
+  // any attempt that was started but never submitted before the window closed.
   private async attachAttemptStatus(tests: any[], studentId: string) {
     const rows = Array.isArray(tests) ? tests : [];
     const id = String(studentId || '').trim();
-    if (!id || !rows.length) return rows.map((t: any) => ({ ...t, attempted: false }));
+    if (!id || !rows.length) return rows.map((t: any) => ({ ...t, attempted: false, windowStatus: this.computeWindowStatus(t) }));
     try {
       const testIds = rows.map((t: any) => String(t?.id || '')).filter(Boolean);
       const res = await this.db.client.from('test_attempts').select('*').eq('student_id', id).in('test_id', testIds);
       const attemptRows = Array.isArray((res as any)?.data) ? (res as any).data : [];
       const latestByTest = new Map<string, any>();
+      const inProgressByTest = new Map<string, any>();
       attemptRows.forEach((a: any) => {
-        if (a.score === null || a.score === undefined) return; // only a submitted attempt counts
         const key = String(a.test_id || '');
+        if (a.score === null || a.score === undefined) {
+          // Not submitted yet — remember it in case the window has expired.
+          const existing = inProgressByTest.get(key);
+          const time = new Date(a.started_at || a.created_at || 0).getTime();
+          const existingTime = existing ? new Date(existing.started_at || existing.created_at || 0).getTime() : -1;
+          if (!existing || time >= existingTime) inProgressByTest.set(key, a);
+          return;
+        }
         const existing = latestByTest.get(key);
         const time = new Date(a.submitted_at || a.finished_at || a.created_at || 0).getTime();
         const existingTime = existing ? new Date(existing.submitted_at || existing.finished_at || existing.created_at || 0).getTime() : -1;
         if (!existing || time >= existingTime) latestByTest.set(key, a);
       });
-      return rows.map((t: any) => {
-        const attempt = latestByTest.get(String(t?.id || ''));
-        if (!attempt) return { ...t, attempted: false };
-        return { ...t, attempted: true, lastScore: attempt.score, lastFeedback: attempt.feedback, attemptId: attempt.id };
-      });
+
+      const out = [];
+      for (const t of rows) {
+        const testId = String(t?.id || '');
+        const windowStatus = this.computeWindowStatus(t);
+        let attempt = latestByTest.get(testId);
+        if (!attempt && windowStatus === 'expired' && inProgressByTest.has(testId)) {
+          // The window closed while this attempt was still open — auto-submit
+          // it now with whatever answers were saved (none, in this flow).
+          const stale = inProgressByTest.get(testId);
+          attempt = await this.scoreAndFinalizeAttempt(stale, {}, id);
+        }
+        out.push({
+          ...t,
+          windowStatus,
+          startAt: t.start_at || t.startAt || null,
+          endAt: t.end_at || t.endAt || null,
+          attempted: !!attempt,
+          lastScore: attempt?.score ?? undefined,
+          lastFeedback: attempt?.feedback ?? undefined,
+          attemptId: attempt?.id ?? undefined
+        });
+      }
+      return out;
     } catch {
-      return rows.map((t: any) => ({ ...t, attempted: false }));
+      return rows.map((t: any) => ({ ...t, attempted: false, windowStatus: this.computeWindowStatus(t) }));
     }
+  }
+
+  // 'none' = no window configured (legacy tests — always open).
+  private computeWindowStatus(test: any): 'none' | 'scheduled' | 'open' | 'expired' {
+    const startAtRaw = test?.start_at || test?.startAt;
+    const endAtRaw = test?.end_at || test?.endAt;
+    if (!startAtRaw && !endAtRaw) return 'none';
+    const now = Date.now();
+    const startAt = startAtRaw ? new Date(startAtRaw).getTime() : null;
+    const endAt = endAtRaw ? new Date(endAtRaw).getTime() : null;
+    if (startAt && now < startAt) return 'scheduled';
+    if (endAt && now > endAt) return 'expired';
+    return 'open';
+  }
+
+  // Scores a set of answers against a test's questions and persists the
+  // result onto the attempt. Shared by the normal submit flow and the
+  // auto-finalize sweep for attempts whose window closed before submission.
+  private async scoreAndFinalizeAttempt(attempt: any, answers: any, actorId: string) {
+    const questions = await this.loadQuestions(attempt.test_id);
+    const { perQuestionFeedback, correctCount } = this.computePerQuestionFeedback(questions, answers);
+
+    const total = questions.length;
+    const score = total > 0 ? Math.round((correctCount / total) * 100) : 0;
+    const feedback = score >= 80
+      ? 'Great work. Keep consistency.'
+      : score >= 50
+        ? 'Good attempt. Focus on weak topics.'
+        : 'Needs improvement. Revise and retry.';
+    await this.db.client.from('test_attempts').update({ finished_at: new Date().toISOString(), score, feedback, answers }).eq('id', attempt.id);
+    this.localFeed.finishAttempt(attempt.id, { score, feedback, finished_at: new Date().toISOString(), answers });
+    this.localFeed.logStudentActivity(actorId || attempt.student_id, {
+      type: 'test',
+      action: 'submitted',
+      title: `Test ${attempt.test_id}`,
+      details: `Submitted test attempt with score ${score}%`,
+      meta: { testId: attempt.test_id, attemptId: attempt.id, score }
+    });
+    return { id: attempt.id, score, feedback, perQuestionFeedback };
+  }
+
+  private async loadQuestions(testId: string) {
+    const questionsRes = await this.db.client.from('test_questions').select('*').eq('test_id', testId);
+    return Array.isArray((questionsRes as any)?.data) && (questionsRes as any).data.length
+      ? (questionsRes as any).data
+      : this.localFeed.listQuestions(testId);
+  }
+
+  private computePerQuestionFeedback(questions: any[], answers: any) {
+    const resolveSubmittedIndex = (value: any, options: any[]) => {
+      if (typeof value === 'number' && Number.isFinite(value)) return Math.floor(value);
+      if (typeof value === 'string') {
+        const trimmed = value.trim();
+        if (/^\d+$/.test(trimmed)) return Number(trimmed);
+        const idx = (options || []).findIndex((opt) => String(opt || '').trim().toLowerCase() === trimmed.toLowerCase());
+        if (idx >= 0) return idx;
+      }
+      return -1;
+    };
+
+    let correctCount = 0;
+    const perQuestionFeedback = questions.map((q: any, index: number) => {
+      const options = Array.isArray(q.options) ? q.options : [];
+      const submittedRaw = Array.isArray(answers) ? answers[index] : (answers?.[q.id] ?? answers?.[String(q.id)]);
+      const submittedIndex = resolveSubmittedIndex(submittedRaw, options);
+      const correctIndex = Number(q.correct_option ?? q.correctOption ?? -1);
+      const isCorrect = submittedIndex >= 0 && submittedIndex === correctIndex;
+      if (isCorrect) correctCount += 1;
+      return {
+        questionId: q.id,
+        text: q.text || q.question || 'Question',
+        options,
+        isCorrect,
+        selectedOption: submittedIndex,
+        correctOption: correctIndex,
+        feedback: isCorrect ? 'Correct.' : 'Review this concept.'
+      };
+    });
+    return { perQuestionFeedback, correctCount };
   }
 
   @Get()
@@ -117,10 +225,11 @@ export class TestsController {
     }
   }
 
-  // Teacher: assign a test so it becomes visible to students in its class
+  // Teacher: assign a test so it becomes visible to students in its class,
+  // only during the given [startAt, endAt] attempt window.
   @Post(':testId/assign')
   @UseGuards(AuthGuard)
-  async assign(@Param('testId') testId: string) {
+  async assign(@Param('testId') testId: string, @Body() body: any) {
     try {
       const questionsRes = await this.db.client.from('test_questions').select('id').eq('test_id', testId);
       const dbQuestionCount = Array.isArray((questionsRes as any)?.data) ? (questionsRes as any).data.length : 0;
@@ -129,14 +238,28 @@ export class TestsController {
         return { success: false, error: 'Add at least one question before assigning this test.', test: null };
       }
 
-      const res = await this.db.client.from('tests').update({ status: 'assigned' }).eq('id', testId).select();
+      const startAtRaw = body?.startAt ? new Date(body.startAt) : null;
+      const endAtRaw = body?.endAt ? new Date(body.endAt) : null;
+      if (!startAtRaw || Number.isNaN(startAtRaw.getTime()) || !endAtRaw || Number.isNaN(endAtRaw.getTime())) {
+        return { success: false, error: 'Set both an opens-at and closes-at time before assigning this test.', test: null };
+      }
+      if (endAtRaw <= startAtRaw) {
+        return { success: false, error: 'The closing time must be after the opening time.', test: null };
+      }
+      if (endAtRaw.getTime() < Date.now()) {
+        return { success: false, error: 'The closing time must be in the future.', test: null };
+      }
+      const startAt = startAtRaw.toISOString();
+      const endAt = endAtRaw.toISOString();
+
+      const res = await this.db.client.from('tests').update({ status: 'assigned', start_at: startAt, end_at: endAt }).eq('id', testId).select();
       const test = (res as any)?.data?.[0] || null;
       if (!test) {
         const localTest = this.localFeed.listTests().find((t: any) => String(t?.id || '') === String(testId));
         if (!localTest) return { success: false, error: 'Test not found', test: null };
-        const updated = { ...localTest, status: 'assigned' };
+        const updated = { ...localTest, status: 'assigned', start_at: startAt, end_at: endAt };
         this.localFeed.upsertTest(updated);
-        return { success: true, test: { id: updated.id, title: updated.title, subject: updated.subject, status: 'assigned' } };
+        return { success: true, test: { id: updated.id, title: updated.title, subject: updated.subject, status: 'assigned', startAt, endAt } };
       }
       this.localFeed.upsertTest({
         id: test.id || testId,
@@ -144,9 +267,11 @@ export class TestsController {
         subject: test.subject,
         class_name: test.class_name || test.className || '',
         duration_minutes: test.duration_minutes || 30,
-        status: 'assigned'
+        status: 'assigned',
+        start_at: test.start_at || startAt,
+        end_at: test.end_at || endAt
       });
-      return { success: true, test: { id: test.id || testId, title: test.title, subject: test.subject, status: 'assigned' } };
+      return { success: true, test: { id: test.id || testId, title: test.title, subject: test.subject, status: 'assigned', startAt: test.start_at || startAt, endAt: test.end_at || endAt } };
     } catch (e) {
       return { success: false, error: String((e as any)?.message || e || 'test assign failed'), test: null };
     }
@@ -454,6 +579,17 @@ export class TestsController {
         return { success: false, error: 'You have already submitted this test.', attemptId: null, questions: [] };
       }
 
+      const testRes = await this.db.client.from('tests').select('*').eq('id', testId).limit(1);
+      const testRow = (testRes as any)?.data?.[0] || this.localFeed.listTests().find((t: any) => String(t?.id || '') === String(testId));
+      const windowStatus = this.computeWindowStatus(testRow || {});
+      if (windowStatus === 'scheduled') {
+        const opensAt = testRow?.start_at || testRow?.startAt;
+        return { success: false, error: `This test opens at ${opensAt ? new Date(opensAt).toLocaleString() : 'a later time'}.`, attemptId: null, questions: [] };
+      }
+      if (windowStatus === 'expired') {
+        return { success: false, error: "This test's time window has closed.", attemptId: null, questions: [] };
+      }
+
       const questionsRes = await this.db.client.from('test_questions').select('*').eq('test_id', testId);
       const questions = ((questionsRes && (questionsRes as any).data) || []).length
         ? (questionsRes as any).data
@@ -488,58 +624,10 @@ export class TestsController {
       if (!attempt?.test_id) {
         return { success: false, error: 'Attempt not found', score: 0, feedback: 'Submission failed', perQuestionFeedback: [] };
       }
-
-      const questionsRes = await this.db.client.from('test_questions').select('*').eq('test_id', attempt.test_id);
-      const questions = Array.isArray((questionsRes as any)?.data) && (questionsRes as any).data.length
-        ? (questionsRes as any).data
-        : this.localFeed.listQuestions(attempt.test_id);
       const answers = body.answers || {};
-
-      const resolveSubmittedIndex = (value: any, options: any[]) => {
-        if (typeof value === 'number' && Number.isFinite(value)) return Math.floor(value);
-        if (typeof value === 'string') {
-          const trimmed = value.trim();
-          if (/^\d+$/.test(trimmed)) return Number(trimmed);
-          const idx = (options || []).findIndex((opt) => String(opt || '').trim().toLowerCase() === trimmed.toLowerCase());
-          if (idx >= 0) return idx;
-        }
-        return -1;
-      };
-
-      let correctCount = 0;
-      const perQuestionFeedback = questions.map((q: any, index: number) => {
-        const options = Array.isArray(q.options) ? q.options : [];
-        const submittedRaw = Array.isArray(answers) ? answers[index] : (answers?.[q.id] ?? answers?.[String(q.id)]);
-        const submittedIndex = resolveSubmittedIndex(submittedRaw, options);
-        const correctIndex = Number(q.correct_option ?? q.correctOption ?? -1);
-        const isCorrect = submittedIndex >= 0 && submittedIndex === correctIndex;
-        if (isCorrect) correctCount += 1;
-        return {
-          questionId: q.id,
-          isCorrect,
-          selectedOption: submittedIndex,
-          correctOption: correctIndex,
-          feedback: isCorrect ? 'Correct.' : 'Review this concept.'
-        };
-      });
-
-      const total = questions.length;
-      const score = total > 0 ? Math.round((correctCount / total) * 100) : 0;
-      const feedback = score >= 80
-        ? 'Great work. Keep consistency.'
-        : score >= 50
-          ? 'Good attempt. Focus on weak topics.'
-          : 'Needs improvement. Revise and retry.';
-      await this.db.client.from('test_attempts').update({ finished_at: new Date().toISOString(), score, feedback }).eq('id', attemptId);
-      this.localFeed.finishAttempt(attemptId, { score, feedback, finished_at: new Date().toISOString() });
-      this.localFeed.logStudentActivity(body.studentId || req.studentId || attempt.student_id, {
-        type: 'test',
-        action: 'submitted',
-        title: `Test ${attempt.test_id}`,
-        details: `Submitted test attempt with score ${score}%`,
-        meta: { testId: attempt.test_id, attemptId, score }
-      });
-      return { success: true, score, feedback, perQuestionFeedback };
+      const actorId = body.studentId || req.studentId || attempt.student_id;
+      const result = await this.scoreAndFinalizeAttempt(attempt, answers, actorId);
+      return { success: true, score: result.score, feedback: result.feedback, perQuestionFeedback: result.perQuestionFeedback };
     } catch (e) {
       return { success: false, error: String(e), score: 0, feedback: 'Submission failed', perQuestionFeedback: [] };
     }
@@ -554,6 +642,29 @@ export class TestsController {
       return { success: true, result: row };
     } catch (e) {
       return { success: false, error: String((e as any)?.message || e || 'test result failed'), result: null };
+    }
+  }
+
+  // Student: review the question-by-question breakdown of a completed attempt
+  // (used by the "expand to review" collapsed panel after a test is done).
+  @Get(':testId/review')
+  @UseGuards(AuthGuard)
+  async review(@Req() req: any, @Param('testId') testId: string, @Query('studentId') studentId: string) {
+    try {
+      const sId = String(req.studentId || studentId || '').trim();
+      const attemptsRes = await this.db.client.from('test_attempts').select('*').eq('test_id', testId).eq('student_id', sId);
+      const attemptRows = Array.isArray((attemptsRes as any)?.data) ? (attemptsRes as any).data : [];
+      const submitted = attemptRows.filter((a: any) => a.score !== null && a.score !== undefined);
+      submitted.sort((a: any, b: any) => new Date(b.submitted_at || b.finished_at || b.created_at || 0).getTime() - new Date(a.submitted_at || a.finished_at || a.created_at || 0).getTime());
+      const attempt = submitted[0];
+      if (!attempt) {
+        return { success: false, error: 'No submitted attempt found for this test.', score: 0, feedback: '', perQuestionFeedback: [] };
+      }
+      const questions = await this.loadQuestions(testId);
+      const { perQuestionFeedback } = this.computePerQuestionFeedback(questions, attempt.answers || {});
+      return { success: true, score: attempt.score, feedback: attempt.feedback || '', perQuestionFeedback };
+    } catch (e) {
+      return { success: false, error: String((e as any)?.message || e || 'test review failed'), score: 0, feedback: '', perQuestionFeedback: [] };
     }
   }
 }

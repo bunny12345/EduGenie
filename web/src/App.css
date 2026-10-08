@@ -3099,6 +3099,37 @@ textarea {
   gap: 8px;
 }
 
+/* A completed mock test's row collapses/expands a question review below it —
+   overrides .eg-list-with-action's row layout to stack head + panel. */
+.eg-mocktest-review-li {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+}
+
+.eg-mocktest-review-row-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+}
+
+.eg-mocktest-review-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-top: 8px;
+  border-top: 1px dashed #e2e6f5;
+}
+
+.eg-mocktest-review-loading {
+  margin: 0;
+  font-size: 11px;
+  color: #6b7280;
+}
+
 .eg-inline-btn {
   border: 0;
   border-radius: 8px;
@@ -3114,6 +3145,26 @@ textarea {
   color: #15803d;
   display: inline-block;
   white-space: nowrap;
+}
+
+.eg-inline-btn-scheduled {
+  background: #fef3c7;
+  color: #92400e;
+  display: inline-block;
+  white-space: nowrap;
+}
+
+.eg-inline-btn-expired {
+  background: #fee2e2;
+  color: #b91c1c;
+  display: inline-block;
+  white-space: nowrap;
+}
+
+.eg-mocktest-window-note {
+  margin-top: 2px;
+  font-size: 10px;
+  color: #8892c4;
 }
 
 .eg-inline-note {
@@ -3184,6 +3235,23 @@ textarea {
 .eg-mocktest-subject {
   font-size: 11px;
   color: #6b7280;
+}
+
+.eg-mocktest-timer {
+  align-self: center;
+  font-size: 13px;
+  font-weight: 700;
+  color: #3f41a8;
+  background: #ecebff;
+  border-radius: 999px;
+  padding: 5px 12px;
+  flex-shrink: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.eg-mocktest-timer.is-low {
+  color: #b91c1c;
+  background: #fee2e2;
 }
 
 .eg-mocktest-close {
@@ -5849,6 +5917,37 @@ textarea {
   background: #eef0ff;
   border-radius: 999px;
   padding: 2px 9px;
+}
+
+/* Mock Test row — stacks the title/actions row above the per-test assign
+   schedule (opens-at/closes-at), since the row itself is a flex row. */
+.td-test-row {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.td-test-schedule {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 8px;
+  width: 100%;
+  min-width: 0;
+}
+
+.td-test-schedule input[type="datetime-local"] {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+}
+
+.td-test-window-note {
+  font-size: 11px;
+  color: #5764c9;
+  background: #eef0ff;
+  border-radius: 8px;
+  padding: 5px 9px;
+  width: fit-content;
 }
 
 .td-invite-row,

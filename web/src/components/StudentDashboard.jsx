@@ -17,6 +17,7 @@ import {
   getRewards,
   getSettings,
   getTests,
+  getTestReview,
   listCurriculumLessons,
   recordProgress,
   recordOrchardActivity,
@@ -571,11 +572,16 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
   const [dueReviewNudge, setDueReviewNudge] = useState(null);
 
   const [testResult, setTestResult] = useState(null);
-  const [activeMockTest, setActiveMockTest] = useState(null); // { testId, attemptId, title, subject, questions }
+  const [activeMockTest, setActiveMockTest] = useState(null); // { testId, attemptId, title, subject, endAt, questions }
   const [mockTestAnswers, setMockTestAnswers] = useState({}); // questionId -> selected option index
   const [mockTestResult, setMockTestResult] = useState(null); // { score, feedback, perQuestionFeedback }
   const [mockTestSubmitting, setMockTestSubmitting] = useState(false);
   const [mockTestError, setMockTestError] = useState('');
+  const [mockTestSecondsLeft, setMockTestSecondsLeft] = useState(null); // countdown to activeMockTest.endAt
+  const mockTestAutoSubmittedRef = React.useRef(false);
+  const [expandedTestReviewId, setExpandedTestReviewId] = useState(''); // completed test whose question review is expanded
+  const [testReviewByTestId, setTestReviewByTestId] = useState({}); // testId -> { score, feedback, perQuestionFeedback }
+  const [testReviewLoadingId, setTestReviewLoadingId] = useState('');
   const [homeworkInfo, setHomeworkInfo] = useState('');
   const [selectedResource, setSelectedResource] = useState(null);
   const [settingsSaving, setSettingsSaving] = useState(false);
@@ -1702,6 +1708,15 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
       setPanelErrorKey('tests', 'You have already submitted this test.');
       return;
     }
+    if (testItem?.windowStatus === 'scheduled') {
+      const opensAt = testItem.startAt || testItem.start_at;
+      setPanelErrorKey('tests', `This test opens at ${opensAt ? new Date(opensAt).toLocaleString() : 'a later time'}.`);
+      return;
+    }
+    if (testItem?.windowStatus === 'expired') {
+      setPanelErrorKey('tests', "This test's time window has closed.");
+      return;
+    }
     setStartingTestId(testId);
     try {
       const started = await startTest(testId, studentId);
@@ -1721,6 +1736,7 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
         attemptId,
         title: testItem?.title || testItem?.name || 'Mock Test',
         subject: testItem?.subject || activeView,
+        endAt: testItem?.endAt || testItem?.end_at || null,
         questions: questionList
       });
       setMockTestAnswers({});
@@ -1737,20 +1753,23 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
     setMockTestAnswers((prev) => ({ ...prev, [questionId]: optionIndex }));
   }
 
-  async function onSubmitMockTest() {
+  async function onSubmitMockTest(options = {}) {
     if (!activeMockTest) return;
+    const autoSubmit = !!options.autoSubmit;
     const { attemptId, questions, subject } = activeMockTest;
-    const unanswered = questions.filter((q) => mockTestAnswers[q.id] === undefined);
-    if (unanswered.length) {
-      setMockTestError(`Please answer all questions (${unanswered.length} remaining).`);
-      return;
+    if (!autoSubmit) {
+      const unanswered = questions.filter((q) => mockTestAnswers[q.id] === undefined);
+      if (unanswered.length) {
+        setMockTestError(`Please answer all questions (${unanswered.length} remaining).`);
+        return;
+      }
     }
     setMockTestSubmitting(true);
     setMockTestError('');
     try {
       const submitRes = await submitTestAttempt(attemptId, studentId, mockTestAnswers);
       const score = submitRes?.score ?? 0;
-      const feedback = submitRes?.feedback || 'Submitted';
+      const feedback = autoSubmit ? "Time's up — submitted automatically." : (submitRes?.feedback || 'Submitted');
       const perQuestionFeedback = Array.isArray(submitRes?.perQuestionFeedback) ? submitRes.perQuestionFeedback : [];
       setMockTestResult({ score, feedback, perQuestionFeedback });
       setTestResult({ score, feedback });
@@ -1774,7 +1793,64 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
     setMockTestAnswers({});
     setMockTestResult(null);
     setMockTestError('');
+    setMockTestSecondsLeft(null);
+    mockTestAutoSubmittedRef.current = false;
   }
+
+  // Collapsed-by-default "review my answers" toggle for a completed test.
+  async function onToggleTestReview(testId) {
+    if (!testId) return;
+    if (expandedTestReviewId === testId) {
+      setExpandedTestReviewId('');
+      return;
+    }
+    setExpandedTestReviewId(testId);
+    if (testReviewByTestId[testId]) return; // already cached
+    setTestReviewLoadingId(testId);
+    try {
+      const res = await getTestReview(testId, studentId);
+      setTestReviewByTestId((prev) => ({
+        ...prev,
+        [testId]: {
+          score: res?.score,
+          feedback: res?.feedback,
+          perQuestionFeedback: Array.isArray(res?.perQuestionFeedback) ? res.perQuestionFeedback : [],
+          error: res?.success === false ? (res?.error || 'Unable to load review.') : ''
+        }
+      }));
+    } catch (e) {
+      setTestReviewByTestId((prev) => ({ ...prev, [testId]: { error: e?.message || 'Unable to load review.', perQuestionFeedback: [] } }));
+    } finally {
+      setTestReviewLoadingId('');
+    }
+  }
+
+  // Countdown to the assigned attempt window's close time — auto-submits
+  // whatever answers were picked (possibly none) the moment time runs out.
+  useEffect(() => {
+    if (!activeMockTest?.endAt || mockTestResult) {
+      setMockTestSecondsLeft(null);
+      return;
+    }
+    const endAtMs = new Date(activeMockTest.endAt).getTime();
+    if (Number.isNaN(endAtMs)) {
+      setMockTestSecondsLeft(null);
+      return;
+    }
+    mockTestAutoSubmittedRef.current = false;
+    const tick = () => {
+      const remaining = Math.max(0, Math.round((endAtMs - Date.now()) / 1000));
+      setMockTestSecondsLeft(remaining);
+      if (remaining <= 0 && !mockTestAutoSubmittedRef.current) {
+        mockTestAutoSubmittedRef.current = true;
+        onSubmitMockTest({ autoSubmit: true });
+      }
+    };
+    tick();
+    const intervalId = setInterval(tick, 1000);
+    return () => clearInterval(intervalId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeMockTest?.attemptId, activeMockTest?.endAt, mockTestResult]);
 
   async function onSubmitHomework(hwId, flags = {}) {
     const submitted = !!flags?.submitted;
@@ -4897,20 +4973,66 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
               </div>
               {panelError.tests ? <p className="eg-loading">{panelError.tests}</p> : null}
               <ul className="mini-list">
-                {(testsBySubject.get(activeView) || []).map((t) => (
-                  <li key={t.id} className="eg-list-with-action">
-                    <span>{t.title || t.name || 'Mock Test'}</span>
-                    {t.attempted ? (
-                      <span className="eg-inline-btn eg-inline-btn-done" title="You have already submitted this test">
-                        Completed ({t.lastScore}%)
-                      </span>
-                    ) : (
-                      <button className="eg-inline-btn" onClick={() => onStartTest(t.id)} disabled={startingTestId === t.id}>
-                        {startingTestId === t.id ? '...' : 'Start'}
-                      </button>
-                    )}
-                  </li>
-                ))}
+                {(testsBySubject.get(activeView) || []).map((t) => {
+                  const windowStatus = t.windowStatus || 'none';
+                  const opensAt = t.startAt || t.start_at;
+                  const closesAt = t.endAt || t.end_at;
+                  const isReviewOpen = expandedTestReviewId === t.id;
+                  const review = testReviewByTestId[t.id];
+                  return (
+                    <li key={t.id} className={t.attempted ? 'eg-list-with-action eg-mocktest-review-li' : 'eg-list-with-action'}>
+                      <div className="eg-mocktest-review-row-head">
+                        <div>
+                          <span>{t.title || t.name || 'Mock Test'}</span>
+                          {!t.attempted && windowStatus === 'open' && closesAt ? (
+                            <div className="eg-mocktest-window-note">Closes {new Date(closesAt).toLocaleString()}</div>
+                          ) : null}
+                        </div>
+                        {t.attempted ? (
+                          <button
+                            type="button"
+                            className="eg-inline-btn eg-inline-btn-done"
+                            onClick={() => onToggleTestReview(t.id)}
+                            title="You have already submitted this test — tap to review your answers"
+                          >
+                            Completed ({t.lastScore}%) {isReviewOpen ? '▴ Hide' : '▾ Review'}
+                          </button>
+                        ) : windowStatus === 'scheduled' ? (
+                          <span className="eg-inline-btn eg-inline-btn-scheduled" title={opensAt ? `Opens ${new Date(opensAt).toLocaleString()}` : ''}>
+                            Opens {opensAt ? new Date(opensAt).toLocaleString() : 'soon'}
+                          </span>
+                        ) : windowStatus === 'expired' ? (
+                          <span className="eg-inline-btn eg-inline-btn-expired">Expired</span>
+                        ) : (
+                          <button className="eg-inline-btn" onClick={() => onStartTest(t.id)} disabled={startingTestId === t.id}>
+                            {startingTestId === t.id ? '...' : 'Start'}
+                          </button>
+                        )}
+                      </div>
+                      {t.attempted && isReviewOpen ? (
+                        <div className="eg-mocktest-review-panel">
+                          {testReviewLoadingId === t.id ? (
+                            <p className="eg-mocktest-review-loading">Loading your answers…</p>
+                          ) : review?.error ? (
+                            <p className="eg-mocktest-review-loading">{review.error}</p>
+                          ) : (
+                            (review?.perQuestionFeedback || []).map((fb, idx) => (
+                              <div key={fb.questionId || idx} className={`eg-mocktest-review-row${fb.isCorrect ? ' is-correct' : ' is-wrong'}`}>
+                                <p className="eg-mocktest-question-text"><strong>{idx + 1}.</strong> {fb.text}</p>
+                                <p className="eg-mocktest-review-answer">
+                                  Your answer: {Number.isInteger(fb.selectedOption) && fb.selectedOption >= 0 ? fb.options?.[fb.selectedOption] : 'Not answered'} {fb.isCorrect ? '✓' : '✗'}
+                                </p>
+                                {!fb.isCorrect ? (
+                                  <p className="eg-mocktest-review-correct">Correct answer: {fb.options?.[fb.correctOption] ?? '—'}</p>
+                                ) : null}
+                              </div>
+                            ))
+                          )}
+                        </div>
+                      ) : null}
+                    </li>
+                  );
+                })}
                 {!panelLoading.tests && !(testsBySubject.get(activeView) || []).length ? <li>No tests available for this subject.</li> : null}
               </ul>
               {testResult ? <p className="eg-inline-note">Last score: {String(testResult.score)} | {testResult.feedback}</p> : null}
@@ -4989,6 +5111,11 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
                 <h3>{activeMockTest.title}</h3>
                 <span className="eg-mocktest-subject">{activeMockTest.subject}</span>
               </div>
+              {!mockTestResult && mockTestSecondsLeft !== null ? (
+                <span className={`eg-mocktest-timer${mockTestSecondsLeft <= 30 ? ' is-low' : ''}`}>
+                  ⏱ {String(Math.floor(mockTestSecondsLeft / 60)).padStart(2, '0')}:{String(mockTestSecondsLeft % 60).padStart(2, '0')}
+                </span>
+              ) : null}
               <button type="button" className="eg-mocktest-close" onClick={onCloseMockTest} aria-label="Close test">✕</button>
             </div>
 

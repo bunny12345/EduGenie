@@ -375,6 +375,7 @@ export default function TeacherDashboard({ session, onLogout }) {
   const [questionCorrect, setQuestionCorrect] = useState(0);
   const [testQuestions, setTestQuestions] = useState([]);
   const [testsNote, setTestsNote] = useState('');
+  const [assignWindowByTestId, setAssignWindowByTestId] = useState({}); // testId -> { startAt, endAt } (datetime-local strings)
   const [editingTestId, setEditingTestId] = useState(null);
   const [editingTestTitle, setEditingTestTitle] = useState('');
   const [editingTestSubject, setEditingTestSubject] = useState('');
@@ -1041,17 +1042,36 @@ export default function TeacherDashboard({ session, onLogout }) {
 
   async function onAssignTest(testId) {
     if (!testId) return;
+    const scheduleWindow = assignWindowByTestId[testId] || {};
+    if (!scheduleWindow.startAt || !scheduleWindow.endAt) {
+      setTestsNote('Set both an opens-at and closes-at time before assigning this test.');
+      return;
+    }
+    const startAtDate = new Date(scheduleWindow.startAt);
+    const endAtDate = new Date(scheduleWindow.endAt);
+    if (Number.isNaN(startAtDate.getTime()) || Number.isNaN(endAtDate.getTime())) {
+      setTestsNote('Invalid opens-at/closes-at time.');
+      return;
+    }
+    if (endAtDate <= startAtDate) {
+      setTestsNote('The closing time must be after the opening time.');
+      return;
+    }
     setBusy(`assignTest-${testId}`);
     setTestsNote('');
     try {
-      const res = await assignTest(testId);
-      setTestsNote(`Test "${res.test?.title || 'Test'}" assigned — students in its class can now take it.`);
+      const res = await assignTest(testId, { startAt: startAtDate.toISOString(), endAt: endAtDate.toISOString() });
+      setTestsNote(`Test "${res.test?.title || 'Test'}" assigned — students in its class can take it from ${startAtDate.toLocaleString()} to ${endAtDate.toLocaleString()}.`);
       await loadTestsPanel();
     } catch (e2) {
       setTestsNote(e2?.message || 'Unable to assign test.');
     } finally {
       setBusy('');
     }
+  }
+
+  function updateAssignWindow(testId, field, value) {
+    setAssignWindowByTestId((prev) => ({ ...prev, [testId]: { ...(prev[testId] || {}), [field]: value } }));
   }
 
   async function onDeleteTest(testId) {
@@ -3016,37 +3036,72 @@ export default function TeacherDashboard({ session, onLogout }) {
               {classScopedTests.length ? (
                 <ul className="td-announcements">
                   {classScopedTests.map((t) => (
-                    <li key={t.id} className="td-invite-row">
-                      <div>
-                        <strong>{t.title}</strong>
-                        <span className="td-invite-status">{t.subject || 'General'} &middot; {t.status === 'assigned' ? 'Assigned' : t.status === 'completed' ? 'Completed' : 'Draft (not visible to students yet)'}</span>
+                    <li key={t.id} className="td-test-row">
+                      <div className="td-invite-row">
+                        <div>
+                          <strong>{t.title}</strong>
+                          <span className="td-invite-status">{t.subject || 'General'} &middot; {t.status === 'assigned' ? 'Assigned' : t.status === 'completed' ? 'Completed' : 'Draft (not visible to students yet)'}</span>
+                        </div>
+                        <div className="td-invite-actions">
+                          <button
+                            type="button"
+                            className="td-inline-btn"
+                            onClick={() => { setCreatedTestId(t.id); setCreatedTestTitle(t.title); setTestsNote(`Adding questions to "${t.title}"`); }}
+                          >Add Questions</button>
+                          {t.status !== 'assigned' ? (
+                            <button
+                              type="button"
+                              className="td-inline-btn"
+                              onClick={() => onAssignTest(t.id)}
+                              disabled={busy === `assignTest-${t.id}`}
+                            >{busy === `assignTest-${t.id}` ? 'Assigning...' : 'Assign'}</button>
+                          ) : (
+                            <span className="td-inline-btn" style={{ opacity: 0.7, cursor: 'default' }}>Assigned ✓</span>
+                          )}
+                          <button type="button" className="td-inline-btn" onClick={() => onStartEdit(t)}>Edit</button>
+                          <button
+                            type="button"
+                            className="td-inline-btn"
+                            onClick={() => onReuseTest(t)}
+                            disabled={busy === `reuseTest-${t.id}`}
+                          >{busy === `reuseTest-${t.id}` ? 'Reusing...' : 'Reuse'}</button>
+                          <button
+                            className="td-inline-btn danger"
+                            type="button"
+                            onClick={() => onDeleteTest(t.id)}
+                            disabled={busy === `deleteTest-${t.id}`}
+                          >Delete</button>
+                        </div>
                       </div>
-                      <div className="td-invite-actions">
-                        <button
-                          type="button"
-                          className="td-inline-btn"
-                          onClick={() => { setCreatedTestId(t.id); setCreatedTestTitle(t.title); setTestsNote(`Adding questions to "${t.title}"`); }}
-                        >Add Questions</button>
-                        <button
-                          type="button"
-                          className="td-inline-btn"
-                          onClick={() => onAssignTest(t.id)}
-                          disabled={busy === `assignTest-${t.id}` || t.status === 'assigned'}
-                        >{busy === `assignTest-${t.id}` ? 'Assigning...' : t.status === 'assigned' ? 'Assigned ✓' : 'Assign'}</button>
-                        <button type="button" className="td-inline-btn" onClick={() => onStartEdit(t)}>Edit</button>
-                        <button
-                          type="button"
-                          className="td-inline-btn"
-                          onClick={() => onReuseTest(t)}
-                          disabled={busy === `reuseTest-${t.id}`}
-                        >{busy === `reuseTest-${t.id}` ? 'Reusing...' : 'Reuse'}</button>
-                        <button
-                          className="td-inline-btn danger"
-                          type="button"
-                          onClick={() => onDeleteTest(t.id)}
-                          disabled={busy === `deleteTest-${t.id}`}
-                        >Delete</button>
-                      </div>
+                      {t.status !== 'assigned' ? (
+                        <div className="td-test-schedule">
+                          <div>
+                            <label className="td-field-label">Opens At</label>
+                            <input
+                              type="datetime-local"
+                              className="td-input"
+                              value={assignWindowByTestId[t.id]?.startAt || ''}
+                              onChange={(e) => updateAssignWindow(t.id, 'startAt', e.target.value)}
+                            />
+                          </div>
+                          <div>
+                            <label className="td-field-label">Closes At</label>
+                            <input
+                              type="datetime-local"
+                              className="td-input"
+                              value={assignWindowByTestId[t.id]?.endAt || ''}
+                              min={assignWindowByTestId[t.id]?.startAt || undefined}
+                              onChange={(e) => updateAssignWindow(t.id, 'endAt', e.target.value)}
+                            />
+                          </div>
+                        </div>
+                      ) : (
+                        (t.startAt || t.start_at) ? (
+                          <div className="td-test-window-note">
+                            Attempt window: {new Date(t.startAt || t.start_at).toLocaleString()} → {new Date(t.endAt || t.end_at).toLocaleString()}
+                          </div>
+                        ) : null
+                      )}
                     </li>
                   ))}
                 </ul>
