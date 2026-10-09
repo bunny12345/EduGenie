@@ -1414,7 +1414,7 @@ textarea {
 }
 
 .eg-subject-test-card {
-  padding: 16px;
+  padding: 16px 10px 16px 16px;
   max-height: 40vh;
   overflow-y: auto;
   overflow-x: hidden;
@@ -1422,6 +1422,28 @@ textarea {
   border-radius: 16px;
   background: #fff;
   border: 1px solid #ece6ff;
+  scrollbar-width: thin;
+  scrollbar-color: #c8cef0 transparent;
+}
+
+/* Custom thin scrollbar, inset from the card's rounded top/bottom corners
+   so the native scrollbar track doesn't visually poke outside the panel. */
+.eg-subject-test-card::-webkit-scrollbar {
+  width: 6px;
+}
+
+.eg-subject-test-card::-webkit-scrollbar-track {
+  background: transparent;
+  margin: 10px 0;
+}
+
+.eg-subject-test-card::-webkit-scrollbar-thumb {
+  background: #c8cef0;
+  border-radius: 3px;
+}
+
+.eg-subject-test-card::-webkit-scrollbar-thumb:hover {
+  background: #a7b0f0;
 }
 
 .eg-subject-progress-card {

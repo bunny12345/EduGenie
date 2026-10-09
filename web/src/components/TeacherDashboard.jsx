@@ -375,6 +375,7 @@ export default function TeacherDashboard({ session, onLogout }) {
   const [questionCorrect, setQuestionCorrect] = useState(0);
   const [testQuestions, setTestQuestions] = useState([]);
   const [testsNote, setTestsNote] = useState('');
+  const [showTestsList, setShowTestsList] = useState(false);
   const [assignWindowByTestId, setAssignWindowByTestId] = useState({}); // testId -> { startAt, endAt } (datetime-local strings)
   const [editingTestId, setEditingTestId] = useState(null);
   const [editingTestTitle, setEditingTestTitle] = useState('');
@@ -3033,95 +3034,7 @@ export default function TeacherDashboard({ session, onLogout }) {
               <p>Create tests and add questions for your students.</p>
               {panelError.tests ? <p className="td-empty">{panelError.tests}</p> : null}
 
-              {classScopedTests.length ? (
-                <ul className="td-announcements">
-                  {classScopedTests.map((t) => (
-                    <li key={t.id} className="td-test-row">
-                      <div className="td-invite-row">
-                        <div>
-                          <strong>{t.title}</strong>
-                          <span className="td-invite-status">{t.subject || 'General'} &middot; {t.status === 'assigned' ? 'Assigned' : t.status === 'completed' ? 'Completed' : 'Draft (not visible to students yet)'}</span>
-                        </div>
-                        <div className="td-invite-actions">
-                          <button
-                            type="button"
-                            className="td-inline-btn"
-                            onClick={() => { setCreatedTestId(t.id); setCreatedTestTitle(t.title); setTestsNote(`Adding questions to "${t.title}"`); }}
-                          >Add Questions</button>
-                          {t.status !== 'assigned' ? (
-                            <button
-                              type="button"
-                              className="td-inline-btn"
-                              onClick={() => onAssignTest(t.id)}
-                              disabled={busy === `assignTest-${t.id}`}
-                            >{busy === `assignTest-${t.id}` ? 'Assigning...' : 'Assign'}</button>
-                          ) : (
-                            <span className="td-inline-btn" style={{ opacity: 0.7, cursor: 'default' }}>Assigned ✓</span>
-                          )}
-                          <button type="button" className="td-inline-btn" onClick={() => onStartEdit(t)}>Edit</button>
-                          <button
-                            type="button"
-                            className="td-inline-btn"
-                            onClick={() => onReuseTest(t)}
-                            disabled={busy === `reuseTest-${t.id}`}
-                          >{busy === `reuseTest-${t.id}` ? 'Reusing...' : 'Reuse'}</button>
-                          <button
-                            className="td-inline-btn danger"
-                            type="button"
-                            onClick={() => onDeleteTest(t.id)}
-                            disabled={busy === `deleteTest-${t.id}`}
-                          >Delete</button>
-                        </div>
-                      </div>
-                      {t.status !== 'assigned' ? (
-                        <div className="td-test-schedule">
-                          <div>
-                            <label className="td-field-label">Opens At</label>
-                            <input
-                              type="datetime-local"
-                              className="td-input"
-                              value={assignWindowByTestId[t.id]?.startAt || ''}
-                              onChange={(e) => updateAssignWindow(t.id, 'startAt', e.target.value)}
-                            />
-                          </div>
-                          <div>
-                            <label className="td-field-label">Closes At</label>
-                            <input
-                              type="datetime-local"
-                              className="td-input"
-                              value={assignWindowByTestId[t.id]?.endAt || ''}
-                              min={assignWindowByTestId[t.id]?.startAt || undefined}
-                              onChange={(e) => updateAssignWindow(t.id, 'endAt', e.target.value)}
-                            />
-                          </div>
-                        </div>
-                      ) : (
-                        (t.startAt || t.start_at) ? (
-                          <div className="td-test-window-note">
-                            Attempt window: {new Date(t.startAt || t.start_at).toLocaleString()} → {new Date(t.endAt || t.end_at).toLocaleString()}
-                          </div>
-                        ) : null
-                      )}
-                    </li>
-                  ))}
-                </ul>
-              ) : (!panelLoading.tests ? <p className="td-empty">No tests yet. Create one below.</p> : null)}
-
-              {editingTestId ? (
-                <form className="td-form" onSubmit={onSaveTestEdit} style={{ marginTop: 14 }}>
-                  <h4 style={{ margin: '0 0 8px' }}>Edit Test</h4>
-                  <input className="td-input" value={editingTestTitle} onChange={(e) => setEditingTestTitle(e.target.value)} placeholder="Test title" required />
-                  <input className="td-input" value={editingTestSubject} onChange={(e) => setEditingTestSubject(e.target.value)} placeholder="Subject" readOnly={!!lockedSubject} title={lockedSubject ? 'Locked to your subject' : undefined} style={lockedSubject ? { background: '#f2f4fb', cursor: 'not-allowed' } : undefined} />
-                  <input className="td-input" value={editingTestClass} onChange={(e) => setEditingTestClass(e.target.value)} placeholder="Class name" />
-                  <input className="td-input" type="number" min={1} max={180} value={editingTestDuration} onChange={(e) => setEditingTestDuration(e.target.value)} placeholder="Duration (minutes)" />
-                  <div className="td-invite-actions">
-                    <button type="submit" disabled={busy === 'saveTest'}>{busy === 'saveTest' ? 'Saving...' : 'Save Changes'}</button>
-                    <button type="button" className="td-inline-btn danger" onClick={() => { setEditingTestId(null); setTestsNote('Edit cancelled.'); }}>Cancel</button>
-                  </div>
-                </form>
-              ) : null}
-
-              <form className="td-form" onSubmit={onCreateTest} style={{ marginTop: 14 }}>
+              <form className="td-form" onSubmit={onCreateTest}>
                 <h4 style={{ margin: '0 0 8px' }}>New Test</h4>
                 <input className="td-input" value={newTestTitle} onChange={(e) => setNewTestTitle(e.target.value)} placeholder="Test title" required />
                 <input className="td-input" value={newTestSubject} onChange={(e) => setNewTestSubject(e.target.value)} placeholder="Subject" readOnly={!!lockedSubject} title={lockedSubject ? 'Locked to your subject' : undefined} style={lockedSubject ? { background: '#f2f4fb', cursor: 'not-allowed' } : undefined} />
@@ -3129,9 +3042,120 @@ export default function TeacherDashboard({ session, onLogout }) {
                 <button type="submit" disabled={busy === 'createTest' || teacherTargetClass === 'all'}>{busy === 'createTest' ? 'Creating...' : teacherTargetClass === 'all' ? 'Select a class first' : `Create Test for ${teacherTargetClass}`}</button>
               </form>
 
+              <div style={{ marginTop: 14 }}>
+                <button
+                  type="button"
+                  className="td-inline-btn"
+                  onClick={() => setShowTestsList((prev) => !prev)}
+                >
+                  {showTestsList ? '▾' : '▸'} Assigned Tests{classScopedTests.length ? ` (${classScopedTests.length})` : ''}
+                </button>
+              </div>
+
+              {showTestsList ? (
+                <>
+                  {classScopedTests.length ? (
+                    <ul className="td-announcements">
+                      {classScopedTests.map((t) => (
+                        <li key={t.id} className="td-test-row">
+                          <div className="td-invite-row">
+                            <div>
+                              <strong>{t.title}</strong>
+                              <span className="td-invite-status">{t.subject || 'General'} &middot; {t.status === 'assigned' ? 'Assigned' : t.status === 'completed' ? 'Completed' : 'Draft (not visible to students yet)'}</span>
+                            </div>
+                            <div className="td-invite-actions">
+                              <button
+                                type="button"
+                                className="td-inline-btn"
+                                onClick={() => { setCreatedTestId(t.id); setCreatedTestTitle(t.title); setTestsNote(`Adding questions to "${t.title}"`); }}
+                              >Add Questions</button>
+                              {t.status !== 'assigned' ? (
+                                <button
+                                  type="button"
+                                  className="td-inline-btn"
+                                  onClick={() => onAssignTest(t.id)}
+                                  disabled={busy === `assignTest-${t.id}`}
+                                >{busy === `assignTest-${t.id}` ? 'Assigning...' : 'Assign'}</button>
+                              ) : (
+                                <span className="td-inline-btn" style={{ opacity: 0.7, cursor: 'default' }}>Assigned ✓</span>
+                              )}
+                              <button type="button" className="td-inline-btn" onClick={() => onStartEdit(t)}>Edit</button>
+                              <button
+                                type="button"
+                                className="td-inline-btn"
+                                onClick={() => onReuseTest(t)}
+                                disabled={busy === `reuseTest-${t.id}`}
+                              >{busy === `reuseTest-${t.id}` ? 'Reusing...' : 'Reuse'}</button>
+                              <button
+                                className="td-inline-btn danger"
+                                type="button"
+                                onClick={() => onDeleteTest(t.id)}
+                                disabled={busy === `deleteTest-${t.id}`}
+                              >Delete</button>
+                            </div>
+                          </div>
+                          {t.status !== 'assigned' ? (
+                            <div className="td-test-schedule">
+                              <div>
+                                <label className="td-field-label">Opens At</label>
+                                <input
+                                  type="datetime-local"
+                                  className="td-input"
+                                  value={assignWindowByTestId[t.id]?.startAt || ''}
+                                  onChange={(e) => updateAssignWindow(t.id, 'startAt', e.target.value)}
+                                />
+                              </div>
+                              <div>
+                                <label className="td-field-label">Closes At</label>
+                                <input
+                                  type="datetime-local"
+                                  className="td-input"
+                                  value={assignWindowByTestId[t.id]?.endAt || ''}
+                                  min={assignWindowByTestId[t.id]?.startAt || undefined}
+                                  onChange={(e) => updateAssignWindow(t.id, 'endAt', e.target.value)}
+                                />
+                              </div>
+                            </div>
+                          ) : (
+                            (t.startAt || t.start_at) ? (
+                              <div className="td-test-window-note">
+                                Attempt window: {new Date(t.startAt || t.start_at).toLocaleString()} → {new Date(t.endAt || t.end_at).toLocaleString()}
+                              </div>
+                            ) : null
+                          )}
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (!panelLoading.tests ? <p className="td-empty">No tests yet. Create one above.</p> : null)}
+
+                  {editingTestId ? (
+                    <form className="td-form" onSubmit={onSaveTestEdit} style={{ marginTop: 14 }}>
+                      <h4 style={{ margin: '0 0 8px' }}>Edit Test</h4>
+                      <input className="td-input" value={editingTestTitle} onChange={(e) => setEditingTestTitle(e.target.value)} placeholder="Test title" required />
+                      <input className="td-input" value={editingTestSubject} onChange={(e) => setEditingTestSubject(e.target.value)} placeholder="Subject" readOnly={!!lockedSubject} title={lockedSubject ? 'Locked to your subject' : undefined} style={lockedSubject ? { background: '#f2f4fb', cursor: 'not-allowed' } : undefined} />
+                      <input className="td-input" value={editingTestClass} onChange={(e) => setEditingTestClass(e.target.value)} placeholder="Class name" />
+                      <input className="td-input" type="number" min={1} max={180} value={editingTestDuration} onChange={(e) => setEditingTestDuration(e.target.value)} placeholder="Duration (minutes)" />
+                      <div className="td-invite-actions">
+                        <button type="submit" disabled={busy === 'saveTest'}>{busy === 'saveTest' ? 'Saving...' : 'Save Changes'}</button>
+                        <button type="button" className="td-inline-btn danger" onClick={() => { setEditingTestId(null); setTestsNote('Edit cancelled.'); }}>Cancel</button>
+                      </div>
+                    </form>
+                  ) : null}
+                </>
+              ) : null}
+
               {createdTestId ? (
                 <form className="td-form" onSubmit={onAddQuestion} style={{ marginTop: 14 }}>
-                  <h4 style={{ margin: '0 0 8px' }}>Add Question to &ldquo;{createdTestTitle}&rdquo;</h4>
+                  <div className="td-invite-row">
+                    <h4 style={{ margin: '0 0 8px' }}>Add Question to &ldquo;{createdTestTitle}&rdquo;</h4>
+                    <button
+                      type="button"
+                      className="td-inline-btn"
+                      aria-label="Close"
+                      title="Discard this question"
+                      onClick={() => { setCreatedTestId(null); setCreatedTestTitle(''); setQuestionText(''); setQuestionOptions(['', '', '', '']); setQuestionCorrect(0); setTestsNote(''); }}
+                    >✕</button>
+                  </div>
                   <textarea className="td-input" rows={2} value={questionText} onChange={(e) => setQuestionText(e.target.value)} placeholder="Question text" required />
                   {questionOptions.map((opt, idx) => (
                     <div key={idx} style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
