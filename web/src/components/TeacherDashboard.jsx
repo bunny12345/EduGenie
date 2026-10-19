@@ -18,6 +18,7 @@ import {
   getTeacherStudentHomework,
   getTeacherStudentTestAttempts,
   gradeTeacherHomework,
+  aiGradeTeacherHomework,
   getTeacherDashboard,
   getTeacherProfile,
   getTeacherStudentDeliveryStatus,
@@ -3683,6 +3684,31 @@ export default function TeacherDashboard({ session, onLogout }) {
                                           onClick={() => setExpandedHwSubmissionById((prev) => ({ ...prev, [hw.id]: !prev[hw.id] }))}
                                         >
                                           {expanded ? 'Hide student submission' : 'Show student submission'}
+                                        </button>
+                                        <button
+                                          type="button"
+                                          className="td-ai-correct-btn"
+                                          style={{ marginLeft: 6 }}
+                                          disabled={busy === `aiGrade-${hw.id}`}
+                                          onClick={async () => {
+                                            setBusy(`aiGrade-${hw.id}`);
+                                            try {
+                                              const res = await aiGradeTeacherHomework(hw.id);
+                                              if (res?.success) {
+                                                setExpandedGradeById((prev) => ({ ...prev, [hw.id]: true }));
+                                                setGradeValue(res.score !== null && res.score !== undefined ? String(res.score) : '');
+                                                setGradeFeedback(res.feedback || '');
+                                              } else {
+                                                alert(res?.error || 'AI could not generate feedback for this submission.');
+                                              }
+                                            } catch (err) {
+                                              alert(String(err?.message || 'Error getting AI feedback'));
+                                            } finally {
+                                              setBusy('');
+                                            }
+                                          }}
+                                        >
+                                          {busy === `aiGrade-${hw.id}` ? 'Reading submission…' : '✨ Autocorrect'}
                                         </button>
                                         {expanded ? (
                                           <div style={{ marginTop: 6, display: 'grid', gap: 8, maxWidth: 260 }}>

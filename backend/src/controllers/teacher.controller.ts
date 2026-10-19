@@ -4,8 +4,12 @@ import { AuthGuard } from '../auth/auth.guard';
 import { StudentAuthService } from '../auth/student-auth.service';
 import { LocalFeedService } from '../shared/local-feed.service';
 import { LearningScoreService } from '../progress/learning-score.service';
+import { LlmService } from '../llm/llm.service';
 import { normalizeSubjectKey } from '../orchard/orchard.constants';
 import { METRIC_ORDER_COLUMN, metricAt, metricScore } from '../progress/progress-metric.util';
+import fetch from 'node-fetch';
+import * as fs from 'fs';
+import * as path from 'path';
 
 function makeAssignmentGroupId() {
   return `asg-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
@@ -23,7 +27,8 @@ export class TeacherController {
     private readonly db: SupabaseService,
     private readonly studentAuth: StudentAuthService,
     private readonly localFeed: LocalFeedService,
-    private readonly learningScore: LearningScoreService
+    private readonly learningScore: LearningScoreService,
+    private readonly llm: LlmService
   ) {}
 
   private sampleStudents() {
@@ -946,6 +951,134 @@ export class TeacherController {
         updated_at: nowIso
       });
       return { success: true, homeworkId: hwId, status: safeStatus, grade, feedback };
+    }
+  }
+
+  // Images saved by the homework upload endpoint live under local-data/uploads
+  // and are served statically — read them straight off disk instead of
+  // round-tripping an HTTP request to our own server for every image.
+  private async fetchImageAsBase64(url: string): Promise<string | null> {
+    const clean = String(url || '').trim();
+    if (!clean) return null;
+    try {
+      const uploadsMatch = clean.match(/\/uploads\/(.+)$/);
+      if (uploadsMatch) {
+        const localPath = path.join(process.cwd(), 'local-data', 'uploads', uploadsMatch[1]);
+        if (fs.existsSync(localPath)) {
+          return fs.readFileSync(localPath).toString('base64');
+        }
+      }
+      const res = await fetch(clean);
+      if (!res.ok) return null;
+      const buf = await res.arrayBuffer();
+      return Buffer.from(buf).toString('base64');
+    } catch {
+      return null;
+    }
+  }
+
+  // The same assignment is created as one homework row per student in a
+  // class, all sharing one assignmentGroupId. The teacher's own assignment
+  // note/images never change per student, so read and base64-encode them
+  // once per assignment and reuse across every student's AI correction
+  // instead of re-fetching the same images on every button click.
+  private assignmentContextCache = new Map<string, { note: string; attachmentImages: string[] }>();
+
+  private async getAssignmentContext(hwRow: any): Promise<{ note: string; attachmentImages: string[] }> {
+    const meta = this.readHomeworkMeta(hwRow);
+    const cacheKey = meta.assignmentGroupId || hwRow?.id || '';
+    const cached = cacheKey ? this.assignmentContextCache.get(cacheKey) : null;
+    if (cached) return cached;
+
+    const note = String(meta.note || '').trim();
+    const attachmentImages = (await Promise.all(
+      (meta.attachmentUrls || []).slice(0, 4).map((u: string) => this.fetchImageAsBase64(u))
+    )).filter((b): b is string => !!b);
+
+    const context = { note, attachmentImages };
+    if (cacheKey) this.assignmentContextCache.set(cacheKey, context);
+    return context;
+  }
+
+  @Post('homework/:hwId/ai-grade')
+  async aiGradeHomework(@Req() req: any, @Param('hwId') hwId: string) {
+    this.ensureTeacher(req);
+    try {
+      const [hwRes, attRes] = await Promise.all([
+        this.db.client.from('homework').select('*').eq('id', hwId).limit(1),
+        this.db.client.from('homework_attempts').select('*').eq('homework_id', hwId).order('created_at', { ascending: false }).limit(1)
+      ]);
+      const hwRow = (Array.isArray((hwRes as any)?.data) && (hwRes as any).data[0]) || this.localFeed.getHomeworkById(hwId) || {};
+      const latestAttempt = (Array.isArray((attRes as any)?.data) && (attRes as any).data[0]) || null;
+
+      const title = hwRow.title || 'Homework';
+      const subject = hwRow.subject || 'General';
+      const answerText = String(
+        latestAttempt?.answers?.text || hwRow.latest_answer_text || hwRow.latestAnswerText || ''
+      ).trim();
+      const urls: string[] = (Array.isArray(latestAttempt?.attachment_urls) && latestAttempt.attachment_urls.length
+        ? latestAttempt.attachment_urls
+        : (latestAttempt?.attachment_url ? [latestAttempt.attachment_url]
+          : (Array.isArray(hwRow.latest_attachment_urls) && hwRow.latest_attachment_urls.length
+            ? hwRow.latest_attachment_urls
+            : (hwRow.latest_attachment_url ? [hwRow.latest_attachment_url] : [])))
+      ).filter((u: any) => typeof u === 'string' && u.trim());
+
+      if (!answerText && !urls.length) {
+        return { success: false, error: 'No student submission found to correct.' };
+      }
+
+      const assignment = await this.getAssignmentContext(hwRow);
+      const studentImages = (await Promise.all(urls.slice(0, 6).map((u) => this.fetchImageAsBase64(u))))
+        .filter((b): b is string => !!b);
+      const imageBase64List = [...assignment.attachmentImages, ...studentImages];
+
+      const systemPrompt =
+        `You are a kind, encouraging school teacher correcting a student's homework for a classroom.` +
+        ` The homework is titled "${title}" for the subject "${subject}".` +
+        (assignment.note ? ` The teacher's instructions/question for this homework: "${assignment.note}".` : '') +
+        (assignment.attachmentImages.length
+          ? ` The FIRST ${assignment.attachmentImages.length} image(s) are the assignment/worksheet the teacher gave the student — read the actual questions from them before judging anything.`
+          : '') +
+        (studentImages.length
+          ? ` The ${assignment.attachmentImages.length ? 'REMAINING' : ''} image(s) are the student's submitted answers — check them specifically against the assignment questions above, not in isolation.`
+          : '') +
+        ` Only mark an answer wrong if it is actually incorrect for the specific question asked in the assignment — do not invent unrelated questions or grade against a different topic.` +
+        ` If the assignment content isn't clear enough to grade precisely, still give your best-effort, cautious feedback and say so briefly.` +
+        ` Keep the feedback age-appropriate, simple, and constructive — this is for a school child, not an adult.` +
+        ` Respond with STRICT JSON only, no markdown fences, in exactly this shape: {"score": <integer 0-100>, "feedback": "<2-4 sentence feedback for the student, encouraging but pointing out any corrections needed>"}.`;
+
+      const userParts = [
+        answerText ? `Student's written answer:\n${answerText}` : null,
+        studentImages.length ? `The student submitted ${studentImages.length} image(s) of their work — review them closely against the assignment.` : null
+      ].filter(Boolean).join('\n\n') || 'The student submitted image(s) of their handwritten work — review them closely against the assignment.';
+
+      const messages = [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: userParts }
+      ];
+
+      const rawReply = await this.llm.query(messages, { imageBase64List });
+
+      let score: number | null = null;
+      let feedback = '';
+      try {
+        const jsonMatch = rawReply.match(/\{[\s\S]*\}/);
+        const parsed = JSON.parse(jsonMatch ? jsonMatch[0] : rawReply);
+        if (typeof parsed.score === 'number') score = Math.max(0, Math.min(100, Math.round(parsed.score)));
+        if (typeof parsed.feedback === 'string') feedback = parsed.feedback.trim();
+      } catch {
+        feedback = String(rawReply || '').trim();
+        const scoreMatch = feedback.match(/(\d{1,3})\s*\/\s*100|score[:\s]+(\d{1,3})/i);
+        const digits = scoreMatch ? (scoreMatch[1] || scoreMatch[2]) : null;
+        if (digits) score = Math.max(0, Math.min(100, parseInt(digits, 10)));
+      }
+
+      if (!feedback) feedback = 'AI could not generate detailed feedback — please review the submission manually.';
+
+      return { success: true, score, feedback };
+    } catch (e) {
+      return { success: false, error: String((e as any)?.message || e || 'AI correction failed') };
     }
   }
 

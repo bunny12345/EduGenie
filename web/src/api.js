@@ -803,6 +803,15 @@ export async function gradeTeacherHomework(hwId, payload) {
   return res.json();
 }
 
+export async function aiGradeTeacherHomework(hwId) {
+  const headers = await authHeaders();
+  const res = await fetch(`${API_BASE}/teacher/homework/${encodeURIComponent(hwId)}/ai-grade`, {
+    method: 'POST',
+    headers
+  });
+  return res.json();
+}
+
 export async function schoolDashboard() {
   const res = await fetch(withQuery('/school/dashboard'), {
     headers: await authHeaders()
