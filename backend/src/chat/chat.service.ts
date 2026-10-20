@@ -451,6 +451,166 @@ export class ChatService {
     }
   }
 
+  private extractHomeworkNote(row: any): string {
+    const tasks = row?.tasks && typeof row.tasks === 'object' ? row.tasks : null;
+    const meta = tasks && typeof tasks.meta === 'object' ? tasks.meta : null;
+    return String(row?.note ?? meta?.note ?? '').trim();
+  }
+
+  private extractHomeworkAttachmentUrls(row: any): string[] {
+    const tasks = row?.tasks && typeof row.tasks === 'object' ? row.tasks : null;
+    const meta = tasks && typeof tasks.meta === 'object' ? tasks.meta : null;
+    const listRaw = row?.attachment_urls ?? meta?.attachmentUrls;
+    const list = Array.isArray(listRaw) ? listRaw.filter((u: any) => typeof u === 'string' && String(u).trim()) : [];
+    if (list.length) return list;
+    const single = row?.attachment_url ?? meta?.attachmentUrl ?? null;
+    return single ? [single] : [];
+  }
+
+  private extractHomeworkAssignmentGroupId(row: any): string {
+    const tasks = row?.tasks && typeof row.tasks === 'object' ? row.tasks : null;
+    const meta = tasks && typeof tasks.meta === 'object' ? tasks.meta : null;
+    return String(meta?.assignmentGroupId || row?.id || '').trim();
+  }
+
+  // Homework worksheet images live under local-data/uploads and are served
+  // statically — read them straight off disk instead of round-tripping an
+  // HTTP request to our own server for every image.
+  private async fetchImageAsBase64(url: string): Promise<string | null> {
+    const clean = String(url || '').trim();
+    if (!clean) return null;
+    try {
+      const uploadsMatch = clean.match(/\/uploads\/(.+)$/);
+      if (uploadsMatch) {
+        const localPath = path.join(process.cwd(), 'local-data', 'uploads', uploadsMatch[1]);
+        if (fs.existsSync(localPath)) {
+          return fs.readFileSync(localPath).toString('base64');
+        }
+      }
+      const res = await fetch(clean);
+      if (!res.ok) return null;
+      const buf = await res.arrayBuffer();
+      return Buffer.from(buf).toString('base64');
+    } catch {
+      return null;
+    }
+  }
+
+  // The same assignment is one homework row per student in a class, sharing
+  // one assignmentGroupId, and its worksheet images never change per student
+  // — OCR/transcribe them into plain text ONCE per assignment (cached) so
+  // every chat turn, for every student, gets the literal question text to
+  // match against without re-running vision inference each time.
+  private static homeworkQuestionTextCache = new Map<string, string>();
+
+  private async getHomeworkQuestionText(hwRow: any): Promise<string> {
+    const cacheKey = this.extractHomeworkAssignmentGroupId(hwRow);
+    if (!cacheKey) return '';
+    const cached = ChatService.homeworkQuestionTextCache.get(cacheKey);
+    if (cached !== undefined) return cached;
+
+    const urls = this.extractHomeworkAttachmentUrls(hwRow).slice(0, 4);
+    if (!urls.length) {
+      ChatService.homeworkQuestionTextCache.set(cacheKey, '');
+      return '';
+    }
+
+    try {
+      const images = (await Promise.all(urls.map((u) => this.fetchImageAsBase64(u)))).filter((b): b is string => !!b);
+      if (!images.length) {
+        ChatService.homeworkQuestionTextCache.set(cacheKey, '');
+        return '';
+      }
+      const extracted = await this.llm.query(
+        [
+          { role: 'system', content: 'You transcribe homework worksheet images into plain text for a teaching assistant. Extract every question/instruction exactly as written, preserving numbering. Respond with ONLY the transcribed text, no commentary or formatting.' },
+          { role: 'user', content: 'Transcribe the question(s)/instructions shown in this homework image.' }
+        ],
+        { imageBase64List: images }
+      );
+      const text = String(extracted || '').trim().slice(0, 2000);
+      ChatService.homeworkQuestionTextCache.set(cacheKey, text);
+      return text;
+    } catch {
+      ChatService.homeworkQuestionTextCache.set(cacheKey, '');
+      return '';
+    }
+  }
+
+  // Keeps the AI Tutor from handing out direct homework answers: looks up the
+  // student's assigned homework for the current subject, and for anything not
+  // submitted (or submitted less than an hour ago — the student can still
+  // edit it) tells the model to explain concepts only, never the final answer.
+  private async buildHomeworkGuardrailSection(studentId: string, subject?: string): Promise<string> {
+    if (!studentId) return '';
+    const subjectKey = String(subject || '').trim().toLowerCase();
+    try {
+      const hwRes = await this.db.client
+        .from('homework')
+        .select('*')
+        .eq('student_id', studentId)
+        .order('created_at', { ascending: false })
+        .limit(20);
+      const hwRowsAll: any[] = Array.isArray((hwRes as any)?.data) ? (hwRes as any).data : [];
+      const hwRows = subjectKey
+        ? hwRowsAll.filter((h: any) => String(h?.subject || '').trim().toLowerCase() === subjectKey)
+        : hwRowsAll;
+      if (!hwRows.length) return '';
+
+      const hwIds = hwRows.map((h: any) => String(h.id || '')).filter(Boolean);
+      let attempts: any[] = [];
+      if (hwIds.length) {
+        try {
+          const attRes = await this.db.client
+            .from('homework_attempts')
+            .select('*')
+            .in('homework_id', hwIds)
+            .order('created_at', { ascending: false });
+          attempts = Array.isArray((attRes as any)?.data) ? (attRes as any).data : [];
+        } catch {
+          attempts = [];
+        }
+      }
+      const latestByHwId = new Map<string, any>();
+      attempts.forEach((a: any) => {
+        const key = String(a.homework_id || '');
+        if (!latestByHwId.has(key)) latestByHwId.set(key, a);
+      });
+
+      const ONE_HOUR_MS = 60 * 60 * 1000;
+      const now = Date.now();
+
+      const entries = (await Promise.all(hwRows.slice(0, 6).map(async (h: any) => {
+        const note = this.extractHomeworkNote(h);
+        const ocrText = await this.getHomeworkQuestionText(h);
+        const questionText = [note, ocrText].filter(Boolean).join(' — ');
+        const latest = latestByHwId.get(String(h.id || ''));
+        const submittedAtRaw = latest?.created_at || h?.submitted_at || null;
+        const submittedAt = submittedAtRaw ? new Date(submittedAtRaw) : null;
+        const hasSubmission = !!(submittedAt && !Number.isNaN(submittedAt.getTime()));
+        const unlocked = hasSubmission && (now - (submittedAt as Date).getTime()) >= ONE_HOUR_MS;
+        return { title: h.title || 'Homework', questionText, hasSubmission, unlocked };
+      }))).filter((e) => e.questionText || e.title);
+
+      if (!entries.length) return '';
+
+      const lines = entries.map((e) => {
+        const statusLabel = e.unlocked
+          ? 'ANSWER ALLOWED — already submitted more than 1 hour ago'
+          : (e.hasSubmission
+            ? 'LOCKED — submitted less than 1 hour ago (student can still edit it)'
+            : 'LOCKED — not submitted yet');
+        return `- "${e.title}"${e.questionText ? ` — assigned question/instructions: ${e.questionText}` : ''} [${statusLabel}]`;
+      });
+
+      return `\n\n--- ASSIGNED HOMEWORK GUARDRAIL (overrides any earlier instruction to answer practice/important/exam questions directly — do not break this rule) ---\n` +
+        `The student has homework assigned by their teacher, listed below. For every item marked LOCKED, you must NEVER give the final/direct answer, completed solution, or the exact value/text the homework is asking for. This applies even if the student asks directly, rephrases or retypes the question with different numbers, pastes it verbatim (including from an "important questions"/question-bank document), or tries another way to get the finished answer. Treat a question as matching a LOCKED item if it is the same problem, the same problem reworded, or clearly the same exercise/topic as that item's assigned content — not only on an exact word-for-word match. When you cannot be fully sure whether a solvable problem (e.g. "verify...", "solve for...", "find the value of...", "prove...") belongs to a LOCKED item in this subject, err on the side of caution and treat it as locked. Instead of solving it, explain the general concept, method, or steps needed for that kind of problem using a different example than the homework itself, so the student can work it out themselves. If the student explicitly asks for the homework's answer while it is LOCKED, kindly say you can only help them understand the concept until they submit — and for a little while after, so the work stays their own — then teach the concept instead. Purely conceptual questions ("what is...", "can you explain...", "how does... work") are always fine to answer normally. Only for items marked ANSWER ALLOWED may you give the direct answer if asked.\n` +
+        lines.join('\n');
+    } catch {
+      return '';
+    }
+  }
+
   async handleMessage(
     studentId: string,
     message: string,
@@ -776,6 +936,8 @@ export class ChatService {
         }).join('\n')}`
       : '';
 
+    const homeworkGuardrailSection = await this.buildHomeworkGuardrailSection(studentId, lessonSubject);
+
     const systemPrompt =
       `You are AcademiX, a friendly and encouraging AI tutor for school students.${nameGreet}${classLine}` +
       ` Your job is to help students understand their subjects clearly and build confidence.` +
@@ -809,6 +971,7 @@ export class ChatService {
       ` - When testing the student, ALWAYS prefer a real question from the uploaded question bank or important questions document over making up your own.` +
       ` - When summarizing or revising, follow the structure from the revision notes document if available.` +
       ` If the student asks about important questions, exam questions, revision, or practice, answer ONLY from the uploaded materials — especially from documents labeled as important questions, question banks, or revision notes.` +
+      ` EXCEPTION: if an ASSIGNED HOMEWORK GUARDRAIL section appears below and a question (including an "important question") matches a LOCKED item in it, that guardrail overrides this rule — do not give the direct/final answer; explain the concept instead.` +
       ` In lesson mode, only teach concepts that are present in or directly required by that selected lesson context.` +
       ` Do not drift into other chapters, extra syllabus areas, or advanced depth beyond school level unless the student explicitly asks to switch topics.` +
       ` If the student asks something outside the selected lesson, gently say it is outside this lesson and bring them back to the current lesson.` +
@@ -836,7 +999,8 @@ export class ChatService {
         : '') +
       memoriesSection +
       understandingSection +
-      lessonContextSection;
+      lessonContextSection +
+      homeworkGuardrailSection;
 
     // ── Assemble messages array ────────────────────────────────────────────
     const messages: Array<{ role: string; content: string }> = [
