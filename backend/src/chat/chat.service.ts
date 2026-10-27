@@ -8,6 +8,7 @@ import { SupabaseService } from '../supabase.service';
 import { EmbeddingsService } from '../embeddings/embeddings.service';
 import { StudentAuthService } from '../auth/student-auth.service';
 import { OrchardService } from '../orchard/orchard.service';
+import { LocalFeedService } from '../shared/local-feed.service';
 
 type ChatTurn = {
   role: 'user' | 'assistant';
@@ -236,7 +237,8 @@ export class ChatService {
     private readonly db: SupabaseService,
     private readonly embeddings: EmbeddingsService,
     private readonly studentAuth: StudentAuthService,
-    private readonly orchard: OrchardService
+    private readonly orchard: OrchardService,
+    private readonly localFeed: LocalFeedService
   ) {}
 
   private getCacheKey(studentId: string, conversationId: string) {
@@ -393,8 +395,9 @@ export class ChatService {
       const rows = (res && res.data) || (Array.isArray(res) ? res : []);
       const row = Array.isArray(rows) ? rows[0] : null;
       const snapshot = row?.snapshot;
-      if (!Array.isArray(snapshot)) return this.loadLocalSnapshotHistory(studentId, conversationId);
-      return this.normalizeTurns(
+      const localTurns = this.loadLocalSnapshotHistory(studentId, conversationId);
+      if (!Array.isArray(snapshot)) return localTurns;
+      const dbTurns = this.normalizeTurns(
         snapshot.map((t: any) => ({
           role: t?.role === 'assistant' ? 'assistant' : 'user',
           content: String(t?.content || ''),
@@ -405,6 +408,15 @@ export class ChatService {
           imageNames: Array.isArray(t?.imageNames) ? t.imageNames : [],
         }))
       );
+      // The DB row can go stale if a later update silently fails (e.g. an RLS
+      // or permissions issue) while the local file — written unconditionally
+      // on every turn, see persistSnapshotHistory — keeps capturing every
+      // new message. Compare by recency of the last turn, not length — both
+      // are capped at 60 the same way, but if the DB stops updating while
+      // the local file keeps rolling the cap forward, a length tie can still
+      // hide a stale DB row.
+      const lastTs = (list: ChatTurn[]) => (list.length ? new Date(list[list.length - 1].ts).getTime() || 0 : 0);
+      return lastTs(localTurns) > lastTs(dbTurns) ? localTurns : dbTurns;
     } catch (e) {
       return this.loadLocalSnapshotHistory(studentId, conversationId);
     }
@@ -540,10 +552,22 @@ export class ChatService {
   // Keeps the AI Tutor from handing out direct homework answers: looks up the
   // student's assigned homework for the current subject, and for anything not
   // submitted (or submitted less than an hour ago — the student can still
-  // edit it) tells the model to explain concepts only, never the final answer.
-  private async buildHomeworkGuardrailSection(studentId: string, subject?: string): Promise<string> {
-    if (!studentId) return '';
+  // edit it) flags it as LOCKED (concept-only) vs ANSWER ALLOWED.
+  // Short-lived cache: this ran on every single chat message (two DB queries
+  // plus cached-OCR lookups), which measurably slowed down every reply and
+  // widened the race window where the frontend's background history-persist
+  // could lose to its next poll tick (messages appearing then "vanishing").
+  // Assigned homework rarely changes within a few seconds of chatting, so a
+  // short TTL keeps results fresh enough while cutting that latency.
+  private static homeworkEntriesCache = new Map<string, { expiresAt: number; entries: Array<{ title: string; questionText: string; hasSubmission: boolean; unlocked: boolean }> }>();
+  private static readonly HOMEWORK_ENTRIES_TTL_MS = 20_000;
+
+  private async getHomeworkGuardrailEntries(studentId: string, subject?: string): Promise<Array<{ title: string; questionText: string; hasSubmission: boolean; unlocked: boolean }>> {
+    if (!studentId) return [];
     const subjectKey = String(subject || '').trim().toLowerCase();
+    const cacheKey = `${studentId}::${subjectKey}`;
+    const cached = ChatService.homeworkEntriesCache.get(cacheKey);
+    if (cached && cached.expiresAt > Date.now()) return cached.entries;
     try {
       const hwRes = await this.db.client
         .from('homework')
@@ -551,11 +575,22 @@ export class ChatService {
         .eq('student_id', studentId)
         .order('created_at', { ascending: false })
         .limit(20);
-      const hwRowsAll: any[] = Array.isArray((hwRes as any)?.data) ? (hwRes as any).data : [];
+      const dbRows: any[] = Array.isArray((hwRes as any)?.data) ? (hwRes as any).data : [];
+      // Homework assignment/submission writes fall back to the local feed
+      // whenever the Supabase insert/update fails (see teacher.controller.ts
+      // assignHomework / homework.controller.ts submit) — merge both sources,
+      // the same way studentHomework()/listTeacherHomework() already do,
+      // otherwise a locally-stored assignment would silently skip this guardrail.
+      const dbIds = new Set(dbRows.map((r: any) => String(r.id || '')));
+      const localRows = this.localFeed.listHomeworkForStudent(studentId).filter((r: any) => !dbIds.has(String(r.id || '')));
+      const hwRowsAll: any[] = [...dbRows, ...localRows];
       const hwRows = subjectKey
         ? hwRowsAll.filter((h: any) => String(h?.subject || '').trim().toLowerCase() === subjectKey)
         : hwRowsAll;
-      if (!hwRows.length) return '';
+      if (!hwRows.length) {
+        ChatService.homeworkEntriesCache.set(cacheKey, { expiresAt: Date.now() + ChatService.HOMEWORK_ENTRIES_TTL_MS, entries: [] });
+        return [];
+      }
 
       const hwIds = hwRows.map((h: any) => String(h.id || '')).filter(Boolean);
       let attempts: any[] = [];
@@ -585,6 +620,8 @@ export class ChatService {
         const ocrText = await this.getHomeworkQuestionText(h);
         const questionText = [note, ocrText].filter(Boolean).join(' — ');
         const latest = latestByHwId.get(String(h.id || ''));
+        // Local-feed submissions stamp submitted_at directly on the homework
+        // row itself (no separate homework_attempts row), so fall back to it.
         const submittedAtRaw = latest?.created_at || h?.submitted_at || null;
         const submittedAt = submittedAtRaw ? new Date(submittedAtRaw) : null;
         const hasSubmission = !!(submittedAt && !Number.isNaN(submittedAt.getTime()));
@@ -592,23 +629,82 @@ export class ChatService {
         return { title: h.title || 'Homework', questionText, hasSubmission, unlocked };
       }))).filter((e) => e.questionText || e.title);
 
-      if (!entries.length) return '';
-
-      const lines = entries.map((e) => {
-        const statusLabel = e.unlocked
-          ? 'ANSWER ALLOWED — already submitted more than 1 hour ago'
-          : (e.hasSubmission
-            ? 'LOCKED — submitted less than 1 hour ago (student can still edit it)'
-            : 'LOCKED — not submitted yet');
-        return `- "${e.title}"${e.questionText ? ` — assigned question/instructions: ${e.questionText}` : ''} [${statusLabel}]`;
-      });
-
-      return `\n\n--- ASSIGNED HOMEWORK GUARDRAIL (overrides any earlier instruction to answer practice/important/exam questions directly — do not break this rule) ---\n` +
-        `The student has homework assigned by their teacher, listed below. For every item marked LOCKED, you must NEVER give the final/direct answer, completed solution, or the exact value/text the homework is asking for. This applies even if the student asks directly, rephrases or retypes the question with different numbers, pastes it verbatim (including from an "important questions"/question-bank document), or tries another way to get the finished answer. Treat a question as matching a LOCKED item if it is the same problem, the same problem reworded, or clearly the same exercise/topic as that item's assigned content — not only on an exact word-for-word match. When you cannot be fully sure whether a solvable problem (e.g. "verify...", "solve for...", "find the value of...", "prove...") belongs to a LOCKED item in this subject, err on the side of caution and treat it as locked. Instead of solving it, explain the general concept, method, or steps needed for that kind of problem using a different example than the homework itself, so the student can work it out themselves. If the student explicitly asks for the homework's answer while it is LOCKED, kindly say you can only help them understand the concept until they submit — and for a little while after, so the work stays their own — then teach the concept instead. Purely conceptual questions ("what is...", "can you explain...", "how does... work") are always fine to answer normally. Only for items marked ANSWER ALLOWED may you give the direct answer if asked.\n` +
-        lines.join('\n');
+      ChatService.homeworkEntriesCache.set(cacheKey, { expiresAt: Date.now() + ChatService.HOMEWORK_ENTRIES_TTL_MS, entries });
+      return entries;
     } catch {
-      return '';
+      return [];
     }
+  }
+
+  private buildHomeworkGuardrailSectionText(entries: Array<{ title: string; questionText: string; hasSubmission: boolean; unlocked: boolean }>): string {
+    if (!entries.length) return '';
+    const lines = entries.map((e) => {
+      const statusLabel = e.unlocked
+        ? 'ANSWER ALLOWED — already submitted more than 1 hour ago'
+        : (e.hasSubmission
+          ? 'LOCKED — submitted less than 1 hour ago (student can still edit it)'
+          : 'LOCKED — not submitted yet');
+      return `- "${e.title}"${e.questionText ? ` — assigned question/instructions: ${e.questionText}` : ''} [${statusLabel}]`;
+    });
+
+    return `\n\n--- ASSIGNED HOMEWORK GUARDRAIL (overrides any earlier instruction to answer practice/important/exam questions directly — do not break this rule) ---\n` +
+      `The student has homework assigned by their teacher, listed below. For every item marked LOCKED, you must NEVER give the final/direct answer, completed solution, or the exact value/text the homework is asking for. This applies even if the student asks directly, rephrases or retypes the question with different numbers, pastes it verbatim (including from an "important questions"/question-bank document), or tries another way to get the finished answer. Treat a question as matching a LOCKED item if it is the same problem, the same problem reworded, or clearly the same exercise/topic as that item's assigned content — not only on an exact word-for-word match. When you cannot be fully sure whether a solvable problem (e.g. "verify...", "solve for...", "find the value of...", "prove...") belongs to a LOCKED item in this subject, err on the side of caution and treat it as locked. Instead of solving it, explain the general concept, method, or steps needed for that kind of problem using a different example than the homework itself, so the student can work it out themselves. If the student explicitly asks for the homework's answer while it is LOCKED, kindly say you can only help them understand the concept until they submit — and for a little while after, so the work stays their own — then teach the concept instead. Purely conceptual questions ("what is...", "can you explain...", "how does... work") are always fine to answer normally. Only for items marked ANSWER ALLOWED may you give the direct answer if asked.\n` +
+      lines.join('\n');
+  }
+
+  private normalizeForMatch(text: string): string {
+    return String(text || '')
+      .toLowerCase()
+      .replace(/[^a-z0-9/.\-\s]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+  private tokenOverlapRatio(needle: string, haystack: string): number {
+    const needleTokens = needle.split(' ').filter((t) => t.length > 1);
+    if (!needleTokens.length) return 0;
+    const haystackSet = new Set(haystack.split(' ').filter(Boolean));
+    const matched = needleTokens.filter((t) => haystackSet.has(t)).length;
+    return matched / needleTokens.length;
+  }
+
+  // Deliberately strict/code-level (not just prompt text): the model doesn't
+  // reliably honor a "don't answer this" instruction buried in a long system
+  // prompt once the user pastes a complete solvable problem, so we detect a
+  // verbatim/near-verbatim paste of a LOCKED homework question here and force
+  // a dedicated concept-only reply instead of trusting the big prompt alone.
+  private findLockedHomeworkMatch(
+    entries: Array<{ title: string; questionText: string; hasSubmission: boolean; unlocked: boolean }>,
+    message: string
+  ): { title: string; questionText: string } | null {
+    const normalizedMessage = this.normalizeForMatch(message);
+    if (normalizedMessage.length < 8) return null;
+    for (const entry of entries) {
+      if (entry.unlocked || !entry.questionText) continue;
+      const normalizedQuestion = this.normalizeForMatch(entry.questionText);
+      if (normalizedQuestion.length < 8) continue;
+      const contained = normalizedMessage.includes(normalizedQuestion) || normalizedQuestion.includes(normalizedMessage);
+      const overlap = this.tokenOverlapRatio(normalizedQuestion, normalizedMessage);
+      if (contained || overlap >= 0.7) {
+        return { title: entry.title, questionText: entry.questionText };
+      }
+    }
+    return null;
+  }
+
+  private buildHomeworkConceptOnlyPrompt(
+    match: { title: string; questionText: string },
+    opts: { studentName?: string; lessonTitle?: string; lessonSubject?: string }
+  ): string {
+    const nameGreet = opts.studentName ? ` The student's name is ${opts.studentName}.` : '';
+    return `You are AcademiX, a friendly and encouraging AI tutor for school students.${nameGreet}` +
+      ` The student just asked about "${match.questionText}" from their own assigned homework "${match.title}"${opts.lessonSubject ? ` (${opts.lessonSubject})` : ''}, which is still LOCKED — it has not been submitted yet, or was submitted less than 1 hour ago and can still be edited/resubmitted.` +
+      ` STRICT RULE: Do NOT solve this specific problem, do NOT compute or reveal the final numeric/textual answer, and do NOT work through these exact numbers/values — no matter how the student phrases it, rewords it, pastes it again, or insists.` +
+      ` Instead, warmly explain the general concept, method, or steps needed for this TYPE of problem, demonstrated with a DIFFERENT example using different numbers/values, so the student can apply the method to their own homework themselves.` +
+      ` Keep it short and friendly (roughly 3-6 sentences), use simple language and a quick real-life analogy if it helps, and end with exactly one short check question about the method (never about the homework's specific answer).` +
+      ` If the student explicitly insists on the homework's answer, kindly explain you can only help them understand the method until they submit it — and for a little while after, so the work stays their own — then continue teaching the concept.` +
+      (opts.lessonTitle ? ` Stay relevant to the lesson "${opts.lessonTitle}" they are currently studying.` : '') +
+      ` You may use 0-2 simple, school-friendly emojis.`;
   }
 
   async handleMessage(
@@ -936,9 +1032,13 @@ export class ChatService {
         }).join('\n')}`
       : '';
 
-    const homeworkGuardrailSection = await this.buildHomeworkGuardrailSection(studentId, lessonSubject);
+    const homeworkEntries = await this.getHomeworkGuardrailEntries(studentId, lessonSubject);
+    const homeworkGuardrailSection = this.buildHomeworkGuardrailSectionText(homeworkEntries);
+    const lockedHomeworkMatch = this.findLockedHomeworkMatch(homeworkEntries, message);
 
-    const systemPrompt =
+    const systemPrompt = lockedHomeworkMatch
+      ? this.buildHomeworkConceptOnlyPrompt(lockedHomeworkMatch, { studentName, lessonTitle, lessonSubject })
+      :
       `You are AcademiX, a friendly and encouraging AI tutor for school students.${nameGreet}${classLine}` +
       ` Your job is to help students understand their subjects clearly and build confidence.` +
       (lessonTitle ? ` Stay focused on the selected lesson: ${lessonTitle}${lessonSubject ? ` (${lessonSubject})` : ''}.` : '') +
@@ -1003,11 +1103,22 @@ export class ChatService {
       homeworkGuardrailSection;
 
     // ── Assemble messages array ────────────────────────────────────────────
-    const messages: Array<{ role: string; content: string }> = [
-      { role: 'system', content: systemPrompt },
-      ...recentHistory,
-      { role: 'user', content: message }
-    ];
+    // When the concept-only override is active, deliberately drop prior
+    // conversation turns: if this same homework question leaked a direct
+    // answer earlier in the thread (e.g. before this guardrail existed, or
+    // from any other edge case), leaving it in `recentHistory` lets the model
+    // see its own old uncensored answer and repeat/confirm it despite the
+    // current instruction — a fresh, history-free turn can't do that.
+    const messages: Array<{ role: string; content: string }> = lockedHomeworkMatch
+      ? [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: message }
+        ]
+      : [
+          { role: 'system', content: systemPrompt },
+          ...recentHistory,
+          { role: 'user', content: message }
+        ];
 
     const rawReply = await this.llm.query(messages, {
       imageBase64: uniqueImages[0]?.base64,
@@ -1571,8 +1682,23 @@ export class ChatService {
     }
   }
 
+  private mapSnapshotTurns(turns: ChatTurn[]) {
+    return turns.map((m, idx) => ({
+      id: `snapshot-${idx}-${m.ts}`,
+      role: m.role === 'assistant' ? 'ai' : 'user',
+      text: m.content,
+      ts: m.ts,
+      imageDataUrl: m.imageDataUrl || '',
+      imageName: m.imageName || '',
+      imageDataUrls: Array.isArray(m.imageDataUrls) ? m.imageDataUrls : [],
+      imageNames: Array.isArray(m.imageNames) ? m.imageNames : [],
+    }));
+  }
+
   async getHistory(studentId: string, conversationId?: string) {
     const convId = conversationId || `conv-${studentId}`;
+
+    let fromMessagesTable: any[] = [];
     try {
       const q = this.db.client.from('messages').select('*').eq('student_id', studentId).order('created_at', { ascending: true }).limit(200);
       const res = await q;
@@ -1580,80 +1706,56 @@ export class ChatService {
       const filtered = Array.isArray(rows)
         ? rows.filter((r: any) => (conversationId ? (r.conversation_id || `conv-${studentId}`) === conversationId : true))
         : [];
-
-      if (filtered.length > 0) {
-        return filtered.map((r: any) => {
-          const meta = this.readMessageMetadata(r);
-          return {
-            id: r.id,
-            role: r.role || 'user',
-            text: r.message || '',
-            ts: r.created_at || new Date().toISOString(),
-            imageDataUrl: meta.imageDataUrl,
-            imageName: meta.imageName,
-            imageDataUrls: meta.imageDataUrls,
-            imageNames: meta.imageNames,
-          };
-        });
-      }
-
-      const snap = await this.loadSnapshotHistory(studentId, convId);
-      if (snap.length) {
-        return snap.map((m, idx) => ({
-          id: `snapshot-${idx}-${m.ts}`,
-          role: m.role === 'assistant' ? 'ai' : 'user',
-          text: m.content,
-          ts: m.ts,
-          imageDataUrl: m.imageDataUrl || '',
-          imageName: m.imageName || '',
-          imageDataUrls: Array.isArray(m.imageDataUrls) ? m.imageDataUrls : [],
-          imageNames: Array.isArray(m.imageNames) ? m.imageNames : [],
-        }));
-      }
-
-      if (filtered.length === 0) {
-        const cached = this.getCacheHistory(studentId, convId);
-        if (cached.length) {
-          return cached.map((m, idx) => ({
-            id: `cache-${idx}-${m.ts}`,
-            role: m.role === 'assistant' ? 'ai' : 'user',
-            text: m.content,
-            ts: m.ts,
-            imageDataUrl: m.imageDataUrl || '',
-            imageName: m.imageName || '',
-            imageDataUrls: Array.isArray(m.imageDataUrls) ? m.imageDataUrls : [],
-            imageNames: Array.isArray(m.imageNames) ? m.imageNames : [],
-          }));
-        }
-      }
-
-    } catch (e) {
-      const snap = await this.loadSnapshotHistory(studentId, convId);
-      if (snap.length) {
-        return snap.map((m, idx) => ({
-          id: `snapshot-${idx}-${m.ts}`,
-          role: m.role === 'assistant' ? 'ai' : 'user',
-          text: m.content,
-          ts: m.ts,
-          imageDataUrl: m.imageDataUrl || '',
-          imageName: m.imageName || '',
-          imageDataUrls: Array.isArray(m.imageDataUrls) ? m.imageDataUrls : [],
-          imageNames: Array.isArray(m.imageNames) ? m.imageNames : [],
-        }));
-      }
-
-      const cached = this.getCacheHistory(studentId, convId);
-      return cached.map((m, idx) => ({
-        id: `cache-${idx}-${m.ts}`,
-        role: m.role === 'assistant' ? 'ai' : 'user',
-        text: m.content,
-        ts: m.ts,
-        imageDataUrl: m.imageDataUrl || '',
-        imageName: m.imageName || '',
-        imageDataUrls: Array.isArray(m.imageDataUrls) ? m.imageDataUrls : [],
-        imageNames: Array.isArray(m.imageNames) ? m.imageNames : [],
-      }));
+      fromMessagesTable = filtered.map((r: any) => {
+        const meta = this.readMessageMetadata(r);
+        return {
+          id: r.id,
+          role: r.role || 'user',
+          text: r.message || '',
+          ts: r.created_at || new Date().toISOString(),
+          imageDataUrl: meta.imageDataUrl,
+          imageName: meta.imageName,
+          imageDataUrls: meta.imageDataUrls,
+          imageNames: meta.imageNames,
+        };
+      });
+    } catch {
+      fromMessagesTable = [];
     }
+
+    // The `messages` table insert can silently fail for a student whose row
+    // doesn't satisfy its `student_id` foreign key (e.g. an account created
+    // only through a local-fallback path — see local-feed usage elsewhere in
+    // this codebase), while the conversation snapshot still gets every turn
+    // written via a guaranteed local-file fallback. Compare by RECENCY, not
+    // length — the snapshot is deliberately capped at the last 60 turns
+    // (see persistSnapshotHistory) while `messages` has no such cap, so a
+    // long-stale `messages` history can still out-count a short-but-current
+    // snapshot. Whichever source's last turn is more recent is the one that's
+    // actually still receiving new messages.
+    let fromSnapshot: any[] = [];
+    try {
+      fromSnapshot = this.mapSnapshotTurns(await this.loadSnapshotHistory(studentId, convId));
+    } catch {
+      fromSnapshot = [];
+    }
+
+    const lastTs = (list: any[]) => (list.length ? new Date(list[list.length - 1].ts).getTime() || 0 : 0);
+    if (lastTs(fromSnapshot) > lastTs(fromMessagesTable)) return fromSnapshot;
+    if (fromMessagesTable.length) return fromMessagesTable;
+    if (fromSnapshot.length) return fromSnapshot;
+
+    const cached = this.getCacheHistory(studentId, convId);
+    return cached.map((m, idx) => ({
+      id: `cache-${idx}-${m.ts}`,
+      role: m.role === 'assistant' ? 'ai' : 'user',
+      text: m.content,
+      ts: m.ts,
+      imageDataUrl: m.imageDataUrl || '',
+      imageName: m.imageName || '',
+      imageDataUrls: Array.isArray(m.imageDataUrls) ? m.imageDataUrls : [],
+      imageNames: Array.isArray(m.imageNames) ? m.imageNames : [],
+    }));
   }
 
   async createTestStudent() {

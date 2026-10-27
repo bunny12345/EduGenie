@@ -41,6 +41,7 @@ import {
 import StudentOrchard from './StudentOrchard';
 import StudentGames from './StudentGames';
 import StudentProgress from './StudentProgress';
+import MathMarkdown from './MathMarkdown';
 
 function safeArray(v) {
   return Array.isArray(v) ? v : [];
@@ -467,6 +468,14 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
   // Set while a flashcard deep-link is in flight so subject-change effects can't
   // reset the lesson selection or reload the wrong chat thread.
   const tutorHandoffRef = useRef(false);
+
+  // Last conversationId successfully loaded by loadChatPanel — lets it tell
+  // a genuine conversation switch (always safe to fully replace chatHistory)
+  // apart from a redundant re-run for the SAME conversation (e.g. the chat-
+  // loading effect re-firing because the lessons list refetched with a new
+  // array reference), where a fetch that raced ahead of the background
+  // message-persist must not wipe out messages already on screen.
+  const lastLoadedConversationIdRef = useRef(null);
 
   // Keep the URL hash in sync so a browser refresh lands back on the same
   // page — including the specific AI Tutor subject/lesson, or the specific
@@ -1022,7 +1031,9 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
       const conversationId = String(conversationIdOverride || fallbackConversationId || `conv-${studentId}`);
       const res = await getChatHistory(studentId, conversationId);
       const history = withoutAutoStarters(res?.messages);
-      setChatHistory(history);
+      const isSameConversation = conversationId === lastLoadedConversationIdRef.current;
+      setChatHistory((prev) => (isSameConversation && history.length < prev.length) ? prev : history);
+      lastLoadedConversationIdRef.current = conversationId;
       setChatFollowups([]);
 
       // Auto-greeting logic: once per day per conversation
@@ -1083,6 +1094,12 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
       const res = await getChatHistory(studentId, conversationId);
       const history = withoutAutoStarters(res?.messages);
       setChatHistory((prev) => {
+        // The just-sent exchange is persisted in the background (fire-and-
+        // forget, so the reply shows up instantly) and can take a moment to
+        // land — if this poll's fetch raced ahead of that write, it'll look
+        // "shorter" than what's already on screen. Never let a stale/shorter
+        // fetch wipe out messages the student can already see.
+        if (history.length < prev.length) return prev;
         const prevLast = prev[prev.length - 1];
         const nextLast = history[history.length - 1];
         const unchanged = prev.length === history.length
@@ -3114,7 +3131,7 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
                 <small className="eg-ai-inline-image-label">Image attached</small>
               </div>
             ) : null}
-            {messageText}
+            {isBot ? <MathMarkdown text={messageText} className="eg-ai-msg-markdown" /> : messageText}
             {isBot && messageText ? (
               <div className="eg-ai-msg-actions">
                 <button
