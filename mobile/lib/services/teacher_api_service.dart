@@ -61,6 +61,26 @@ class TeacherApiService {
     }
   }
 
+  Future<Map<String, dynamic>> _patch(
+    String path,
+    Map<String, dynamic> body,
+  ) async {
+    try {
+      final res = await _client.dio.patch(path, data: body);
+      final data = Map<String, dynamic>.from(res.data as Map);
+      if (data['success'] == false) {
+        throw Exception(data['error']?.toString() ?? '$path failed');
+      }
+      return data;
+    } on DioException catch (e) {
+      final data = e.response?.data;
+      final msg = (data is Map && data['error'] != null)
+          ? data['error'].toString()
+          : (e.message ?? 'Network error');
+      throw Exception(msg);
+    }
+  }
+
   /// Distinct, sorted class names across this teacher's students — mirrors
   /// `allKnownClasses` (built from `getTeacherStudents`) in `TeacherDashboard.jsx`.
   Future<List<String>> getClassOptions() async {
@@ -115,6 +135,13 @@ class TeacherApiService {
       'grade': grade,
       'feedback': feedback,
     });
+  }
+
+  /// AI-suggested score + feedback for one submission (teacher still reviews
+  /// and submits manually) — mirrors `aiGradeTeacherHomework(hwId)` in
+  /// `web/src/api.js` / `POST /teacher/homework/:hwId/ai-grade`.
+  Future<Map<String, dynamic>> aiGradeHomework(String hwId) {
+    return _post('/teacher/homework/${Uri.encodeComponent(hwId)}/ai-grade', const {});
   }
 
   /// One student's progress for the teacher's own subject — same shape as one
@@ -333,6 +360,86 @@ class TeacherApiService {
       'marks': 1,
     });
   }
+
+  /// Opens a test's attempt window so it becomes visible to students in its
+  /// class — mirrors `assignTest(testId, {startAt, endAt})` in
+  /// `web/src/api.js` / `POST /tests/:testId/assign`. Required before any
+  /// student can see or start a test; without this it stays a draft forever.
+  Future<Map<String, dynamic>> assignTest(
+    String testId, {
+    required String startAt,
+    required String endAt,
+  }) {
+    return _post('/tests/${Uri.encodeComponent(testId)}/assign', {
+      'startAt': startAt,
+      'endAt': endAt,
+    });
+  }
+
+  /// Edits a test's metadata — mirrors `updateTest(testId, payload)` in
+  /// `web/src/api.js` / `PATCH /tests/:testId`.
+  Future<Map<String, dynamic>> updateTest(
+    String testId, {
+    String? title,
+    String? subject,
+    String? className,
+    int? durationMinutes,
+  }) {
+    return _patch('/tests/${Uri.encodeComponent(testId)}', {
+      'title': ?title,
+      'subject': ?subject,
+      'className': ?className,
+      'durationMinutes': ?durationMinutes,
+    });
+  }
+
+  /// Clones an existing test (with all its questions) as a new draft —
+  /// mirrors `cloneTest(testId, payload)` in `web/src/api.js` /
+  /// `POST /tests/:testId/clone`. Returns `{test, questions}`.
+  Future<Map<String, dynamic>> cloneTest(
+    String testId, {
+    String? title,
+    String? subject,
+    String? className,
+    int? durationMinutes,
+  }) {
+    return _post('/tests/${Uri.encodeComponent(testId)}/clone', {
+      'title': ?title,
+      'subject': ?subject,
+      'className': ?className,
+      'durationMinutes': ?durationMinutes,
+    });
+  }
+
+  /// Full question list for a test (with correct answers) — mirrors
+  /// `listTestQuestions(testId)` in `web/src/api.js` /
+  /// `GET /tests/:testId/questions`.
+  Future<List<Map<String, dynamic>>> listTestQuestions(String testId) async {
+    final json = await _get('/tests/${Uri.encodeComponent(testId)}/questions', const {});
+    final list = json['questions'] as List? ?? [];
+    return list.map((q) => Map<String, dynamic>.from(q as Map)).toList();
+  }
+
+  /// Edits one question — mirrors `updateTestQuestion(testId, questionId, payload)`
+  /// in `web/src/api.js` / `PATCH /tests/:testId/questions/:questionId`.
+  Future<Map<String, dynamic>> updateTestQuestion(
+    String testId,
+    String questionId, {
+    required String text,
+    required List<String> options,
+    required int correctOption,
+  }) {
+    return _patch(
+      '/tests/${Uri.encodeComponent(testId)}/questions/${Uri.encodeComponent(questionId)}',
+      {'text': text, 'options': options, 'correctOption': correctOption},
+    );
+  }
+
+  /// Mirrors `deleteTestQuestion(testId, questionId)` in `web/src/api.js` /
+  /// `DELETE /tests/:testId/questions/:questionId`.
+  Future<void> deleteTestQuestion(String testId, String questionId) => _delete(
+    '/tests/${Uri.encodeComponent(testId)}/questions/${Uri.encodeComponent(questionId)}',
+  );
 
   Future<void> deleteTest(String testId) =>
       _delete('/tests/${Uri.encodeComponent(testId)}');

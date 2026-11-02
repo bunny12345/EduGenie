@@ -2,10 +2,11 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:image_picker/image_picker.dart';
+import 'package:intl/intl.dart';
 
 import '../../../config/env.dart';
 import '../../../models/homework_item.dart';
+import '../../../models/test_item.dart';
 import '../../../state/session_provider.dart';
 import '../../../state/student_providers.dart';
 import '../../../theme/app_colors.dart';
@@ -15,6 +16,7 @@ import 'homework_history_calendar.dart';
 import 'homework_state.dart';
 import 'lightbox.dart';
 import '../../../widgets/pressable_scale.dart';
+import '../../../widgets/image_source_sheet.dart';
 
 enum _HwFilter { all, submitted, notSubmitted, overdue }
 
@@ -187,7 +189,7 @@ class _HomeworkScreenState extends ConsumerState<HomeworkScreen> {
   }
 
   Future<void> _pickAndUploadImages(HomeworkItem h) async {
-    final picked = await ImagePicker().pickMultiImage(imageQuality: 80, limit: 6);
+    final picked = await pickImagesWithSourceChoice(context, limit: 6);
     if (picked.isEmpty) return;
     setState(() {
       _uploading[h.id] = true;
@@ -543,23 +545,7 @@ class _HomeworkScreenState extends ConsumerState<HomeworkScreen> {
                               const Text('No tests available for this subject.', style: TextStyle(color: Color(0xFF64748B), fontSize: 13))
                             else
                               for (final t in subjectTests)
-                                Padding(
-                                  padding: const EdgeInsets.symmetric(vertical: 6),
-                                  child: Row(
-                                    children: [
-                                      Expanded(child: Text(t.title, style: const TextStyle(fontSize: 13, color: Color(0xFF334155)))),
-                                      const SizedBox(width: 10),
-                                      PressableScale(
-                                        onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => TestTakingScreen(test: t))),
-                                        child: Container(
-                                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
-                                          decoration: BoxDecoration(color: iconColor, borderRadius: BorderRadius.circular(999), border: _frame3dBorder(alpha: 0.3), boxShadow: _frame3dShadow()),
-                                          child: const Text('Start', style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w700)),
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
+                                _MockTestTile(test: t, accentColor: iconColor, theme: theme),
                           ],
                         ),
                       );
@@ -591,6 +577,170 @@ class _HomeworkScreenState extends ConsumerState<HomeworkScreen> {
       return [Text('No homework assigned on $_historyFromDate.', style: const TextStyle(fontSize: 12, color: Color(0xFF64748B)))];
     }
     return [for (final h in filtered) _HistoryResultCard(homework: h)];
+  }
+}
+
+/// One Mock Test row — mirrors web's per-test states in `StudentDashboard.jsx`
+/// (Start / "Opens at.../Expired" chip / Completed+collapsed Review panel),
+/// which the previous mobile version didn't have at all (always just "Start").
+class _MockTestTile extends ConsumerStatefulWidget {
+  final TestItem test;
+  final Color accentColor;
+  final _SubjectTheme theme;
+
+  const _MockTestTile({required this.test, required this.accentColor, required this.theme});
+
+  @override
+  ConsumerState<_MockTestTile> createState() => _MockTestTileState();
+}
+
+class _MockTestTileState extends ConsumerState<_MockTestTile> {
+  bool _reviewOpen = false;
+  bool _loadingReview = false;
+  String? _reviewError;
+  List<Map<String, dynamic>> _perQuestionFeedback = [];
+
+  Future<void> _toggleReview() async {
+    if (_reviewOpen) {
+      setState(() => _reviewOpen = false);
+      return;
+    }
+    setState(() => _reviewOpen = true);
+    if (_perQuestionFeedback.isNotEmpty || _reviewError != null) return; // already cached
+    final studentId = ref.read(sessionProvider).value?.userId ?? '';
+    setState(() => _loadingReview = true);
+    try {
+      final res = await ref.read(studentApiServiceProvider).getTestReview(widget.test.id, studentId);
+      if (!mounted) return;
+      setState(() {
+        _perQuestionFeedback = (res['perQuestionFeedback'] as List? ?? []).map((f) => Map<String, dynamic>.from(f as Map)).toList();
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _reviewError = e.toString().replaceFirst('Exception: ', ''));
+    } finally {
+      if (mounted) setState(() => _loadingReview = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = widget.test;
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(child: Text(t.title, style: const TextStyle(fontSize: 13, color: Color(0xFF334155)))),
+              const SizedBox(width: 10),
+              _buildAction(context),
+            ],
+          ),
+          if (!t.attempted && t.windowStatus == 'open' && t.endAt != null)
+            Padding(
+              padding: const EdgeInsets.only(top: 2),
+              child: Text('Closes ${DateFormat('d MMM, h:mm a').format(t.endAt!.toLocal())}', style: TextStyle(fontSize: 10, color: AppColors.muted)),
+            ),
+          if (_reviewOpen) ...[
+            const SizedBox(height: 6),
+            if (_loadingReview)
+              const Padding(padding: EdgeInsets.symmetric(vertical: 6), child: SkeletonBox(height: 40))
+            else if (_reviewError != null)
+              Padding(padding: const EdgeInsets.only(bottom: 6), child: Text(_reviewError!, style: const TextStyle(fontSize: 11, color: AppColors.danger)))
+            else
+              for (var i = 0; i < _perQuestionFeedback.length; i++) _ReviewRow(index: i, feedback: _perQuestionFeedback[i]),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildAction(BuildContext context) {
+    final t = widget.test;
+    if (t.attempted) {
+      return PressableScale(
+        onTap: _toggleReview,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+          decoration: BoxDecoration(color: const Color(0xFFDCFCE7), borderRadius: BorderRadius.circular(999)),
+          child: Text(
+            'Completed (${t.lastScore ?? 0}%) ${_reviewOpen ? '\u25b4 Hide' : '\u25be Review'}',
+            style: const TextStyle(color: Color(0xFF166534), fontSize: 11, fontWeight: FontWeight.w700),
+          ),
+        ),
+      );
+    }
+    if (t.windowStatus == 'scheduled') {
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        decoration: BoxDecoration(color: const Color(0xFFFEF3C7), borderRadius: BorderRadius.circular(999)),
+        child: Text(
+          t.startAt != null ? 'Opens ${DateFormat('d MMM, h:mm a').format(t.startAt!.toLocal())}' : 'Opens soon',
+          style: const TextStyle(color: Color(0xFF92400E), fontSize: 11, fontWeight: FontWeight.w700),
+        ),
+      );
+    }
+    if (t.windowStatus == 'expired') {
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        decoration: BoxDecoration(color: const Color(0xFFFEE2E2), borderRadius: BorderRadius.circular(999)),
+        child: const Text('Expired', style: TextStyle(color: Color(0xFFB91C1C), fontSize: 11, fontWeight: FontWeight.w700)),
+      );
+    }
+    return PressableScale(
+      onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => TestTakingScreen(test: t))),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+        decoration: BoxDecoration(color: widget.accentColor, borderRadius: BorderRadius.circular(999), border: _frame3dBorder(alpha: 0.3), boxShadow: _frame3dShadow()),
+        child: const Text('Start', style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w700)),
+      ),
+    );
+  }
+}
+
+class _ReviewRow extends StatelessWidget {
+  final int index;
+  final Map<String, dynamic> feedback;
+
+  const _ReviewRow({required this.index, required this.feedback});
+
+  @override
+  Widget build(BuildContext context) {
+    final isCorrect = feedback['isCorrect'] == true;
+    final text = feedback['text']?.toString() ?? '';
+    final options = (feedback['options'] as List?)?.map((o) => o.toString()).toList() ?? const <String>[];
+    final selected = (feedback['selectedOption'] as num?)?.toInt() ?? -1;
+    final correct = (feedback['correctOption'] as num?)?.toInt() ?? -1;
+    return Container(
+      margin: const EdgeInsets.only(bottom: 6),
+      padding: const EdgeInsets.all(8),
+      decoration: BoxDecoration(
+        color: isCorrect ? const Color(0xFF22C55E).withValues(alpha: 0.08) : const Color(0xFFEF4444).withValues(alpha: 0.08),
+        border: Border.all(color: (isCorrect ? const Color(0xFF22C55E) : const Color(0xFFEF4444)).withValues(alpha: 0.25)),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('${index + 1}. $text', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Color(0xFF1F2347))),
+          const SizedBox(height: 4),
+          Text(
+            'Your answer: ${selected >= 0 && selected < options.length ? options[selected] : 'Not answered'} ${isCorrect ? '\u2713' : '\u2717'}',
+            style: const TextStyle(fontSize: 11, color: Color(0xFF374151)),
+          ),
+          if (!isCorrect)
+            Padding(
+              padding: const EdgeInsets.only(top: 2),
+              child: Text(
+                'Correct answer: ${correct >= 0 && correct < options.length ? options[correct] : '\u2014'}',
+                style: const TextStyle(fontSize: 11, color: Color(0xFF047857)),
+              ),
+            ),
+        ],
+      ),
+    );
   }
 }
 

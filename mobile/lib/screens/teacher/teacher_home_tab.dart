@@ -3,12 +3,13 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 
 import '../../state/teacher_providers.dart';
 import '../../theme/app_colors.dart';
 import '../../widgets/section_card.dart';
+import '../../widgets/image_source_sheet.dart';
+import '../../widgets/cupertino_time_picker_sheet.dart';
 
 String _normalizeClassName(String value) => value.trim().toLowerCase().replaceAll(RegExp(r'\s+'), ' ');
 
@@ -94,8 +95,8 @@ Future<DateTime?> _pickDateTime(BuildContext context, {DateTime? initial}) async
     lastDate: DateTime.now().add(const Duration(days: 365)),
   );
   if (date == null || !context.mounted) return null;
-  final time = await showTimePicker(
-    context: context,
+  final time = await showCupertinoTimePicker(
+    context,
     initialTime: initial != null ? TimeOfDay.fromDateTime(initial) : TimeOfDay.now(),
   );
   if (time == null) return date;
@@ -646,7 +647,7 @@ class _AssignHomeworkPanelState extends ConsumerState<_AssignHomeworkPanel> {
   }
 
   Future<void> _pickImages() async {
-    final picked = await ImagePicker().pickMultiImage(imageQuality: 80, limit: 6);
+    final picked = await pickImagesWithSourceChoice(context, limit: 6);
     if (picked.isEmpty) return;
     setState(() {
       _uploading = true;
@@ -764,7 +765,7 @@ class _AssignHomeworkPanelState extends ConsumerState<_AssignHomeworkPanel> {
   /// Mirrors `onEditHomeworkFilesSelected(files)` — uploads new images and
   /// appends them to the editable attachment list.
   Future<void> _pickEditImages() async {
-    final picked = await ImagePicker().pickMultiImage(imageQuality: 80, limit: 6);
+    final picked = await pickImagesWithSourceChoice(context, limit: 6);
     if (picked.isEmpty) return;
     setState(() {
       _editingUploading = true;
@@ -1544,19 +1545,48 @@ class _MockTestsPanelState extends ConsumerState<_MockTestsPanel> {
   String? _note;
   String? _createdTestId;
   String? _createdTestTitle;
+  bool _showTestsList = false;
 
   final _questionCtrl = TextEditingController();
   final List<TextEditingController> _optionCtrls = List.generate(4, (_) => TextEditingController());
   int _correctOption = 0;
   bool _addingQuestion = false;
-  final List<Map<String, dynamic>> _questions = [];
+  bool _loadingQuestions = false;
+  List<Map<String, dynamic>> _questions = [];
+
+  // ── Edit one question (mirrors web's editingQuestionId/*) ──────────────
+  String? _editingQuestionId;
+  final _editingQuestionCtrl = TextEditingController();
+  final List<TextEditingController> _editingOptionCtrls = List.generate(4, (_) => TextEditingController());
+  int _editingCorrectOption = 0;
+  bool _savingQuestion = false;
+
+  // ── Edit a test's metadata (mirrors web's editingTestId/*) ──────────────
+  String? _editingTestId;
+  final _editingTitleCtrl = TextEditingController();
+  final _editingClassCtrl = TextEditingController();
+  final _editingDurationCtrl = TextEditingController();
+  bool _savingTest = false;
+
+  // ── Per-test "Opens At"/"Closes At" draft before Assign ─────────────────
+  final Map<String, DateTime?> _assignStartByTestId = {};
+  final Map<String, DateTime?> _assignEndByTestId = {};
+  String? _assigningId;
+  String? _reusingId;
 
   @override
   void dispose() {
     _titleCtrl.dispose();
     _durationCtrl.dispose();
     _questionCtrl.dispose();
+    _editingQuestionCtrl.dispose();
+    _editingTitleCtrl.dispose();
+    _editingClassCtrl.dispose();
+    _editingDurationCtrl.dispose();
     for (final c in _optionCtrls) {
+      c.dispose();
+    }
+    for (final c in _editingOptionCtrls) {
       c.dispose();
     }
     super.dispose();
@@ -1585,7 +1615,7 @@ class _MockTestsPanelState extends ConsumerState<_MockTestsPanel> {
       setState(() {
         _createdTestId = test?['id']?.toString();
         _createdTestTitle = createdTitle;
-        _questions.clear();
+        _questions = [];
         _note = 'Test "$createdTitle" created. Now add questions below.';
         _titleCtrl.clear();
       });
@@ -1594,6 +1624,30 @@ class _MockTestsPanelState extends ConsumerState<_MockTestsPanel> {
       setState(() => _note = e.toString().replaceFirst('Exception: ', ''));
     } finally {
       if (mounted) setState(() => _creating = false);
+    }
+  }
+
+  /// Selects an existing test to add/view questions for — mirrors clicking
+  /// "Add Questions" on a row in `TeacherDashboard.jsx`.
+  Future<void> _selectTestForQuestions(Map<String, dynamic> test) async {
+    final testId = test['id']?.toString();
+    if (testId == null) return;
+    setState(() {
+      _createdTestId = testId;
+      _createdTestTitle = test['title']?.toString() ?? 'Test';
+      _note = 'Adding questions to "$_createdTestTitle"';
+      _questions = [];
+      _loadingQuestions = true;
+    });
+    try {
+      final questions = await ref.read(teacherApiServiceProvider).listTestQuestions(testId);
+      if (!mounted) return;
+      setState(() => _questions = questions);
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _note = e.toString().replaceFirst('Exception: ', ''));
+    } finally {
+      if (mounted) setState(() => _loadingQuestions = false);
     }
   }
 
@@ -1623,7 +1677,7 @@ class _MockTestsPanelState extends ConsumerState<_MockTestsPanel> {
         res['question'] as Map? ?? {'text': _questionCtrl.text.trim(), 'options': options, 'correctOption': _correctOption},
       );
       setState(() {
-        _questions.add(question);
+        _questions = [..._questions, question];
         _questionCtrl.clear();
         for (final c in _optionCtrls) {
           c.clear();
@@ -1638,6 +1692,160 @@ class _MockTestsPanelState extends ConsumerState<_MockTestsPanel> {
     }
   }
 
+  void _startEditQuestion(Map<String, dynamic> q) {
+    final options = (q['options'] as List?)?.map((o) => o.toString()).toList() ?? const <String>[];
+    setState(() {
+      _editingQuestionId = q['id']?.toString();
+      _editingQuestionCtrl.text = q['text']?.toString() ?? '';
+      for (var i = 0; i < 4; i++) {
+        _editingOptionCtrls[i].text = i < options.length ? options[i] : '';
+      }
+      _editingCorrectOption = (q['correctOption'] as num?)?.toInt() ?? 0;
+    });
+  }
+
+  void _cancelEditQuestion() {
+    setState(() {
+      _editingQuestionId = null;
+      _editingQuestionCtrl.clear();
+      for (final c in _editingOptionCtrls) {
+        c.clear();
+      }
+      _editingCorrectOption = 0;
+    });
+  }
+
+  Future<void> _saveQuestionEdit() async {
+    final testId = _createdTestId;
+    final questionId = _editingQuestionId;
+    if (testId == null || questionId == null) return;
+    final options = _editingOptionCtrls.map((c) => c.text.trim()).where((t) => t.isNotEmpty).toList();
+    if (options.length < 2) {
+      setState(() => _note = 'Add at least 2 non-empty options.');
+      return;
+    }
+    setState(() {
+      _savingQuestion = true;
+      _note = null;
+    });
+    try {
+      await ref.read(teacherApiServiceProvider).updateTestQuestion(
+            testId,
+            questionId,
+            text: _editingQuestionCtrl.text.trim(),
+            options: options,
+            correctOption: _editingCorrectOption,
+          );
+      setState(() {
+        _questions = _questions.map((q) {
+          if (q['id']?.toString() != questionId) return q;
+          return {...q, 'text': _editingQuestionCtrl.text.trim(), 'options': options, 'correctOption': _editingCorrectOption};
+        }).toList();
+        _note = 'Question updated.';
+      });
+      _cancelEditQuestion();
+    } catch (e) {
+      setState(() => _note = e.toString().replaceFirst('Exception: ', ''));
+    } finally {
+      if (mounted) setState(() => _savingQuestion = false);
+    }
+  }
+
+  Future<void> _deleteQuestion(String questionId) async {
+    final testId = _createdTestId;
+    if (testId == null) return;
+    try {
+      await ref.read(teacherApiServiceProvider).deleteTestQuestion(testId, questionId);
+      setState(() => _questions = _questions.where((q) => q['id']?.toString() != questionId).toList());
+    } catch (e) {
+      setState(() => _note = e.toString().replaceFirst('Exception: ', ''));
+    }
+  }
+
+  void _startEditTest(Map<String, dynamic> test) {
+    setState(() {
+      _editingTestId = test['id']?.toString();
+      _editingTitleCtrl.text = test['title']?.toString() ?? '';
+      _editingClassCtrl.text = (test['className'] ?? test['class_name'])?.toString() ?? '';
+      _editingDurationCtrl.text = ((test['durationMinutes'] ?? test['duration_minutes']) as num?)?.toInt().toString() ?? '30';
+    });
+  }
+
+  void _cancelEditTest() => setState(() => _editingTestId = null);
+
+  Future<void> _saveTestEdit() async {
+    final testId = _editingTestId;
+    if (testId == null || _editingTitleCtrl.text.trim().isEmpty) return;
+    setState(() => _savingTest = true);
+    final subject = ref.read(teacherProfileProvider).value?['subject']?.toString();
+    try {
+      await ref.read(teacherApiServiceProvider).updateTest(
+            testId,
+            title: _editingTitleCtrl.text.trim(),
+            subject: subject,
+            className: _editingClassCtrl.text.trim().isEmpty ? null : _editingClassCtrl.text.trim(),
+            durationMinutes: int.tryParse(_editingDurationCtrl.text.trim()),
+          );
+      ref.invalidate(teacherTestsProvider);
+      setState(() {
+        _note = 'Test updated.';
+        _editingTestId = null;
+      });
+    } catch (e) {
+      setState(() => _note = e.toString().replaceFirst('Exception: ', ''));
+    } finally {
+      if (mounted) setState(() => _savingTest = false);
+    }
+  }
+
+  Future<void> _assignTest(String testId) async {
+    final start = _assignStartByTestId[testId];
+    final end = _assignEndByTestId[testId];
+    if (start == null || end == null) {
+      setState(() => _note = 'Set both an opens-at and closes-at time before assigning this test.');
+      return;
+    }
+    setState(() => _assigningId = testId);
+    try {
+      await ref.read(teacherApiServiceProvider).assignTest(
+            testId,
+            startAt: start.toIso8601String(),
+            endAt: end.toIso8601String(),
+          );
+      ref.invalidate(teacherTestsProvider);
+      setState(() => _note = 'Test assigned.');
+    } catch (e) {
+      setState(() => _note = e.toString().replaceFirst('Exception: ', ''));
+    } finally {
+      if (mounted) setState(() => _assigningId = null);
+    }
+  }
+
+  Future<void> _reuseTest(Map<String, dynamic> test) async {
+    final testId = test['id']?.toString();
+    if (testId == null) return;
+    setState(() => _reusingId = testId);
+    try {
+      final res = await ref.read(teacherApiServiceProvider).cloneTest(
+            testId,
+            title: 'Copy of ${test['title'] ?? 'Test'}',
+          );
+      final clonedTest = res['test'] as Map?;
+      final clonedQuestions = (res['questions'] as List? ?? []).map((q) => Map<String, dynamic>.from(q as Map)).toList();
+      ref.invalidate(teacherTestsProvider);
+      setState(() {
+        _createdTestId = clonedTest?['id']?.toString();
+        _createdTestTitle = clonedTest?['title']?.toString() ?? 'Copy of ${test['title'] ?? 'Test'}';
+        _questions = clonedQuestions;
+        _note = 'Reused "${test['title']}" as a new draft with ${clonedQuestions.length} question(s).';
+      });
+    } catch (e) {
+      setState(() => _note = e.toString().replaceFirst('Exception: ', ''));
+    } finally {
+      if (mounted) setState(() => _reusingId = null);
+    }
+  }
+
   Future<void> _deleteTest(String testId) async {
     try {
       await ref.read(teacherApiServiceProvider).deleteTest(testId);
@@ -1646,7 +1854,7 @@ class _MockTestsPanelState extends ConsumerState<_MockTestsPanel> {
         setState(() {
           _createdTestId = null;
           _createdTestTitle = null;
-          _questions.clear();
+          _questions = [];
         });
       }
     } catch (_) {
@@ -1668,14 +1876,6 @@ class _MockTestsPanelState extends ConsumerState<_MockTestsPanel> {
         children: [
           Text('Create tests and add questions for your students.', style: TextStyle(fontSize: 13, color: AppColors.muted)),
           const SizedBox(height: 10),
-          if (testsAsync.isLoading && !testsAsync.hasValue) ...[
-            const SkeletonBox(height: 50),
-            const SkeletonBox(height: 50),
-          ] else if (tests.isEmpty)
-            Text('No tests yet. Create one below.', style: TextStyle(fontSize: 12, color: AppColors.muted))
-          else
-            for (final t in tests) _TestTile(test: t, onDelete: () => _deleteTest(t['id']?.toString() ?? '')),
-          const SizedBox(height: 14),
           const Text('New Test', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700)),
           const SizedBox(height: 8),
           TextField(controller: _titleCtrl, decoration: const InputDecoration(hintText: 'Test title')),
@@ -1689,10 +1889,61 @@ class _MockTestsPanelState extends ConsumerState<_MockTestsPanel> {
               child: Text(_creating ? 'Creating...' : (widget.targetClass == 'all' ? 'Select a class first' : 'Create Test for ${widget.targetClass}')),
             ),
           ),
+          const SizedBox(height: 14),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: TextButton(
+              onPressed: () => setState(() => _showTestsList = !_showTestsList),
+              child: Text('${_showTestsList ? '▾' : '▸'} Assigned Tests${tests.isNotEmpty ? ' (${tests.length})' : ''}'),
+            ),
+          ),
+          if (_showTestsList) ...[
+            if (testsAsync.isLoading && !testsAsync.hasValue) ...[
+              const SkeletonBox(height: 50),
+              const SkeletonBox(height: 50),
+            ] else if (tests.isEmpty)
+              Text('No tests yet. Create one above.', style: TextStyle(fontSize: 12, color: AppColors.muted))
+            else
+              for (final t in tests)
+                _TestTile(
+                  test: t,
+                  editing: _editingTestId == t['id']?.toString(),
+                  editingTitleCtrl: _editingTitleCtrl,
+                  editingClassCtrl: _editingClassCtrl,
+                  editingDurationCtrl: _editingDurationCtrl,
+                  savingEdit: _savingTest,
+                  onStartEdit: () => _startEditTest(t),
+                  onCancelEdit: _cancelEditTest,
+                  onSaveEdit: _saveTestEdit,
+                  onAddQuestions: () => _selectTestForQuestions(t),
+                  onDelete: () => _deleteTest(t['id']?.toString() ?? ''),
+                  reusing: _reusingId == t['id']?.toString(),
+                  onReuse: () => _reuseTest(t),
+                  assigning: _assigningId == t['id']?.toString(),
+                  assignStart: _assignStartByTestId[t['id']?.toString() ?? ''],
+                  assignEnd: _assignEndByTestId[t['id']?.toString() ?? ''],
+                  onAssignStartChanged: (v) => setState(() => _assignStartByTestId[t['id']?.toString() ?? ''] = v),
+                  onAssignEndChanged: (v) => setState(() => _assignEndByTestId[t['id']?.toString() ?? ''] = v),
+                  onAssign: () => _assignTest(t['id']?.toString() ?? ''),
+                ),
+          ],
           if (_createdTestId != null) ...[
             const SizedBox(height: 16),
-            Text('Add Question to "$_createdTestTitle"', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700)),
-            const SizedBox(height: 8),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Expanded(child: Text('Add Question to "$_createdTestTitle"', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700))),
+                IconButton(
+                  icon: const Icon(Icons.close_rounded, size: 18),
+                  onPressed: () => setState(() {
+                    _createdTestId = null;
+                    _createdTestTitle = null;
+                    _questions = [];
+                  }),
+                ),
+              ],
+            ),
+            const SizedBox(height: 4),
             TextField(controller: _questionCtrl, maxLines: 2, decoration: const InputDecoration(hintText: 'Question text')),
             const SizedBox(height: 8),
             RadioGroup<int>(
@@ -1725,10 +1976,63 @@ class _MockTestsPanelState extends ConsumerState<_MockTestsPanel> {
                 child: Text(_addingQuestion ? 'Adding...' : 'Add Question'),
               ),
             ),
-            if (_questions.isNotEmpty) ...[
+            if (_loadingQuestions) ...[
               const SizedBox(height: 8),
-              Text('${_questions.length} question(s) added so far.', style: TextStyle(fontSize: 12, color: AppColors.muted)),
-              for (var i = 0; i < _questions.length; i++) _QuestionTile(index: i, question: _questions[i]),
+              const SkeletonBox(height: 40),
+            ] else if (_questions.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              Text('${_questions.length} question(s) loaded/added so far.', style: TextStyle(fontSize: 12, color: AppColors.muted)),
+              for (var i = 0; i < _questions.length; i++)
+                _QuestionTile(
+                  index: i,
+                  question: _questions[i],
+                  onEdit: () => _startEditQuestion(_questions[i]),
+                  onDelete: () => _deleteQuestion(_questions[i]['id']?.toString() ?? ''),
+                ),
+            ],
+            if (_editingQuestionId != null) ...[
+              const SizedBox(height: 12),
+              const Text('Edit Question', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700)),
+              const SizedBox(height: 8),
+              TextField(controller: _editingQuestionCtrl, maxLines: 2, decoration: const InputDecoration(hintText: 'Question text')),
+              const SizedBox(height: 8),
+              RadioGroup<int>(
+                groupValue: _editingCorrectOption,
+                onChanged: (v) => setState(() => _editingCorrectOption = v ?? 0),
+                child: Column(
+                  children: [
+                    for (var i = 0; i < 4; i++)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 6),
+                        child: Row(
+                          children: [
+                            Radio<int>(value: i),
+                            Expanded(
+                              child: TextField(
+                                controller: _editingOptionCtrls[i],
+                                decoration: InputDecoration(hintText: 'Option ${i + 1}'),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+              Row(
+                children: [
+                  Expanded(
+                    child: ElevatedButton(
+                      onPressed: _savingQuestion ? null : _saveQuestionEdit,
+                      child: Text(_savingQuestion ? 'Saving...' : 'Save Question'),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: OutlinedButton(onPressed: _cancelEditQuestion, child: const Text('Cancel')),
+                  ),
+                ],
+              ),
             ],
           ],
           if (_note != null) ...[
@@ -1743,32 +2047,152 @@ class _MockTestsPanelState extends ConsumerState<_MockTestsPanel> {
 
 class _TestTile extends StatelessWidget {
   final Map<String, dynamic> test;
+  final bool editing;
+  final TextEditingController editingTitleCtrl;
+  final TextEditingController editingClassCtrl;
+  final TextEditingController editingDurationCtrl;
+  final bool savingEdit;
+  final VoidCallback onStartEdit;
+  final VoidCallback onCancelEdit;
+  final VoidCallback onSaveEdit;
+  final VoidCallback onAddQuestions;
   final VoidCallback onDelete;
+  final bool reusing;
+  final VoidCallback onReuse;
+  final bool assigning;
+  final DateTime? assignStart;
+  final DateTime? assignEnd;
+  final ValueChanged<DateTime?> onAssignStartChanged;
+  final ValueChanged<DateTime?> onAssignEndChanged;
+  final VoidCallback onAssign;
 
-  const _TestTile({required this.test, required this.onDelete});
+  const _TestTile({
+    required this.test,
+    required this.editing,
+    required this.editingTitleCtrl,
+    required this.editingClassCtrl,
+    required this.editingDurationCtrl,
+    required this.savingEdit,
+    required this.onStartEdit,
+    required this.onCancelEdit,
+    required this.onSaveEdit,
+    required this.onAddQuestions,
+    required this.onDelete,
+    required this.reusing,
+    required this.onReuse,
+    required this.assigning,
+    required this.assignStart,
+    required this.assignEnd,
+    required this.onAssignStartChanged,
+    required this.onAssignEndChanged,
+    required this.onAssign,
+  });
 
   @override
   Widget build(BuildContext context) {
     final title = test['title']?.toString() ?? '';
     final subject = test['subject']?.toString() ?? 'General';
-    final status = test['status']?.toString() ?? 'upcoming';
+    final status = test['status']?.toString() ?? 'draft';
+    final isAssigned = status == 'assigned';
+    final startAt = _parseDate(test['startAt'] ?? test['start_at']);
+    final endAt = _parseDate(test['endAt'] ?? test['end_at']);
+    final fmt = DateFormat('d MMM, h:mm a');
+
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
       padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(color: AppColors.background, borderRadius: BorderRadius.circular(8)),
-      child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(title, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
+                    Text(
+                      '$subject \u00b7 ${isAssigned ? 'Assigned' : status == 'completed' ? 'Completed' : 'Draft (not visible to students yet)'}',
+                      style: TextStyle(fontSize: 11, color: AppColors.muted),
+                    ),
+                  ],
+                ),
+              ),
+              IconButton(icon: const Icon(Icons.delete_outline_rounded, color: AppColors.danger, size: 20), onPressed: onDelete),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Wrap(
+            spacing: 6,
+            runSpacing: 6,
+            children: [
+              _MiniActionButton(label: 'Add Questions', onTap: onAddQuestions),
+              _MiniActionButton(label: 'Edit', onTap: editing ? onCancelEdit : onStartEdit),
+              _MiniActionButton(label: reusing ? 'Reusing...' : 'Reuse', onTap: reusing ? null : onReuse),
+            ],
+          ),
+          if (editing) ...[
+            const SizedBox(height: 8),
+            TextField(controller: editingTitleCtrl, decoration: const InputDecoration(hintText: 'Test title', isDense: true)),
+            const SizedBox(height: 6),
+            TextField(controller: editingClassCtrl, decoration: const InputDecoration(hintText: 'Class name', isDense: true)),
+            const SizedBox(height: 6),
+            TextField(controller: editingDurationCtrl, keyboardType: TextInputType.number, decoration: const InputDecoration(hintText: 'Duration (minutes)', isDense: true)),
+            const SizedBox(height: 8),
+            Row(
               children: [
-                Text(title, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
-                Text('$subject · $status', style: TextStyle(fontSize: 11, color: AppColors.muted)),
+                Expanded(child: ElevatedButton(onPressed: savingEdit ? null : onSaveEdit, child: Text(savingEdit ? 'Saving...' : 'Save Changes'))),
+                const SizedBox(width: 8),
+                Expanded(child: OutlinedButton(onPressed: onCancelEdit, child: const Text('Cancel'))),
               ],
             ),
-          ),
-          IconButton(icon: const Icon(Icons.delete_outline_rounded, color: AppColors.danger, size: 20), onPressed: onDelete),
+          ],
+          if (!isAssigned) ...[
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Expanded(child: _DateTimeField(label: 'Opens At', value: assignStart, onChanged: onAssignStartChanged)),
+                const SizedBox(width: 8),
+                Expanded(child: _DateTimeField(label: 'Closes At', value: assignEnd, onChanged: onAssignEndChanged)),
+              ],
+            ),
+            const SizedBox(height: 6),
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton(onPressed: assigning ? null : onAssign, child: Text(assigning ? 'Assigning...' : 'Assign')),
+            ),
+          ] else if (startAt != null && endAt != null) ...[
+            const SizedBox(height: 6),
+            Text('Attempt window: ${fmt.format(startAt)} \u2192 ${fmt.format(endAt)}', style: TextStyle(fontSize: 11, color: AppColors.muted)),
+          ],
         ],
+      ),
+    );
+  }
+}
+
+class _MiniActionButton extends StatelessWidget {
+  final String label;
+  final VoidCallback? onTap;
+
+  const _MiniActionButton({required this.label, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final disabled = onTap == null;
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(999),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        decoration: BoxDecoration(
+          color: disabled ? AppColors.line.withValues(alpha: 0.4) : Colors.white,
+          borderRadius: BorderRadius.circular(999),
+          border: Border.all(color: AppColors.line),
+        ),
+        child: Text(label, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: disabled ? AppColors.muted : AppColors.text)),
       ),
     );
   }
@@ -1777,8 +2201,10 @@ class _TestTile extends StatelessWidget {
 class _QuestionTile extends StatelessWidget {
   final int index;
   final Map<String, dynamic> question;
+  final VoidCallback onEdit;
+  final VoidCallback onDelete;
 
-  const _QuestionTile({required this.index, required this.question});
+  const _QuestionTile({required this.index, required this.question, required this.onEdit, required this.onDelete});
 
   @override
   Widget build(BuildContext context) {
@@ -1786,7 +2212,15 @@ class _QuestionTile extends StatelessWidget {
     final options = (question['options'] as List?)?.map((o) => o.toString()).join(' • ') ?? '';
     return Padding(
       padding: const EdgeInsets.only(top: 6),
-      child: Text('${index + 1}. $text\n$options', style: const TextStyle(fontSize: 12)),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Expanded(child: Text('${index + 1}. $text\n$options', style: const TextStyle(fontSize: 12))),
+          IconButton(icon: const Icon(Icons.edit_outlined, size: 16), onPressed: onEdit, visualDensity: VisualDensity.compact),
+          IconButton(icon: const Icon(Icons.delete_outline_rounded, size: 16, color: AppColors.danger), onPressed: onDelete, visualDensity: VisualDensity.compact),
+        ],
+      ),
     );
   }
 }
+

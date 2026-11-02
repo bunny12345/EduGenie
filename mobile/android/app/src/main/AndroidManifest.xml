@@ -2,6 +2,10 @@
     <!-- Required by the gal package to save downloaded homework attachments
          to the photo gallery on Android 9 and below. -->
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="29" />
+    <!-- Required by image_picker's camera capture option (homework photo
+         attachments, student submission + teacher assignment). -->
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-feature android:name="android.hardware.camera" android:required="false" />
     <application
         android:label="mobile"
         android:name="${applicationName}"

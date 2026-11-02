@@ -30,6 +30,8 @@
 	<string>AcademiX saves downloaded homework attachment images to your photo library.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>AcademiX saves downloaded homework attachment images to your photo library.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>AcademiX uses the camera to take photos of homework to attach to submissions and assignments.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

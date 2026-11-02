@@ -142,6 +142,7 @@ class _TeacherStudentsTabState extends ConsumerState<TeacherStudentsTab> {
   final _gradeValueCtrl = TextEditingController();
   final _gradeFeedbackCtrl = TextEditingController();
   bool _gradingBusy = false;
+  String? _aiGradingId;
 
   SubjectProgress? _subjectProgress;
   bool _progressHasData = true;
@@ -305,6 +306,30 @@ class _TeacherStudentsTabState extends ConsumerState<TeacherStudentsTab> {
     }
   }
 
+  /// Reads the student's submitted text/images and fills in a suggested score
+  /// + feedback (teacher still reviews and taps Submit) — mirrors web's
+  /// '✨ Autocorrect' button in `TeacherDashboard.jsx`.
+  Future<void> _startAiGrade(Map<String, dynamic> hw) async {
+    final id = hw['id']?.toString();
+    if (id == null) return;
+    setState(() => _aiGradingId = id);
+    try {
+      final res = await ref.read(teacherApiServiceProvider).aiGradeHomework(id);
+      if (!mounted) return;
+      setState(() {
+        _expandedGradeId = id;
+        final score = res['score'];
+        _gradeValueCtrl.text = score != null ? score.toString() : '';
+        _gradeFeedbackCtrl.text = res['feedback']?.toString() ?? '';
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _homeworkError = e.toString().replaceFirst('Exception: ', ''));
+    } finally {
+      if (mounted) setState(() => _aiGradingId = null);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final classOptions = ref.watch(teacherClassOptionsProvider).value ?? const <String>[];
@@ -411,6 +436,8 @@ class _TeacherStudentsTabState extends ConsumerState<TeacherStudentsTab> {
               gradingBusy: _gradingBusy,
               onSubmitGrade: _submitGrade,
               onCancelGrade: () => setState(() => _expandedGradeId = null),
+              aiGradingId: _aiGradingId,
+              onAutoCorrect: _startAiGrade,
             ),
           ),
           const SizedBox(height: 14),
@@ -492,6 +519,8 @@ class _HomeworkStatusPanel extends StatelessWidget {
   final bool gradingBusy;
   final ValueChanged<String> onSubmitGrade;
   final VoidCallback onCancelGrade;
+  final String? aiGradingId;
+  final ValueChanged<Map<String, dynamic>> onAutoCorrect;
 
   const _HomeworkStatusPanel({
     required this.students,
@@ -510,6 +539,8 @@ class _HomeworkStatusPanel extends StatelessWidget {
     required this.gradingBusy,
     required this.onSubmitGrade,
     required this.onCancelGrade,
+    required this.aiGradingId,
+    required this.onAutoCorrect,
   });
 
   bool _isSubmitted(Map<String, dynamic> h) {
@@ -628,6 +659,8 @@ class _HomeworkStatusPanel extends StatelessWidget {
               busy: gradingBusy,
               onSubmit: () => onSubmitGrade(hw['id']?.toString() ?? ''),
               onCancel: onCancelGrade,
+              aiBusy: aiGradingId == hw['id']?.toString(),
+              onAutoCorrect: () => onAutoCorrect(hw),
             ),
       ],
     );
@@ -809,6 +842,8 @@ class _HomeworkStatusTile extends StatelessWidget {
   final bool busy;
   final VoidCallback onSubmit;
   final VoidCallback onCancel;
+  final bool aiBusy;
+  final VoidCallback onAutoCorrect;
 
   const _HomeworkStatusTile({
     required this.homework,
@@ -819,6 +854,8 @@ class _HomeworkStatusTile extends StatelessWidget {
     required this.busy,
     required this.onSubmit,
     required this.onCancel,
+    required this.aiBusy,
+    required this.onAutoCorrect,
   });
 
   @override
@@ -831,6 +868,9 @@ class _HomeworkStatusTile extends StatelessWidget {
     final remark = homework['remark']?.toString();
     final canGrade = dueStatus == 'submitted' || dueStatus == 'overdue' || dueStatus == 'pending';
     final badgeColor = dueStatus == 'submitted' ? AppColors.ok : (dueStatus == 'overdue' ? AppColors.danger : AppColors.warn);
+    final hasSubmission = (homework['latestAnswerText']?.toString().trim().isNotEmpty ?? false)
+        || (homework['latestAttachmentUrls'] is List && (homework['latestAttachmentUrls'] as List).isNotEmpty)
+        || (homework['latestAttachmentUrl']?.toString().trim().isNotEmpty ?? false);
 
     return Container(
       margin: const EdgeInsets.only(top: 8),
@@ -869,6 +909,15 @@ class _HomeworkStatusTile extends StatelessWidget {
               const SizedBox(width: 12),
               Text('Attempts: $attemptCount', style: TextStyle(fontSize: 11, color: AppColors.text)),
               const Spacer(),
+              if (canGrade && hasSubmission) ...[
+                _Frame3dButton(
+                  onTap: aiBusy ? null : onAutoCorrect,
+                  background: const Color(0xFF4F46E5),
+                  foreground: Colors.white,
+                  child: Text(aiBusy ? 'Reading…' : '✨ Autocorrect'),
+                ),
+                const SizedBox(width: 6),
+              ],
               if (canGrade) _Frame3dButton(onTap: onToggleGrade, child: Text(expanded ? 'Cancel' : 'Grade')),
             ],
           ),

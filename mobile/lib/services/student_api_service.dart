@@ -138,6 +138,14 @@ class StudentApiService {
     });
   }
 
+  /// Question-by-question breakdown of the student's latest submitted
+  /// attempt for a test — mirrors `getTestReview(testId, studentId)` in
+  /// `web/src/api.js` / `GET /tests/:testId/review`. Used for the collapsed
+  /// "Review" panel on an already-completed test.
+  Future<Map<String, dynamic>> getTestReview(String testId, String studentId) {
+    return _get('/tests/${Uri.encodeComponent(testId)}/review', {'studentId': studentId});
+  }
+
   Future<OrchardData> getOrchard(String studentId) async {
     final json = await _get('/orchard', {'studentId': studentId});
     return OrchardData.fromJson(json);

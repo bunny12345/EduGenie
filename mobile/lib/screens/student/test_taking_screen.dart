@@ -211,19 +211,74 @@ class _ResultView extends StatelessWidget {
   Widget build(BuildContext context) {
     final score = (result['score'] as num?)?.toInt() ?? 0;
     final feedback = result['feedback']?.toString() ?? '';
-    return Center(
-      child: Padding(
+    final perQuestionFeedback = (result['perQuestionFeedback'] as List? ?? []).map((f) => Map<String, dynamic>.from(f as Map)).toList();
+    return SafeArea(
+      child: ListView(
         padding: const EdgeInsets.all(24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text('$score%', style: const TextStyle(fontSize: 40, fontWeight: FontWeight.w800, color: AppColors.brand)),
-            const SizedBox(height: 8),
-            Text(feedback, textAlign: TextAlign.center, style: TextStyle(color: AppColors.muted, fontSize: 14)),
+        children: [
+          const SizedBox(height: 12),
+          Center(
+            child: Column(
+              children: [
+                Text('$score%', style: const TextStyle(fontSize: 40, fontWeight: FontWeight.w800, color: AppColors.brand)),
+                const SizedBox(height: 8),
+                Text(feedback, textAlign: TextAlign.center, style: TextStyle(color: AppColors.muted, fontSize: 14)),
+              ],
+            ),
+          ),
+          if (perQuestionFeedback.isNotEmpty) ...[
             const SizedBox(height: 20),
-            ElevatedButton(onPressed: onDone, child: const Text('Done')),
+            const Text('Question breakdown', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: Color(0xFF1F2347))),
+            const SizedBox(height: 8),
+            for (var i = 0; i < perQuestionFeedback.length; i++) _QuestionFeedbackCard(index: i, feedback: perQuestionFeedback[i]),
           ],
-        ),
+          const SizedBox(height: 20),
+          Center(child: ElevatedButton(onPressed: onDone, child: const Text('Done'))),
+        ],
+      ),
+    );
+  }
+}
+
+class _QuestionFeedbackCard extends StatelessWidget {
+  final int index;
+  final Map<String, dynamic> feedback;
+
+  const _QuestionFeedbackCard({required this.index, required this.feedback});
+
+  @override
+  Widget build(BuildContext context) {
+    final isCorrect = feedback['isCorrect'] == true;
+    final text = feedback['text']?.toString() ?? '';
+    final options = (feedback['options'] as List?)?.map((o) => o.toString()).toList() ?? const <String>[];
+    final selected = (feedback['selectedOption'] as num?)?.toInt() ?? -1;
+    final correct = (feedback['correctOption'] as num?)?.toInt() ?? -1;
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: isCorrect ? const Color(0xFF22C55E).withValues(alpha: 0.08) : const Color(0xFFEF4444).withValues(alpha: 0.08),
+        border: Border.all(color: (isCorrect ? const Color(0xFF22C55E) : const Color(0xFFEF4444)).withValues(alpha: 0.25)),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('${index + 1}. $text', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: Color(0xFF1F2347))),
+          const SizedBox(height: 4),
+          Text(
+            'Your answer: ${selected >= 0 && selected < options.length ? options[selected] : 'Not answered'} ${isCorrect ? '\u2713' : '\u2717'}',
+            style: const TextStyle(fontSize: 12, color: Color(0xFF374151)),
+          ),
+          if (!isCorrect)
+            Padding(
+              padding: const EdgeInsets.only(top: 2),
+              child: Text(
+                'Correct answer: ${correct >= 0 && correct < options.length ? options[correct] : '\u2014'}',
+                style: const TextStyle(fontSize: 12, color: Color(0xFF047857)),
+              ),
+            ),
+        ],
       ),
     );
   }
