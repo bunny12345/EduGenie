@@ -783,9 +783,19 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
     let count = 0;
     homeworkBySubject.get(subject)?.forEach((h) => {
       const state = getHomeworkState(h);
-      if (!state.submitted) count++;
+      // state.hide means it's long overdue (>3 days) and no longer shown
+      // anywhere in the panel — it can never be acted on, so it shouldn't
+      // keep inflating the badge forever either.
+      if (!state.submitted && !state.hide) count++;
     });
-    testsBySubject.get(subject)?.forEach(() => count++);
+    testsBySubject.get(subject)?.forEach((t) => {
+      // Only count tests the student can actually act on right now — same
+      // condition that shows the "Start" button below. A test the student
+      // already completed, or hasn't opened yet / has closed, isn't a
+      // pending action and shouldn't keep the badge lit forever.
+      const windowStatus = t.windowStatus || 'none';
+      if (!t.attempted && windowStatus !== 'scheduled' && windowStatus !== 'expired') count++;
+    });
     return count;
   };
 

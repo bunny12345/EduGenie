@@ -287,9 +287,16 @@ class _HomeworkScreenState extends ConsumerState<HomeworkScreen> {
                       itemBuilder: (context, i) {
                         final s = subjects[i];
                         final active = s == _selectedSubject;
-                        final pendingCount = homeworkAsync.value == null
+                        final pendingHomework = homeworkAsync.value == null
                             ? 0
                             : homeworkAsync.value!.where((h) => h.subject == s && !homeworkState(h).submitted && !homeworkState(h).hide).length;
+                        // Mirrors web's getSubjectNotifications(): only tests the
+                        // student can still act on count — not ones already
+                        // completed, scheduled for later, or expired.
+                        final pendingTests = testsAsync.value == null
+                            ? 0
+                            : testsAsync.value!.where((t) => t.subject == s && !t.attempted && t.windowStatus != 'scheduled' && t.windowStatus != 'expired').length;
+                        final pendingCount = pendingHomework + pendingTests;
                         return _SubjectPillChip(
                           label: s,
                           active: active,
