@@ -804,6 +804,11 @@ export async function getStudentReportCards() {
   return getJsonChecked(`${API_BASE}/progress/report-cards`, 'getStudentReportCards');
 }
 
+// Teacher view of one student's released report cards (+ which exams are still pending).
+export async function getTeacherStudentReportCards(studentId) {
+  return getJsonChecked(`${API_BASE}/teacher/students/${encodeURIComponent(studentId)}/report-cards`, 'getTeacherStudentReportCards');
+}
+
 export async function getTeacherStudentActivity(studentId) {
   const res = await fetch(`${API_BASE}/teacher/students/${encodeURIComponent(studentId)}/activity`, {
     headers: await authHeaders()

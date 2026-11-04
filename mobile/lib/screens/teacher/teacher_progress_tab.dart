@@ -4,10 +4,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../models/learning_score.dart';
+import '../../models/report_card.dart';
 import '../../state/teacher_providers.dart';
 import '../../theme/app_colors.dart';
 import '../../widgets/section_card.dart';
 import '../student/student_progress_screen.dart';
+import '../student/student_report_card_screen.dart' show ReportCardSheet;
 
 /// The site-wide "3D button/card" frame — duplicated per-file per this
 /// codebase's convention (see `teacher_shell.dart`/`teacher_students_tab.dart`).
@@ -397,6 +399,123 @@ class _TeacherProgressTabState extends ConsumerState<TeacherProgressTab> {
                       onSubjViewChange: (v) => setState(() => _subjView = v),
                     ),
                   ),
+          ),
+          if (_selectedStudentId != null) ...[
+            const SizedBox(height: 14),
+            _StudentReportCardsSection(
+              key: ValueKey(_selectedStudentId),
+              studentId: _selectedStudentId!,
+              studentName: _selectedStudentName ?? 'Student',
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+/// Released report cards for the selected student, under their progress
+/// report — mirrors the embedded `StudentReportCard` block in web's
+/// `TeacherDashboard.jsx`. Also lists exams still waiting on subjects, so a
+/// teacher knows what is outstanding before a parent-teacher meeting.
+class _StudentReportCardsSection extends ConsumerStatefulWidget {
+  final String studentId;
+  final String studentName;
+
+  const _StudentReportCardsSection({super.key, required this.studentId, required this.studentName});
+
+  @override
+  ConsumerState<_StudentReportCardsSection> createState() => _StudentReportCardsSectionState();
+}
+
+class _StudentReportCardsSectionState extends ConsumerState<_StudentReportCardsSection> {
+  String? _selectedExamId;
+
+  @override
+  Widget build(BuildContext context) {
+    final async = ref.watch(teacherStudentReportCardsProvider(widget.studentId));
+    return _Frame3dCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const Text('🎓 Report Cards', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
+          const SizedBox(height: 2),
+          Text(
+            "${widget.studentName}'s released exam results \u2014 handy for parent-teacher meetings.",
+            style: TextStyle(fontSize: 12, color: AppColors.muted),
+          ),
+          const SizedBox(height: 12),
+          async.when(
+            loading: () => const SkeletonBox(height: 220),
+            error: (e, _) => ErrorInline(message: e.toString().replaceFirst('Exception: ', '')),
+            data: (data) {
+              final cards = (data['reportCards'] as List? ?? [])
+                  .map((r) => ReportCard.fromJson(Map<String, dynamic>.from(r as Map)))
+                  .toList();
+              final pending = (data['pending'] as List? ?? []).cast<Map>();
+              final card = cards.isEmpty ? null : cards.firstWhere((c) => c.examId == _selectedExamId, orElse: () => cards.first);
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  if (pending.isNotEmpty)
+                    Container(
+                      margin: const EdgeInsets.only(bottom: 12),
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFFFF8E6),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: const Color(0xFFF5B942)),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          for (final p in pending)
+                            Padding(
+                              padding: const EdgeInsets.symmetric(vertical: 2),
+                              child: Text(
+                                '\u23F3 ${p['examName']} \u2014 ${p['entered']} of ${p['total']} subjects entered \u00b7 waiting for ${(p['missingSubjects'] as List).join(', ')}',
+                                style: const TextStyle(fontSize: 12, color: Color(0xFF7A5200)),
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
+                  if (card == null)
+                    Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      child: Text(
+                        'No report card has been released for this student yet. It appears once every subject teacher has added marks.',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(fontSize: 13, color: AppColors.muted),
+                      ),
+                    )
+                  else ...[
+                    if (cards.length > 1)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 12),
+                        child: Wrap(
+                          spacing: 8,
+                          runSpacing: 8,
+                          children: [
+                            for (final c in cards)
+                              ChoiceChip(
+                                label: Text(c.examName),
+                                selected: c.examId == card.examId,
+                                selectedColor: AppColors.brand,
+                                labelStyle: TextStyle(
+                                  color: c.examId == card.examId ? Colors.white : AppColors.text,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                                onSelected: (_) => setState(() => _selectedExamId = c.examId),
+                              ),
+                          ],
+                        ),
+                      ),
+                    ReportCardSheet(card: card, studentName: widget.studentName),
+                  ],
+                ],
+              );
+            },
           ),
         ],
       ),

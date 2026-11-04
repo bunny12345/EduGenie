@@ -4,23 +4,32 @@ import { subjectTheme, gradeColor, formatMarks } from './reportCardTheme';
 
 // Student-facing Report Card page. An exam only shows up here once every
 // subject teacher of the class has entered this student's marks (enforced by
-// the backend), so there is no "pending" state to render.
-export default function StudentReportCard({ greetingName, className }) {
+// the backend), so students never see a "pending" state.
+//
+// The teacher portal reuses it (embedded) under a student's progress report via
+// `fetchFn`, and additionally shows which exams are still waiting on subjects.
+export default function StudentReportCard({ greetingName, className, fetchFn, studentId, embedded = false }) {
   const [cards, setCards] = useState([]);
+  const [pending, setPending] = useState([]);
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState('');
   const [selectedId, setSelectedId] = useState('');
 
   useEffect(() => {
     let active = true;
+    setCards([]);
+    setPending([]);
+    setLoaded(false);
+    setSelectedId('');
     async function load() {
       try {
-        const res = await getStudentReportCards();
+        const res = await (fetchFn || getStudentReportCards)();
         if (!active) return;
         setCards(Array.isArray(res?.reportCards) ? res.reportCards : []);
+        setPending(Array.isArray(res?.pending) ? res.pending : []);
         setError('');
       } catch (e) {
-        if (active) setError(e?.message || 'Unable to load your report card.');
+        if (active) setError(e?.message || 'Unable to load the report card.');
       } finally {
         if (active) setLoaded(true);
       }
@@ -31,22 +40,40 @@ export default function StudentReportCard({ greetingName, className }) {
       active = false;
       clearInterval(timer);
     };
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [studentId]);
 
   const card = cards.find((c) => c.examId === selectedId) || cards[0] || null;
   const remarks = card ? card.subjects.filter((s) => s.remarks) : [];
 
   return (
-    <section className="eg-utility eg-rc">
-      <header className="eg-utility-head">
-        <span className="eg-utility-icon" aria-hidden="true">🎓</span>
-        <div>
-          <h1>Report Card</h1>
-          <p>Your exam results, subject by subject.</p>
-        </div>
-      </header>
+    <section className={embedded ? 'eg-rc eg-rc-embedded' : 'eg-utility eg-rc'}>
+      {embedded ? (
+        <header className="eg-rc-embedded-head">
+          <h3>🎓 Report Cards</h3>
+          <p>{greetingName ? `${greetingName}'s` : 'Their'} released exam results — handy for parent-teacher meetings.</p>
+        </header>
+      ) : (
+        <header className="eg-utility-head">
+          <span className="eg-utility-icon" aria-hidden="true">🎓</span>
+          <div>
+            <h1>Report Card</h1>
+            <p>Your exam results, subject by subject.</p>
+          </div>
+        </header>
+      )}
 
       {error ? <p className="eg-loading">{error}</p> : null}
+
+      {pending.length ? (
+        <div className="eg-rc-pending">
+          {pending.map((p) => (
+            <p key={p.examId}>
+              <b>⏳ {p.examName}</b> — {p.entered} of {p.total} subjects entered · waiting for {p.missingSubjects.join(', ')}
+            </p>
+          ))}
+        </div>
+      ) : null}
 
       {cards.length > 1 ? (
         <div className="eg-rc-tabs" role="tablist">
@@ -142,7 +169,9 @@ export default function StudentReportCard({ greetingName, className }) {
         <article className="cardish eg-utility-card eg-rc-empty">
           <span aria-hidden="true">📝</span>
           <strong>No report card yet</strong>
-          <p>Your results appear here as soon as every subject teacher has added their marks.</p>
+          <p>{embedded
+            ? 'No report card has been released for this student yet. It appears once every subject teacher has added marks.'
+            : 'Your results appear here as soon as every subject teacher has added their marks.'}</p>
         </article>
       ) : null}
     </section>

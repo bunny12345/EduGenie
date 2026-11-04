@@ -217,6 +217,13 @@ class TeacherApiService {
     return _post('/teacher/report-cards/exams/${Uri.encodeComponent(examId)}/marks', {'entries': entries});
   }
 
+  /// `{reportCards: [...], pending: [{examName, entered, total, missingSubjects}]}`
+  /// for one student — released cards only, plus which exams still wait on
+  /// subjects. Mirrors `getTeacherStudentReportCards(studentId)` in `web/src/api.js`.
+  Future<Map<String, dynamic>> getStudentReportCards(String studentId) {
+    return _get('/teacher/students/${Uri.encodeComponent(studentId)}/report-cards', const {});
+  }
+
   /// `{name, subject, schoolName, avatarUrl, ...}` — mirrors `getTeacherProfile()`
   /// in `web/src/api.js`. `subject` is used to lock the Homework/Test subject
   /// field, same as web.

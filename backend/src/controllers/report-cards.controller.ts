@@ -436,7 +436,84 @@ export class ReportCardsController {
     }
   }
 
-  // ── student: released report cards ─────────────────────────────────────
+  // ── released report cards (shared by student + teacher views) ──────────
+
+  // A card is only "released" once every class subject has this student's
+  // marks. Everything else is reported as `pending` (names only, no marks) so
+  // a teacher can see what is still outstanding.
+  private async cardsForStudent(studentId: string, profile: { className: string; schoolId: string }) {
+    const empty = { reportCards: [] as any[], pending: [] as any[] };
+    if (!profile.className) return empty;
+
+    let q = this.db.client.from('report_exams').select('*');
+    if (profile.schoolId) q = q.eq('school_id', profile.schoolId);
+    const exams = this.unwrap(await q.order('created_at', { ascending: false }))
+      .filter((r: any) => norm(r.class_name) === norm(profile.className));
+    if (!exams.length) return empty;
+
+    const teachers = await this.classTeachers(profile.schoolId, profile.className);
+    const subjects = this.classSubjects(teachers);
+    if (!subjects.length) return empty;
+
+    const marks = this.unwrap(
+      await this.db.client.from('report_exam_marks').select('*').eq('student_id', studentId).in('exam_id', exams.map((e: any) => e.id))
+    );
+
+    const reportCards: any[] = [];
+    const pending: any[] = [];
+    for (const exam of exams) {
+      const mine = marks.filter((m: any) => String(m.exam_id) === String(exam.id));
+      const rows = subjects.map((s) => ({ s, m: mine.find((m: any) => norm(m.subject) === norm(s.subject)) }));
+      const missing = rows.filter((r) => !r.m);
+      if (missing.length) {
+        pending.push({
+          examId: String(exam.id),
+          examName: exam.name,
+          entered: rows.length - missing.length,
+          total: rows.length,
+          missingSubjects: missing.map((r) => r.s.subject)
+        });
+        continue;
+      }
+
+      const maxMarks = Number(exam.max_marks ?? 100);
+      const subjectRows = rows.map(({ s, m }) => {
+        const value = Number(m!.marks);
+        const pct = maxMarks > 0 ? round2((value / maxMarks) * 100) : 0;
+        return {
+          subject: s.subject,
+          marks: value,
+          maxMarks,
+          percentage: pct,
+          grade: gradeFor(pct),
+          remarks: m!.remarks || '',
+          teacherName: s.teacherNames[0] || ''
+        };
+      });
+      const total = round2(subjectRows.reduce((sum, r) => sum + r.marks, 0));
+      const maxTotal = maxMarks * subjectRows.length;
+      const percentage = maxTotal > 0 ? round2((total / maxTotal) * 100) : 0;
+      const releasedAt = mine.reduce((latest: string, m: any) => {
+        const t = String(m.updated_at || m.created_at || '');
+        return t > latest ? t : latest;
+      }, '');
+      reportCards.push({
+        examId: String(exam.id),
+        examName: exam.name,
+        className: exam.class_name,
+        maxMarks,
+        subjects: subjectRows,
+        total,
+        maxTotal,
+        percentage,
+        grade: gradeFor(percentage),
+        releasedAt: releasedAt || null
+      });
+    }
+    return { reportCards, pending };
+  }
+
+  // ── student: own released report cards ─────────────────────────────────
 
   @Get('progress/report-cards')
   async studentReportCards(@Req() req: any) {
@@ -445,66 +522,29 @@ export class ReportCardsController {
     if (!studentId) return { success: false, error: 'Unauthorized', reportCards: [] };
     try {
       const profile = await this.studentAuth.resolveStudentProfile(studentId);
-      if (!profile.className) return { success: true, reportCards: [] };
-
-      let q = this.db.client.from('report_exams').select('*');
-      if (profile.schoolId) q = q.eq('school_id', profile.schoolId);
-      const exams = this.unwrap(await q.order('created_at', { ascending: false }))
-        .filter((r: any) => norm(r.class_name) === norm(profile.className));
-      if (!exams.length) return { success: true, reportCards: [] };
-
-      const teachers = await this.classTeachers(profile.schoolId, profile.className);
-      const subjects = this.classSubjects(teachers);
-      if (!subjects.length) return { success: true, reportCards: [] };
-
-      const marks = this.unwrap(
-        await this.db.client.from('report_exam_marks').select('*').eq('student_id', studentId).in('exam_id', exams.map((e: any) => e.id))
-      );
-
-      const reportCards: any[] = [];
-      for (const exam of exams) {
-        const mine = marks.filter((m: any) => String(m.exam_id) === String(exam.id));
-        const rows = subjects.map((s) => ({ s, m: mine.find((m: any) => norm(m.subject) === norm(s.subject)) }));
-        // Held back until every subject teacher has entered this student's marks.
-        if (rows.some((r) => !r.m)) continue;
-
-        const maxMarks = Number(exam.max_marks ?? 100);
-        const subjectRows = rows.map(({ s, m }) => {
-          const value = Number(m.marks);
-          const pct = maxMarks > 0 ? round2((value / maxMarks) * 100) : 0;
-          return {
-            subject: s.subject,
-            marks: value,
-            maxMarks,
-            percentage: pct,
-            grade: gradeFor(pct),
-            remarks: m.remarks || '',
-            teacherName: s.teacherNames[0] || ''
-          };
-        });
-        const total = round2(subjectRows.reduce((sum, r) => sum + r.marks, 0));
-        const maxTotal = maxMarks * subjectRows.length;
-        const percentage = maxTotal > 0 ? round2((total / maxTotal) * 100) : 0;
-        const releasedAt = mine.reduce((latest: string, m: any) => {
-          const t = String(m.updated_at || m.created_at || '');
-          return t > latest ? t : latest;
-        }, '');
-        reportCards.push({
-          examId: String(exam.id),
-          examName: exam.name,
-          className: exam.class_name,
-          maxMarks,
-          subjects: subjectRows,
-          total,
-          maxTotal,
-          percentage,
-          grade: gradeFor(percentage),
-          releasedAt: releasedAt || null
-        });
-      }
+      const { reportCards } = await this.cardsForStudent(studentId, profile);
       return { success: true, reportCards };
     } catch (e) {
       return { ...this.fail(e, 'Unable to load report cards.'), reportCards: [] };
+    }
+  }
+
+  // ── teacher: a student's released report cards (parent-teacher meetings) ──
+
+  @Get('teacher/students/:studentId/report-cards')
+  async teacherStudentReportCards(@Req() req: any, @Param('studentId') studentId: string) {
+    if (!isTeacher(req?.user?.role)) return { success: false, error: 'Teacher access required', reportCards: [], pending: [] };
+    try {
+      const ctx = await this.teacherCtx(req);
+      const profile = await this.studentAuth.resolveStudentProfile(String(studentId || '').trim());
+      const sameSchool = !ctx.schoolId || !profile.schoolId || ctx.schoolId === profile.schoolId;
+      if (!profile.className || !sameSchool || !this.canAccessClass(ctx, profile.className)) {
+        return { success: false, error: 'Student not in your classes.', reportCards: [], pending: [] };
+      }
+      const { reportCards, pending } = await this.cardsForStudent(profile.id, profile);
+      return { success: true, studentName: profile.name, className: profile.className, reportCards, pending };
+    } catch (e) {
+      return { ...this.fail(e, 'Unable to load report cards.'), reportCards: [], pending: [] };
     }
   }
 }

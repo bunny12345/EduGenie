@@ -89,7 +89,7 @@ class _StudentReportCardScreenState extends ConsumerState<StudentReportCardScree
                   ),
                   const SizedBox(height: 12),
                 ],
-                _ReportSheet(card: card, studentName: session?.name ?? 'Student'),
+                ReportCardSheet(card: card, studentName: session?.name ?? 'Student'),
               ],
             );
           },
@@ -99,11 +99,13 @@ class _StudentReportCardScreenState extends ConsumerState<StudentReportCardScree
   }
 }
 
-class _ReportSheet extends StatelessWidget {
+/// The paper-style report card — shared by the student screen and the
+/// teacher's Student Progress tab so both render identically.
+class ReportCardSheet extends StatelessWidget {
   final ReportCard card;
   final String studentName;
 
-  const _ReportSheet({required this.card, required this.studentName});
+  const ReportCardSheet({super.key, required this.card, required this.studentName});
 
   @override
   Widget build(BuildContext context) {

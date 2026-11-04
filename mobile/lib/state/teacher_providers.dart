@@ -27,6 +27,12 @@ final teacherTestsProvider = FutureProvider.autoDispose<List<Map<String, dynamic
   return ref.watch(teacherApiServiceProvider).getTests();
 });
 
+/// One student's released report cards (+ pending exams) for the teacher's
+/// Student Progress tab, keyed by student id.
+final teacherStudentReportCardsProvider = FutureProvider.autoDispose.family<Map<String, dynamic>, String>((ref, studentId) {
+  return ref.watch(teacherApiServiceProvider).getStudentReportCards(studentId);
+});
+
 /// Chapters/lessons for the assign-homework picker — re-fetches whenever the
 /// active class or the teacher's (locked) subject changes, mirroring the web
 /// `useEffect` keyed on `[teacherTargetClass, assignSubject]`.

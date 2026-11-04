@@ -3,6 +3,7 @@ import SubjectBackground, { getPalette } from './SubjectBackground';
 import TeacherSubjectProgressChart from './TeacherSubjectProgressChart';
 import StudentProgress from './StudentProgress';
 import TeacherReportCards from './TeacherReportCards';
+import StudentReportCard from './StudentReportCard';
 import {
   addTestQuestion,
   assignTest,
@@ -25,6 +26,7 @@ import {
   getTeacherStudentDeliveryStatus,
   getTeacherStudentSubjectProgress,
   getTeacherStudentLearningScore,
+  getTeacherStudentReportCards,
   getTeacherStudents,
   listCurriculumLessons,
   getTests,
@@ -3995,11 +3997,20 @@ export default function TeacherDashboard({ session, onLogout }) {
 
             <article className="td-card td-card-framed td-progress-page-card">
               {selectedStudentId ? (
-                <StudentProgress
-                  studentId={selectedStudentId}
-                  greetingName={selectedStudentName}
-                  fetchFn={getTeacherStudentLearningScore}
-                />
+                <>
+                  <StudentProgress
+                    studentId={selectedStudentId}
+                    greetingName={selectedStudentName}
+                    fetchFn={getTeacherStudentLearningScore}
+                  />
+                  <StudentReportCard
+                    key={selectedStudentId}
+                    embedded
+                    studentId={selectedStudentId}
+                    greetingName={selectedStudentName}
+                    fetchFn={() => getTeacherStudentReportCards(selectedStudentId)}
+                  />
+                </>
               ) : (
                 <p className="td-empty">Select a student on the left to see their full progress report.</p>
               )}
