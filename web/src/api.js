@@ -804,6 +804,11 @@ export async function getStudentReportCards() {
   return getJsonChecked(`${API_BASE}/progress/report-cards`, 'getStudentReportCards');
 }
 
+// Records that the top-3 rank celebration has played, so it never replays.
+export async function markReportCardCelebrated(examId) {
+  return sendReportCardJson('POST', `/progress/report-cards/${encodeURIComponent(examId)}/celebrated`, {}, 'markReportCardCelebrated');
+}
+
 // Teacher view of one student's released report cards (+ which exams are still pending).
 export async function getTeacherStudentReportCards(studentId) {
   return getJsonChecked(`${API_BASE}/teacher/students/${encodeURIComponent(studentId)}/report-cards`, 'getTeacherStudentReportCards');

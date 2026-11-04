@@ -6,12 +6,17 @@ import '../../state/session_provider.dart';
 import '../../state/student_providers.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/report_card_theme.dart';
+import '../../widgets/rank_badge.dart';
+import '../../widgets/rank_celebration.dart';
 import '../../widgets/section_card.dart';
 
 /// Student "Report Card" screen — replaces the old Mock Tests tile. Mirrors
 /// `web/src/components/StudentReportCard.jsx`'s paper-report-card look. A
 /// card only ever shows up here once every subject teacher of the class has
 /// entered marks (enforced server-side) — there is no "pending" state.
+///
+/// A top-3 student gets a one-time full-screen celebration the first time they
+/// open the new results (the server remembers it, so it never replays).
 class StudentReportCardScreen extends ConsumerStatefulWidget {
   const StudentReportCardScreen({super.key});
 
@@ -21,11 +26,43 @@ class StudentReportCardScreen extends ConsumerStatefulWidget {
 
 class _StudentReportCardScreenState extends ConsumerState<StudentReportCardScreen> {
   String? _selectedExamId;
+  // Exams already celebrated this session, so a refresh can't replay one.
+  final _celebrated = <String>{};
+
+  void _maybeCelebrate(ReportCardsData data, String name) {
+    final pending = data.cards.where((c) => c.celebrationPending && !_celebrated.contains(c.examId));
+    if (pending.isEmpty) return;
+    final card = pending.first;
+    _celebrated.add(card.examId);
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted) return;
+      setState(() => _selectedExamId = card.examId);
+      // Fire-and-forget: mark as seen as soon as the celebration starts.
+      ref.read(studentApiServiceProvider).markReportCardCelebrated(card.examId).catchError((_) {});
+      await showGeneralDialog<void>(
+        context: context,
+        barrierDismissible: false,
+        barrierColor: Colors.transparent,
+        transitionDuration: const Duration(milliseconds: 250),
+        pageBuilder: (ctx, _, _) => RankCelebration(
+          rank: card.rank ?? 3,
+          name: name,
+          className: card.className,
+          examName: card.examName,
+          onClose: () => Navigator.of(ctx).pop(),
+        ),
+        transitionBuilder: (ctx, anim, _, child) => FadeTransition(opacity: anim, child: child),
+      );
+      // The badge in the profile chip should appear right away.
+      ref.invalidate(reportCardsProvider);
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
     final cardsAsync = ref.watch(reportCardsProvider);
     final session = ref.watch(sessionProvider).value;
+    final studentName = session?.name.isNotEmpty == true ? session!.name : 'Student';
 
     return Scaffold(
       backgroundColor: const Color(0xFFF7F7FC),
@@ -38,7 +75,9 @@ class _StudentReportCardScreenState extends ConsumerState<StudentReportCardScree
             padding: const EdgeInsets.all(16),
             children: [ErrorInline(message: 'Unable to load your report card: $e')],
           ),
-          data: (cards) {
+          data: (data) {
+            final cards = data.cards;
+            _maybeCelebrate(data, studentName);
             if (cards.isEmpty) {
               return ListView(
                 padding: const EdgeInsets.all(24),
@@ -89,7 +128,7 @@ class _StudentReportCardScreenState extends ConsumerState<StudentReportCardScree
                   ),
                   const SizedBox(height: 12),
                 ],
-                ReportCardSheet(card: card, studentName: session?.name ?? 'Student'),
+                ReportCardSheet(card: card, studentName: studentName),
               ],
             );
           },
@@ -105,7 +144,11 @@ class ReportCardSheet extends StatelessWidget {
   final ReportCard card;
   final String studentName;
 
-  const ReportCardSheet({super.key, required this.card, required this.studentName});
+  /// Teachers see the real class rank (e.g. "4 of 38"); students only ever see
+  /// a rank when they are in the top 3.
+  final bool teacherView;
+
+  const ReportCardSheet({super.key, required this.card, required this.studentName, this.teacherView = false});
 
   @override
   Widget build(BuildContext context) {
@@ -153,13 +196,14 @@ class ReportCardSheet extends StatelessWidget {
           const SizedBox(height: 14),
           for (final s in card.subjects) _SubjectRow(subject: s),
           const SizedBox(height: 14),
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.center,
+          Wrap(
+            alignment: WrapAlignment.spaceBetween,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            spacing: 10,
+            runSpacing: 10,
             children: [
               _StatBox(label: 'Total', value: '${formatMarks(card.total)}/${formatMarks(card.maxTotal)}'),
-              const SizedBox(width: 10),
               _StatBox(label: 'Percentage', value: '${formatMarks(card.percentage)}%'),
-              const Spacer(),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
                 decoration: BoxDecoration(
@@ -176,6 +220,25 @@ class ReportCardSheet extends StatelessWidget {
               ),
             ],
           ),
+          if (card.rank != null && card.rank! <= 3) ...[
+            const SizedBox(height: 12),
+            _RankPill(
+              rank: card.rank!,
+              text: teacherView
+                  ? 'Class rank ${card.rank} of ${card.classSize}'
+                  : '${rankOrdinal(card.rank!)} in ${card.className.isEmpty ? 'class' : card.className}',
+            ),
+          ] else if (teacherView && card.rank != null) ...[
+            const SizedBox(height: 12),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: _StatBox(label: 'Class rank', value: '${card.rank} of ${card.classSize}'),
+            ),
+          ],
+          if (card.toppers.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            _ToppersStrip(toppers: card.toppers),
+          ],
           const SizedBox(height: 14),
           Container(
             width: double.infinity,
@@ -216,6 +279,72 @@ class ReportCardSheet extends StatelessWidget {
                     ],
                   ),
           ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Gold/silver/bronze-framed "you ranked Nth" strip with the medal badge.
+class _RankPill extends StatelessWidget {
+  final int rank;
+  final String text;
+
+  const _RankPill({required this.rank, required this.text});
+
+  @override
+  Widget build(BuildContext context) {
+    final ring = rank == 1 ? const Color(0xFFFFD21F) : rank == 2 ? const Color(0xFFC5CDE0) : const Color(0xFFE0A06A);
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(10, 6, 16, 6),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.9),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: ring, width: 3),
+      ),
+      child: Row(
+        children: [
+          RankBadge(rank: rank, size: rank == 1 ? 84 : 76),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(text, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w900, color: Color(0xFF23275C))),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// "Class Toppers" names (no marks) so the whole class can see who ranked 1–3.
+class _ToppersStrip extends StatelessWidget {
+  final List<ReportCardTopper> toppers;
+
+  const _ToppersStrip({required this.toppers});
+
+  @override
+  Widget build(BuildContext context) {
+    const medals = ['', '🥇', '🥈', '🥉'];
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.85), borderRadius: BorderRadius.circular(14)),
+      child: Wrap(
+        spacing: 8,
+        runSpacing: 6,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        children: [
+          const Text('🏆 Class Toppers', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: Color(0xFF23275C))),
+          for (final t in toppers)
+            Container(
+              padding: const EdgeInsets.fromLTRB(6, 3, 12, 3),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(999),
+                border: Border.all(color: const Color(0xFFE6E9F8), width: 1.5),
+              ),
+              child: Text('${medals[t.rank.clamp(0, 3)]} ${t.name}', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: Color(0xFF23275C))),
+            ),
         ],
       ),
     );

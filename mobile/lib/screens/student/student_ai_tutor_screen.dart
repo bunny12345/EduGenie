@@ -11,7 +11,9 @@ import '../../state/student_providers.dart';
 import '../../state/talk_to_sam_provider.dart';
 import '../../state/tutor_providers.dart';
 import '../../theme/ai_tutor_colors.dart';
+import '../../utils/tutor_text.dart';
 import '../../widgets/pressable_scale.dart';
+import '../../widgets/sam_avatar.dart';
 import '../../widgets/section_card.dart';
 
 /// AI Tutor — full mirror of the web app's tutor panel (StudentDashboard.jsx
@@ -98,6 +100,27 @@ class _StudentAiTutorScreenState extends ConsumerState<StudentAiTutorScreen> {
         ? const AsyncValue<List<CurriculumLesson>>.data([])
         : ref.watch(curriculumLessonsProvider(tutorState.subject));
 
+    return PopScope(
+      canPop: !talkState.open,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) ref.read(talkToSamProvider.notifier).togglePopup();
+      },
+      child: Stack(
+        children: [
+          _buildTutorScaffold(context, subjects, talkState, tutorState, lessonsAsync),
+          if (talkState.open) Positioned.fill(child: _SamLiveOverlay(talkState: talkState, tutorState: tutorState)),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTutorScaffold(
+    BuildContext context,
+    List<String> subjects,
+    TalkToSamState talkState,
+    TutorState tutorState,
+    AsyncValue<List<CurriculumLesson>> lessonsAsync,
+  ) {
     return Scaffold(
       backgroundColor: const Color(0xFF0A1345),
       appBar: AppBar(
@@ -458,7 +481,7 @@ class _MessageBubble extends ConsumerWidget {
                       .toList(),
                 ),
               ),
-            Text(message.text, style: TextStyle(color: isUser ? Colors.white : AiTutorColors.botText, fontSize: 14, height: 1.5)),
+            Text(isUser ? message.text : tutorDisplayText(message.text), style: TextStyle(color: isUser ? Colors.white : AiTutorColors.botText, fontSize: 14, height: 1.5)),
             // Rendered inside the same bubble (matches web's `.eg-ai-msg-actions`
             // sitting inside `.ai-msg`) instead of as a separate row below it —
             // saves vertical space in the chat so more messages fit on screen.
@@ -670,7 +693,7 @@ class _CheckQuestionCard extends ConsumerWidget {
             ],
           ),
           if (result == null) ...[
-            Text(question.question, style: const TextStyle(fontSize: 13, color: AiTutorColors.panelText, height: 1.5)),
+            Text(tutorDisplayText(question.question), style: const TextStyle(fontSize: 13, color: AiTutorColors.panelText, height: 1.5)),
             const SizedBox(height: 10),
             for (var i = 0; i < question.options.length; i++)
               Padding(
@@ -685,12 +708,12 @@ class _CheckQuestionCard extends ConsumerWidget {
                     ),
                     child: Align(
                         alignment: Alignment.centerLeft,
-                        child: Text(question.options[i], style: const TextStyle(fontSize: 12.5, color: AiTutorColors.panelText))),
+                        child: Text(tutorDisplayText(question.options[i]), style: const TextStyle(fontSize: 12.5, color: AiTutorColors.panelText))),
                   ),
                 ),
               ),
           ] else
-            Text(result.explanation, style: const TextStyle(fontSize: 12.5, color: Color(0xFFCBD5E1), height: 1.5)),
+            Text(tutorDisplayText(result.explanation), style: const TextStyle(fontSize: 12.5, color: Color(0xFFCBD5E1), height: 1.5)),
         ],
       ),
     );
@@ -754,7 +777,7 @@ class _ExplainBackPanel extends ConsumerWidget {
           ] else ...[
             Text('Score: ${result.score}/5', style: const TextStyle(fontWeight: FontWeight.w700, color: AiTutorColors.panelText, fontSize: 14)),
             const SizedBox(height: 4),
-            Text(result.feedback, style: const TextStyle(fontSize: 13, color: AiTutorColors.panelText)),
+            Text(tutorDisplayText(result.feedback), style: const TextStyle(fontSize: 13, color: AiTutorColors.panelText)),
             if (result.strengths.isNotEmpty)
               Padding(
                 padding: const EdgeInsets.only(top: 4),
@@ -813,7 +836,7 @@ class _QuizRushPanel extends ConsumerWidget {
             Text('Question ${tutorState.quizRushCurrentIndex + 1} of ${data.questions.length}',
                 style: const TextStyle(color: AiTutorColors.nudgeText, fontSize: 11, fontWeight: FontWeight.w700)),
             const SizedBox(height: 8),
-            Text(data.questions[tutorState.quizRushCurrentIndex].question, style: const TextStyle(fontSize: 14, color: AiTutorColors.panelText)),
+            Text(tutorDisplayText(data.questions[tutorState.quizRushCurrentIndex].question), style: const TextStyle(fontSize: 14, color: AiTutorColors.panelText)),
             const SizedBox(height: 10),
             for (var i = 0; i < data.questions[tutorState.quizRushCurrentIndex].options.length; i++)
               Padding(
@@ -828,7 +851,7 @@ class _QuizRushPanel extends ConsumerWidget {
                     ),
                     child: Align(
                         alignment: Alignment.centerLeft,
-                        child: Text(data.questions[tutorState.quizRushCurrentIndex].options[i],
+                        child: Text(tutorDisplayText(data.questions[tutorState.quizRushCurrentIndex].options[i]),
                             style: const TextStyle(fontSize: 12.5, color: AiTutorColors.panelText))),
                   ),
                 ),
@@ -893,7 +916,7 @@ class _StoryPanel extends ConsumerWidget {
           else if (story != null) ...[
             Flexible(
                 child: SingleChildScrollView(
-                    child: Text(story.story, style: const TextStyle(fontSize: 13.5, color: AiTutorColors.panelText, height: 1.7)))),
+                    child: Text(tutorDisplayText(story.story), style: const TextStyle(fontSize: 13.5, color: AiTutorColors.panelText, height: 1.7)))),
             const SizedBox(height: 10),
             if (!tutorState.storyCompleted)
               ElevatedButton(
@@ -944,7 +967,6 @@ class _InputRow extends ConsumerWidget {
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        if (talkState.open) _TalkToSamPanel(talkState: talkState),
         if (chatImages.isNotEmpty)
           Container(
             height: 64,
@@ -1272,39 +1294,228 @@ class _SendButton extends StatelessWidget {
   }
 }
 
-/// Talk to Sam status panel — shown above the input row while open. Mirrors
-/// the web popup's status bar + transcript + Send Now button, without the
-/// floating-bubble positioning (not needed once it's inline on mobile).
-class _TalkToSamPanel extends ConsumerWidget {
+/// Full-screen Sam: the animated avatar fills the screen with the reply
+/// caption and mic controls in a compact panel at the bottom. Sam only talks
+/// and gestures once her voice is actually audible.
+class _SamLiveOverlay extends ConsumerWidget {
   final TalkToSamState talkState;
+  final TutorState tutorState;
 
-  const _TalkToSamPanel({required this.talkState});
+  const _SamLiveOverlay({required this.talkState, required this.tutorState});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final schoolName = ref.watch(dashboardProvider).value?.schoolName ?? '';
+    final lastAi = tutorState.messages.where((m) => !m.isUser).lastOrNull;
+    final mode = talkState.voicePlaying
+        ? SamMode.speaking
+        : talkState.recording
+            ? SamMode.listening
+            : (talkState.busy || tutorState.sending || talkState.speaking)
+                ? SamMode.thinking
+                : SamMode.idle;
+    final glow = talkState.voicePlaying
+        ? const Color(0x5532DC8C)
+        : talkState.recording
+            ? const Color(0x55FF5A6E)
+            : const Color(0x335B6CFF);
+    final subtitle = tutorState.lesson != null ? 'Teaching: ${tutorState.lesson!.title}' : (tutorState.subject.isNotEmpty ? tutorState.subject : 'Your AI Study Buddy');
+    const bgBottom = Color(0xFF0A1345);
+
+    return Material(
+      color: bgBottom,
+      child: DecoratedBox(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [Color(0xFF22339F), Color(0xFF0E1A66), bgBottom],
+          ),
+        ),
+        child: SafeArea(
+          child: Column(
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 8, 12, 0),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text('Sam', style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w800)),
+                          Text(subtitle, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Color(0xCCDCE4FF), fontSize: 12)),
+                        ],
+                      ),
+                    ),
+                    if (talkState.speaking)
+                      IconButton(
+                        tooltip: 'Mute Sam',
+                        icon: const Icon(Icons.volume_off_rounded, color: Colors.white, size: 20),
+                        onPressed: () => ref.read(talkToSamProvider.notifier).stopSpeaking(),
+                      ),
+                    TextButton.icon(
+                      onPressed: () => ref.read(talkToSamProvider.notifier).togglePopup(),
+                      icon: const Icon(Icons.close_rounded, size: 16, color: Colors.white),
+                      label: const Text('End chat', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 12)),
+                      style: TextButton.styleFrom(
+                        backgroundColor: const Color(0x66E5384F),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                        padding: const EdgeInsets.symmetric(horizontal: 12),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Expanded(
+                child: Stack(
+                  children: [
+                    Positioned.fill(
+                      child: DecoratedBox(
+                        decoration: BoxDecoration(
+                          gradient: RadialGradient(center: const Alignment(0, 0.2), radius: 0.75, colors: [glow, Colors.transparent]),
+                        ),
+                      ),
+                    ),
+                    Align(
+                      alignment: Alignment.bottomCenter,
+                      child: SamAvatar(
+                        mode: mode,
+                        schoolName: schoolName,
+                        viewTop: 96,
+                        viewHeight: 590,
+                      ),
+                    ),
+                    Positioned(
+                      left: 0,
+                      right: 0,
+                      bottom: 0,
+                      height: 36,
+                      child: IgnorePointer(
+                        child: DecoratedBox(
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              begin: Alignment.topCenter,
+                              end: Alignment.bottomCenter,
+                              colors: [bgBottom.withValues(alpha: 0), bgBottom],
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              _TalkToSamPanel(talkState: talkState, fallbackCaption: lastAi?.text ?? ''),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Reply text shown simply at the bottom; follows the voice by scrolling in
+/// step with the audio position so the spoken part stays in view.
+class _SamCaption extends ConsumerStatefulWidget {
+  final String text;
+  final bool followVoice;
+
+  const _SamCaption({required this.text, required this.followVoice});
+
+  @override
+  ConsumerState<_SamCaption> createState() => _SamCaptionState();
+}
+
+class _SamCaptionState extends ConsumerState<_SamCaption> {
+  final _ctrl = ScrollController();
+  late final ValueNotifier<double> _progress;
+
+  @override
+  void initState() {
+    super.initState();
+    _progress = ref.read(talkToSamProvider.notifier).voiceProgress;
+    _progress.addListener(_follow);
+  }
+
+  void _follow() {
+    if (!widget.followVoice || !_ctrl.hasClients) return;
+    final target = _progress.value * _ctrl.position.maxScrollExtent;
+    _ctrl.animateTo(target, duration: const Duration(milliseconds: 260), curve: Curves.linear);
+  }
+
+  @override
+  void didUpdateWidget(covariant _SamCaption oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.text != widget.text) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (_ctrl.hasClients) _ctrl.jumpTo(0);
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    _progress.removeListener(_follow);
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final maxHeight = math.min(120.0, MediaQuery.of(context).size.height * 0.17);
+    return ConstrainedBox(
+      constraints: BoxConstraints(maxHeight: maxHeight),
+      child: Container(
+        decoration: BoxDecoration(color: const Color(0x14FFFFFF), borderRadius: BorderRadius.circular(12)),
+        child: SingleChildScrollView(
+          controller: _ctrl,
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          child: Text(
+            tutorDisplayText(widget.text),
+            style: const TextStyle(color: Color(0xFFEEF1FF), fontSize: 13.5, height: 1.5),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Bottom panel of the full-screen Sam view: the reply caption (scrolls with
+/// her voice), status line, transcript, errors and the mic controls.
+class _TalkToSamPanel extends ConsumerWidget {
+  final TalkToSamState talkState;
+  final String fallbackCaption;
+
+  const _TalkToSamPanel({required this.talkState, required this.fallbackCaption});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final thinking = talkState.busy || talkState.speaking;
     final statusLabel = talkState.recording
         ? "🎙️ Listening... (speak, I'll auto-detect when you stop)"
-        : talkState.speaking
+        : talkState.voicePlaying
             ? '🔊 Sam is talking...'
-            : talkState.busy
+            : thinking
                 ? '💭 Sam is thinking...'
                 : '✨ Sam is ready';
     // Colors/animation speed per state — mirrors web's
     // `.eg-talk-sam-status-bar.recording/.speaking/.thinking` classes.
-    final waveActive = talkState.recording || talkState.speaking || talkState.busy;
+    final waveActive = talkState.recording || talkState.voicePlaying || thinking;
     final waveColors = talkState.recording
         ? const [Color(0xFFFF788C), Color(0xFFDC5064)]
-        : talkState.speaking
+        : talkState.voicePlaying
             ? const [Color(0xFF64DCA0), Color(0xFF3CB478)]
-            : talkState.busy
+            : thinking
                 ? const [Color(0x80C8B4FF)]
                 : const [Color(0x59A0C0FF)];
     final waveDuration = talkState.busy ? const Duration(milliseconds: 800) : const Duration(milliseconds: 500);
     final labelColor = talkState.recording
         ? const Color(0xFFFFB4BE)
-        : talkState.speaking
+        : talkState.voicePlaying
             ? const Color(0xFF96FFBE)
             : Colors.white70;
+    final caption = talkState.caption.isNotEmpty ? talkState.caption : fallbackCaption;
 
     return Container(
       padding: const EdgeInsets.all(12),
@@ -1312,30 +1523,20 @@ class _TalkToSamPanel extends ConsumerWidget {
         gradient: const LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: [Color(0xFA121E55), Color(0xFC0C1641)],
+          colors: [Color(0xF2121E55), Color(0xF50C1641)],
         ),
         border: Border.all(color: const Color(0x59788FFF)),
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(18),
       ),
-      margin: const EdgeInsets.fromLTRB(12, 8, 12, 8),
+      margin: const EdgeInsets.fromLTRB(12, 0, 12, 12),
       child: Column(
+        mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Row(
-            children: [
-              const Text('🎓', style: TextStyle(fontSize: 18)),
-              const SizedBox(width: 8),
-              const Expanded(child: Text('Sam', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700))),
-              if (talkState.speaking)
-                IconButton(
-                    icon: const Icon(Icons.volume_off_rounded, color: Colors.white70, size: 18),
-                    onPressed: () => ref.read(talkToSamProvider.notifier).stopSpeaking()),
-              IconButton(
-                  icon: const Icon(Icons.close_rounded, color: Colors.white70, size: 18),
-                  onPressed: () => ref.read(talkToSamProvider.notifier).togglePopup()),
-            ],
-          ),
-          const SizedBox(height: 6),
+          if (caption.isNotEmpty) ...[
+            _SamCaption(text: caption, followVoice: talkState.voicePlaying),
+            const SizedBox(height: 8),
+          ],
           Row(
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [

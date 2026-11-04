@@ -1,12 +1,13 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:math' as math;
-import 'dart:typed_data';
 
 import 'package:audioplayers/audioplayers.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:record/record.dart';
 
+import '../utils/tutor_text.dart';
 import '../utils/wav_encoder.dart';
 import 'session_provider.dart';
 import 'tutor_providers.dart';
@@ -24,6 +25,11 @@ class TalkToSamState {
   // speaking (not tied to a specific message) or nothing is playing.
   final String? loadingMessageId;
   final String? playingMessageId;
+  // True only while Sam's voice is actually audible (not while TTS is still
+  // being fetched) — drives when the animated avatar talks and gestures.
+  final bool voicePlaying;
+  // Raw text Sam is currently speaking (shown as the scrolling caption).
+  final String caption;
 
   const TalkToSamState({
     this.open = false,
@@ -35,6 +41,8 @@ class TalkToSamState {
     this.sessionActive = false,
     this.loadingMessageId,
     this.playingMessageId,
+    this.voicePlaying = false,
+    this.caption = '',
   });
 
   TalkToSamState copyWith({
@@ -49,6 +57,8 @@ class TalkToSamState {
     bool clearLoadingMessageId = false,
     String? playingMessageId,
     bool clearPlayingMessageId = false,
+    bool? voicePlaying,
+    String? caption,
   }) =>
       TalkToSamState(
         open: open ?? this.open,
@@ -60,6 +70,8 @@ class TalkToSamState {
         sessionActive: sessionActive ?? this.sessionActive,
         loadingMessageId: clearLoadingMessageId ? null : (loadingMessageId ?? this.loadingMessageId),
         playingMessageId: clearPlayingMessageId ? null : (playingMessageId ?? this.playingMessageId),
+        voicePlaying: voicePlaying ?? this.voicePlaying,
+        caption: caption ?? this.caption,
       );
 }
 
@@ -79,6 +91,10 @@ class TalkToSamNotifier extends Notifier<TalkToSamState> {
   // Voice" tapped while Sam is mid-reply), queue it instead of clobbering
   // the current playback.
   final List<_QueuedSpeech> _speakQueue = [];
+
+  // 0..1 position of the current reply's audio — the caption scrolls with it.
+  final ValueNotifier<double> voiceProgress = ValueNotifier<double>(0);
+  Duration _voiceDuration = Duration.zero;
 
   // Silence auto-stop bookkeeping — mirrors web's Web Audio API silence
   // detector in `onStartTalkToSamRecording` (auto-stops recording after a
@@ -103,7 +119,27 @@ class TalkToSamNotifier extends Notifier<TalkToSamState> {
 
   @override
   TalkToSamState build() {
+    // Voice counts as "playing" only once audio actually advances, so the
+    // avatar never starts talking before the sound does.
+    final stateSub = _player.onPlayerStateChanged.listen((s) {
+      if (s != PlayerState.playing && state.voicePlaying) {
+        state = state.copyWith(voicePlaying: false, error: state.error);
+      }
+    });
+    final durationSub = _player.onDurationChanged.listen((d) => _voiceDuration = d);
+    final positionSub = _player.onPositionChanged.listen((p) {
+      if (_voiceDuration.inMilliseconds > 0) {
+        voiceProgress.value = (p.inMilliseconds / _voiceDuration.inMilliseconds).clamp(0.0, 1.0);
+      }
+      if (!state.voicePlaying && p > Duration.zero && _player.state == PlayerState.playing) {
+        state = state.copyWith(voicePlaying: true, error: state.error);
+      }
+    });
     ref.onDispose(() {
+      stateSub.cancel();
+      durationSub.cancel();
+      positionSub.cancel();
+      voiceProgress.dispose();
       _recordingSub?.cancel();
       _recorder.dispose();
       _player.dispose();
@@ -154,9 +190,15 @@ class TalkToSamNotifier extends Notifier<TalkToSamState> {
   Future<void> _playSpeech(String text, bool autoListen, bool requireSession, String? messageId) async {
     final studentId = ref.read(sessionProvider).value?.userId ?? '';
     if (studentId.isEmpty) return;
-    state = state.copyWith(loadingMessageId: messageId, clearLoadingMessageId: messageId == null);
+    voiceProgress.value = 0;
+    _voiceDuration = Duration.zero;
+    state = state.copyWith(
+      loadingMessageId: messageId,
+      clearLoadingMessageId: messageId == null,
+      caption: requireSession ? text : null,
+    );
     try {
-      final tts = await ref.read(chatApiServiceProvider).generateLocalTtsAudio(text, studentId, voice: 'shimmer', speed: 1.15);
+      final tts = await ref.read(chatApiServiceProvider).generateLocalTtsAudio(tutorSpeechText(text), studentId, voice: 'shimmer', speed: 1.15);
       // Sam may have been closed while this request was in flight — skip
       // playback so a closed popup can't suddenly start talking. Mirrors
       // web's `samSessionActiveRef.current` check right after the TTS await
@@ -187,7 +229,7 @@ class TalkToSamNotifier extends Notifier<TalkToSamState> {
     } catch (_) {
       /* fall through — speaking indicator still clears below */
     } finally {
-      state = state.copyWith(speaking: false, clearLoadingMessageId: true, clearPlayingMessageId: true);
+      state = state.copyWith(speaking: false, voicePlaying: false, clearLoadingMessageId: true, clearPlayingMessageId: true);
     }
     if (_speakQueue.isNotEmpty) {
       final next = _speakQueue.removeAt(0);
@@ -200,7 +242,7 @@ class TalkToSamNotifier extends Notifier<TalkToSamState> {
   void stopSpeaking() {
     _player.stop();
     _speakQueue.clear();
-    state = state.copyWith(speaking: false, clearLoadingMessageId: true, clearPlayingMessageId: true);
+    state = state.copyWith(speaking: false, voicePlaying: false, clearLoadingMessageId: true, clearPlayingMessageId: true);
   }
 
   Future<void> startRecording() async {

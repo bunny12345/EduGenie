@@ -511,7 +511,7 @@ class _StudentReportCardsSectionState extends ConsumerState<_StudentReportCardsS
                           ],
                         ),
                       ),
-                    ReportCardSheet(card: card, studentName: widget.studentName),
+                    ReportCardSheet(card: card, studentName: widget.studentName, teacherView: true),
                   ],
                 ],
               );

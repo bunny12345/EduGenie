@@ -438,11 +438,60 @@ export class ReportCardsController {
 
   // ── released report cards (shared by student + teacher views) ──────────
 
+  // Class ranking for one exam. Only "ready" once EVERY student in the class has
+  // marks for every subject — ranking earlier would let a rank change later.
+  // Ties share a rank (1, 1, 3 …) and are decided on total marks.
+  private rankExam(
+    subjects: Array<{ subject: string }>,
+    roster: Array<{ id: string; name: string }>,
+    examMarks: any[]
+  ) {
+    const notReady = { ready: false, ranks: new Map<string, number>(), toppers: [] as Array<{ rank: number; name: string }> };
+    if (roster.length < 2 || !subjects.length) return notReady;
+    const keys = subjects.map((s) => norm(s.subject));
+    const byStudent = new Map<string, Map<string, number>>();
+    for (const m of examMarks) {
+      const sid = String(m.student_id);
+      if (!byStudent.has(sid)) byStudent.set(sid, new Map());
+      byStudent.get(sid)!.set(norm(m.subject), Number(m.marks));
+    }
+    const totals = new Map<string, number>();
+    for (const st of roster) {
+      const got = byStudent.get(st.id);
+      if (!got || !keys.every((k) => got.has(k))) return notReady;
+      totals.set(st.id, keys.reduce((sum, k) => sum + (got.get(k) || 0), 0));
+    }
+    const values = Array.from(totals.values());
+    const ranks = new Map<string, number>();
+    totals.forEach((t, id) => ranks.set(id, 1 + values.filter((v) => v > t).length));
+    const toppers = roster
+      .filter((st) => (ranks.get(st.id) || 99) <= 3)
+      .map((st) => ({ rank: ranks.get(st.id)!, name: st.name }))
+      .sort((a, b) => a.rank - b.rank || a.name.localeCompare(b.name));
+    return { ready: true, ranks, toppers };
+  }
+
+  // Exams this student has already been celebrated for. Returns null when the
+  // table can't be read, so a failure means "no celebration" rather than
+  // replaying it on every visit.
+  private async celebratedExamIds(studentId: string): Promise<Set<string> | null> {
+    try {
+      const rows = this.unwrap(await this.db.client.from('report_exam_celebrations').select('*').eq('student_id', studentId));
+      return new Set(rows.map((r: any) => String(r.exam_id)));
+    } catch {
+      return null;
+    }
+  }
+
   // A card is only "released" once every class subject has this student's
   // marks. Everything else is reported as `pending` (names only, no marks) so
   // a teacher can see what is still outstanding.
-  private async cardsForStudent(studentId: string, profile: { className: string; schoolId: string }) {
-    const empty = { reportCards: [] as any[], pending: [] as any[] };
+  private async cardsForStudent(
+    studentId: string,
+    profile: { className: string; schoolId: string },
+    opts: { revealAllRanks?: boolean; withCelebrations?: boolean } = {}
+  ) {
+    const empty = { reportCards: [] as any[], pending: [] as any[], badge: null as any };
     if (!profile.className) return empty;
 
     let q = this.db.client.from('report_exams').select('*');
@@ -455,14 +504,23 @@ export class ReportCardsController {
     const subjects = this.classSubjects(teachers);
     if (!subjects.length) return empty;
 
-    const marks = this.unwrap(
-      await this.db.client.from('report_exam_marks').select('*').eq('student_id', studentId).in('exam_id', exams.map((e: any) => e.id))
+    const allMarks = this.unwrap(
+      await this.db.client.from('report_exam_marks').select('*').in('exam_id', exams.map((e: any) => e.id))
     );
+    const roster = await this.roster(profile.schoolId, profile.className);
+    if (!roster.some((s: any) => s.id === studentId)) roster.push({ id: studentId, name: '' });
+    const celebrated = opts.withCelebrations ? await this.celebratedExamIds(studentId) : null;
 
     const reportCards: any[] = [];
     const pending: any[] = [];
+    // Newest exam whose class ranking is final decides the current rank badge:
+    // it stays until the next exam's results are announced.
+    let badge: any = null;
+    let badgeDecided = false;
     for (const exam of exams) {
-      const mine = marks.filter((m: any) => String(m.exam_id) === String(exam.id));
+      const examMarks = allMarks.filter((m: any) => String(m.exam_id) === String(exam.id));
+      const mine = examMarks.filter((m: any) => String(m.student_id) === studentId);
+      const rankInfo = this.rankExam(subjects, roster, examMarks);
       const rows = subjects.map((s) => ({ s, m: mine.find((m: any) => norm(m.subject) === norm(s.subject)) }));
       const missing = rows.filter((r) => !r.m);
       if (missing.length) {
@@ -474,6 +532,14 @@ export class ReportCardsController {
           missingSubjects: missing.map((r) => r.s.subject)
         });
         continue;
+      }
+
+      const ownRank = rankInfo.ready ? (rankInfo.ranks.get(studentId) ?? null) : null;
+      // Students only ever see a rank if they are in the top 3; teachers see all.
+      const shownRank = opts.revealAllRanks ? ownRank : (ownRank !== null && ownRank <= 3 ? ownRank : null);
+      if (rankInfo.ready && !badgeDecided) {
+        badgeDecided = true;
+        if (ownRank !== null && ownRank <= 3) badge = { rank: ownRank, examId: String(exam.id), examName: exam.name };
       }
 
       const maxMarks = Number(exam.max_marks ?? 100);
@@ -507,10 +573,14 @@ export class ReportCardsController {
         maxTotal,
         percentage,
         grade: gradeFor(percentage),
-        releasedAt: releasedAt || null
+        releasedAt: releasedAt || null,
+        classSize: rankInfo.ready ? roster.length : null,
+        rank: shownRank,
+        toppers: rankInfo.toppers,
+        celebrationPending: !!celebrated && ownRank !== null && ownRank <= 3 && !celebrated.has(String(exam.id))
       });
     }
-    return { reportCards, pending };
+    return { reportCards, pending, badge };
   }
 
   // ── student: own released report cards ─────────────────────────────────
@@ -519,13 +589,34 @@ export class ReportCardsController {
   async studentReportCards(@Req() req: any) {
     // Identity always comes from the token, never from a client-supplied id.
     const studentId = String(req?.studentId || '').trim();
-    if (!studentId) return { success: false, error: 'Unauthorized', reportCards: [] };
+    if (!studentId) return { success: false, error: 'Unauthorized', reportCards: [], badge: null };
     try {
       const profile = await this.studentAuth.resolveStudentProfile(studentId);
-      const { reportCards } = await this.cardsForStudent(studentId, profile);
-      return { success: true, reportCards };
+      const { reportCards, badge } = await this.cardsForStudent(studentId, profile, { withCelebrations: true });
+      return { success: true, reportCards, badge };
     } catch (e) {
-      return { ...this.fail(e, 'Unable to load report cards.'), reportCards: [] };
+      return { ...this.fail(e, 'Unable to load report cards.'), reportCards: [], badge: null };
+    }
+  }
+
+  // Called once the rank celebration has started, so it never replays.
+  @Post('progress/report-cards/:examId/celebrated')
+  async markCelebrated(@Req() req: any, @Param('examId') examId: string) {
+    const studentId = String(req?.studentId || '').trim();
+    if (!studentId) return { success: false, error: 'Unauthorized' };
+    try {
+      const profile = await this.studentAuth.resolveStudentProfile(studentId);
+      const exam = await this.loadExam(examId);
+      if (!exam || norm(exam.class_name) !== norm(profile.className)) return { success: false, error: 'Exam not found.' };
+      const existing = this.unwrap(
+        await this.db.client.from('report_exam_celebrations').select('*').eq('exam_id', exam.id).eq('student_id', studentId).limit(1)
+      );
+      if (!existing.length) {
+        this.unwrap(await this.db.client.from('report_exam_celebrations').insert([{ exam_id: exam.id, student_id: studentId }]).select());
+      }
+      return { success: true };
+    } catch (e) {
+      return this.fail(e, 'Unable to save.');
     }
   }
 
@@ -541,7 +632,7 @@ export class ReportCardsController {
       if (!profile.className || !sameSchool || !this.canAccessClass(ctx, profile.className)) {
         return { success: false, error: 'Student not in your classes.', reportCards: [], pending: [] };
       }
-      const { reportCards, pending } = await this.cardsForStudent(profile.id, profile);
+      const { reportCards, pending } = await this.cardsForStudent(profile.id, profile, { revealAllRanks: true });
       return { success: true, studentName: profile.name, className: profile.className, reportCards, pending };
     } catch (e) {
       return { ...this.fail(e, 'Unable to load report cards.'), reportCards: [], pending: [] };

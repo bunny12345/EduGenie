@@ -5,6 +5,7 @@ import '../../models/dashboard.dart';
 import '../../state/session_provider.dart';
 import '../../state/student_providers.dart';
 import '../../theme/app_colors.dart';
+import '../../widgets/rank_badge.dart';
 import '../../widgets/section_card.dart';
 import 'student_ai_tutor_screen.dart';
 import 'student_announcements_screen.dart';
@@ -52,6 +53,8 @@ class StudentHomeScreen extends ConsumerWidget {
         child: ListView(
           padding: const EdgeInsets.all(16),
           children: [
+            // Left out entirely until the dashboard has loaded a school name.
+            _SchoolBanner(name: dashboardAsync.value?.schoolName),
             dashboardAsync.when(
               loading: () => const SectionCard(child: SkeletonBox(height: 90)),
               error: (e, _) => SectionCard(child: ErrorInline(message: 'Unable to load streak: $e')),
@@ -62,6 +65,103 @@ class StudentHomeScreen extends ConsumerWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+/// The student's school name, shown between the app bar and the streak card so
+/// each school sees its own name on the app. Mirrors the banner that replaced
+/// the search box in the website's top bar.
+class _SchoolBanner extends StatelessWidget {
+  final String? name;
+
+  const _SchoolBanner({required this.name});
+
+  @override
+  Widget build(BuildContext context) {
+    final school = name?.trim() ?? '';
+    if (school.isEmpty) return const SizedBox.shrink();
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.only(bottom: 12),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Color(0xFF0B6E6A), Color(0xFF12A38F), Color(0xFF3CCB9B)],
+        ),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.7), width: 1.5),
+        boxShadow: const [BoxShadow(color: Color(0x4012A38F), blurRadius: 18, offset: Offset(0, 8))],
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Stack(
+        children: [
+          Positioned(right: -28, top: -34, child: _BannerCircle(size: 110, alpha: 0.14)),
+          Positioned(left: -22, bottom: -40, child: _BannerCircle(size: 90, alpha: 0.10)),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Container(
+                  width: 48,
+                  height: 48,
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(15),
+                    boxShadow: const [BoxShadow(color: Color(0x33000000), blurRadius: 8, offset: Offset(0, 3))],
+                  ),
+                  alignment: Alignment.center,
+                  child: const Text('🏫', style: TextStyle(fontSize: 27)),
+                ),
+                const SizedBox(width: 14),
+                Flexible(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Text(
+                        'PROUDLY LEARNING AT',
+                        style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800, letterSpacing: 1.4, color: Color(0xFFFFF1B8)),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        school,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontSize: 19,
+                          fontWeight: FontWeight.w900,
+                          height: 1.15,
+                          color: Colors.white,
+                          shadows: [Shadow(color: Color(0x40000000), blurRadius: 6, offset: Offset(0, 1))],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _BannerCircle extends StatelessWidget {
+  final double size;
+  final double alpha;
+
+  const _BannerCircle({required this.size, required this.alpha});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(shape: BoxShape.circle, color: Colors.white.withValues(alpha: alpha)),
     );
   }
 }
@@ -285,6 +385,7 @@ class _ProfileChipState extends ConsumerState<_ProfileChip> {
     final gender = dashboard?.gender ?? '';
     final loginId = dashboard?.loginId ?? '';
     final hasDetails = className.isNotEmpty || gender.isNotEmpty || loginId.isNotEmpty;
+    final badge = ref.read(reportCardsProvider).value?.badge;
 
     return OverlayEntry(
       builder: (context) => Stack(
@@ -330,6 +431,29 @@ class _ProfileChipState extends ConsumerState<_ProfileChip> {
                         child: Text('🏫 $schoolName', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Color(0xFF6366F1))),
                       ),
                     ],
+                    if (badge != null && badge.rank >= 1 && badge.rank <= 3) ...[
+                      const SizedBox(height: 8),
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          gradient: const LinearGradient(colors: [Color(0xFFFFF9DF), Colors.white]),
+                          borderRadius: BorderRadius.circular(14),
+                          border: Border.all(color: const Color(0xFFF3D36B), width: 1.5),
+                        ),
+                        child: Column(
+                          children: [
+                            RankBadge(rank: badge.rank, size: 64),
+                            const SizedBox(height: 4),
+                            Text(
+                              '${rankOrdinal(badge.rank)} in class · ${badge.examName}',
+                              textAlign: TextAlign.center,
+                              style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: Color(0xFF6B4A00)),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
                     if (hasDetails) ...[
                       const SizedBox(height: 8),
                       Container(
@@ -362,6 +486,7 @@ class _ProfileChipState extends ConsumerState<_ProfileChip> {
     final dashboard = ref.watch(dashboardProvider).value;
     final name = session?.name.isNotEmpty == true ? session!.name : 'Student';
     final className = dashboard?.className ?? session?.className ?? '';
+    final badge = ref.watch(reportCardsProvider).value?.badge;
 
     return CompositedTransformTarget(
       link: _link,
@@ -378,16 +503,23 @@ class _ProfileChipState extends ConsumerState<_ProfileChip> {
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Container(
-                width: 26,
-                height: 26,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  border: Border.all(color: const Color(0xFFDDE2FF)),
-                  gradient: const LinearGradient(colors: [Color(0xFFF3F5FF), Color(0xFFE8ECFF)]),
-                ),
-                alignment: Alignment.center,
-                child: Text(_avatarEmoji(dashboard?.gender), style: const TextStyle(fontSize: 12)),
+              Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  Container(
+                    width: 26,
+                    height: 26,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      border: Border.all(color: const Color(0xFFDDE2FF)),
+                      gradient: const LinearGradient(colors: [Color(0xFFF3F5FF), Color(0xFFE8ECFF)]),
+                    ),
+                    alignment: Alignment.center,
+                    child: Text(_avatarEmoji(dashboard?.gender), style: const TextStyle(fontSize: 12)),
+                  ),
+                  if (badge != null && badge.rank >= 1 && badge.rank <= 3)
+                    Positioned(right: -9, bottom: -11, child: RankBadge(rank: badge.rank, size: 22, animated: false)),
+                ],
               ),
               const SizedBox(width: 8),
               Column(

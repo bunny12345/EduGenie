@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import SubjectBackground, { getPalette } from './SubjectBackground';
 import {
   createCalendarEvent,
@@ -36,13 +37,16 @@ import {
   completeLessonStory,
   generateQuizRush,
   submitQuizRush,
-  getDueReviewNudge
+  getDueReviewNudge,
+  getStudentReportCards
 } from '../api';
 import StudentOrchard from './StudentOrchard';
 import StudentGames from './StudentGames';
 import StudentProgress from './StudentProgress';
 import StudentReportCard from './StudentReportCard';
+import RankBadge from './RankBadge';
 import MathMarkdown from './MathMarkdown';
+import SamAvatar from './SamAvatar';
 
 function safeArray(v) {
   return Array.isArray(v) ? v : [];
@@ -441,6 +445,7 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
   });
 
   const [dashboard, setDashboard] = useState(null);
+  const [rankBadge, setRankBadge] = useState(null); // { rank, examName } for a top-3 student, until the next results
   const [studentProfile, setStudentProfile] = useState(null);
   const [showProfileDropdown, setShowProfileDropdown] = useState(false);
   const profileDropdownRef = useRef(null);
@@ -537,6 +542,8 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
   const [talkToSamTranscript, setTalkToSamTranscript] = useState('');
   const [talkToSamError, setTalkToSamError] = useState('');
   const [talkToSamSpeaking, setTalkToSamSpeaking] = useState(false);
+  // True only while Sam's voice is actually audible (not while the reply is still being generated).
+  const [samVoicePlaying, setSamVoicePlaying] = useState(false);
   const [talkToSamAutoSpeak, setTalkToSamAutoSpeak] = useState(true);
   const [samSessionActive, setSamSessionActive] = useState(false);
   const samSessionActiveRef = React.useRef(false);
@@ -556,6 +563,13 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
   const talkAudioContextRef = React.useRef(null);
   const currentReadAloudRef = React.useRef({ messageId: '', text: '', languageCode: '' });
   const speechSessionRef = React.useRef(0);
+  // Lip-sync: analyser on Sam's voice so the avatar's mouth follows the audio.
+  const samAudioCtxRef = React.useRef(null);
+  const samAnalyserRef = React.useRef(null);
+  const samLevelBufRef = React.useRef(null);
+  const samFreqBufRef = React.useRef(null);
+  const samLevelLiveRef = React.useRef(false);
+  const samCaptionRef = React.useRef(null);
   const speechVoicesRef = React.useRef([]);
   const chatRequestAbortRef = React.useRef(null);
   const chatEndRef = React.useRef(null);
@@ -1220,6 +1234,17 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [studentId]);
 
+  // Top-3 rank badge for the profile chip — silent background fetch.
+  useEffect(() => {
+    let active = true;
+    const loadBadge = () => getStudentReportCards()
+      .then((res) => { if (active) setRankBadge(res?.badge || null); })
+      .catch(() => {});
+    loadBadge();
+    const timer = setInterval(loadBadge, 60000);
+    return () => { active = false; clearInterval(timer); };
+  }, [studentId]);
+
   useEffect(() => {
     const supported = typeof window !== 'undefined'
       && 'speechSynthesis' in window
@@ -1383,10 +1408,38 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
     setActiveView('home');
   }
 
+  // Turns LaTeX like \( \frac{p}{q} \) into plain words so it is read aloud (not spelled out).
+  function latexToSpeech(raw) {
+    let s = String(raw || '').replace(/\\\[([\s\S]*?)\\\]|\\\(([\s\S]*?)\\\)|\$\$([\s\S]*?)\$\$|\$([^$\n]+)\$/g, (_, a, b, c, d) => ` ${a || b || c || d || ''} `);
+    for (let i = 0; i < 3; i += 1) {
+      s = s
+        .replace(/\\d?frac\s*\{([^{}]*)\}\s*\{([^{}]*)\}/g, '$1 over $2')
+        .replace(/\\sqrt\s*\{([^{}]*)\}/g, 'square root of $1')
+        .replace(/\\text\s*\{([^{}]*)\}/g, '$1');
+    }
+    return s
+      .replace(/\^\s*\{?2\}?/g, ' squared')
+      .replace(/\^\s*\{?3\}?/g, ' cubed')
+      .replace(/\^\s*\{([^{}]*)\}/g, ' to the power $1')
+      .replace(/\\(neq|ne)\b/g, ' not equal to ')
+      .replace(/\\(leq|le)\b/g, ' less than or equal to ')
+      .replace(/\\(geq|ge)\b/g, ' greater than or equal to ')
+      .replace(/\\times\b/g, ' times ')
+      .replace(/\\(div)\b/g, ' divided by ')
+      .replace(/\\cdot\b/g, ' times ')
+      .replace(/\\pm\b/g, ' plus or minus ')
+      .replace(/\\(in)\b/g, ' in ')
+      .replace(/\\(mathbb|mathbf)\s*\{?([A-Za-z])\}?/g, '$2')
+      .replace(/\\[a-zA-Z]+/g, ' ')
+      .replace(/[{}\\]/g, '');
+  }
+
   function getReadAloudText(raw) {
-    return String(raw || '')
+    return latexToSpeech(raw)
       .replace(/\*\*/g, '')
       .replace(/`/g, '')
+      .replace(/^\s*#+\s*/gm, '')
+      .replace(/^\s*[-*]\s+/gm, '')
       .replace(/\[(.*?)\]\((.*?)\)/g, '$1')
       // Strip emojis and pictographic symbols so voice playback reads only the
       // content instead of announcing emoji names (e.g. "pizza", "seedling").
@@ -1395,7 +1448,9 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
         ' '
       )
       .replace(/[•●▪]/g, ', ')
+      .replace(/([.!?:;,])[ \t]*\n+[ \t]*/g, '$1 ')
       .replace(/\s*\n+\s*/g, '. ')
+      .replace(/\.{2,}/g, '.')
       .replace(/\s+/g, ' ')
       .trim();
   }
@@ -2528,8 +2583,24 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [talkToSamSpeaking, talkToSamBusy, chatLoading, talkToSamRecording, talkToSamOpen]);
 
+  // Sam's full-screen mode: lock page scroll behind it and let Esc end the chat.
+  useEffect(() => {
+    if (!talkToSamOpen) return undefined;
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    function onKey(e) { if (e.key === 'Escape') onToggleTalkToSamPopup(); }
+    window.addEventListener('keydown', onKey);
+    return () => {
+      document.body.style.overflow = prevOverflow;
+      window.removeEventListener('keydown', onKey);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [talkToSamOpen]);
+
   // Stop any current Sam speaking audio (non-blocking — doesn't prevent input)
   function stopTalkToSamSpeaking() {
+    samLevelLiveRef.current = false;
+    setSamVoicePlaying(false);
     if (talkToSamAudioRef.current) {
       try { talkToSamAudioRef.current.pause(); } catch { /* ignore */ }
       talkToSamAudioRef.current = null;
@@ -2545,6 +2616,81 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
     cleanupSilenceDetection();
     setTalkToSamSpeaking(false);
   }
+  // Routes Sam's audio through an analyser (still audible) so we can measure
+  // loudness for lip-sync. Skipped if the audio context isn't running, since
+  // rerouting through a suspended context would silence the voice.
+  async function attachSamAnalyser(audio) {
+    try {
+      const Ctx = window.AudioContext || window.webkitAudioContext;
+      if (!Ctx) return;
+      if (!samAudioCtxRef.current) samAudioCtxRef.current = new Ctx();
+      const ctx = samAudioCtxRef.current;
+      if (ctx.state === 'suspended') {
+        await Promise.race([ctx.resume(), new Promise((resolve) => setTimeout(resolve, 300))]);
+      }
+      if (ctx.state !== 'running') return;
+      if (!samAnalyserRef.current) {
+        const analyser = ctx.createAnalyser();
+        analyser.fftSize = 512;
+        analyser.connect(ctx.destination);
+        samAnalyserRef.current = analyser;
+        samLevelBufRef.current = new Uint8Array(analyser.fftSize);
+        samFreqBufRef.current = new Uint8Array(analyser.frequencyBinCount);
+      }
+      ctx.createMediaElementSource(audio).connect(samAnalyserRef.current);
+      samLevelLiveRef.current = true;
+    } catch {
+      /* the avatar falls back to a procedural mouth */
+    }
+  }
+
+  // Loudness (0..1) and brightness (0 dark "oo" … 1 bright "ee/ss") of Sam's
+  // current voice, or null when no audio is being measured.
+  function getSamMouthLevel() {
+    const analyser = samAnalyserRef.current;
+    const buf = samLevelBufRef.current;
+    const freq = samFreqBufRef.current;
+    if (!analyser || !buf || !freq || !samLevelLiveRef.current) return null;
+    analyser.getByteTimeDomainData(buf);
+    let sum = 0;
+    for (let i = 0; i < buf.length; i += 1) {
+      const v = (buf[i] - 128) / 128;
+      sum += v * v;
+    }
+    const level = Math.min(1, Math.sqrt(sum / buf.length) * 5);
+    analyser.getByteFrequencyData(freq);
+    let weighted = 0;
+    let total = 0;
+    for (let i = 1; i < freq.length; i += 1) {
+      weighted += i * freq[i];
+      total += freq[i];
+    }
+    const centroid = total > 0 ? weighted / total / freq.length : 0;
+    return { level, bright: Math.min(1, Math.max(0, (centroid - 0.04) / 0.14)) };
+  }
+
+  // Scrolls the caption in step with Sam's voice so the sentence being spoken stays in view.
+  useEffect(() => {
+    if (!samVoicePlaying) return undefined;
+    const startEl = samCaptionRef.current;
+    if (startEl) startEl.scrollTop = 0;
+    const startedAt = performance.now();
+    const estMs = Math.max(2000, ((startEl?.textContent || '').length / 14) * 1000);
+    let raf = 0;
+    const tick = () => {
+      const box = samCaptionRef.current;
+      if (box) {
+        const audio = talkToSamAudioRef.current;
+        const p = audio && Number.isFinite(audio.duration) && audio.duration > 0
+          ? audio.currentTime / audio.duration
+          : (performance.now() - startedAt) / estMs;
+        box.scrollTop = Math.min(1, Math.max(0, p)) * Math.max(0, box.scrollHeight - box.clientHeight);
+      }
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [samVoicePlaying]);
 
   // Speak Sam's response — runs in background, auto-listens after done
   async function speakSamResponse(text, opts = {}) {
@@ -2578,6 +2724,8 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
       setTalkToSamSpeaking(true);
 
       const onDone = () => {
+        samLevelLiveRef.current = false;
+        setSamVoicePlaying(false);
         talkToSamAudioRef.current = null;
         const next = samSpeakQueueRef.current.shift();
         if (next) playNext(next.text, next.autoListen);
@@ -2611,8 +2759,11 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
             onDone();
           };
           audio.onerror = () => onDone();
+          // The avatar starts talking/gesturing only once the voice is truly audible.
+          audio.onplaying = () => setSamVoicePlaying(true);
           talkToSamAudioRef.current = audio;
           talkToSamAudioUrlRef.current = url;
+          await attachSamAnalyser(audio);
           await audio.play();
           played = true;
         }
@@ -2624,6 +2775,7 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
         utterance.lang = 'en-US';
         utterance.rate = clampSpeed(chatReadAloudSpeed) * 1.1;
         utterance.pitch = 1.3;
+        utterance.onstart = () => setSamVoicePlaying(true);
         utterance.onend = () => onDone();
         utterance.onerror = () => onDone();
         window.speechSynthesis.cancel();
@@ -2742,6 +2894,12 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
     } else {
       setSamSessionActive(true);
       samSessionActiveRef.current = true;
+      // Create/resume the audio context inside this click so lip-sync can attach later.
+      try {
+        const Ctx = window.AudioContext || window.webkitAudioContext;
+        if (Ctx && !samAudioCtxRef.current) samAudioCtxRef.current = new Ctx();
+        if (samAudioCtxRef.current?.state === 'suspended') samAudioCtxRef.current.resume().catch(() => {});
+      } catch { /* lip-sync is optional */ }
 
       // Greet the student — just voice, no chat message generated
       const studentName = localStorage.getItem('studentName') || 'there';
@@ -3484,39 +3642,55 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
             )}
             <span className="eg-talk-sam-label">Sam</span>
           </button>
-          {/* Sam Interactive Panel */}
-          {talkToSamOpen && (
-            <div className="eg-talk-sam-pop" role="dialog" aria-label="Talk to Sam">
-              {/* Sam anime avatar — DISABLED for now, enable later with better images */}
-              {/* <div className={`eg-sam-avatar-container ${talkToSamSpeaking ? 'speaking' : ''} ${(talkToSamBusy || chatLoading) ? 'thinking' : ''}`}>
-                <img
-                  src={SAM_GESTURES[samGesture] || SAM_GESTURES.wave}
-                  alt="Sam"
-                  className="eg-sam-avatar-img"
-                  draggable={false}
-                />
-              </div> */}
-              <div className="eg-talk-sam-header">
-                <div className="eg-talk-sam-avatar-ring">
-                  <span className="eg-talk-sam-avatar">🎓</span>
-                </div>
-                <div className="eg-talk-sam-header-text">
-                  <p className="eg-talk-sam-title">Sam</p>
-                  <p className="eg-talk-sam-sub">
+          {/* Sam full-screen live tutor — animated avatar with the school name on his T-shirt */}
+          {talkToSamOpen && createPortal(
+            <div
+              className={`eg-sam-live ${samVoicePlaying ? 'speaking' : ''} ${talkToSamRecording ? 'listening' : ''} ${(talkToSamBusy || chatLoading || (talkToSamSpeaking && !samVoicePlaying)) ? 'thinking' : ''}`}
+              role="dialog"
+              aria-modal="true"
+              aria-label="Talk to Sam"
+            >
+              <div className="eg-sam-live-bg" aria-hidden="true">
+                <span /><span /><span /><span /><span /><span />
+              </div>
+
+              <header className="eg-sam-live-top">
+                <div className="eg-sam-live-title">
+                  <strong>Sam</strong>
+                  <span>
                     {selectedTutorLesson
                       ? `Teaching: ${selectedTutorLesson.title}`
                       : tutorSubject || 'Your AI Study Buddy'}
-                  </p>
+                  </span>
                 </div>
-                <div className="eg-talk-sam-header-actions">
+                {schoolName ? <div className="eg-sam-live-school">🏫 {schoolName}</div> : <span />}
+                <div className="eg-sam-live-actions">
                   {talkToSamSpeaking && (
-                    <button type="button" className="eg-talk-sam-mute" onClick={stopTalkToSamSpeaking} title="Mute Sam">
-                      🔇
-                    </button>
+                    <button type="button" className="eg-sam-live-btn" onClick={stopTalkToSamSpeaking} title="Mute Sam">🔇 Mute</button>
                   )}
-                  <button type="button" className="eg-talk-sam-close" onClick={onToggleTalkToSamPopup} aria-label="Close">×</button>
+                  <button type="button" className="eg-sam-live-btn eg-sam-live-end" onClick={onToggleTalkToSamPopup} aria-label="End chat with Sam">✕ End chat</button>
                 </div>
+              </header>
+
+              <div className="eg-sam-live-stage">
+                <div className="eg-sam-live-glow" aria-hidden="true" />
+                <SamAvatar
+                  mode={samVoicePlaying ? 'speaking' : talkToSamRecording ? 'listening' : (talkToSamBusy || chatLoading || talkToSamSpeaking) ? 'thinking' : 'idle'}
+                  schoolName={schoolName}
+                  getLevel={getSamMouthLevel}
+                />
               </div>
+
+              <div className="eg-sam-live-panel">
+                {(() => {
+                  const lastAi = [...safeArray(chatHistory)].reverse().find((m) => m?.role === 'ai');
+                  const caption = lastAi ? String(lastAi.text || lastAi.message || '').trim() : '';
+                  return caption ? (
+                    <div className="eg-sam-live-caption" ref={samCaptionRef}>
+                      <MathMarkdown text={caption} className="eg-sam-live-caption-md" />
+                    </div>
+                  ) : null;
+                })()}
               {/* Status bar — shows what Sam/student is doing */}
               <div className={`eg-talk-sam-status-bar ${talkToSamRecording ? 'recording' : ''} ${talkToSamSpeaking ? 'speaking' : ''} ${talkToSamBusy ? 'thinking' : ''}`}>
                 <div className="eg-talk-sam-status-waves">
@@ -3526,8 +3700,8 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
                 </div>
                 <span className="eg-talk-sam-status-label">
                   {talkToSamRecording ? '🎙️ Listening... (speak, I\'ll auto-detect when you stop)'
-                    : talkToSamSpeaking ? '🔊 Sam is talking...'
-                    : (talkToSamBusy || chatLoading) ? '💭 Sam is thinking...'
+                    : samVoicePlaying ? '🔊 Sam is talking...'
+                    : (talkToSamBusy || chatLoading || talkToSamSpeaking) ? '💭 Sam is thinking...'
                     : samSessionActive ? '✨ Sam is ready'
                     : '🎤 Start a conversation'}
                 </span>
@@ -3570,7 +3744,9 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
                   </button>
                 )}
               </div>
-            </div>
+              </div>
+            </div>,
+            document.body
           )}
         </div>
         <button
@@ -3890,7 +4066,17 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
       <div className={`eg-main ${activeSidebarTab === 'AI Tutor' ? 'eg-main-ai' : ''}`}>
         {activeSidebarTab !== 'AI Tutor' && (
         <header className="eg-topbar cardish">
-          <div className="eg-search">Search for topics, tests, books...</div>
+          <div className="eg-school-slot">
+            {schoolName ? (
+              <div className="eg-school-banner" title={schoolName}>
+                <span className="eg-school-banner-icon" aria-hidden="true">🏫</span>
+                <span className="eg-school-banner-text">
+                  <small>Proudly learning at</small>
+                  <strong>{schoolName}</strong>
+                </span>
+              </div>
+            ) : null}
+          </div>
           <div className="eg-top-actions">
             <button
               type="button"
@@ -3934,7 +4120,10 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
             </button>
             <span className="pill">🏅 {badges}</span>
             <div className="eg-profile-chip" ref={profileDropdownRef} onClick={() => setShowProfileDropdown((v) => !v)} style={{ cursor: 'pointer', position: 'relative' }}>
-              <div className="eg-profile-avatar">{profileEmoji}</div>
+              <div className="eg-profile-avatar" style={{ position: 'relative', overflow: 'visible' }}>
+                {profileEmoji}
+                {rankBadge ? <span className="eg-profile-rank"><RankBadge rank={rankBadge.rank} size={24} animated={false} /></span> : null}
+              </div>
               <div className="eg-profile-meta">
                 <strong>Hi, {greetingName}</strong>
                 <span>{className ? `Student · ${className}` : 'Student'}</span>
@@ -3942,6 +4131,12 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
               <span className={`eg-profile-caret ${showProfileDropdown ? 'open' : ''}`}>▾</span>
               {showProfileDropdown && (
                 <div className="eg-profile-dropdown">
+                  {rankBadge ? (
+                    <div className="eg-profile-rank-card">
+                      <RankBadge rank={rankBadge.rank} size={70} showLabel />
+                      <span>{['', '1st', '2nd', '3rd'][rankBadge.rank]} in class · {rankBadge.examName}</span>
+                    </div>
+                  ) : null}
                   <div className="eg-profile-dropdown-avatar">{profileEmoji}</div>
                   <strong className="eg-profile-dropdown-name">{greetingName}</strong>
                   {schoolName && <span className="eg-profile-dropdown-school">🏫 {schoolName}</span>}
@@ -4019,6 +4214,12 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
               <section className="cardish eg-hero-card eg-grad-hero eg-home-glass">
                 <h1>Good day, {greetingName}! 👋</h1>
                 <p>Ready to learn something amazing today?</p>
+                {rankBadge ? (
+                  <button type="button" className="eg-rank-pill" onClick={() => onSidebarNavClick('Report Card')} title="Open your report card">
+                    <RankBadge rank={rankBadge.rank} size={34} animated={false} />
+                    <span>{['', '1st', '2nd', '3rd'][rankBadge.rank]} in class · {rankBadge.examName}</span>
+                  </button>
+                ) : null}
               <div className="eg-hero-inner">
                 <div className="eg-bot-quote">
                   <div className="eg-bot">🤖</div>

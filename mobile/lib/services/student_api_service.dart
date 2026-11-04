@@ -87,13 +87,18 @@ class StudentApiService {
     return list.map((t) => TestItem.fromJson(Map<String, dynamic>.from(t as Map))).toList();
   }
 
-  /// Released report cards for the signed-in student — identity comes from the
-  /// auth token server-side, no studentId is sent. Mirrors
-  /// `getStudentReportCards()` in `web/src/api.js`.
-  Future<List<ReportCard>> getReportCards() async {
+  /// Released report cards for the signed-in student (plus the current top-3
+  /// badge) — identity comes from the auth token server-side, no studentId is
+  /// sent. Mirrors `getStudentReportCards()` in `web/src/api.js`.
+  Future<ReportCardsData> getReportCards() async {
     final json = await _get('/progress/report-cards', const {});
-    final list = json['reportCards'] as List? ?? [];
-    return list.map((r) => ReportCard.fromJson(Map<String, dynamic>.from(r as Map))).toList();
+    return ReportCardsData.fromJson(json);
+  }
+
+  /// Records that the rank celebration has played so it never replays —
+  /// mirrors `markReportCardCelebrated(examId)` in `web/src/api.js`.
+  Future<void> markReportCardCelebrated(String examId) async {
+    await _post('/progress/report-cards/${Uri.encodeComponent(examId)}/celebrated', const {});
   }
 
   /// Text-only submission for this MVP pass — mirrors `submitHomework()` in

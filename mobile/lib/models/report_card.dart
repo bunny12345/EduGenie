@@ -30,6 +30,14 @@ class ReportCardSubject {
   );
 }
 
+/// A class topper (rank 1–3) listed on a report card — name only, no marks.
+class ReportCardTopper {
+  final int rank;
+  final String name;
+
+  const ReportCardTopper({required this.rank, required this.name});
+}
+
 /// A single released exam report card — only ever returned once every
 /// subject teacher of the class has entered this student's marks.
 class ReportCard {
@@ -43,6 +51,15 @@ class ReportCard {
   final num percentage;
   final String grade;
 
+  /// Class rank, only once every student's marks are in. Students only ever
+  /// receive it for ranks 1–3; the teacher view receives every rank.
+  final int? rank;
+  final int? classSize;
+  final List<ReportCardTopper> toppers;
+
+  /// True until the top-3 celebration has been shown for this exam.
+  final bool celebrationPending;
+
   const ReportCard({
     required this.examId,
     required this.examName,
@@ -53,6 +70,10 @@ class ReportCard {
     required this.maxTotal,
     required this.percentage,
     required this.grade,
+    this.rank,
+    this.classSize,
+    this.toppers = const [],
+    this.celebrationPending = false,
   });
 
   factory ReportCard.fromJson(Map<String, dynamic> json) => ReportCard(
@@ -67,5 +88,48 @@ class ReportCard {
     maxTotal: json['maxTotal'] as num? ?? 0,
     percentage: json['percentage'] as num? ?? 0,
     grade: json['grade']?.toString() ?? 'E',
+    rank: (json['rank'] as num?)?.toInt(),
+    classSize: (json['classSize'] as num?)?.toInt(),
+    toppers: (json['toppers'] as List? ?? [])
+        .map((t) => ReportCardTopper(
+              rank: ((t as Map)['rank'] as num?)?.toInt() ?? 0,
+              name: t['name']?.toString() ?? '',
+            ))
+        .toList(),
+    celebrationPending: json['celebrationPending'] == true,
   );
+}
+
+/// The student's current top-3 badge — kept until the next exam's results
+/// are announced.
+class RankBadgeInfo {
+  final int rank;
+  final String examId;
+  final String examName;
+
+  const RankBadgeInfo({required this.rank, required this.examId, required this.examName});
+}
+
+/// `GET /progress/report-cards` payload: released cards plus the current badge.
+class ReportCardsData {
+  final List<ReportCard> cards;
+  final RankBadgeInfo? badge;
+
+  const ReportCardsData({required this.cards, this.badge});
+
+  factory ReportCardsData.fromJson(Map<String, dynamic> json) {
+    final b = json['badge'];
+    return ReportCardsData(
+      cards: (json['reportCards'] as List? ?? [])
+          .map((r) => ReportCard.fromJson(Map<String, dynamic>.from(r as Map)))
+          .toList(),
+      badge: b is Map
+          ? RankBadgeInfo(
+              rank: (b['rank'] as num?)?.toInt() ?? 0,
+              examId: b['examId']?.toString() ?? '',
+              examName: b['examName']?.toString() ?? '',
+            )
+          : null,
+    );
+  }
 }

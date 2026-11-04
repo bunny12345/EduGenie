@@ -1,6 +1,8 @@
-import React, { useEffect, useState } from 'react';
-import { getStudentReportCards } from '../api';
+import React, { useEffect, useRef, useState } from 'react';
+import { getStudentReportCards, markReportCardCelebrated } from '../api';
 import { subjectTheme, gradeColor, formatMarks } from './reportCardTheme';
+import RankBadge from './RankBadge';
+import RankCelebration from './RankCelebration';
 
 // Student-facing Report Card page. An exam only shows up here once every
 // subject teacher of the class has entered this student's marks (enforced by
@@ -14,6 +16,9 @@ export default function StudentReportCard({ greetingName, className, fetchFn, st
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState('');
   const [selectedId, setSelectedId] = useState('');
+  const [celebration, setCelebration] = useState(null);
+  // Exams already celebrated in this session, so a refresh poll can't replay one.
+  const celebratedRef = useRef(new Set());
 
   useEffect(() => {
     let active = true;
@@ -25,9 +30,18 @@ export default function StudentReportCard({ greetingName, className, fetchFn, st
       try {
         const res = await (fetchFn || getStudentReportCards)();
         if (!active) return;
-        setCards(Array.isArray(res?.reportCards) ? res.reportCards : []);
+        const list = Array.isArray(res?.reportCards) ? res.reportCards : [];
+        setCards(list);
         setPending(Array.isArray(res?.pending) ? res.pending : []);
         setError('');
+        // Top-3 celebration: once per exam, the first time the student opens the page.
+        const toCelebrate = embedded ? null : list.find((c) => c.celebrationPending && !celebratedRef.current.has(c.examId));
+        if (toCelebrate) {
+          celebratedRef.current.add(toCelebrate.examId);
+          setSelectedId(toCelebrate.examId);
+          setCelebration(toCelebrate);
+          markReportCardCelebrated(toCelebrate.examId).catch(() => {});
+        }
       } catch (e) {
         if (active) setError(e?.message || 'Unable to load the report card.');
       } finally {
@@ -143,11 +157,29 @@ export default function StudentReportCard({ greetingName, className, fetchFn, st
           <div className="eg-rc-summary">
             <div className="eg-rc-stat"><label>Total</label><strong>{formatMarks(card.total)}<small>/{formatMarks(card.maxTotal)}</small></strong></div>
             <div className="eg-rc-stat"><label>Percentage</label><strong>{formatMarks(card.percentage)}%</strong></div>
+            {card.rank && card.rank <= 3 ? (
+              <div className={`eg-rc-rank eg-rc-rank-${card.rank}`}>
+                <RankBadge rank={card.rank} size={card.rank === 1 ? 92 : 82} />
+                <span>{embedded ? `Class rank ${card.rank} of ${card.classSize}` : `${['', '1st', '2nd', '3rd'][card.rank]} in ${card.className || 'class'}`}</span>
+              </div>
+            ) : null}
+            {embedded && card.rank && card.rank > 3 ? (
+              <div className="eg-rc-stat"><label>Class rank</label><strong>{card.rank}<small> of {card.classSize}</small></strong></div>
+            ) : null}
             <div className="eg-rc-medal" style={{ background: gradeColor(card.grade) }}>
               <span>Overall</span>
               <strong>{card.grade}</strong>
             </div>
           </div>
+
+          {card.toppers?.length ? (
+            <div className="eg-rc-toppers">
+              <b>🏆 Class Toppers</b>
+              {card.toppers.map((t) => (
+                <span key={`${t.rank}-${t.name}`}><i>{['', '🥇', '🥈', '🥉'][t.rank]}</i>{t.name}</span>
+              ))}
+            </div>
+          ) : null}
 
           <div className="eg-rc-remarks">
             <div className="eg-rc-bar">FEEDBACK &amp; REMARKS</div>
@@ -173,6 +205,16 @@ export default function StudentReportCard({ greetingName, className, fetchFn, st
             ? 'No report card has been released for this student yet. It appears once every subject teacher has added marks.'
             : 'Your results appear here as soon as every subject teacher has added their marks.'}</p>
         </article>
+      ) : null}
+
+      {celebration ? (
+        <RankCelebration
+          rank={celebration.rank}
+          name={greetingName}
+          className={celebration.className || className}
+          examName={celebration.examName}
+          onClose={() => setCelebration(null)}
+        />
       ) : null}
     </section>
   );

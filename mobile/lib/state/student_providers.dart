@@ -56,7 +56,7 @@ final testsProvider = FutureProvider.autoDispose<List<TestItem>>((ref) {
   return ref.watch(studentApiServiceProvider).getTests(id);
 });
 
-final reportCardsProvider = FutureProvider.autoDispose<List<ReportCard>>((ref) {
+final reportCardsProvider = FutureProvider.autoDispose<ReportCardsData>((ref) {
   return ref.watch(studentApiServiceProvider).getReportCards();
 });
 
