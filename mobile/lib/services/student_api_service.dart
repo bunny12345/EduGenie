@@ -10,6 +10,7 @@ import '../models/library_resource.dart';
 import '../models/orchard_data.dart';
 import '../models/quiz_rush_models.dart';
 import '../models/rewards_data.dart';
+import '../models/report_card.dart';
 import '../models/subject_score.dart';
 import '../models/test_item.dart';
 import 'api_client.dart';
@@ -84,6 +85,15 @@ class StudentApiService {
     final json = await _get('/tests', {'studentId': studentId, 'filter': filter});
     final list = json['tests'] as List? ?? [];
     return list.map((t) => TestItem.fromJson(Map<String, dynamic>.from(t as Map))).toList();
+  }
+
+  /// Released report cards for the signed-in student — identity comes from the
+  /// auth token server-side, no studentId is sent. Mirrors
+  /// `getStudentReportCards()` in `web/src/api.js`.
+  Future<List<ReportCard>> getReportCards() async {
+    final json = await _get('/progress/report-cards', const {});
+    final list = json['reportCards'] as List? ?? [];
+    return list.map((r) => ReportCard.fromJson(Map<String, dynamic>.from(r as Map))).toList();
   }
 
   /// Text-only submission for this MVP pass — mirrors `submitHomework()` in

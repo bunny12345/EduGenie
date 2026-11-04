@@ -14,6 +14,7 @@ import 'student_library_screen.dart';
 import 'student_orchard_screen.dart';
 import 'student_progress_screen.dart';
 import 'student_rewards_screen.dart';
+import 'student_report_card_screen.dart';
 import 'homework/homework_screen.dart';
 
 /// Student Home — mirrors the web app's home page content (streak + weekly
@@ -610,9 +611,9 @@ class _AcademicsGrid extends StatelessWidget {
     ),
     _AcademicItem(
       gifAsset: 'assets/gifs/mock-tests.gif',
-      label: 'Mock Tests',
+      label: 'Report Card',
       background: const Color(0xFFFDE8EE),
-      builder: (_) => const HomeworkScreen(),
+      builder: (_) => const StudentReportCardScreen(),
     ),
     _AcademicItem(
       gifAsset: 'assets/gifs/progress.gif',

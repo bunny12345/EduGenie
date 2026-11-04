@@ -41,6 +41,7 @@ import {
 import StudentOrchard from './StudentOrchard';
 import StudentGames from './StudentGames';
 import StudentProgress from './StudentProgress';
+import StudentReportCard from './StudentReportCard';
 import MathMarkdown from './MathMarkdown';
 
 function safeArray(v) {
@@ -363,11 +364,12 @@ const UTILITY_TABS = {
 
 export default function StudentDashboard({ studentId = 'test', onLogout }) {
   // Navigation state
-  const SIDEBAR_TABS = ['Home', 'My Orchard', 'Games', 'AI Tutor', 'Homework', 'Mock Tests', 'Progress', 'Calendar', 'Rewards', 'Library', 'Settings'];
+  const SIDEBAR_TABS = ['Home', 'My Orchard', 'Games', 'AI Tutor', 'Homework', 'Report Card', 'Progress', 'Calendar', 'Rewards', 'Library', 'Settings'];
   // Parsed once so every "restore after refresh" piece of state agrees on the
   // same hash. Formats: "Home" | "Tab" | "Tab/Subject" | "AI Tutor/Subject/LessonId"
   // (legacy bare "#Mathematics" while on the Home tab still works too).
-  const initialHashRaw = decodeURIComponent(window.location.hash.replace('#', ''));
+  // The old "Mock Tests" tab became "Report Card"; keep stale bookmarks working.
+  const initialHashRaw = decodeURIComponent(window.location.hash.replace('#', '')).replace(/^Mock Tests/, 'Report Card');
   const initialHashParts = initialHashRaw.split('/');
   const initialHashTab = initialHashParts[0];
   const [activeView, setActiveView] = useState(() => {
@@ -386,7 +388,7 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
 
   useEffect(() => {
     function onHashChange() {
-      const h = decodeURIComponent(window.location.hash.replace('#', ''));
+      const h = decodeURIComponent(window.location.hash.replace('#', '')).replace(/^Mock Tests/, 'Report Card');
       if (!h || h === 'Home' || h === 'home') {
         setActiveSidebarTab('Home');
         setActiveView('home');
@@ -1348,7 +1350,7 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
     ['🎮', 'Games'],
     ['🤖', 'AI Tutor'],
     ['📝', 'Homework'],
-    ['🧪', 'Mock Tests'],
+    ['🎓', 'Report Card'],
     ['📈', 'Progress'],
     ['📅', 'Calendar'],
     ['🏅', 'Rewards'],
@@ -1361,7 +1363,9 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
       ? 'orchard-view'
       : activeSidebarTab === 'Games'
         ? 'games-view'
-        : UTILITY_TABS[activeSidebarTab]
+        : activeSidebarTab === 'Report Card'
+          ? 'report-card-view'
+          : UTILITY_TABS[activeSidebarTab]
           ? `utility-view-${activeSidebarTab}`
           : (activeView === 'home' ? 'home-view' : `subject-view-${activeView}`);
 
@@ -3954,7 +3958,7 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
         )}
 
         {/* Subject Navigation — polished icon cards, shown when viewing a specific subject */}
-        {activeSidebarTab !== 'My Orchard' && activeSidebarTab !== 'Games' && activeSidebarTab !== 'Progress' && activeSidebarTab !== 'AI Tutor' && !UTILITY_TABS[activeSidebarTab] && activeView !== 'home' && (
+        {activeSidebarTab !== 'My Orchard' && activeSidebarTab !== 'Games' && activeSidebarTab !== 'Progress' && activeSidebarTab !== 'Report Card' && activeSidebarTab !== 'AI Tutor' && !UTILITY_TABS[activeSidebarTab] && activeView !== 'home' && (
         <div className="eg-subject-nav-cards">
           <button
             className="eg-subject-nav-back"
@@ -4004,6 +4008,8 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
           <StudentGames studentId={studentId} greetingName={greetingName} onAskTutor={onAskTutorFromGame} onCoinsEarned={onGameCoinsEarned} />
         ) : activeSidebarTab === 'Progress' ? (
           <StudentProgress studentId={studentId} greetingName={greetingName} />
+        ) : activeSidebarTab === 'Report Card' ? (
+          <StudentReportCard greetingName={greetingName} className={className} />
         ) : utilityPanel ? (
           utilityPanel
         ) : activeView === 'home' ? (
@@ -4193,11 +4199,11 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
                   </div>
                   <span>My Orchard</span>
                 </button>
-                <button className="eg-academ-card" onClick={() => onSidebarNavClick('Mock Tests')}>
+                <button className="eg-academ-card" onClick={() => onSidebarNavClick('Report Card')}>
                   <div className="eg-academ-icon" style={{ background: '#fde8ee' }}>
-                    <img src="/assets/gifs/mock-tests.gif" alt="Mock Tests" width="36" height="36" style={{ objectFit: 'contain' }} />
+                    <img src="/assets/gifs/mock-tests.gif" alt="Report Card" width="36" height="36" style={{ objectFit: 'contain' }} />
                   </div>
-                  <span>Mock Tests</span>
+                  <span>Report Card</span>
                 </button>
                 <button className="eg-academ-card" onClick={() => onSidebarNavClick('Progress')}>
                   <div className="eg-academ-icon" style={{ background: '#e0f2fe' }}>

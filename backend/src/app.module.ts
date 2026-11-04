@@ -4,6 +4,7 @@ import { DashboardController } from './controllers/dashboard.controller';
 import { HealthController } from './controllers/health.controller';
 import { HomeworkController } from './controllers/homework.controller';
 import { TestsController } from './controllers/tests.controller';
+import { ReportCardsController } from './controllers/report-cards.controller';
 import { ProgressController } from './controllers/progress.controller';
 import { CalendarController } from './controllers/calendar.controller';
 import { RewardsController } from './controllers/rewards.controller';
@@ -35,6 +36,7 @@ import { SharedModule } from './shared/shared.module';
     DashboardController,
     HomeworkController,
     TestsController,
+    ReportCardsController,
     ProgressController,
     CalendarController,
     RewardsController,

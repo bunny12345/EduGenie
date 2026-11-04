@@ -8,6 +8,7 @@ import '../models/learning_score.dart';
 import '../models/library_resource.dart';
 import '../models/orchard_data.dart';
 import '../models/rewards_data.dart';
+import '../models/report_card.dart';
 import '../models/subject_score.dart';
 import '../models/test_item.dart';
 import '../services/student_api_service.dart';
@@ -53,6 +54,10 @@ final rewardsProvider = FutureProvider.autoDispose<RewardsData>((ref) {
 final testsProvider = FutureProvider.autoDispose<List<TestItem>>((ref) {
   final id = _requireStudentId(ref);
   return ref.watch(studentApiServiceProvider).getTests(id);
+});
+
+final reportCardsProvider = FutureProvider.autoDispose<List<ReportCard>>((ref) {
+  return ref.watch(studentApiServiceProvider).getReportCards();
 });
 
 /// The student's subject list — mirrors `subjects` in `StudentDashboard.jsx`:

@@ -768,6 +768,42 @@ export async function getTeacherStudentDeliveryStatus(studentId) {
   return checkSuccess(data, 'getTeacherStudentDeliveryStatus');
 }
 
+// ── Report cards ───────────────────────────────────────────────────────────
+
+async function sendReportCardJson(method, path, payload, label) {
+  const res = await fetch(`${API_BASE}${path}`, {
+    method,
+    headers: await authHeaders(),
+    body: JSON.stringify(payload || {})
+  });
+  if (!res.ok) throw new Error(`${label} failed: ${res.status}`);
+  return checkSuccess(await res.json(), label);
+}
+
+export async function getReportCardExams(className) {
+  return getJsonChecked(withQuery('/teacher/report-cards/exams', { className }), 'getReportCardExams');
+}
+
+export async function createReportCardExam(payload) {
+  return sendReportCardJson('POST', '/teacher/report-cards/exams', payload, 'createReportCardExam');
+}
+
+export async function updateReportCardExam(examId, payload) {
+  return sendReportCardJson('PATCH', `/teacher/report-cards/exams/${encodeURIComponent(examId)}`, payload, 'updateReportCardExam');
+}
+
+export async function getReportCardMarks(examId) {
+  return getJsonChecked(`${API_BASE}/teacher/report-cards/exams/${encodeURIComponent(examId)}/marks`, 'getReportCardMarks');
+}
+
+export async function saveReportCardMarks(examId, entries) {
+  return sendReportCardJson('POST', `/teacher/report-cards/exams/${encodeURIComponent(examId)}/marks`, { entries }, 'saveReportCardMarks');
+}
+
+export async function getStudentReportCards() {
+  return getJsonChecked(`${API_BASE}/progress/report-cards`, 'getStudentReportCards');
+}
+
 export async function getTeacherStudentActivity(studentId) {
   const res = await fetch(`${API_BASE}/teacher/students/${encodeURIComponent(studentId)}/activity`, {
     headers: await authHeaders()

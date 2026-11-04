@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import SubjectBackground, { getPalette } from './SubjectBackground';
 import TeacherSubjectProgressChart from './TeacherSubjectProgressChart';
 import StudentProgress from './StudentProgress';
+import TeacherReportCards from './TeacherReportCards';
 import {
   addTestQuestion,
   assignTest,
@@ -2146,7 +2147,8 @@ export default function TeacherDashboard({ session, onLogout }) {
     { key: 'teacher', label: 'Teacher', icon: '📋' },
     { key: 'ai-assistant', label: 'AI Assistant', icon: '🤖' },
     { key: 'students', label: 'Students', icon: '👤' },
-    { key: 'progress', label: 'Student Progress', icon: '📈' }
+    { key: 'progress', label: 'Student Progress', icon: '📈' },
+    { key: 'report-cards', label: 'Report Cards', icon: '🧾' }
   ];
 
   return (
@@ -2196,7 +2198,7 @@ export default function TeacherDashboard({ session, onLogout }) {
       <div className="td-main td-main-themed" style={{ position: 'relative', overflow: 'hidden' }}>
         {/* Subject-themed SVG background */}
         <SubjectBackground subject={teacherProfile?.subject || session?.subject || 'General'} />
-        {activeSection !== 'progress' && activeSection !== 'students' && activeSection !== 'ai-assistant' && (
+        {activeSection !== 'progress' && activeSection !== 'students' && activeSection !== 'ai-assistant' && activeSection !== 'report-cards' && (
           <>
             <header className="td-topbar td-framed">
               <div>
@@ -4003,6 +4005,11 @@ export default function TeacherDashboard({ session, onLogout }) {
               )}
             </article>
           </section>
+        )}
+
+        {/* ══════════ REPORT CARDS SECTION ══════════ */}
+        {activeSection === 'report-cards' && (
+          <TeacherReportCards classOptions={classOptions} mySubject={lockedSubject} />
         )}
       </div>
 

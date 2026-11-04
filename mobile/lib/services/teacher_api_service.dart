@@ -171,6 +171,52 @@ class TeacherApiService {
     return LearningScoreData.fromJson(json);
   }
 
+  // ── Report cards ────────────────────────────────────────────────────────
+
+  /// Exam templates for a class, each already summarized with per-subject
+  /// completion counts — mirrors `getReportCardExams(className)` in
+  /// `web/src/api.js`.
+  Future<Map<String, dynamic>> getReportCardExams(String className) {
+    return _get('/teacher/report-cards/exams', {'className': className});
+  }
+
+  Future<Map<String, dynamic>> createReportCardExam({
+    required String className,
+    required String name,
+    num maxMarks = 100,
+  }) {
+    return _post('/teacher/report-cards/exams', {
+      'className': className,
+      'name': name,
+      'maxMarks': maxMarks,
+    });
+  }
+
+  Future<Map<String, dynamic>> updateReportCardExam(
+    String examId, {
+    String? name,
+    num? maxMarks,
+  }) {
+    return _patch('/teacher/report-cards/exams/${Uri.encodeComponent(examId)}', {
+      'name': ?name,
+      'maxMarks': ?maxMarks,
+    });
+  }
+
+  /// Returns `{exam, subject, canEdit, students: [{id,name,marks,remarks}]}` —
+  /// `students` always lists the whole class roster, with `marks` null for
+  /// anyone this teacher hasn't entered yet.
+  Future<Map<String, dynamic>> getReportCardMarks(String examId) {
+    return _get('/teacher/report-cards/exams/${Uri.encodeComponent(examId)}/marks', const {});
+  }
+
+  /// `entries` is a list of `{studentId, marks, remarks}` — `marks` may be an
+  /// empty string to clear a previously saved value. The server always
+  /// resolves the subject from the signed-in teacher, never from the client.
+  Future<Map<String, dynamic>> saveReportCardMarks(String examId, List<Map<String, dynamic>> entries) {
+    return _post('/teacher/report-cards/exams/${Uri.encodeComponent(examId)}/marks', {'entries': entries});
+  }
+
   /// `{name, subject, schoolName, avatarUrl, ...}` — mirrors `getTeacherProfile()`
   /// in `web/src/api.js`. `subject` is used to lock the Homework/Test subject
   /// field, same as web.
