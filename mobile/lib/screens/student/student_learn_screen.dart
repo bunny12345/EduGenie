@@ -8,6 +8,7 @@ import '../../theme/app_colors.dart';
 import '../../widgets/section_card.dart';
 import '../../widgets/shimmer_wave.dart';
 import 'subject_detail_screen.dart';
+import '../../utils/subject_order.dart';
 
 /// "Learn" tab — subject grid derived from the class's registered teachers
 /// (see `studentSubjectsProvider`). Tapping a subject opens its detail screen
@@ -41,7 +42,7 @@ class StudentLearnScreen extends ConsumerWidget {
               final subject = t.subject.trim();
               if (subject.isNotEmpty && subject.toLowerCase() != 'general') seen.add(subject);
             }
-            final subjects = seen.toList()..sort();
+            final subjects = sortSubjects(seen);
 
             if (subjects.isEmpty) {
               return ListView(

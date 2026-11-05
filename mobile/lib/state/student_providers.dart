@@ -13,6 +13,7 @@ import '../models/subject_score.dart';
 import '../models/test_item.dart';
 import '../services/student_api_service.dart';
 import 'session_provider.dart';
+import '../utils/subject_order.dart';
 
 final studentApiServiceProvider = Provider<StudentApiService>(
   (ref) => StudentApiService(ref.read(apiClientProvider)),
@@ -72,8 +73,7 @@ final studentSubjectsProvider = Provider.autoDispose<List<String>>((ref) {
     final subject = t.subject.trim();
     if (subject.isNotEmpty && subject.toLowerCase() != 'general') seen.add(subject);
   }
-  final list = seen.toList()..sort();
-  return list;
+  return sortSubjects(seen);
 });
 
 final orchardProvider = FutureProvider.autoDispose<OrchardData>((ref) {

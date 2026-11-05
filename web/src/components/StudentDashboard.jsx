@@ -120,6 +120,35 @@ function getSubjectTheme(subject) {
   return { color: '#3b3080', bg: 'linear-gradient(135deg, #f0eeff, #e8f0ff)', border: '#d4ccff', pageBg: p.bg, accent: p.accent };
 }
 
+// School subject order: regional languages, Hindi, English, other languages,
+// maths, sciences, then any other subject, ending with social studies. Keep in
+// sync with mobile/lib/utils/subject_order.dart.
+const REGIONAL_LANGUAGES = ['telugu', 'tamil', 'kannada', 'malayalam', 'marathi', 'bengali', 'bangla', 'gujarati', 'punjabi', 'odia', 'oriya', 'assamese', 'urdu', 'konkani', 'kashmiri', 'sindhi', 'nepali', 'manipuri', 'maithili', 'santali', 'dogri', 'bodo'];
+const OTHER_LANGUAGES = ['sanskrit', 'french', 'german', 'spanish', 'arabic', 'japanese', 'chinese', 'mandarin', 'persian', 'russian', 'italian', 'korean', 'language', 'literature', 'grammar'];
+const SOCIAL_SUBJECTS = ['history', 'geography', 'civics', 'econom', 'political', 'politics', 'sociology'];
+
+function subjectRank(subject) {
+  const s = String(subject || '').toLowerCase();
+  const has = (words) => words.some((w) => s.includes(w));
+  if (s.includes('social')) return 11;
+  if (has(SOCIAL_SUBJECTS)) return 10;
+  if (s.includes('computer') || s.includes('home science')) return 9;
+  if (has(REGIONAL_LANGUAGES)) return 0;
+  if (s.includes('hindi')) return 1;
+  if (s.includes('english')) return 2;
+  if (has(OTHER_LANGUAGES)) return 3;
+  if (s.includes('math')) return 4;
+  if (s.includes('physics')) return 6;
+  if (s.includes('chemistry')) return 7;
+  if (s.includes('bio') || s.includes('botany') || s.includes('zoology')) return 8;
+  if (s.includes('science') || s.includes('evs') || s.includes('environment')) return 5;
+  return 9;
+}
+
+function compareSubjects(a, b) {
+  return subjectRank(a) - subjectRank(b) || String(a).localeCompare(String(b));
+}
+
 function SubjectIcon({ subject }) {
   const s = (subject || '').toLowerCase();
   // Mathematics / Maths
@@ -775,7 +804,7 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
       const subj = String(t?.subject || '').trim();
       if (subj && subj.toLowerCase() !== 'general') seen.add(subj);
     });
-    return Array.from(seen).sort();
+    return Array.from(seen).sort(compareSubjects);
   }, [dashboard]);
 
   // Only show homework for subjects that have a teacher in this class
