@@ -1382,6 +1382,7 @@ class _SamLiveOverlay extends ConsumerWidget {
                       child: SamAvatar(
                         mode: mode,
                         schoolName: schoolName,
+                        getLevel: ref.read(talkToSamProvider.notifier).sampleVoice,
                         viewTop: 96,
                         viewHeight: 590,
                       ),

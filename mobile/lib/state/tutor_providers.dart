@@ -172,6 +172,9 @@ class TutorState {
 /// onSendTutorMessage) but scoped to a single notifier for mobile.
 class TutorNotifier extends Notifier<TutorState> {
   Timer? _pollTimer;
+  // Bumped whenever a send starts/finishes so an in-flight poll started
+  // before that can be recognised as stale and discarded.
+  int _sendEpoch = 0;
 
   @override
   TutorState build() {
@@ -227,9 +230,17 @@ class TutorNotifier extends Notifier<TutorState> {
     final studentId = ref.read(sessionProvider).value?.userId ?? '';
     final lesson = state.lesson;
     if (studentId.isEmpty || lesson == null || state.sending) return;
+    final epochAtStart = _sendEpoch;
+    final subjectAtStart = state.subject;
     try {
       final convId = conversationIdFor(studentId, state.subject, lesson.id);
       final messages = await ref.read(chatApiServiceProvider).getChatHistory(studentId, convId);
+      // Drop stale results: a send began/finished, or the conversation changed,
+      // while this request was in flight.
+      if (epochAtStart != _sendEpoch || state.sending || state.lesson?.id != lesson.id || state.subject != subjectAtStart) return;
+      // The server may not have persisted the latest exchange yet; never let a
+      // shorter history wipe messages already shown locally.
+      if (messages.length < state.messages.length) return;
       final unchanged = messages.length == state.messages.length &&
           (messages.isEmpty || messages.last.id == state.messages.last.id) &&
           (messages.isEmpty || messages.last.text == state.messages.last.text);
@@ -268,6 +279,7 @@ class TutorNotifier extends Notifier<TutorState> {
     final messageText = trimmed.isNotEmpty ? trimmed : 'Please explain these ${images.length} image${images.length == 1 ? '' : 's'}.';
     final userMsg = ChatMessage.optimisticUser(messageText, imageDataUrls: images.map((i) => i.dataUrl).toList());
     final historyBeforeSend = state.messages;
+    _sendEpoch++;
     state = state.copyWith(messages: [...historyBeforeSend, userMsg], sending: true, error: null, followups: const [], chatImages: const []);
 
     try {
@@ -288,10 +300,12 @@ class TutorNotifier extends Notifier<TutorState> {
           );
       final aiMsg = ChatMessage.ai(res['reply'].toString());
       final followups = (res['followups'] as List? ?? []).map((f) => f.toString()).toList();
+      _sendEpoch++;
       state = state.copyWith(messages: [...state.messages, aiMsg], sending: false, followups: followups);
     } catch (e) {
       final message = e.toString().replaceFirst('Exception: ', '');
       final errMsg = ChatMessage.ai('⚠️ $message');
+      _sendEpoch++;
       state = state.copyWith(messages: [...state.messages, errMsg], sending: false, error: message);
     }
   }

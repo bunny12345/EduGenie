@@ -82,10 +82,10 @@ export class ChatController {
   @UseGuards(AuthGuard)
   async localTtsAudio(
     @Req() req: any,
-    @Body() payload: { studentId?: string; text: string; targetLanguage?: string; voice?: string; speed?: number }
+    @Body() payload: { studentId?: string; text: string; targetLanguage?: string; voice?: string; speed?: number; format?: string }
   ) {
     const id = req.studentId || payload.studentId || 'anon';
-    const tts = await this.chatService.generateLocalTtsAudio(payload?.text, payload?.targetLanguage, payload?.voice, payload?.speed);
+    const tts = await this.chatService.generateLocalTtsAudio(payload?.text, payload?.targetLanguage, payload?.voice, payload?.speed, payload?.format);
     if (!tts?.audioBase64) {
       return {
         success: false,

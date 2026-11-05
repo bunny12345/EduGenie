@@ -8,6 +8,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:record/record.dart';
 
 import '../utils/tutor_text.dart';
+import '../utils/voice_envelope.dart';
 import '../utils/wav_encoder.dart';
 import 'session_provider.dart';
 import 'tutor_providers.dart';
@@ -96,6 +97,13 @@ class TalkToSamNotifier extends Notifier<TalkToSamState> {
   final ValueNotifier<double> voiceProgress = ValueNotifier<double>(0);
   Duration _voiceDuration = Duration.zero;
 
+  // Loudness timeline of the reply being played + a playback clock anchored to
+  // the player's last reported position, so the avatar's mouth can follow the
+  // audio frame-by-frame between the player's (coarse) position callbacks.
+  VoiceEnvelope? _envelope;
+  Duration _anchorPosition = Duration.zero;
+  final Stopwatch _anchorClock = Stopwatch();
+
   // Silence auto-stop bookkeeping — mirrors web's Web Audio API silence
   // detector in `onStartTalkToSamRecording` (auto-stops recording after a
   // period of quiet following real speech, so the student doesn't have to
@@ -128,6 +136,10 @@ class TalkToSamNotifier extends Notifier<TalkToSamState> {
     });
     final durationSub = _player.onDurationChanged.listen((d) => _voiceDuration = d);
     final positionSub = _player.onPositionChanged.listen((p) {
+      _anchorPosition = p;
+      _anchorClock
+        ..reset()
+        ..start();
       if (_voiceDuration.inMilliseconds > 0) {
         voiceProgress.value = (p.inMilliseconds / _voiceDuration.inMilliseconds).clamp(0.0, 1.0);
       }
@@ -145,6 +157,16 @@ class TalkToSamNotifier extends Notifier<TalkToSamState> {
       _player.dispose();
     });
     return const TalkToSamState();
+  }
+
+  /// Current loudness/brightness of Sam's voice for lip-sync, or null when the
+  /// audio couldn't be analysed (the avatar then falls back to procedural syllables).
+  ({double level, double bright})? sampleVoice() {
+    final env = _envelope;
+    if (env == null) return null;
+    if (_player.state != PlayerState.playing || !_anchorClock.isRunning) return (level: 0, bright: 0.4);
+    final sinceAnchor = math.min(_anchorClock.elapsedMilliseconds, 400);
+    return env.at(_anchorPosition + Duration(milliseconds: sinceAnchor));
   }
 
   Future<void> togglePopup() async {
@@ -198,7 +220,7 @@ class TalkToSamNotifier extends Notifier<TalkToSamState> {
       caption: requireSession ? text : null,
     );
     try {
-      final tts = await ref.read(chatApiServiceProvider).generateLocalTtsAudio(tutorSpeechText(text), studentId, voice: 'shimmer', speed: 1.15);
+      final tts = await ref.read(chatApiServiceProvider).generateLocalTtsAudio(tutorSpeechText(text), studentId, voice: 'shimmer', speed: 1.15, format: 'wav');
       // Sam may have been closed while this request was in flight — skip
       // playback so a closed popup can't suddenly start talking. Mirrors
       // web's `samSessionActiveRef.current` check right after the TTS await
@@ -214,6 +236,10 @@ class TalkToSamNotifier extends Notifier<TalkToSamState> {
         final audioBase64 = (tts['audioBase64'] as String? ?? '').trim();
         if (audioBase64.isNotEmpty) {
           final bytes = base64Decode(audioBase64);
+          // Only WAV can be analysed; an older backend still answers with mp3.
+          _envelope = (tts['mimeType'] as String? ?? '').contains('wav') ? VoiceEnvelope.fromWav(bytes) : null;
+          _anchorPosition = Duration.zero;
+          _anchorClock.reset();
           final completer = Completer<void>();
           late final StreamSubscription sub;
           sub = _player.onPlayerComplete.listen((_) {
@@ -229,6 +255,8 @@ class TalkToSamNotifier extends Notifier<TalkToSamState> {
     } catch (_) {
       /* fall through — speaking indicator still clears below */
     } finally {
+      _envelope = null;
+      _anchorClock.stop();
       state = state.copyWith(speaking: false, voicePlaying: false, clearLoadingMessageId: true, clearPlayingMessageId: true);
     }
     if (_speakQueue.isNotEmpty) {

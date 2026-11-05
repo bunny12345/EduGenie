@@ -156,13 +156,14 @@ class ChatApiService {
   }
 
   /// Returns `{audioBase64, mimeType}` for local server-generated TTS.
-  Future<Map<String, dynamic>> generateLocalTtsAudio(String text, String studentId, {String targetLanguage = 'en-US', String? voice, double speed = 1}) {
+  Future<Map<String, dynamic>> generateLocalTtsAudio(String text, String studentId, {String targetLanguage = 'en-US', String? voice, double speed = 1, String? format}) {
     return _post('/chat/tts-audio', {
       'text': text,
       'targetLanguage': targetLanguage,
       'studentId': studentId,
       'voice': voice,
       'speed': speed,
+      'format': ?format,
     });
   }
 

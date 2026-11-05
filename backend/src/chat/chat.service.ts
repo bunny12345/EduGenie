@@ -1540,7 +1540,7 @@ export class ChatService {
     }
   }
 
-  async generateLocalTtsAudio(text: string, targetLanguage?: string, voice?: string, speed?: number) {
+  async generateLocalTtsAudio(text: string, targetLanguage?: string, voice?: string, speed?: number, format?: string) {
     const sourceText = String(text || '').trim();
     if (!sourceText) return null;
 
@@ -1567,6 +1567,9 @@ export class ChatService {
       "engaging storyteller, but keep it clear and easy for a child to follow."
     ).trim();
 
+    // mp3 by default; clients that analyse the waveform for lip-sync can ask for wav.
+    const responseFormat = String(format || '').trim().toLowerCase() === 'wav' ? 'wav' : 'mp3';
+
     const apiKey = String(process.env.OPENAI_API_KEY || '').trim();
     if (!apiKey) {
       console.warn('generateLocalTtsAudio: OPENAI_API_KEY not set');
@@ -1585,7 +1588,7 @@ export class ChatService {
           input: spokenText,
           voice: ttsVoice,
           speed: ttsSpeed,
-          response_format: 'mp3',
+          response_format: responseFormat,
           ...(ttsModel.startsWith('gpt-4o-mini-tts') ? { instructions: ttsInstructions } : {}),
         })
       });
@@ -1601,7 +1604,7 @@ export class ChatService {
 
       return {
         audioBase64: audioBuffer.toString('base64'),
-        mimeType: 'audio/mpeg',
+        mimeType: responseFormat === 'wav' ? 'audio/wav' : 'audio/mpeg',
         provider: 'openai-tts',
         voice: ttsVoice,
         text: spokenText,
