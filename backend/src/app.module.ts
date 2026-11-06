@@ -23,6 +23,8 @@ import { LlmService } from './llm/llm.service';
 import { LearningScoreService } from './progress/learning-score.service';
 import { SupabaseService } from './supabase.service';
 import { AuthGuard } from './auth/auth.guard';
+import { OwnerAuthService } from './auth/owner-auth.service';
+import { OwnerGuard, OwnerIdentityGuard } from './auth/owner.guard';
 import { StudentAuthService } from './auth/student-auth.service';
 import { EmailService } from './auth/email.service';
 import { CurriculumService } from './curriculum/curriculum.service';
@@ -49,6 +51,6 @@ import { SharedModule } from './shared/shared.module';
     OrchardController,
     GamesController
   ],
-  providers: [SupabaseService, AuthGuard, StudentAuthService, EmailService, CurriculumService, EmbeddingsService, OrchardService, FlashcardsService, QuizRushService, LlmService, LearningScoreService]
+  providers: [SupabaseService, AuthGuard, OwnerAuthService, OwnerGuard, OwnerIdentityGuard, StudentAuthService, EmailService, CurriculumService, EmbeddingsService, OrchardService, FlashcardsService, QuizRushService, LlmService, LearningScoreService]
 })
 export class AppModule {}

@@ -1,11 +1,19 @@
-import { Body, Controller, Get, Param, Post } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, Req, UseGuards } from '@nestjs/common';
 import { StudentAuthService } from '../auth/student-auth.service';
+import { OwnerGuard, OwnerIdentityGuard } from '../auth/owner.guard';
 
 @Controller('auth')
 export class AuthController {
   constructor(private readonly studentAuth: StudentAuthService) {}
 
+  @Get('owner/access')
+  @UseGuards(OwnerIdentityGuard)
+  ownerAccess(@Req() req: { owner: { mfaVerified: boolean } }) {
+    return { success: true, mfaVerified: req.owner.mfaVerified };
+  }
+
   @Post('school/register')
+  @UseGuards(OwnerGuard)
   async schoolRegister(@Body() body: any) {
     const res = await this.studentAuth.registerSchool({
       email: body?.email,
@@ -15,10 +23,11 @@ export class AuthController {
       password: body?.password
     });
     if (!res.ok) return { success: false, error: res.error };
-    return { success: true, role: 'school_admin', token: res.token, school: res.school };
+    return { success: true, school: res.school };
   }
 
   @Post('school/register/request-otp')
+  @UseGuards(OwnerGuard)
   async schoolRegisterRequestOtp(@Body() body: any) {
     const res = await this.studentAuth.requestSchoolRegistrationOtp({
       email: body?.email,
@@ -32,10 +41,11 @@ export class AuthController {
   }
 
   @Post('school/register/verify-otp')
+  @UseGuards(OwnerGuard)
   async schoolRegisterVerifyOtp(@Body() body: any) {
     const res = await this.studentAuth.verifySchoolRegistrationOtp(body?.email, body?.otp);
     if (!res.ok) return { success: false, error: res.error };
-    return { success: true, role: 'school_admin', token: res.token, school: res.school };
+    return { success: true, school: res.school };
   }
 
   @Post('school/login')

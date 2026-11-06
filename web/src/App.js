@@ -4,6 +4,7 @@ import StudentDashboard from './components/StudentDashboard';
 import TeacherDashboard from './components/TeacherDashboard';
 import SchoolDashboard from './components/SchoolDashboard';
 import RoleGateway from './components/RoleGateway';
+import OwnerPortal from './components/OwnerPortal';
 import { setRuntimeDevToken } from './api';
 
 // Temporary debug switch: disables automatic auth-expiry flows that can feel like
@@ -104,6 +105,10 @@ function App() {
     setSessionExpired(false);
     localStorage.removeItem('AcademiX.session');
     setRuntimeDevToken('');
+  }
+
+  if (window.location.pathname.replace(/\/+$/, '') === '/owner') {
+    return <OwnerPortal />;
   }
 
   // Re-login modal — shown when session expires while user is on a page

@@ -67,35 +67,26 @@ export async function teacherLogin(loginId, password) {
   return res.json();
 }
 
-export async function schoolRegister(payload) {
-  const url = `${API_BASE}/auth/school/register`;
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload || {})
+async function ownerRequest(path, token, body) {
+  if (!token) throw new Error('Owner sign-in required.');
+  const res = await fetch(`${API_BASE}/auth/${path}`, {
+    method: body === undefined ? 'GET' : 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+    ...(body === undefined ? {} : { body: JSON.stringify(body) }),
   });
-  return res.json();
+  const data = await res.json();
+  if (!res.ok || !data.success) {
+    const error = new Error(data.message || data.error || 'Owner request failed.');
+    error.status = res.status;
+    throw error;
+  }
+  return data;
 }
 
-export async function schoolRegisterRequestOtp(payload) {
-  const url = `${API_BASE}/auth/school/register/request-otp`;
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload || {})
-  });
-  return res.json();
-}
-
-export async function schoolRegisterVerifyOtp(email, otp) {
-  const url = `${API_BASE}/auth/school/register/verify-otp`;
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email, otp })
-  });
-  return res.json();
-}
+export const getOwnerAccess = (token) => ownerRequest('owner/access', token);
+export const schoolRegister = (payload, token) => ownerRequest('school/register', token, payload);
+export const schoolRegisterRequestOtp = (payload, token) => ownerRequest('school/register/request-otp', token, payload);
+export const schoolRegisterVerifyOtp = (email, otp, token) => ownerRequest('school/register/verify-otp', token, { email, otp });
 
 export async function schoolLogin(email, password) {
   const url = `${API_BASE}/auth/school/login`;

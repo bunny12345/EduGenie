@@ -20,6 +20,17 @@ npm run start:dev
 
 The server starts on `PORT` from `.env` (default 3000) and exposes `POST /chat`.
 
+Owner-only school registration
+------------------------------
+
+All school-registration endpoints require the configured Supabase owner and a
+verified authenticator-app MFA session. Set `OWNER_SUPABASE_USER_ID` on the
+backend; missing configuration disables school registration. Public school,
+teacher and student login and invitation acceptance are unchanged.
+
+See [owner setup, school registration and MFA recovery](../docs/owner-school-registration.md)
+before deploying this change. Deploy the backend first, then the website.
+
 Database migrations
 -------------------
 
@@ -58,4 +69,3 @@ Notes about keys
 Files added:
 - `db/init.sql` — creates `students`, `messages`, `memories`, and `homework` tables.
 - `scripts/run_migrations.sh` — helper script to run the SQL using `psql`.
-

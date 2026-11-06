@@ -456,6 +456,30 @@ export class StudentAuthService implements OnModuleInit {
     return 'active';
   }
 
+  private async persistRegisteredSchool(school: SchoolAccount) {
+    try {
+      const { error } = await this.db.client.from('schools').insert([{
+        id: school.schoolId,
+        email: school.email,
+        school_name: school.schoolName,
+        branch: school.branch,
+        location: school.location,
+        password_salt: school.passwordSalt,
+        password_hash: school.passwordHash,
+        created_at: new Date().toISOString(),
+      }]);
+      if (error) throw new Error(error.message || 'School insert failed');
+    } catch (error) {
+      console.error('School registration persistence failed:', error instanceof Error ? error.message : 'Unknown database error');
+      if (process.env.SUPABASE_URL && (process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY)) {
+        return { ok: false, error: 'Could not save the school. Please retry or contact the site operator.' };
+      }
+      // Preserve the existing local fallback only when Supabase is unconfigured.
+    }
+    this.rememberSchool(school);
+    return { ok: true };
+  }
+
   async registerSchool(payload: {
     email: string;
     schoolName: string;
@@ -483,24 +507,8 @@ export class StudentAuthService implements OnModuleInit {
     const passwordSalt = randomBytes(12).toString('hex');
     const passwordHash = this.hashPassword(password, passwordSalt);
     const school: SchoolAccount = { schoolId, email, schoolName, branch, location, passwordSalt, passwordHash };
-    this.rememberSchool(school);
-
-    try {
-      await this.db.client.from('schools').insert([
-        {
-          id: schoolId,
-          email,
-          school_name: schoolName,
-          branch,
-          location,
-          password_salt: passwordSalt,
-          password_hash: passwordHash,
-          created_at: new Date().toISOString()
-        }
-      ]);
-    } catch (e) {
-      // local fallback is sufficient for dev.
-    }
+    const persisted = await this.persistRegisteredSchool(school);
+    if (!persisted.ok) return { ok: false, error: persisted.error };
 
     const token = this.makeRoleToken(schoolId, 'school_admin', { schoolId });
     return {
@@ -615,24 +623,8 @@ export class StudentAuthService implements OnModuleInit {
       passwordSalt: pending.payload.passwordSalt,
       passwordHash: pending.payload.passwordHash
     };
-    this.rememberSchool(school);
-
-    try {
-      await this.db.client.from('schools').insert([
-        {
-          id: schoolId,
-          email,
-          school_name: school.schoolName,
-          branch: school.branch,
-          location: school.location,
-          password_salt: school.passwordSalt,
-          password_hash: school.passwordHash,
-          created_at: new Date().toISOString()
-        }
-      ]);
-    } catch (e) {
-      // local fallback is sufficient for dev.
-    }
+    const persisted = await this.persistRegisteredSchool(school);
+    if (!persisted.ok) return { ok: false, error: persisted.error };
 
     StudentAuthService.pendingSchoolOtps.delete(email);
 

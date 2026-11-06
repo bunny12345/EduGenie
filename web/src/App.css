@@ -8298,3 +8298,7 @@ textarea {
 }
 /* Room under the last home panel so the floating Sam bubble rests in empty space. */
 .eg-services-card.eg-home-glass { margin-bottom: 96px; }
+
+.eg-owner-card { max-width: 720px; }
+.eg-owner-qr { display: block; width: min(240px, 100%); height: auto; margin: 12px auto; padding: 12px; background: #fff; border-radius: 12px; }
+.eg-owner-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 16px; margin-top: 24px; }
