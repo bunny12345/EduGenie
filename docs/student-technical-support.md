@@ -1,8 +1,9 @@
-# Student Technical Query — website
+# Student Technical Query — website and mobile app
 
 ## Student workflow
 
-1. On Home, open School Services > Technical Query.
+1. On the website Home, open School Services > Technical Query.
+   In the student mobile app, open Services > Technical Query.
 2. Ask the Help Assistant about using AcademiX (homework, Sam, microphone,
    login, tests, navigation, rewards, etc.).
 3. Choose **Report an issue** for a problem, or **Connect to a technician** when
@@ -64,10 +65,34 @@ read or send student messages. The owner inbox requires owner MFA.
    student's reply view.
 
 No real reports/emails or production migrations are performed by the tests.
-Existing teacher, school and mobile portals are unchanged. Request role is stored
+Existing teacher and school portals are unchanged. Request role is stored
 for future expansion, but all public support endpoints currently require the
 student role. Students cannot forge account identity, technician messages, or
 notification recipients through request bodies.
+
+## Mobile and website sync
+
+The student app uses the same authenticated `/support/*` endpoints and Supabase
+tables as the website. Sign in to the same student account to see the same
+requests, status and technician replies on both platforms. The owner continues
+replying through the website's MFA-protected Support Inbox. Bot replies and
+suggestions come from the same backend guide; normal bot chat is temporary and
+is not synced. Only submitted requests and follow-ups persist.
+
+Tap a mobile request to open it; tap the selected request again to close it and
+return to the Help Assistant. Closing does not delete the saved conversation.
+
+The app refreshes requests every fifteen seconds and an open conversation every
+ten seconds. Refresh manually or pull down to check sooner. Polling pauses while
+the app is backgrounded, and refreshes on resume. Failed submissions keep the
+draft and retry ID; notification failures show an explicit warning with retry.
+
+The app defaults to `https://academix.now`, matching the live website backend.
+Local web development currently uses `http://localhost:3000`; to test the app
+against that backend, pass `--dart-define=API_BASE_URL=http://localhost:3000`
+when running Flutter. Both clients must use the same backend for data parity.
+No new migration or backend deployment is required for this mobile addition.
+Rebuild/relaunch the app to use the new screen.
 
 If email delivery fails, the request remains saved and the UI explicitly warns
 that email was not delivered, with a retry-notification button. Missing database
@@ -89,6 +114,10 @@ cd ../web
 CI=true npm test -- --watchAll=false --runInBand src/components/TechnicalSupport.test.jsx src/components/OwnerPortal.test.jsx src/supportApi.test.js
 npx eslint src/components/TechnicalSupport.jsx src/components/TechnicalSupport.test.jsx src/components/OwnerPortal.jsx src/api.js src/supportApi.test.js
 CI=false npm run build
+
+cd ../mobile
+flutter analyze
+flutter test test/support_api_service_test.dart test/student_support_screen_test.dart
 ```
 
 The SQL integration test uses `backend/scripts/support_db_test.ts`.
