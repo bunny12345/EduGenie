@@ -5,6 +5,7 @@ import '../../models/dashboard.dart';
 import '../../state/session_provider.dart';
 import '../../state/student_providers.dart';
 import '../../theme/app_colors.dart';
+import '../../widgets/quick_sam_bubble.dart';
 import '../../widgets/rank_badge.dart';
 import '../../widgets/section_card.dart';
 import 'student_ai_tutor_screen.dart';
@@ -45,13 +46,16 @@ class StudentHomeScreen extends ConsumerWidget {
           SizedBox(width: 12),
         ],
       ),
+      floatingActionButton: const QuickSamBubble(),
+      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
       body: RefreshIndicator(
         onRefresh: () async {
           ref.invalidate(dashboardProvider);
           ref.invalidate(rewardsProvider);
         },
         child: ListView(
-          padding: const EdgeInsets.all(16),
+          // Extra bottom room so the floating Sam bubble never covers the Academics grid.
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 96),
           children: [
             // Left out entirely until the dashboard has loaded a school name.
             _SchoolBanner(name: dashboardAsync.value?.schoolName),

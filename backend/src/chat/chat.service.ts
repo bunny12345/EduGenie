@@ -225,6 +225,8 @@ function addContextualEmojis(reply: string) {
   return output;
 }
 
+const QUICK_OUT_OF_SCOPE = 'OUT_OF_SCOPE';
+
 @Injectable()
 export class ChatService {
   // Process-local fallback context so follow-up questions still work when DB writes fail.
@@ -1198,6 +1200,201 @@ export class ChatService {
       followups,
       conversationId: convId
     };
+  }
+
+  // ── Quick Sam (home-page bubble) ─────────────────────────────────────────
+  // Class-wide, ephemeral tutor: answers from every visible lesson of the
+  // student's class (only subjects that have a registered class teacher), with
+  // no subject/lesson filter. Nothing is persisted — no messages rows, no
+  // snapshots, no process cache; the client keeps the thread until it closes.
+  private static quickContextCache = new Map<string, {
+    expiresAt: number;
+    subjects: string[];
+    lessons: Array<{ id: string; title: string; subject: string }>;
+    chunks: Array<{ lesson_id: string; chunk_text: string; embedding: number[] | null; page_number?: number | null }>;
+  }>();
+  private static readonly QUICK_CONTEXT_TTL_MS = 5 * 60_000;
+
+  private async loadQuickClassContext(schoolId: string, className: string) {
+    const key = `${schoolId}::${className.toLowerCase()}`;
+    const cached = ChatService.quickContextCache.get(key);
+    if (cached && cached.expiresAt > Date.now()) return cached;
+
+    const teachers = schoolId ? await this.studentAuth.listClassTeachers(schoolId, className) : [];
+    const subjectSet = new Map<string, string>();
+    for (const t of teachers) {
+      const subj = String(t?.subject || '').trim();
+      if (subj && subj.toLowerCase() !== 'general') subjectSet.set(subj.toLowerCase(), subj);
+    }
+    const subjects = Array.from(subjectSet.values());
+
+    let lessons: Array<{ id: string; title: string; subject: string }> = [];
+    const chunks: Array<{ lesson_id: string; chunk_text: string; embedding: number[] | null; page_number?: number | null }> = [];
+    if (subjects.length) {
+      const visRes = await this.db.client
+        .from('lesson_class_visibility')
+        .select('lesson_id')
+        .eq('class_name', className)
+        .eq('is_visible', true);
+      const visIds = Array.from(new Set(
+        (Array.isArray((visRes as any)?.data) ? (visRes as any).data : [])
+          .map((r: any) => String(r?.lesson_id || '').trim())
+          .filter(Boolean)
+      ));
+      if (visIds.length) {
+        const schoolTeacherIds = new Set<string>();
+        if (schoolId) {
+          const tRes = await this.db.client.from('teachers').select('id').eq('school_id', schoolId);
+          (Array.isArray((tRes as any)?.data) ? (tRes as any).data : [])
+            .forEach((r: any) => { if (r?.id) schoolTeacherIds.add(String(r.id)); });
+        }
+        const lRes = await this.db.client.from('lessons').select('id,title,subject,teacher_id').in('id', visIds);
+        lessons = (Array.isArray((lRes as any)?.data) ? (lRes as any).data : [])
+          .filter((l: any) => subjectSet.has(String(l?.subject || '').trim().toLowerCase()))
+          .filter((l: any) => !schoolTeacherIds.size || schoolTeacherIds.has(String(l?.teacher_id || '')))
+          .map((l: any) => ({ id: String(l.id), title: String(l.title || 'Untitled lesson'), subject: String(l.subject || '').trim() }));
+      }
+      const lessonIds = lessons.map((l) => l.id);
+      const PAGE = 1000;
+      for (let from = 0; lessonIds.length && from < 8000; from += PAGE) {
+        const cRes = await this.db.client
+          .from('lesson_chunks')
+          .select('lesson_id,chunk_text,embedding,page_number')
+          .in('lesson_id', lessonIds)
+          .order('created_at', { ascending: true })
+          .range(from, from + PAGE - 1);
+        const rows = Array.isArray((cRes as any)?.data) ? (cRes as any).data : [];
+        rows.forEach((c: any) => {
+          const text = String(c?.chunk_text || '').trim();
+          if (text) chunks.push({ lesson_id: String(c.lesson_id || ''), chunk_text: text, embedding: Array.isArray(c?.embedding) ? c.embedding : null, page_number: c?.page_number ?? null });
+        });
+        if (rows.length < PAGE) break;
+      }
+    }
+
+    const entry = { expiresAt: Date.now() + ChatService.QUICK_CONTEXT_TTL_MS, subjects, lessons, chunks };
+    ChatService.quickContextCache.set(key, entry);
+    return entry;
+  }
+
+  async handleQuickMessage(
+    studentId: string,
+    message: string,
+    opts?: { recentMessages?: Array<{ role: string; content: string }> }
+  ) {
+    const text = String(message || '').trim().slice(0, 2000);
+    if (!text) return { reply: '', followups: [], subjects: [] as string[] };
+
+    let studentName = '';
+    let className = '';
+    let schoolId = '';
+    try {
+      const profile = await this.studentAuth.resolveStudentProfile(studentId);
+      studentName = String(profile?.name || '').trim();
+      className = String(profile?.className || '').trim();
+      schoolId = String(profile?.schoolId || '').trim();
+    } catch { /* handled below */ }
+
+    let ctx: Awaited<ReturnType<ChatService['loadQuickClassContext']>> | null = null;
+    try {
+      if (className) ctx = await this.loadQuickClassContext(schoolId, className);
+    } catch (e) {
+      console.warn('quick sam context lookup failed', (e as any)?.message || e);
+    }
+    const subjects = ctx?.subjects || [];
+    const subjectList = subjects.join(', ');
+
+    if (!ctx || !ctx.chunks.length) {
+      return {
+        reply: subjects.length
+          ? `Hi${studentName ? ` ${studentName.split(' ')[0]}` : ''}! 👋 Your teachers haven't uploaded lesson materials for ${subjectList} yet, so I can't answer from your class lessons right now. Please check back once your lessons are added.`
+          : `Hi${studentName ? ` ${studentName.split(' ')[0]}` : ''}! 👋 Your class doesn't have any subjects or lessons set up yet, so there's nothing I can teach from right now.`,
+        followups: [],
+        subjects,
+      };
+    }
+
+    const history = (Array.isArray(opts?.recentMessages) ? opts!.recentMessages : [])
+      .filter((m) => m && typeof m.content === 'string' && m.content.trim())
+      .map((m) => ({ role: m.role === 'assistant' ? 'assistant' : 'user', content: m.content.trim().slice(0, 2000) }))
+      .slice(-12);
+
+    // Retrieval also considers the previous question so short follow-ups
+    // ("explain it again", "give an example") stay on the same topic.
+    const lastUser = [...history].reverse().find((m) => m.role === 'user')?.content || '';
+    const retrievalText = text.length < 40 && lastUser ? `${lastUser}\n${text}` : text;
+    const emb = await this.embeddings.embed(retrievalText);
+    const tokens = (t: string) => this.normalizeForMatch(t).split(' ').map((w) => w.replace(/^[./-]+|[./-]+$/g, ''));
+    const queryTokens = new Set(tokens(retrievalText).filter((w) => w.length > 3));
+    const lessonById = new Map(ctx.lessons.map((l) => [l.id, l]));
+    const scored = ctx.chunks
+      .map((chunk) => {
+        const cos = chunk.embedding ? this.embeddings.cosine(emb, chunk.embedding) : 0;
+        let overlap = 0;
+        if (queryTokens.size) {
+          const words = new Set(tokens(chunk.chunk_text));
+          queryTokens.forEach((w) => { if (words.has(w)) overlap += 1; });
+          overlap /= queryTokens.size;
+        }
+        return { chunk, score: cos + 0.35 * overlap };
+      })
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 14);
+
+    const materials = scored.map(({ chunk }, idx) => {
+      const lesson = lessonById.get(chunk.lesson_id);
+      const page = chunk.page_number ? ` p.${chunk.page_number}` : '';
+      return `${idx + 1}. [${lesson?.subject || 'Subject'} — ${lesson?.title || 'Lesson'}${page}] ${chunk.chunk_text}`;
+    }).join('\n');
+    const lessonIndex = ctx.subjects.map((subj) => {
+      const titles = ctx!.lessons.filter((l) => l.subject.toLowerCase() === subj.toLowerCase()).map((l) => l.title).slice(0, 12);
+      return `- ${subj}: ${titles.length ? titles.join('; ') : '(no lessons uploaded yet)'}`;
+    }).join('\n');
+
+    const homeworkEntries = await this.getHomeworkGuardrailEntries(studentId);
+    const lockedHomeworkMatch = this.findLockedHomeworkMatch(homeworkEntries, text);
+
+    const firstName = studentName ? studentName.split(' ')[0] : '';
+    const systemPrompt = lockedHomeworkMatch
+      ? this.buildHomeworkConceptOnlyPrompt(lockedHomeworkMatch, { studentName: studentName || undefined })
+      : `You are Sam, AcademiX's friendly AI study buddy, answering quick questions from a school student${firstName ? ` named ${firstName}` : ''}${className ? ` in ${className}` : ''}.` +
+        ` The student opened you from the home screen, so there is NO subject or lesson filter: you may answer from ANY of their class subjects (${subjectList}).` +
+        ` STRICT SOURCE RULE: Teach ONLY what is covered by the CLASS MATERIALS below (the PDFs their teachers uploaded). They are your teaching boundary.` +
+        ` First work out which subject and lesson the question belongs to, then answer from that material and briefly mention it (e.g. "From your Science lesson on Light…").` +
+        ` If the question is not covered by the materials — another subject, a topic not in their lessons, general trivia, entertainment, personal or unsafe topics — do NOT answer it, not even partly and not "outside the lessons".` +
+        ` In that case reply with exactly the single word ${QUICK_OUT_OF_SCOPE} and nothing else.` +
+        ` Never invent facts beyond the materials; if the materials only partly cover it, answer just that part and say so.` +
+        ` A simple greeting or thank-you may get a one-line warm reply plus an invitation to ask about their subjects.` +
+        ` Style: short and friendly (2-5 sentences, or a few numbered steps for problems), simple words, one real-life example when it helps, 0-2 school-friendly emojis.` +
+        ` End with one short check question when you have taught a concept.` +
+        ` If an ASSIGNED HOMEWORK GUARDRAIL section appears below and the question matches a LOCKED item, explain the method with a different example and never give that answer.` +
+        `\n\n--- CLASS SUBJECTS AND LESSONS ---\n${lessonIndex}\n--- END ---` +
+        `\n\n--- CLASS MATERIALS (most relevant excerpts) ---\n${materials}\n--- END CLASS MATERIALS ---` +
+        this.buildHomeworkGuardrailSectionText(homeworkEntries) +
+        `\n\nFINAL CHECK before replying: is the answer actually found in the CLASS MATERIALS above? If not (and it is not just a greeting/thanks), reply exactly ${QUICK_OUT_OF_SCOPE}. Never use general knowledge.`;
+
+    const messages = lockedHomeworkMatch
+      ? [{ role: 'system', content: systemPrompt }, { role: 'user', content: text }]
+      : [{ role: 'system', content: systemPrompt }, ...history, { role: 'user', content: text }];
+    const raw = String(await this.llm.query(messages) || '');
+    if (!lockedHomeworkMatch && raw.toUpperCase().replace(/[^A-Z]/g, '').includes('OUTOFSCOPE')) {
+      const examples = ctx.lessons.slice(0, 3).map((l) => `"${l.title}" (${l.subject})`).join(', ');
+      return {
+        reply: `Sorry${firstName ? ` ${firstName}` : ''}, that isn't covered in your class lessons, so I can't answer it here. 🙂 I can help with your subjects: ${subjectList}.` +
+          (examples ? ` For example, ask me about ${examples}.` : ''),
+        followups: ctx.lessons.slice(0, 3).map((l) => `Teach me ${l.title}`),
+        subjects,
+      };
+    }
+    const reply = addContextualEmojis(raw);
+
+    const topSubjects = Array.from(new Set(scored.slice(0, 3).map(({ chunk }) => lessonById.get(chunk.lesson_id)?.subject).filter(Boolean))) as string[];
+    const focus = topSubjects[0] || subjects[0];
+    const followups = focus
+      ? ['Explain that in simpler words', 'Give me a real-life example', `Ask me a quick ${focus} question`]
+      : [];
+
+    return { reply, followups, subjects };
   }
 
   private buildFollowups(message: string, lessonLabel?: string, subjectLabel?: string): string[] {

@@ -8224,3 +8224,77 @@ textarea {
   .eg-sam-live-panel { right: 12px; left: 12px; bottom: 12px; width: auto; }
   .eg-sam-live-caption { max-height: 80px; }
 }
+
+/* ══════════════ Quick Sam — floating home-page bubble + class-wide chat ══════════════ */
+.eg-quick-sam-fab {
+  position: fixed; right: 28px; bottom: 28px; z-index: 900;
+  width: 74px; height: 74px; padding: 0; border: 0; border-radius: 50%; cursor: pointer;
+  background: transparent; display: grid; place-items: center;
+  animation: eg-quick-sam-bob 3.2s ease-in-out infinite;
+  -webkit-tap-highlight-color: transparent;
+}
+.eg-quick-sam-ring {
+  position: absolute; inset: 0; border-radius: 50%;
+  background: conic-gradient(from 0deg, #7dd3fc, #3b82f6, #a5b4fc, #22d3ee, #7dd3fc);
+  animation: eg-quick-sam-spin 3.5s linear infinite;
+  box-shadow: 0 0 18px rgba(56, 189, 248, .75), 0 0 36px rgba(59, 130, 246, .45);
+}
+.eg-quick-sam-ring::after {
+  content: ''; position: absolute; inset: -8px; border-radius: 50%;
+  border: 2px solid rgba(96, 165, 250, .55);
+  animation: eg-quick-sam-pulse 2.2s ease-out infinite;
+}
+.eg-quick-sam-core {
+  position: relative; width: 64px; height: 64px; border-radius: 50%;
+  display: grid; place-items: center;
+  background: radial-gradient(circle at 32% 28%, #60a5fa 0%, #2563eb 48%, #1e3a8a 100%);
+  box-shadow: inset 0 -6px 12px rgba(10, 20, 80, .45), inset 0 5px 10px rgba(255, 255, 255, .35), 0 8px 18px rgba(30, 58, 138, .45);
+  color: #fff; font-weight: 900; font-size: 19px; letter-spacing: .5px;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, .35);
+}
+.eg-quick-sam-fab:hover .eg-quick-sam-core { transform: scale(1.06); }
+.eg-quick-sam-core { transition: transform .2s ease; }
+.eg-quick-sam-fab:active .eg-quick-sam-core { transform: scale(.94); }
+.eg-quick-sam-fab:focus-visible { outline: 3px solid #93c5fd; outline-offset: 6px; }
+@keyframes eg-quick-sam-spin { to { transform: rotate(360deg); } }
+@keyframes eg-quick-sam-pulse { 0% { transform: scale(.92); opacity: .9; } 100% { transform: scale(1.28); opacity: 0; } }
+@keyframes eg-quick-sam-bob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-6px); } }
+@media (prefers-reduced-motion: reduce) {
+  .eg-quick-sam-fab, .eg-quick-sam-ring, .eg-quick-sam-ring::after { animation: none; }
+}
+
+.eg-quick-sam .eg-quick-sam-panel { width: min(420px, 34vw); max-height: calc(100vh - 110px); grid-template-rows: minmax(0, 1fr) auto auto auto auto; }
+.eg-quick-sam-list { min-height: 120px; max-height: 44vh; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; padding: 2px; scrollbar-width: thin; scrollbar-color: rgba(255, 255, 255, .35) transparent; }
+.eg-quick-sam-msg { max-width: 88%; padding: 9px 12px; border-radius: 14px; font-size: 14px; line-height: 1.5; word-wrap: break-word; }
+.eg-quick-sam-msg.ai { align-self: flex-start; background: rgba(255, 255, 255, .1); color: #eef1ff; border-bottom-left-radius: 4px; }
+.eg-quick-sam-msg.me { align-self: flex-end; background: linear-gradient(135deg, #3b82f6, #2563eb); color: #fff; border-bottom-right-radius: 4px; }
+.eg-quick-sam-typing { display: flex; gap: 5px; align-items: center; padding: 12px 14px; }
+.eg-quick-sam-typing span { width: 7px; height: 7px; border-radius: 50%; background: #c7d2fe; animation: eg-quick-sam-dot 1s ease-in-out infinite; }
+.eg-quick-sam-typing span:nth-child(2) { animation-delay: .15s; }
+.eg-quick-sam-typing span:nth-child(3) { animation-delay: .3s; }
+@keyframes eg-quick-sam-dot { 0%, 100% { opacity: .35; transform: translateY(0); } 50% { opacity: 1; transform: translateY(-3px); } }
+.eg-quick-sam-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.eg-quick-sam-chip { border: 1px solid rgba(147, 197, 253, .5); background: rgba(59, 130, 246, .18); color: #dbeafe; border-radius: 999px; padding: 6px 11px; font-size: 12px; font-weight: 700; cursor: pointer; }
+.eg-quick-sam-chip:hover { background: rgba(59, 130, 246, .32); }
+.eg-quick-sam-status { font-size: 12px; color: #b4bdff; padding: 0 4px; }
+.eg-quick-sam-status.speaking { color: #86efac; }
+.eg-quick-sam-status.listening { color: #fca5a5; }
+.eg-quick-sam-error { margin: 0; font-size: 12px; color: #fecaca; padding: 0 4px; }
+.eg-quick-sam-input { display: flex; gap: 8px; align-items: center; }
+.eg-quick-sam-input input { flex: 1; min-width: 0; border-radius: 999px; border: 1px solid rgba(255, 255, 255, .22); background: rgba(255, 255, 255, .1); color: #fff; padding: 10px 14px; font-size: 14px; outline: none; }
+.eg-quick-sam-input input::placeholder { color: rgba(220, 228, 255, .6); }
+.eg-quick-sam-input input:focus { border-color: #60a5fa; box-shadow: 0 0 0 3px rgba(96, 165, 250, .25); }
+.eg-quick-sam-mic, .eg-quick-sam-send { flex: none; border: 0; cursor: pointer; border-radius: 999px; font-weight: 800; color: #fff; }
+.eg-quick-sam-mic { width: 42px; height: 42px; padding: 0; display: grid; place-items: center; border: 1px solid rgba(120, 143, 255, .35); background: rgba(91, 108, 255, .2); }
+.eg-quick-sam-mic svg { display: block; }
+.eg-quick-sam-mic.on { background: #e5384f; box-shadow: 0 0 0 4px rgba(229, 56, 79, .3); }
+.eg-quick-sam-send { padding: 10px 16px; font-size: 14px; background: linear-gradient(135deg, #3b82f6, #2563eb); box-shadow: 0 6px 14px rgba(37, 99, 235, .4); }
+.eg-quick-sam-mic:disabled, .eg-quick-sam-send:disabled { opacity: .5; cursor: default; box-shadow: none; }
+@media (max-width: 900px) {
+  .eg-quick-sam-fab { right: 16px; bottom: 16px; }
+  .eg-quick-sam .eg-quick-sam-panel { width: auto; }
+  .eg-quick-sam .eg-sam-live-stage { inset: 96px 0 clamp(250px, 42vh, 380px) 0; }
+  .eg-quick-sam-list { max-height: 22vh; }
+}
+/* Room under the last home panel so the floating Sam bubble rests in empty space. */
+.eg-services-card.eg-home-glass { margin-bottom: 96px; }

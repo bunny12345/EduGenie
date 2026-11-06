@@ -51,6 +51,24 @@ export class ChatController {
     return { success: true, ...response };
   }
 
+  // Home-page "Quick Sam" bubble: class-wide answers, nothing persisted.
+  @Post('quick')
+  @UseGuards(AuthGuard)
+  async quickChat(
+    @Req() req: any,
+    @Body() payload: { studentId?: string; message: string; recentMessages?: Array<{ role: string; content: string }> }
+  ) {
+    const studentId = req.studentId || payload?.studentId || 'anon';
+    try {
+      const response = await this.chatService.handleQuickMessage(studentId, payload?.message, {
+        recentMessages: payload?.recentMessages,
+      });
+      return { success: true, ...response };
+    } catch (e: any) {
+      return { success: false, error: String(e?.message || 'Sam could not answer right now') };
+    }
+  }
+
   @Get('history')
   @UseGuards(AuthGuard)
   async history(@Req() req: any, @Query('studentId') studentId?: string, @Query('conversationId') conversationId?: string) {

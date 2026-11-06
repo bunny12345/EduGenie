@@ -47,6 +47,7 @@ import StudentReportCard from './StudentReportCard';
 import RankBadge from './RankBadge';
 import MathMarkdown from './MathMarkdown';
 import SamAvatar from './SamAvatar';
+import QuickSamBubble from './QuickSamBubble';
 
 function safeArray(v) {
   return Array.isArray(v) ? v : [];
@@ -5440,6 +5441,9 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
             )}
           </div>
         </div>
+      ) : null}
+      {activeSidebarTab === 'Home' && activeView === 'home' && studentId ? (
+        <QuickSamBubble studentId={studentId} schoolName={schoolName} greetingName={dashboard?.greetingName || sessionProfile?.name || ''} />
       ) : null}
     </div>
   );

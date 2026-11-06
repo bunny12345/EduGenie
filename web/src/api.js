@@ -196,6 +196,20 @@ export async function sendChat(studentId, message, personality, conversationId, 
   return res.json();
 }
 
+// Home-page "Quick Sam" bubble: answers from all of the class's subjects,
+// with no subject/lesson filter. The backend stores nothing.
+export async function sendQuickSamChat(studentId, message, recentMessages, signal) {
+  const headers = await authHeaders();
+  const res = await fetch(`${API_BASE}/chat/quick`, {
+    method: 'POST',
+    headers,
+    signal,
+    body: JSON.stringify({ studentId, message, recentMessages })
+  });
+  const data = await res.json();
+  return checkSuccess(data, 'sendQuickSamChat');
+}
+
 export async function getChatHistory(studentId, conversationId) {
   let url = `${API_BASE}/chat/history?studentId=${encodeURIComponent(studentId)}`;
   if (conversationId) url += `&conversationId=${encodeURIComponent(conversationId)}`;

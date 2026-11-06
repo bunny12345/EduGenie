@@ -72,6 +72,31 @@ class ChatApiService {
     }
   }
 
+  /// Home-page "Quick Sam" bubble — mirrors `sendQuickSamChat` in
+  /// `web/src/api.js`. Class-wide (no subject/lesson filter); the backend
+  /// stores nothing. Returns `{reply, followups, subjects}`.
+  Future<Map<String, dynamic>> sendQuickChat({
+    required String studentId,
+    required String message,
+    List<Map<String, String>> recentMessages = const [],
+    CancelToken? cancelToken,
+  }) async {
+    try {
+      final res = await _client.dio.post('/chat/quick', cancelToken: cancelToken, data: {
+        'studentId': studentId,
+        'message': message,
+        'recentMessages': recentMessages,
+      });
+      final data = Map<String, dynamic>.from(res.data as Map);
+      if (data['success'] == false || data['reply'] == null) {
+        throw Exception(data['error']?.toString() ?? 'Sam could not answer right now');
+      }
+      return data;
+    } on DioException catch (e) {
+      throw Exception(_errorMessage(e));
+    }
+  }
+
   Future<List<CurriculumLesson>> listLessons({String? subject}) async {
     try {
       final res = await _client.dio.get('/curriculum/lessons', queryParameters: {
