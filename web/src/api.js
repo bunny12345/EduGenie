@@ -88,6 +88,43 @@ export const schoolRegister = (payload, token) => ownerRequest('school/register'
 export const schoolRegisterRequestOtp = (payload, token) => ownerRequest('school/register/request-otp', token, payload);
 export const schoolRegisterVerifyOtp = (email, otp, token) => ownerRequest('school/register/verify-otp', token, { email, otp });
 
+async function supportRequest(path, { token, body, signal } = {}) {
+  const headers = token ? { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' } : await authHeaders();
+  const res = await fetch(`${API_BASE}${path}`, {
+    method: body === undefined ? 'GET' : 'POST', headers, signal,
+    ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+  });
+  const data = await res.json();
+  if (!res.ok || !data.success) {
+    const error = new Error(data.message || data.error || 'Support request failed.');
+    error.status = res.status;
+    throw error;
+  }
+  return data;
+}
+
+export const askSupportBot = (message) => supportRequest('/support/chat', { body: { message } });
+export const createSupportTicket = (body) => supportRequest('/support/tickets', { body });
+export const listSupportTickets = (offset = 0, token, signal) =>
+  supportRequest(`${token ? '/owner/support' : '/support'}/tickets?offset=${offset}`, { token, signal });
+export async function getSupportThread(id, token, signal) {
+  const messages = [];
+  let offset = 0;
+  let result;
+  do {
+    result = await supportRequest(`${token ? '/owner/support' : '/support'}/tickets/${encodeURIComponent(id)}?offset=${offset}`, { token, signal });
+    messages.push(...result.messages);
+    offset = result.nextOffset;
+  } while (offset !== null);
+  return { ...result, messages };
+}
+export const replyToSupportTicket = (id, body, token) =>
+  supportRequest(`${token ? '/owner/support' : '/support'}/tickets/${encodeURIComponent(id)}/messages`, { token, body });
+export const setSupportTicketStatus = (id, status, token) =>
+  supportRequest(`/owner/support/tickets/${encodeURIComponent(id)}/status`, { token, body: { status } });
+export const retrySupportNotification = (id) =>
+  supportRequest(`/support/tickets/${encodeURIComponent(id)}/notify`, { body: {} });
+
 export async function schoolLogin(email, password) {
   const url = `${API_BASE}/auth/school/login`;
   const res = await fetch(url, {

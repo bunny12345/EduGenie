@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useId, useRef, useState } from 'react';
 import { getOwnerAccess, schoolRegisterRequestOtp, schoolRegisterVerifyOtp } from '../api';
 import { createOwnerClient } from '../ownerAuthClient';
+import TechnicalSupport from './TechnicalSupport';
 
 function OwnerPasswordField({ label, ...inputProps }) {
   const id = useId();
@@ -41,6 +42,7 @@ export default function OwnerPortal() {
   const [code, setCode] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const [ownerTab, setOwnerTab] = useState('schools');
   const epoch = useRef(0);
 
   useEffect(() => () => {
@@ -61,6 +63,7 @@ export default function OwnerPortal() {
     setQr('');
     setCode('');
     setBusy(false);
+    setOwnerTab('schools');
   }, []);
 
   const signOut = useCallback(async (message = '') => {
@@ -164,7 +167,7 @@ export default function OwnerPortal() {
         <header className="rg-head">
           <img src="/logo.png" alt="AcademiX" className="rg-logo" />
           <p className="rg-kicker">Private owner access</p>
-          <h1>{phase === 'register' ? 'Register a school' : 'AcademiX Owner'}</h1>
+          <h1>{phase === 'register' ? ownerTab === 'support' ? 'Support Inbox' : 'Register a school' : 'AcademiX Owner'}</h1>
           <p>Only the configured owner can register schools. Authenticator verification is required.</p>
         </header>
         {!client ? (
@@ -176,7 +179,14 @@ export default function OwnerPortal() {
             <button type="submit" className="rg-submit" disabled={busy}>{busy ? 'Signing in...' : 'Owner sign in'}</button>
           </form>
         ) : phase === 'register' ? (
-          <OwnerSchoolRegistration token={session.access_token} onSessionExpired={signOut} />
+          <>
+            <nav className="eg-owner-tabs" aria-label="Owner tools">
+              <button type="button" aria-pressed={ownerTab === 'schools'} onClick={() => setOwnerTab('schools')}>Register school</button>
+              <button type="button" aria-pressed={ownerTab === 'support'} onClick={() => setOwnerTab('support')}>Support Inbox</button>
+            </nav>
+            {ownerTab === 'support' ? <TechnicalSupport ownerToken={session.access_token} onAuthError={signOut} /> :
+              <OwnerSchoolRegistration token={session.access_token} onSessionExpired={signOut} />}
+          </>
         ) : (
           <form className="rg-form" onSubmit={verify}>
             {phase === 'setup' ? (

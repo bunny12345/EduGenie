@@ -31,6 +31,14 @@ teacher and student login and invitation acceptance are unchanged.
 See [owner setup, school registration and MFA recovery](../docs/owner-school-registration.md)
 before deploying this change. Deploy the backend first, then the website.
 
+Student technical support
+-------------------------
+
+Website Technical Query now provides operational help, saved glitch reports and
+technician chats. Notifications use the existing SMTP service; the MFA owner
+Support Inbox handles replies. Apply the new support migration before enabling
+requests. See [student support setup and workflows](../docs/student-technical-support.md).
+
 Database migrations
 -------------------
 

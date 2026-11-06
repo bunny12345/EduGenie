@@ -48,6 +48,7 @@ import RankBadge from './RankBadge';
 import MathMarkdown from './MathMarkdown';
 import SamAvatar from './SamAvatar';
 import QuickSamBubble from './QuickSamBubble';
+import TechnicalSupport from './TechnicalSupport';
 
 function safeArray(v) {
   return Array.isArray(v) ? v : [];
@@ -4482,14 +4483,16 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
                     key={type}
                     type="button"
                     className={`eg-service-card${selectedSchoolService?.label === label ? ' is-selected' : ''}`}
-                    onClick={() => setSelectedSchoolService({ label, color })}
+                    onClick={() => setSelectedSchoolService({ type, label, color })}
                   >
                     <span className="eg-service-icon" style={{ color, background }}><SchoolServiceIcon type={type} /></span>
                     <span>{label}</span>
                   </button>
                 ))}
               </div>
-              {selectedSchoolService ? (
+              {selectedSchoolService?.type === 'query' ? (
+                <TechnicalSupport key={studentId} />
+              ) : selectedSchoolService ? (
                 <div className="eg-service-demo-panel" style={{ borderColor: `${selectedSchoolService.color}44` }}>
                   <strong>{selectedSchoolService.label}</strong>
                   <span>This school service is ready to be customized for your school requirements.</span>
@@ -5442,7 +5445,7 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
           </div>
         </div>
       ) : null}
-      {activeSidebarTab === 'Home' && activeView === 'home' && studentId ? (
+      {activeSidebarTab === 'Home' && activeView === 'home' && selectedSchoolService?.type !== 'query' && studentId ? (
         <QuickSamBubble studentId={studentId} schoolName={schoolName} greetingName={dashboard?.greetingName || sessionProfile?.name || ''} />
       ) : null}
     </div>
