@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../screens/student/student_ai_tutor_screen.dart';
 import '../screens/student/student_home_screen.dart';
 import '../screens/student/student_more_screen.dart';
 import '../screens/student/student_services_screen.dart';
@@ -19,7 +18,8 @@ List<BoxShadow> _frame3dShadow({double alpha = 0.18, double blur = 10}) =>
     [BoxShadow(color: Colors.black.withValues(alpha: alpha), blurRadius: blur, offset: const Offset(0, 4))];
 
 /// Student portal shell — native bottom navigation (NOT the desktop sidebar).
-/// 4 primary destinations per the agreed IA: Home / Services / AI Tutor / More.
+/// 3 primary destinations: Home / Services / More.
+/// AI Tutor remains accessible through the Home Academics panel.
 /// The nav bar is a floating rounded "pill" with the site's light-black 3D
 /// frame, which shrinks (compacts) while the active tab's content is
 /// scrolled down and expands back to full size once you scroll back up.
@@ -45,14 +45,12 @@ class _StudentShellState extends State<StudentShell> {
   static const _screens = [
     StudentHomeScreen(),
     StudentServicesScreen(),
-    StudentAiTutorScreen(),
     StudentMoreScreen(),
   ];
 
   static const _navItems = [
     _NavItem(icon: Icons.home_outlined, selectedIcon: Icons.home_rounded, label: 'Home'),
     _NavItem(icon: Icons.miscellaneous_services_outlined, selectedIcon: Icons.miscellaneous_services_rounded, label: 'Services'),
-    _NavItem(icon: Icons.smart_toy_outlined, selectedIcon: Icons.smart_toy_rounded, label: 'AI Tutor'),
     _NavItem(icon: Icons.more_horiz_rounded, selectedIcon: Icons.more_horiz_rounded, label: 'More'),
   ];
 
