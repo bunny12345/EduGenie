@@ -1,7 +1,7 @@
 import React from 'react';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import TechnicalSupport from './TechnicalSupport';
-import TeacherSupportBubble from './TeacherSupportBubble';
+import SupportBubble from './SupportBubble';
 import {
   askSupportBot, createSupportTicket, getSupportThread, listSupportTickets,
   replyToSupportTicket, setSupportTicketStatus,
@@ -140,7 +140,7 @@ test('floating teacher support opens and closes an accessible modal and resets b
   Object.defineProperty(HTMLDialogElement.prototype, 'showModal', { configurable: true, value: showModal });
   Object.defineProperty(HTMLDialogElement.prototype, 'close', { configurable: true, value: close });
   try {
-    render(<TeacherSupportBubble />);
+    render(<SupportBubble />);
     const launcher = screen.getByRole('button', { name: 'Open teacher support' });
     fireEvent.click(launcher);
     expect(screen.getByRole('dialog', { name: 'Teacher support' })).toBeInTheDocument();
@@ -155,6 +155,67 @@ test('floating teacher support opens and closes an accessible modal and resets b
     await screen.findByText('Your reports and technician chats appear here.');
     fireEvent.click(screen.getByRole('button', { name: 'Close teacher support' }));
   } finally {
+    if (originalShow) Object.defineProperty(HTMLDialogElement.prototype, 'showModal', originalShow);
+    else delete HTMLDialogElement.prototype.showModal;
+    if (originalClose) Object.defineProperty(HTMLDialogElement.prototype, 'close', originalClose);
+    else delete HTMLDialogElement.prototype.close;
+  }
+});
+
+test('school help has school suggestions and saves reports with correctly labelled messages', async () => {
+  const schoolTicket = { ...ticket, requester_role: 'school_admin', requester_name: 'Test School', class_name: '' };
+  askSupportBot.mockResolvedValue({ reply: 'Open Teacher Registration in the school sidebar.', suggestions: [], needsTechnician: false });
+  createSupportTicket.mockResolvedValue({ ticket: schoolTicket, notificationWarning: 'Email was not delivered. Your request is saved.' });
+  getSupportThread.mockResolvedValue({ ticket: schoolTicket, messages: [
+    { id: 's1', author_role: 'school_admin', content: 'Registration button failed' },
+    { id: 's2', author_role: 'owner', content: 'Please try the registration again.' },
+  ] });
+  render(<TechnicalSupport requesterRole="school_admin" />);
+  expect(screen.getByRole('heading', { name: 'School Support' })).toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: 'How do I assign homework?' })).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: 'How do I register a teacher?' }));
+  expect(await screen.findByText('Open Teacher Registration in the school sidebar.')).toBeInTheDocument();
+  expect(screen.getByText('School administrator', { selector: 'strong' })).toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: 'Report an issue' }));
+  fireEvent.change(screen.getByLabelText('Short title'), { target: { value: 'Registration issue' } });
+  fireEvent.change(screen.getByLabelText('What happened?'), { target: { value: 'Button failed' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Send to technician' }));
+  expect(await screen.findByText('Registration button failed')).toBeInTheDocument();
+  expect(screen.getByText('School administrator', { selector: 'strong' })).toBeInTheDocument();
+  expect(screen.getByText('Please try the registration again.')).toBeInTheDocument();
+  expect(screen.getByText('Email was not delivered. Your request is saved.')).toBeInTheDocument();
+  expect(createSupportTicket.mock.calls[0][0].requester_role).toBeUndefined();
+  fireEvent.change(screen.getByLabelText('Message'), { target: { value: 'Thank you' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Send', exact: true }));
+  await waitFor(() => expect(replyToSupportTicket).toHaveBeenCalledWith('ticket-1', expect.objectContaining({ message: 'Thank you' }), undefined));
+});
+
+test('owner inbox correctly labels school administrators and shows verified school identity', async () => {
+  const schoolTicket = { ...ticket, requester_role: 'school_admin', requester_name: 'Test School', class_name: '' };
+  listSupportTickets.mockResolvedValue({ tickets: [schoolTicket], nextOffset: null });
+  getSupportThread.mockResolvedValue({ ticket: schoolTicket, messages: [{ id: 's1', author_role: 'school_admin', content: 'School issue' }] });
+  render(<TechnicalSupport ownerToken="owner-mfa-token" />);
+  fireEvent.click(await screen.findByRole('button', { name: /Upload problem/ }));
+  expect(await screen.findByText('School issue')).toBeInTheDocument();
+  expect(screen.getByText('School administrator', { selector: 'strong' })).toBeInTheDocument();
+  expect(screen.getByText(/Test School · school_admin/, { selector: 'small' })).toBeInTheDocument();
+});
+
+test('school floating bubble uses school labels and opens the shared support panel', async () => {
+  const originalShow = Object.getOwnPropertyDescriptor(HTMLDialogElement.prototype, 'showModal');
+  const originalClose = Object.getOwnPropertyDescriptor(HTMLDialogElement.prototype, 'close');
+  Object.defineProperty(HTMLDialogElement.prototype, 'showModal', { configurable: true, value: function () { this.setAttribute('open', ''); } });
+  Object.defineProperty(HTMLDialogElement.prototype, 'close', { configurable: true, value: function () { this.removeAttribute('open'); } });
+  const view = render(<SupportBubble requesterRole="school_admin" />);
+  try {
+    fireEvent.click(screen.getByRole('button', { name: 'Open school support' }));
+    expect(screen.getByRole('dialog', { name: 'School support' })).toBeInTheDocument();
+    expect(await screen.findByText('Your reports and technician chats appear here.')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'How do I upload curriculum?' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Close school support' }));
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  } finally {
+    view.unmount();
     if (originalShow) Object.defineProperty(HTMLDialogElement.prototype, 'showModal', originalShow);
     else delete HTMLDialogElement.prototype.showModal;
     if (originalClose) Object.defineProperty(HTMLDialogElement.prototype, 'close', originalClose);

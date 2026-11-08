@@ -6,7 +6,7 @@ import { EmailService } from '../auth/email.service';
 import { answerSupportQuestion, redactSupportText } from './support-guide';
 
 export interface SupportActor { actorId: string; actorRole: string; user?: { schoolId?: string } }
-interface SupportIdentity { id: string; role: 'student' | 'teacher'; schoolId: string; name: string; className: string }
+interface SupportIdentity { id: string; role: 'student' | 'teacher' | 'school_admin'; schoolId: string; name: string; className: string }
 export interface SupportTicket {
   id: string; requester_id: string; requester_role: string; school_id: string;
   requester_name: string; class_name: string; category: string; subject: string;
@@ -58,14 +58,27 @@ export class SupportService {
     return value;
   }
 
-  private requester(actor: SupportActor) {
-    if (!['student', 'teacher'].includes(actor.actorRole) || !actor.actorId) throw new ForbiddenException('Support is available to signed-in students and teachers only.');
-    return actor.actorId;
+  private requester(actor: SupportActor): SupportIdentity['role'] {
+    const role = actor.actorRole;
+    if (!actor.actorId || (role !== 'student' && role !== 'teacher' && role !== 'school_admin')) {
+      throw new ForbiddenException('Support is available to signed-in students, teachers and school administrators only.');
+    }
+    return role;
   }
 
   private async identity(actor: SupportActor): Promise<SupportIdentity> {
-    const id = this.requester(actor);
+    const role = this.requester(actor);
+    const id = actor.actorId;
     this.storageReady();
+    if (role === 'school_admin') {
+      if (actor.user?.schoolId && actor.user.schoolId !== id) {
+        throw new ForbiddenException('Your school account could not be verified. Contact the site operator.');
+      }
+      const rows = this.checked<Array<{ id: string; school_name: string }>>(
+        await this.db.client.from('schools').select('id,school_name').eq('id', id).limit(1), 'verify school');
+      if (!rows[0]?.school_name) throw new ForbiddenException('Your school account could not be verified. Contact the site operator.');
+      return { id, role, name: rows[0].school_name, schoolId: id, className: '' };
+    }
     if (actor.actorRole === 'teacher') {
       const rows = this.checked<Array<{ id: string; name: string; school_id: string; grades?: string[] }>>(
         await this.db.client.from('teachers').select('id,name,school_id,grades').eq('id', id).limit(1), 'verify teacher');
@@ -84,9 +97,9 @@ export class SupportService {
   }
 
   chat(actor: SupportActor, body: { message?: unknown }) {
-    const id = this.requester(actor);
-    this.rateLimit(`bot:${actor.actorRole}:${id}`, 30);
-    return { success: true, ...answerSupportQuestion(this.text(body?.message, 2000), actor.actorRole === 'teacher' ? 'teacher' : 'student') };
+    const role = this.requester(actor);
+    this.rateLimit(`bot:${role}:${actor.actorId}`, 30);
+    return { success: true, ...answerSupportQuestion(this.text(body?.message, 2000), role) };
   }
 
   async list(actor?: SupportActor, offset = 0) {
@@ -189,7 +202,7 @@ export class SupportService {
     const safeHtml = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
     const result = await this.email.sendMail(
       process.env.SUPPORT_NOTIFICATION_EMAIL || 'jpr1521@gmail.com',
-      `[AcademiX support] ${ticket.requester_role === 'teacher' ? 'Teacher' : 'Student'} ${ticket.category} - ${ticket.id.slice(0, 8)}`,
+      `[AcademiX support] ${ticket.requester_role === 'school_admin' ? 'School administrator' : ticket.requester_role === 'teacher' ? 'Teacher' : 'Student'} ${ticket.category} - ${ticket.id.slice(0, 8)}`,
       `<pre style="white-space:pre-wrap">${safeHtml}</pre>`, text,
     );
     if (!result.ok) {

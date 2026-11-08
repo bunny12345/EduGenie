@@ -67,6 +67,30 @@ async function main() {
     await db.query('select support_append_message($1,$2,$3,$4,$5,$6)', [teacherTicket.id, null, null, randomId(), 'owner', 'Teacher reply']);
     assert.equal((await db.query('select * from support_messages where ticket_id=$1', [teacherTicket.id])).rows.length, 3);
     await db.query('reset role');
+    await db.query(readFileSync(resolve('db/migrations/20261109_school_support.sql'), 'utf8'));
+    await db.query('set role service_role');
+    assert.equal((await db.query('select * from support_messages where ticket_id=$1', [id])).rows.length, 3);
+    assert.equal((await db.query('select * from support_messages where ticket_id=$1', [teacherTicket.id])).rows.length, 3);
+    const schoolTicket = { ...payload, id: randomId(), requester_id: school, requester_role: 'school_admin', requester_name: 'Test School', class_name: '' };
+    const schoolMessage = { id: randomId(), author_role: 'school_admin', content: 'Registration failed' };
+    await db.query('select support_create_ticket($1::jsonb,$2::jsonb)', [schoolTicket, JSON.stringify([schoolMessage])]);
+    await db.query('select support_create_ticket($1::jsonb,$2::jsonb)', [schoolTicket, JSON.stringify([schoolMessage])]);
+    await assert.rejects(db.query('select support_create_ticket($1::jsonb,$2::jsonb)', [{ ...schoolTicket, requester_id: other }, '[]']), /School ownership mismatch/);
+    await assert.rejects(db.query('select support_create_ticket($1::jsonb,$2::jsonb)', [{ ...schoolTicket, requester_role: 'teacher' }, '[]']), /ownership mismatch/);
+    await assert.rejects(db.query('select support_create_ticket($1::jsonb,$2::jsonb)', [
+      { ...schoolTicket, id: randomId() }, JSON.stringify([{ ...schoolMessage, id: randomId(), author_role: 'owner' }]),
+    ]), /Invalid message author/);
+    await assert.rejects(db.query('select support_append_message($1,$2,$3,$4,$5,$6)', [schoolTicket.id, other, other, randomId(), 'school_admin', 'Wrong school']), /ownership mismatch/);
+    await assert.rejects(db.query('select support_append_message($1,$2,$3,$4,$5,$6)', [schoolTicket.id, school, school, randomId(), 'student', 'Wrong role']), /ownership mismatch/);
+    await assert.rejects(db.query('select support_append_message($1,$2,$3,$4,$5,$6)', [teacherTicket.id, other, school, randomId(), 'school_admin', 'Teacher ticket']), /ownership mismatch/);
+    const schoolReply = randomId();
+    await db.query("update support_tickets set status='resolved' where id=$1", [schoolTicket.id]);
+    await db.query('select support_append_message($1,$2,$3,$4,$5,$6)', [schoolTicket.id, school, school, schoolReply, 'school_admin', 'Follow-up']);
+    await db.query('select support_append_message($1,$2,$3,$4,$5,$6)', [schoolTicket.id, school, school, schoolReply, 'school_admin', 'Follow-up']);
+    await db.query('select support_append_message($1,$2,$3,$4,$5,$6)', [schoolTicket.id, null, null, randomId(), 'owner', 'School reply']);
+    assert.equal((await db.query('select * from support_messages where ticket_id=$1', [schoolTicket.id])).rows.length, 3);
+    assert.equal((await db.query('select status from support_tickets where id=$1', [schoolTicket.id])).rows[0].status, 'open');
+    await db.query('reset role');
     await db.query('set role authenticated');
     async function claims(sub: string, role = 'student', schoolId = school) {
       await db.query("select set_config('request.jwt.claims',$1,false)", [JSON.stringify({ sub, role, schoolId })]);
@@ -83,10 +107,12 @@ async function main() {
     assert.equal((await db.query('select * from support_tickets')).rows.length, 0);
     await claims(student, 'student', other);
     assert.equal((await db.query('select * from support_tickets')).rows.length, 0);
+    await claims(school, 'school_admin');
+    assert.equal((await db.query('select * from support_tickets')).rows.length, 0, 'school reads must use authenticated backend, not direct database access');
     await db.query('reset role');
     await db.query('set role anon');
     await assert.rejects(db.query('select * from support_tickets'));
-    console.log('Support SQL: student/teacher atomic writes, role/school isolation, idempotency, reopen, unchanged student RLS and service-only access PASS.');
+    console.log('Support SQL: student/teacher/school preservation, atomic writes, role/school isolation, idempotency, reopen, unchanged RLS and service-only access PASS.');
   } finally { await db.end(); }
 }
 main().catch((error: Error) => { console.error(error.message); process.exitCode = 1; });

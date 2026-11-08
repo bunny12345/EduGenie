@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
+import SupportBubble from './SupportBubble';
 import {
   createCurriculumLesson,
   deleteCurriculumLesson,
@@ -2102,6 +2103,7 @@ export default function SchoolDashboard({ session, onLogout }) {
           </div>
         </div>
       ) : null}
+      {activeSection === 'overview' ? <SupportBubble requesterRole="school_admin" /> : null}
     </div>
   );
 }

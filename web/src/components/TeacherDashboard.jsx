@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import TeacherSupportBubble from './TeacherSupportBubble';
+import SupportBubble from './SupportBubble';
 import SubjectBackground, { getPalette } from './SubjectBackground';
 import TeacherSubjectProgressChart from './TeacherSubjectProgressChart';
 import StudentProgress from './StudentProgress';
@@ -4068,7 +4068,7 @@ export default function TeacherDashboard({ session, onLogout }) {
           >✕</button>
         </div>
       ) : null}
-      {activeSection === 'teacher' ? <TeacherSupportBubble /> : null}
+      {activeSection === 'teacher' ? <SupportBubble /> : null}
     </div>
   );
 }

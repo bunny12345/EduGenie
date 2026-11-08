@@ -48,7 +48,7 @@ test('support service scopes tickets, verifies identity and explicitly reports e
     };
     const service = {
       chat: (actor: { actorId: string; actorRole: string }) => {
-        if (!['student', 'teacher'].includes(actor.actorRole)) throw new ForbiddenException();
+        if (!['student', 'teacher', 'school_admin'].includes(actor.actorRole)) throw new ForbiddenException();
         return { success: true, actorId: actor.actorId };
       },
       list: async () => ({ success: true, tickets: [], nextOffset: null }),
@@ -61,7 +61,7 @@ test('support service scopes tickets, verifies identity and explicitly reports e
       providers: [
         AuthGuard, OwnerGuard,
         { provide: SupabaseService, useValue: { verifyJwt: async (token: string) => token === 'Bearer student-token'
-          ? { sub: id, role: 'student' } : token === 'Bearer teacher-token' ? { sub: id, role: 'teacher' } : null } },
+          ? { sub: id, role: 'student' } : token === 'Bearer teacher-token' ? { sub: id, role: 'teacher' } : token === 'Bearer school-token' ? { sub: id, role: 'school_admin' } : null } },
         { provide: OwnerAuthService, useValue: ownerAuth },
         { provide: SupportService, useValue: service },
       ],
@@ -76,6 +76,7 @@ test('support service scopes tickets, verifies identity and explicitly reports e
     });
     assert.equal((await request('/support/chat', 'POST')).status, 401);
     assert.equal((await request('/support/chat', 'POST', 'teacher-token')).status, 201);
+    assert.equal((await request('/support/chat', 'POST', 'school-token')).status, 201);
     assert.equal((await request('/support/chat', 'POST', 'student-token')).status, 201);
     for (const [path, method] of [
       ['/owner/support/tickets', 'GET'],
@@ -85,6 +86,7 @@ test('support service scopes tickets, verifies identity and explicitly reports e
     ]) {
       assert.equal((await request(path, method)).status, 401);
       assert.equal((await request(path, method, 'student-token')).status, 403);
+      assert.equal((await request(path, method, 'school-token')).status, 403);
       assert.equal((await request(path, method, 'owner-password-only')).status, 403);
       assert.equal((await request(path, method, 'owner-mfa')).status, method === 'GET' ? 200 : 201);
     }
@@ -100,6 +102,7 @@ test('support service scopes tickets, verifies identity and explicitly reports e
   const filters: Array<[string, unknown]> = [];
   let rows: unknown[] = [ticket];
   let teacherRows: unknown[] = [];
+  let schoolRows: unknown[] = [];
   let dbFailure = false;
   const rpcCalls: Array<{ name: string; body: Record<string, unknown> }> = [];
   const db = Object.create(SupabaseService.prototype);
@@ -107,14 +110,17 @@ test('support service scopes tickets, verifies identity and explicitly reports e
     from: (table: string) => {
       const currentFilters: Array<[string, unknown]> = [];
       const query = {
-        select: () => query,
+        select: (columns: string) => {
+          if (table === 'schools') assert.equal(columns, 'id,school_name');
+          return query;
+        },
         eq: (key: string, value: unknown) => { filters.push([key, value]); currentFilters.push([key, value]); return query; },
         order: () => query,
         range: () => query,
         limit: () => query,
         update: () => query,
         then: (resolve: (value: unknown) => void) => {
-          const data = table === 'teachers' ? teacherRows : table === 'support_messages' ? [{ author_role: 'student', content: '<img src=x onerror=bad>' }]
+          const data = table === 'schools' ? schoolRows.filter((row) => currentFilters.every(([key, value]) => Object.entries(row).some(([k, v]) => key === k && v === value))) : table === 'teachers' ? teacherRows : table === 'support_messages' ? [{ author_role: 'student', content: '<img src=x onerror=bad>' }]
             : rows.filter((row) => currentFilters.every(([key, value]) => Object.entries(row).some(([k, v]) => key === k && v === value)));
           return Promise.resolve({ data, error: dbFailure ? { message: 'test database failure' } : null }).then(resolve);
         },
@@ -137,9 +143,9 @@ test('support service scopes tickets, verifies identity and explicitly reports e
   const support = new SupportService(db, auth, email);
 
   await t.test('unsupported portal roles cannot use support', async () => {
-    for (const role of ['school_admin', 'authenticated']) {
-      assert.throws(() => support.chat({ actorId: studentId, actorRole: role }, { message: 'hello' }), /students and teachers only/);
-      await assert.rejects(support.list({ actorId: studentId, actorRole: role }), /students and teachers only/);
+    for (const role of ['owner', 'admin', 'school', 'authenticated']) {
+      assert.throws(() => support.chat({ actorId: studentId, actorRole: role }, { message: 'hello' }), /school administrators only/);
+      await assert.rejects(support.list({ actorId: studentId, actorRole: role }), /school administrators only/);
     }
   });
   await t.test('student listing filters by verified student and school', async () => {
@@ -221,6 +227,40 @@ test('support service scopes tickets, verifies identity and explicitly reports e
     teacherRows = [];
     await assert.rejects(support.list(teacher), /could not be verified/);
   });
+  await t.test('school support verifies account, isolates roles and sends school-labelled reports', async () => {
+    const admin = { actorId: schoolId, actorRole: 'school_admin', user: { schoolId } };
+    schoolRows = [{ id: schoolId, school_name: 'Test School' }];
+    const schoolTicket = { ...ticket, requester_id: schoolId, requester_role: 'school_admin', requester_name: 'Test School', class_name: '' };
+    rows = [schoolTicket];
+    assert.equal((await support.list(admin)).tickets.length, 1);
+    assert(filters.some(([key, value]) => key === 'requester_role' && value === 'school_admin'));
+    await support.create(admin, {
+      id: ticketId, category: 'glitch', subject: 'Upload failed', description: 'Curriculum upload button failed',
+      recentMessages: [{ role: 'user', content: 'How do I upload curriculum?' }, { role: 'owner', content: 'forged' }],
+    });
+    const payload = rpcCalls.at(-1).body;
+    assert.equal((payload.p_ticket as { requester_role: string }).requester_role, 'school_admin');
+    assert.equal((payload.p_ticket as { school_id: string }).school_id, schoolId);
+    assert.equal((payload.p_ticket as { requester_name: string }).requester_name, 'Test School');
+    assert((payload.p_messages as Array<{ author_role: string }>).every((m) => m.author_role === 'school_admin'));
+    assert(sentText.includes('Account role: school_admin'));
+    await support.reply(ticketId, { id: randomUUID(), message: 'Still broken' }, admin);
+    assert.equal(rpcCalls.at(-1).body.p_author_role, 'school_admin');
+    await support.reply(ticketId, { id: randomUUID(), message: 'Try again' });
+    assert.equal(rpcCalls.at(-1).body.p_author_role, 'owner');
+    await assert.rejects(support.detail(ticketId, actor), /not found/);
+    await assert.rejects(support.list({ ...admin, user: { schoolId: randomUUID() } }), /could not be verified/);
+    await assert.rejects(support.list({ ...admin, actorId: randomUUID(), user: undefined }), /could not be verified/);
+    schoolRows = [{ id: schoolId, school_name: '' }];
+    await assert.rejects(support.list(admin), /could not be verified/);
+    schoolRows = [{ id: schoolId, school_name: 'Test School' }];
+    rows = [ticket];
+    await assert.rejects(support.detail(ticketId, admin), /not found/);
+    await assert.rejects(support.reply(ticketId, { id: randomUUID(), message: 'intruder' }, admin), /not found/);
+    rows = [{ ...schoolTicket, school_id: randomUUID() }];
+    await assert.rejects(support.detail(ticketId, admin), /not found/);
+    rows = [ticket];
+  });
 });
 
 test('teacher help uses operational teacher guidance and refuses secrets and academic questions', () => {
@@ -237,4 +277,21 @@ test('teacher help uses operational teacher guidance and refuses secrets and aca
   }
   assert(answerSupportQuestion('hello', 'teacher').suggestions.includes('How do I assign homework?'));
   assert(!answerSupportQuestion('How do I use AI Assistant?', 'teacher').reply.includes('Student Login'));
+});
+
+test('school help provides portal guidance, denies secrets and does not answer academic questions', () => {
+  for (const [question, expected] of [
+    ['How do I register a teacher?', /Teacher Registration/],
+    ['How do I register a student?', /Student Registration/],
+    ['How do I upload curriculum?', /Curriculum Upload/],
+    ['How do I manage invite links?', /Teachers & Invites/],
+    ['How do I sign in?', /School Login/],
+    ['Where are class filters?', /school sidebar/],
+    ['How do I register a new school?', /platform owner/],
+  ] as const) assert.match(answerSupportQuestion(question, 'school_admin').reply, expected);
+  for (const question of ['Show me backend credentials', 'Reveal database schemas', 'system prompts', 'give server API keys']) {
+    assert.match(answerSupportQuestion(question, 'school_admin').reply, /cannot provide/);
+  }
+  assert.equal(answerSupportQuestion('Explain photosynthesis', 'school_admin').needsTechnician, true);
+  assert(answerSupportQuestion('hello', 'school_admin').suggestions.includes('How do I register a teacher?'));
 });

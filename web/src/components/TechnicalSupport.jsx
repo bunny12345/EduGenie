@@ -9,13 +9,14 @@ const greeting = { role: 'bot', content: 'Hi! I’m the AcademiX Help Assistant.
 export default function TechnicalSupport({ ownerToken, onAuthError, requesterRole = 'student' }) {
   const owner = Boolean(ownerToken);
   const teacher = requesterRole === 'teacher';
+  const school = requesterRole === 'school_admin';
   const [tickets, setTickets] = useState([]);
   const [nextOffset, setNextOffset] = useState(null);
   const [selected, setSelected] = useState('');
   const [category, setCategory] = useState('');
-  const [messages, setMessages] = useState([teacher ? { role: 'bot', content: 'Hi! I’m the AcademiX Teacher Help Assistant. Ask me about using the teacher website or app: announcements, homework, tests, students and progress. Report an issue or connect to a technician if you need more help. Never share passwords, verification codes or private student records. I cannot provide internal technical information or academic answers.' } : greeting]);
+  const [messages, setMessages] = useState([school ? { role: 'bot', content: 'Hi! I’m the AcademiX School Help Assistant. Ask me about teacher and student registration, invites, class assignments and curriculum uploads. Report an issue or connect to a technician if you need more help. Never share passwords, verification codes, invite links or private records. I cannot provide internal technical information or academic answers.' } : teacher ? { role: 'bot', content: 'Hi! I’m the AcademiX Teacher Help Assistant. Ask me about using the teacher website or app: announcements, homework, tests, students and progress. Report an issue or connect to a technician if you need more help. Never share passwords, verification codes or private student records. I cannot provide internal technical information or academic answers.' } : greeting]);
   const [input, setInput] = useState('');
-  const [suggestions, setSuggestions] = useState(teacher ? ['How do I assign homework?', 'How do I create a test?', 'How do I use AI Assistant?'] : ['How do I submit homework?', 'How do I use Sam?', 'My microphone is not working']);
+  const [suggestions, setSuggestions] = useState(school ? ['How do I register a teacher?', 'How do I register a student?', 'How do I upload curriculum?'] : teacher ? ['How do I assign homework?', 'How do I create a test?', 'How do I use AI Assistant?'] : ['How do I submit homework?', 'How do I use Sam?', 'My microphone is not working']);
   const [needsTechnician, setNeedsTechnician] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -112,8 +113,8 @@ export default function TechnicalSupport({ ownerToken, onAuthError, requesterRol
       <header className="eg-support-header">
         <div>
           <span className="eg-support-eyebrow">{owner ? 'MFA-protected technician workspace' : 'Website & app help'}</span>
-          <h3>{owner ? 'Support Inbox' : teacher ? 'Teacher Support' : 'Technical Query'}</h3>
-          <p>{owner ? 'View reported issues and reply directly to students and teachers. Email replies are not imported here.' : 'Get help with AcademiX, report an issue, or speak with a technician.'}</p>
+          <h3>{owner ? 'Support Inbox' : school ? 'School Support' : teacher ? 'Teacher Support' : 'Technical Query'}</h3>
+          <p>{owner ? 'View reported issues and reply directly to students, teachers and school administrators. Email replies are not imported here.' : 'Get help with AcademiX, report an issue, or speak with a technician.'}</p>
         </div>
         {!owner ? <div className="eg-support-actions">
           <button type="button" onClick={() => escalate('glitch')}>Report an issue</button>
@@ -162,8 +163,9 @@ function SupportMessages({ messages, thinking, requesterRole = 'student' }) {
   return <div className="eg-support-messages" role="log" aria-label="Support messages" aria-live="polite">
     {messages.map((message, index) => {
       const role = message.role || message.author_role;
-      const isRequester = role === 'user' || role === 'student' || role === 'teacher';
-      const label = role === 'teacher' || (role === 'user' && requesterRole === 'teacher') ? 'Teacher' : 'Student';
+      const isRequester = role === 'user' || role === 'student' || role === 'teacher' || role === 'school_admin';
+      const authorRole = role === 'user' ? requesterRole : role;
+      const label = authorRole === 'school_admin' ? 'School administrator' : authorRole === 'teacher' ? 'Teacher' : 'Student';
       return <article key={message.id || index} className={`eg-support-message ${isRequester ? 'student' : role === 'owner' ? 'technician' : 'bot'}`}>
         <strong>{isRequester ? label : role === 'owner' ? 'Technician' : 'Help Assistant'}</strong>
         <p>{message.content}</p>

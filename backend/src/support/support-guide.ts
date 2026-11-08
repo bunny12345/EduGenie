@@ -31,14 +31,27 @@ const teacherGuides = [
   { words: /\b(navigation|navigate|where|find|home)\b/i, reply: 'Use the teacher website sidebar or app bottom navigation for Teacher Home, AI Assistant, Students, Student Progress and Report Cards. The floating message button on Home opens this operational Help Assistant and your saved support requests.' },
 ];
 
-export function answerSupportQuestion(text: string, role: 'student' | 'teacher' = 'student') {
-  const initialSuggestions = role === 'teacher'
+const schoolGuides = [
+  { words: /\b(password|login|log in|sign in|account access)\b/i, reply: 'Use School Login with your registered school email and password. The eye button lets you check your own password where available. For access problems, connect to a technician without sharing your password, verification codes or private account records. This bot cannot reveal or reset credentials.' },
+  { words: /\b(curriculum|pdfs?|lessons?|subjects?|uploads?|documents?)\b/i, reply: 'Open Curriculum Upload in the school sidebar. Select the intended class and subject, then use the available lesson and PDF upload controls. Check the class, subject and uploaded lesson if material is missing in the student or teacher portal. Report failed uploads with the feature name and steps, not confidential files.' },
+  { words: /\b(invites?|links?|registration link)\b/i, reply: 'Use Student Registration for the available student registration or self-registration controls. Keep portal-generated links private, share them only with intended recipients, and do not paste them into support. For teachers, open Teachers & Invites and use Manual Teacher Registration. If an expected invite control is unavailable, connect to a technician rather than creating your own link.' },
+  { words: /\b(teachers?|assignments?|grades?|class assignment)\b/i, reply: 'Open Teachers & Invites in the school sidebar. Use Manual Teacher Registration to register a teacher and assign their subject and classes. The Teachers list on that page has class filters and available account actions. Confirm class assignments when a teacher cannot see the expected students or materials. Support cannot disclose teacher passwords or private records.' },
+  { words: /\b(students?|roster|enrol|enroll)\b/i, reply: 'Open Student Registration in the school sidebar to register a student with the correct class and teacher details. The Students (School-wide) list on the same page provides class filters and available account actions. Double-check the selected student before changes. Report an operation problem without including personal records or passwords.' },
+  { words: /\b(school registration|register.*school|new school)\b/i, reply: 'New school registration is restricted to the platform owner through the protected owner page. School administrators use their existing school account to manage teachers, students and curriculum. This bot cannot create schools or grant owner access.' },
+  { words: /\b(slow|blank|freeze|frozen|crash|bug|glitch|issue|error|broken|not working)\b/i, reply: 'Keep a copy of unsent work, check your connection and reopen the affected page. Avoid repeatedly submitting registrations or uploads. If the issue continues, choose Report an issue and describe the page, steps and result. Never send passwords, invite links, student records or confidential files.' },
+  { words: /\b(overview|navigation|navigate|where|find|home|classes?)\b/i, reply: 'Use the school sidebar for Overview, Teachers & Invites, Curriculum Upload and Student Registration. Teacher registration and the teacher roster are inside Teachers & Invites; the student roster is inside Student Registration. The floating message button on Overview opens school operational help and your saved support requests. The help bot cannot access or change school records.' },
+];
+
+export function answerSupportQuestion(text: string, role: 'student' | 'teacher' | 'school_admin' = 'student') {
+  const initialSuggestions = role === 'school_admin'
+    ? ['How do I register a teacher?', 'How do I register a student?', 'How do I upload curriculum?']
+    : role === 'teacher'
     ? ['How do I assign homework?', 'How do I create a test?', 'How do I use AI Assistant?']
     : ['How do I submit homework?', 'How do I use Sam?', 'My microphone is not working'];
   if (/\b(secrets?|service.?role|source code|databases?|schemas?|servers?|api.?keys?|jwt|prompts?|system instructions?|credentials?|tokens?|configuration|sql|backend|environment variables?)\b/i.test(text)) {
     return { reply: 'I can help you use AcademiX, but I cannot provide internal systems, code, keys, credentials or private information. Describe the feature you are trying to use, without sharing any secrets.', needsTechnician: true, suggestions: initialSuggestions };
   }
-  const guide = (role === 'teacher' ? teacherGuides : guides).find((item) => item.words.test(text));
+  const guide = (role === 'school_admin' ? schoolGuides : role === 'teacher' ? teacherGuides : guides).find((item) => item.words.test(text));
   if (guide) return { reply: guide.reply, needsTechnician: false, suggestions: ['Report an issue', 'Connect to a technician'] };
   if (/^(hi|hello|hey|thanks|thank you)[!. ]*$/i.test(text)) {
     return { reply: 'Hi! I can help with using AcademiX on the website or app. What are you trying to do? Please do not share passwords or private records.', needsTechnician: false, suggestions: initialSuggestions };

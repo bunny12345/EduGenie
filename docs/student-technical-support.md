@@ -1,4 +1,4 @@
-# Student and teacher support — website and mobile app
+# Student, teacher and school support
 
 ## Student workflow
 
@@ -35,7 +35,7 @@ destination, not a client-supplied recipient. You may configure
 `SUPPORT_NOTIFICATION_EMAIL` on the backend to override it.
 
 **Reply inside Support Inbox, not Gmail.** Gmail replies are not imported.
-Students and teachers do not need email addresses to receive replies; they return
+Students, teachers and school administrators do not need email addresses to receive replies; they return
 to their authenticated request. New requests and requester follow-ups notify the technician.
 The system does not promise immediate/live availability.
 
@@ -63,6 +63,31 @@ not accepted from the report form. Reports and follow-ups notify the configured
 technician email with the **teacher** role. Reply through the same owner inbox.
 Teacher and student tickets are kept separate even if account IDs coincide.
 
+## School floating support — website only
+
+On the school website **Overview**, tap the blue message bubble at the bottom
+right. The same support panel opens with **School Support**, school-specific
+suggestions, **Report an issue**, saved requests and technician replies.
+The bubble appears only on Overview. Closing it clears temporary bot chat, not
+saved requests.
+
+The curated school guide covers teacher/student registration, private invite
+links, teacher class assignments, curriculum PDFs, class filters and school
+login. It refuses internal technical information and academic questions, has
+no access to private records or secrets, and offers technician escalation for
+unsupported questions. Never paste passwords, codes, invite links or records.
+
+The backend verifies the school account against its school row, scopes tickets
+by authenticated account, school and `school_admin` role, and labels notifications
+and messages as school-administrator requests. School admins cannot read student
+or teacher support tickets. The MFA owner inbox can reply to all three roles.
+The mobile School Admin placeholder is unchanged.
+
+If bot answers work but saved requests show “Support could not save or retrieve
+your request”, check the backend support error log. School identity lookup uses
+the existing `schools.school_name` column. A `schools.name` column error requires
+deploying the corrected backend, not adding a column or rerunning migrations.
+
 ## Deployment
 
 1. Apply `backend/db/migrations/20261106_student_support.sql` once to the same
@@ -76,6 +101,10 @@ Teacher and student tickets are kept separate even if account IDs coincide.
    functions to enforce requester role, school and account identity. It preserves
    existing messages and all existing RLS policies. Teacher reads and writes go
    through the authenticated backend; no direct client database access is added.
+   Then apply `backend/db/migrations/20261109_school_support.sql` once to enable
+   school-administrator message authors and role-checked shared write functions.
+   Existing messages and RLS policies are preserved. Do not rerun previously
+   applied migrations. Deploy the updated backend and website after applying it.
 2. Ensure backend `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` are configured.
    Support ticket writes deliberately have no local mock fallback.
 3. Ensure the existing SMTP variables are working:
@@ -91,8 +120,8 @@ Teacher and student tickets are kept separate even if account IDs coincide.
    student's reply view.
 
 No real reports/emails or production migrations are performed by the tests.
-Existing school portal support is unchanged. Public support endpoints accept
-only student and teacher roles. Requesters cannot forge account identity,
+The mobile School Admin placeholder is unchanged. Public support endpoints accept
+student, teacher and school-admin roles only. Requesters cannot forge account identity,
 technician messages, or notification recipients through request bodies.
 
 ## Mobile and website sync
@@ -152,4 +181,5 @@ PostgreSQL database, owned by a role that can create test roles and schemas.
 Never point it at production. Run from `backend/` with `npx ts-node
 scripts/support_db_test.ts`. It verifies atomic creation, idempotency, reopen,
 student/school RLS isolation, teacher role/account/school write isolation and
-service-only access. It applies both support migrations to the disposable database.
+service-only access, school-admin identity isolation and preservation of existing
+student/teacher messages. It applies all three support migrations to the disposable database.
