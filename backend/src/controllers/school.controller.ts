@@ -1,6 +1,7 @@
 import { Body, Controller, Delete, ForbiddenException, Get, Param, Patch, Post, Query, Req, UseGuards } from '@nestjs/common';
 import { AuthGuard } from '../auth/auth.guard';
 import { StudentAuthService } from '../auth/student-auth.service';
+import { LearningScoreService } from '../progress/learning-score.service';
 
 function isSchoolAdmin(role: any) {
   const raw = String(role || '').toLowerCase();
@@ -10,7 +11,10 @@ function isSchoolAdmin(role: any) {
 @Controller('school')
 @UseGuards(AuthGuard)
 export class SchoolController {
-  constructor(private readonly authFlow: StudentAuthService) {}
+  constructor(
+    private readonly authFlow: StudentAuthService,
+    private readonly learningScore: LearningScoreService
+  ) {}
 
   private ensureSchoolAdmin(req: any) {
     if (!isSchoolAdmin(req?.user?.role)) {
@@ -111,6 +115,22 @@ export class SchoolController {
       students: studentsRes.students || [],
       pagination: studentsRes.pagination || null
     };
+  }
+
+  @Get('progress/students')
+  async progressStudents(@Req() req: any) {
+    const schoolId = this.authFlow.schoolAdminSchoolId(req?.user);
+    const students = await this.authFlow.listSchoolProgressStudents(schoolId);
+    const classes = Array.from(new Set(students.map((s) => s.className).filter(Boolean)))
+      .sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+    return { success: true, students, classes };
+  }
+
+  @Get('students/:id/learning-score')
+  async studentLearningScore(@Req() req: any, @Param('id') studentId: string) {
+    const profile = await this.authFlow.resolveSchoolStudentProfile(req?.user, studentId);
+    const data = await this.learningScore.getLearningScore(profile.id);
+    return { ...data, studentId: profile.id };
   }
 
   @Post('students/register')

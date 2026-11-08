@@ -3,7 +3,7 @@ import { SupabaseService } from '../supabase.service';
 import { AuthGuard } from '../auth/auth.guard';
 import { StudentAuthService } from '../auth/student-auth.service';
 
-// Routes deliberately live under the existing `teacher/` and `progress/` URL
+// Routes deliberately live under the existing `teacher/`, `school/` and `progress/` URL
 // prefixes: CloudFront only forwards known controller prefixes to the backend.
 
 const norm = (v: any) => String(v ?? '').trim().toLowerCase();
@@ -102,20 +102,12 @@ export class ReportCardsController {
   }
 
   private async roster(schoolId: string, className: string) {
-    try {
-      const res: any = await this.studentAuth.listStudentsByScope({
-        schoolId: schoolId || undefined,
-        grades: [className],
-        className
-      });
-      const rows = Array.isArray(res?.students) ? res.students : [];
-      return rows
-        .filter((s: any) => norm(s.className) === norm(className))
-        .map((s: any) => ({ id: String(s.id), name: String(s.name || 'Student') }))
-        .sort((a: any, b: any) => a.name.localeCompare(b.name));
-    } catch {
-      return [] as Array<{ id: string; name: string }>;
-    }
+    if (!schoolId || !className) return [];
+    const rows = await this.studentAuth.listSchoolProgressStudents(schoolId);
+    return rows
+      .filter((s) => norm(s.className) === norm(className))
+      .map((s) => ({ id: s.id, name: s.name }))
+      .sort((a, b) => a.name.localeCompare(b.name));
   }
 
   private examRow(r: any) {
@@ -621,6 +613,17 @@ export class ReportCardsController {
   }
 
   // ── teacher: a student's released report cards (parent-teacher meetings) ──
+
+  @Get('school/students/:studentId/report-cards')
+  async schoolStudentReportCards(@Req() req: any, @Param('studentId') studentId: string) {
+    const profile = await this.studentAuth.resolveSchoolStudentProfile(req?.user, studentId);
+    try {
+      const { reportCards, pending } = await this.cardsForStudent(profile.id, profile, { revealAllRanks: true });
+      return { success: true, studentName: profile.name, className: profile.className, reportCards, pending };
+    } catch (e) {
+      return { ...this.fail(e, 'Unable to load report cards.'), reportCards: [], pending: [] };
+    }
+  }
 
   @Get('teacher/students/:studentId/report-cards')
   async teacherStudentReportCards(@Req() req: any, @Param('studentId') studentId: string) {

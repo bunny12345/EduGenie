@@ -938,6 +938,18 @@ export async function schoolStudents(params) {
   return checkSuccess(data, 'schoolStudents');
 }
 
+export async function getSchoolProgressStudents() {
+  return getJsonChecked(`${API_BASE}/school/progress/students`, 'getSchoolProgressStudents');
+}
+
+export async function getSchoolStudentLearningScore(studentId) {
+  return getJsonChecked(`${API_BASE}/school/students/${encodeURIComponent(studentId)}/learning-score`, 'getSchoolStudentLearningScore');
+}
+
+export async function getSchoolStudentReportCards(studentId) {
+  return getJsonChecked(`${API_BASE}/school/students/${encodeURIComponent(studentId)}/report-cards`, 'getSchoolStudentReportCards');
+}
+
 export async function schoolRegisterTeacher(payload) {
   const headers = await authHeaders();
   const url = `${API_BASE}/school/teachers/register`;
@@ -1442,6 +1454,9 @@ const api = {
   schoolTeachers,
   schoolInvites,
   schoolStudents,
+  getSchoolProgressStudents,
+  getSchoolStudentLearningScore,
+  getSchoolStudentReportCards,
   schoolRegisterTeacher,
   schoolInviteTeacher,
   schoolUpdateTeacher,

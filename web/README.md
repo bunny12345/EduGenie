@@ -2,6 +2,21 @@
 
 This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
 
+## School Student Progress
+
+Open **Student Progress** from the School Admin sidebar (`#progress`). Search by
+student name with **All classes** selected to search the whole school, or narrow
+the list by class. Student results are paginated locally after the complete
+school-scoped roster is retrieved, so search includes students on every page.
+**Clear filters** returns to school-wide search.
+
+The selected student sees the same shared `StudentProgress` and embedded
+`StudentReportCard` components as the teacher portal: learning score, skill and
+subject growth, daily/monthly trends, released exam results and pending subjects.
+**Refresh** reloads the roster and both reports. Reports are read-only and use
+the authenticated `/school/*` APIs; student and teacher flows are unchanged.
+The picker stacks above reports on narrow screens. No mobile changes are included.
+
 ## Available Scripts
 
 In the project directory, you can run:

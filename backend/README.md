@@ -39,6 +39,26 @@ technician chats. Notifications use the existing SMTP service; the MFA owner
 Support Inbox handles replies. Apply the new support migration before enabling
 requests. See [student support setup and workflows](../docs/student-technical-support.md).
 
+School student progress
+-----------------------
+
+The website's School Admin sidebar includes **Student Progress**. Administrators
+can search students across their school, filter by class and view the same full
+learning report and exam report cards used in the student and teacher portals.
+This is read-only: it does not change marks or record student celebrations.
+
+Authenticated, school-scoped endpoints:
+
+- `GET /school/progress/students` returns the complete minimal roster and classes.
+- `GET /school/students/:id/learning-score` uses the shared learning-score service.
+- `GET /school/students/:id/report-cards` returns released results and pending exams.
+
+Missing or different-school student identities are denied before report retrieval.
+Roster queries read all database pages; report-card rankings also use the complete
+class roster. No new tables, migrations or RLS changes are required. Existing
+report-card tables must already be installed. Deploy the backend before the website;
+the existing CloudFront `school*` behavior covers these routes.
+
 Database migrations
 -------------------
 

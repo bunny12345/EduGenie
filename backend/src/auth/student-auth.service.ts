@@ -1,4 +1,4 @@
-import { Injectable, OnModuleInit } from '@nestjs/common';
+import { ForbiddenException, Injectable, Logger, OnModuleInit, ServiceUnavailableException } from '@nestjs/common';
 import { randomBytes, randomUUID, createHash } from 'crypto';
 import * as jwt from 'jsonwebtoken';
 import { SupabaseService } from '../supabase.service';
@@ -354,6 +354,61 @@ export class StudentAuthService implements OnModuleInit {
     }
 
     return out;
+  }
+
+  schoolAdminSchoolId(user: { role?: string; schoolId?: string; sub?: string }) {
+    const role = String(user?.role || '').toLowerCase();
+    const schoolId = String(user?.schoolId || user?.sub || '').trim();
+    if (!['school_admin', 'admin'].includes(role) || !schoolId) {
+      throw new ForbiddenException('School admin access required');
+    }
+    return schoolId;
+  }
+
+  async resolveSchoolStudentProfile(user: { role?: string; schoolId?: string; sub?: string }, studentId: string) {
+    const schoolId = this.schoolAdminSchoolId(user);
+    const profile = await this.resolveStudentProfile(studentId);
+    if (!String(studentId || '').trim() || profile.schoolId !== schoolId) {
+      throw new ForbiddenException('Student not in your school');
+    }
+    return profile;
+  }
+
+  async listSchoolProgressStudents(schoolId: string) {
+    if (!schoolId) throw new ForbiddenException('School admin access required');
+    const students = new Map<string, { id: string; name: string; className: string }>();
+    // Read every database page before filtering in the picker. The registration
+    // roster's paginated, display-only fields are not needed for progress.
+    const pageSize = 500;
+    for (let offset = 0; ; offset += pageSize) {
+      const res = await this.db.client.from('students')
+        .select('id,name,class_name,school_id')
+        .eq('school_id', schoolId)
+        .order('id', { ascending: true })
+        .range(offset, offset + pageSize - 1);
+      if (res?.error) {
+        Logger.error(res.error.message || 'Student roster query failed', 'SchoolProgress');
+        throw new ServiceUnavailableException('Unable to load school students. Please try again.');
+      }
+      const rows = Array.isArray(res?.data) ? res.data : [];
+      for (const row of rows) {
+        students.set(String(row.id), {
+          id: String(row.id),
+          name: String(row.name || 'Student'),
+          className: String(row.class_name || '').trim()
+        });
+      }
+      if (rows.length < pageSize) break;
+    }
+    for (const account of StudentAuthService.localAccounts.values()) {
+      if (account.schoolId !== schoolId || students.has(account.studentId)) continue;
+      students.set(account.studentId, {
+        id: account.studentId,
+        name: account.name || 'Student',
+        className: String(account.className || '').trim()
+      });
+    }
+    return Array.from(students.values()).sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id));
   }
 
   private rememberTeacher(account: TeacherAccount) {

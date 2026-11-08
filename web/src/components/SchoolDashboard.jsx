@@ -1,5 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import SupportBubble from './SupportBubble';
+import StudentProgress from './StudentProgress';
+import StudentReportCard from './StudentReportCard';
 import {
   createCurriculumLesson,
   deleteCurriculumLesson,
@@ -8,6 +10,9 @@ import {
   listCurriculumLessons,
   listCurriculumSubjects,
   schoolDashboard,
+  getSchoolProgressStudents,
+  getSchoolStudentLearningScore,
+  getSchoolStudentReportCards,
   schoolDeleteStudent,
   schoolRegisterStudent,
   schoolRegisterTeacher,
@@ -101,6 +106,15 @@ export default function SchoolDashboard({ session, onLogout }) {
   const [dashboard, setDashboard] = useState({ summary: { teachers: 0, students: 0, activeInvites: 0 } });
   const [teachers, setTeachers] = useState([]);
   const [students, setStudents] = useState([]);
+  const [progressStudents, setProgressStudents] = useState([]);
+  const [progressClasses, setProgressClasses] = useState([]);
+  const [progressSearch, setProgressSearch] = useState('');
+  const [progressClass, setProgressClass] = useState('');
+  const [progressStudentId, setProgressStudentId] = useState('');
+  const [progressPage, setProgressPage] = useState(1);
+  const [progressLoading, setProgressLoading] = useState(false);
+  const [progressError, setProgressError] = useState('');
+  const [progressRefresh, setProgressRefresh] = useState(0);
   const [teacherSearch, setTeacherSearch] = useState('');
   const [teacherClassFilter, setTeacherClassFilter] = useState('');
   const [showTeacherClassFilter, setShowTeacherClassFilter] = useState(false);
@@ -185,6 +199,45 @@ export default function SchoolDashboard({ session, onLogout }) {
 
   const TEACHERS_PER_PAGE = 6;
   const STUDENTS_PER_PAGE = 6;
+  const PROGRESS_PER_PAGE = 10;
+
+  useEffect(() => {
+    if (activeSection !== 'progress') return undefined;
+    let active = true;
+    setProgressLoading(true);
+    setProgressError('');
+    async function load() {
+      try {
+        const res = await getSchoolProgressStudents();
+        if (!active) return;
+        setProgressStudents(res.students);
+        setProgressClasses(res.classes);
+      } catch (e) {
+        if (active) {
+          setProgressStudents([]);
+          setProgressClasses([]);
+          setProgressError(e?.message || 'Unable to load school students.');
+        }
+      } finally {
+        if (active) setProgressLoading(false);
+      }
+    }
+    load();
+    return () => { active = false; };
+  }, [activeSection, progressRefresh, session?.schoolId]);
+
+  const progressQuery = progressSearch.trim().toLowerCase();
+  const filteredProgressStudents = progressStudents.filter((student) =>
+    (!progressClass || student.className === progressClass)
+    && (!progressQuery || `${student.name} ${student.id}`.toLowerCase().includes(progressQuery))
+  );
+  const progressPageCount = Math.max(1, Math.ceil(filteredProgressStudents.length / PROGRESS_PER_PAGE));
+  const currentProgressPage = Math.min(progressPage, progressPageCount);
+  const pagedProgressStudents = filteredProgressStudents.slice(
+    (currentProgressPage - 1) * PROGRESS_PER_PAGE, currentProgressPage * PROGRESS_PER_PAGE
+  );
+  const selectedProgressStudent = filteredProgressStudents.find((s) => s.id === progressStudentId)
+    || filteredProgressStudents[0] || null;
 
   // Export data functions
   function exportTeachers(format) {
@@ -263,6 +316,10 @@ export default function SchoolDashboard({ session, onLogout }) {
   }
 
   async function refreshAllSections() {
+    if (activeSection === 'progress') {
+      setProgressRefresh((v) => v + 1);
+      return;
+    }
     setRefreshing('all');
     await Promise.all([
       refreshTeachersSection(),
@@ -1100,7 +1157,8 @@ export default function SchoolDashboard({ session, onLogout }) {
     { key: 'overview', label: 'Overview', icon: '📊' },
     { key: 'teachers', label: 'Teachers & Invites', icon: '👨‍🏫' },
     { key: 'curriculum', label: 'Curriculum Upload', icon: '📚' },
-    { key: 'studentRegistration', label: 'Student Registration', icon: '🧑‍🎓' }
+    { key: 'studentRegistration', label: 'Student Registration', icon: '🧑‍🎓' },
+    { key: 'progress', label: 'Student Progress', icon: '📈' }
   ];
 
   const sectionMeta = {
@@ -1119,6 +1177,10 @@ export default function SchoolDashboard({ session, onLogout }) {
     studentRegistration: {
       title: 'Student Registration',
       subtitle: 'Create student accounts manually or send a self-registration link, and manage every enrolled student.'
+    },
+    progress: {
+      title: 'Student Progress',
+      subtitle: 'Explore every student’s learning journey and school report cards, across all classes in your school.'
     }
   };
 
@@ -1178,7 +1240,7 @@ export default function SchoolDashboard({ session, onLogout }) {
             <button
               className="sd-inline-btn"
               onClick={refreshAllSections}
-              disabled={refreshing === 'all'}
+              disabled={refreshing === 'all' || (activeSection === 'progress' && progressLoading)}
               title="Refresh all sections"
             >
               {refreshing === 'all' ? '⟳ ...' : '⟳ Refresh'}
@@ -1223,6 +1285,116 @@ export default function SchoolDashboard({ session, onLogout }) {
         </section>
 
         {note ? <p className="sd-note">{note}</p> : null}
+
+        {activeSection === 'progress' && (
+          <section className="td-progress-layout sd-progress-layout">
+            <article className="td-card td-card-framed td-progress-student-card sd-progress-picker" aria-label="School student picker">
+              <h3>Students in your school</h3>
+              <p>Choose a class or search across all classes to view the same report the student sees.</p>
+              <label className="sd-progress-label" htmlFor="school-progress-search">Search students</label>
+              <input
+                id="school-progress-search"
+                className="invite-search"
+                type="search"
+                value={progressSearch}
+                placeholder="Search by student name"
+                onChange={(e) => {
+                  setProgressSearch(e.target.value);
+                  setProgressStudentId('');
+                  setProgressPage(1);
+                }}
+              />
+              <label className="sd-progress-label" htmlFor="school-progress-class">Class</label>
+              <select
+                id="school-progress-class"
+                className="invite-filter"
+                value={progressClass}
+                onChange={(e) => {
+                  setProgressClass(e.target.value);
+                  setProgressStudentId('');
+                  setProgressPage(1);
+                }}
+              >
+                <option value="">All classes</option>
+                {progressClasses.map((className) => <option key={className} value={className}>{className}</option>)}
+              </select>
+              {progressClass || progressSearch ? (
+                <button type="button" className="td-inline-btn sd-progress-clear" onClick={() => {
+                  setProgressSearch('');
+                  setProgressClass('');
+                  setProgressStudentId('');
+                  setProgressPage(1);
+                }}>Clear filters · search whole school</button>
+              ) : null}
+              {progressError ? (
+                <div role="alert" className="sd-progress-error">
+                  <p>{progressError}</p>
+                  <button type="button" className="td-inline-btn" onClick={() => setProgressRefresh((v) => v + 1)}>Try again</button>
+                </div>
+              ) : null}
+              {!progressLoading && !progressError ? (
+                <p className="sd-progress-count" role="status">{filteredProgressStudents.length} {filteredProgressStudents.length === 1 ? 'student' : 'students'} found</p>
+              ) : null}
+              <div className="td-student-list">
+                {pagedProgressStudents.map((student) => (
+                  <button
+                    type="button"
+                    key={student.id}
+                    className={selectedProgressStudent?.id === student.id ? 'active' : ''}
+                    aria-pressed={selectedProgressStudent?.id === student.id}
+                    onClick={() => setProgressStudentId(student.id)}
+                  >
+                    <div>
+                      <strong>{student.name}</strong>
+                      <span>{student.className || 'Class not assigned'}</span>
+                    </div>
+                  </button>
+                ))}
+                {!progressLoading && !progressError && !filteredProgressStudents.length ? (
+                  <p className="td-empty">{progressStudents.length ? 'No students match these filters. Try another name or select All classes.' : 'No students enrolled yet. Add students in Student Registration to see their reports here.'}</p>
+                ) : null}
+              </div>
+              {progressPageCount > 1 ? (
+                <div className="td-student-pager">
+                  <button type="button" className="td-inline-btn" disabled={currentProgressPage === 1} onClick={() => setProgressPage(currentProgressPage - 1)}>Previous</button>
+                  <span className="td-student-pager-label">Page {currentProgressPage} of {progressPageCount}</span>
+                  <button type="button" className="td-inline-btn" disabled={currentProgressPage === progressPageCount} onClick={() => setProgressPage(currentProgressPage + 1)}>Next</button>
+                </div>
+              ) : null}
+            </article>
+            <article className="td-card td-card-framed td-progress-page-card sd-progress-report" aria-label="Selected student report">
+              {selectedProgressStudent ? (
+                <div key={`${selectedProgressStudent.id}-${progressRefresh}`}>
+                  <header className="sd-progress-student-head">
+                    <div>
+                      <span className="td-kicker">Student learning profile</span>
+                      <h2>{selectedProgressStudent.name}</h2>
+                    </div>
+                    <span className="sd-progress-class-badge">{selectedProgressStudent.className || 'Class not assigned'}</span>
+                  </header>
+                  <StudentProgress
+                    studentId={selectedProgressStudent.id}
+                    greetingName={selectedProgressStudent.name}
+                    fetchFn={getSchoolStudentLearningScore}
+                  />
+                  <StudentReportCard
+                    embedded
+                    studentId={selectedProgressStudent.id}
+                    greetingName={selectedProgressStudent.name}
+                    className={selectedProgressStudent.className}
+                    fetchFn={() => getSchoolStudentReportCards(selectedProgressStudent.id)}
+                  />
+                </div>
+              ) : (
+                <div className="sd-progress-empty">
+                  <span aria-hidden="true">📈</span>
+                  <h2>A clearer picture of every learner</h2>
+                  <p>Select a student to explore their learning score, subject growth, study habits and released exam report cards.</p>
+                </div>
+              )}
+            </article>
+          </section>
+        )}
 
         {/* ══════════ OVERVIEW ══════════ */}
         {activeSection === 'overview' && (
