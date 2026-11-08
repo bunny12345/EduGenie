@@ -7,6 +7,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:mobile/models/session.dart';
 import 'package:mobile/screens/student/student_services_screen.dart';
 import 'package:mobile/screens/student/student_support_screen.dart';
+import 'package:mobile/screens/support/support_screen.dart';
+import 'package:mobile/widgets/teacher_support_bubble.dart';
 import 'package:mobile/services/api_client.dart';
 import 'package:mobile/services/support_api_service.dart';
 import 'package:mobile/state/session_provider.dart';
@@ -34,6 +36,7 @@ class _SupportStub extends SupportApiService {
   bool saved = false;
   bool ownerReplied = false;
   bool failList = false;
+  bool teacher = false;
   Completer<SupportBotReply>? pendingBot;
 
   @override
@@ -44,7 +47,9 @@ class _SupportStub extends SupportApiService {
     lastQuestion = message;
     if (pendingBot != null) return pendingBot!.future;
     return SupportBotReply.fromJson({
-      'reply': 'Use Sam on Home for quick questions.',
+      'reply': teacher
+          ? 'Open Assign Homework on Teacher Home.'
+          : 'Use Sam on Home for quick questions.',
       'suggestions': ['Report an issue', 'Connect to a technician'],
       'needsTechnician': true,
     });
@@ -65,7 +70,10 @@ class _SupportStub extends SupportApiService {
   @override
   Future<SupportThread> thread(String id, {CancelToken? cancelToken}) async =>
       SupportThread(SupportTicket.fromJson(_ticketJson), [
-        const SupportMessage('student', 'Question submitted on website'),
+        SupportMessage(
+          teacher ? 'teacher' : 'student',
+          'Question submitted on website',
+        ),
         if (ownerReplied)
           const SupportMessage('owner', 'Please try uploading again.'),
       ]);
@@ -117,6 +125,8 @@ Future<void> _mount(
   _SupportStub api, {
   double scale = 1,
   bool services = false,
+  bool teacher = false,
+  bool teacherBubble = false,
 }) async {
   tester.view.physicalSize = const Size(390, 844);
   tester.view.devicePixelRatio = 1;
@@ -135,7 +145,11 @@ Future<void> _mount(
           ).copyWith(textScaler: TextScaler.linear(scale)),
           child: child!,
         ),
-        home: services
+        home: teacherBubble
+            ? const Scaffold(floatingActionButton: TeacherSupportBubble())
+            : teacher
+            ? const SupportScreen(teacher: true)
+            : services
             ? const StudentServicesScreen()
             : const StudentSupportScreen(),
       ),
@@ -157,6 +171,62 @@ Future<void> _dispose(WidgetTester tester) async {
 }
 
 void main() {
+  for (final scale in [1.0, 1.5]) {
+    testWidgets(
+      'teacher floating message button opens teacher help at text scale $scale',
+      (tester) async {
+        final api = _SupportStub()..teacher = true;
+        await _mount(tester, api, scale: scale, teacherBubble: true);
+        await _tap(tester, find.byTooltip('Teacher support'));
+        expect(find.text('Teacher Support'), findsOneWidget);
+        expect(find.text('How do I submit homework?'), findsNothing);
+        await _tap(tester, find.text('How do I assign homework?'));
+        expect(api.lastQuestion, 'How do I assign homework?');
+        expect(
+          find.text('Open Assign Homework on Teacher Home.'),
+          findsOneWidget,
+        );
+        expect(find.text('Teacher'), findsOneWidget);
+        expect(tester.takeException(), isNull);
+        await _dispose(tester);
+      },
+    );
+  }
+
+  testWidgets(
+    'teacher saved reports share technician replies and report workflow',
+    (tester) async {
+      final api = _SupportStub()
+        ..teacher = true
+        ..saved = true
+        ..ownerReplied = true;
+      await _mount(tester, api, teacher: true);
+      await _tap(tester, find.widgetWithText(ListTile, 'Upload problem'));
+      expect(find.text('Teacher'), findsOneWidget);
+      expect(find.text('Technician'), findsOneWidget);
+      await _tap(tester, find.widgetWithText(ListTile, 'Upload problem'));
+      await tester.drag(find.byType(ListView), const Offset(0, 1500));
+      await tester.pumpAndSettle();
+      await _tap(tester, find.text('Report an issue'));
+      await tester.enterText(
+        find.widgetWithText(TextFormField, 'Short title'),
+        'Upload problem',
+      );
+      await tester.enterText(
+        find.widgetWithText(TextFormField, 'What happened?'),
+        'Upload button does not respond',
+      );
+      await _tap(tester, find.text('Send to technician'));
+      expect(api.reportIds, hasLength(1));
+      expect(find.text('Teacher'), findsOneWidget);
+      expect(
+        find.text('Email was not delivered. Your request is saved.'),
+        findsOneWidget,
+      );
+      await _dispose(tester);
+    },
+  );
+
   for (final scale in [1.0, 1.5]) {
     testWidgets(
       'bot and escalation work without overflow at text scale $scale',

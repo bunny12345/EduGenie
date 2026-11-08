@@ -1,6 +1,7 @@
 import React from 'react';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import TechnicalSupport from './TechnicalSupport';
+import TeacherSupportBubble from './TeacherSupportBubble';
 import {
   askSupportBot, createSupportTicket, getSupportThread, listSupportTickets,
   replyToSupportTicket, setSupportTicketStatus,
@@ -98,4 +99,65 @@ test('expired owner inbox reports authentication failure to owner sign-out', asy
   listSupportTickets.mockRejectedValue(error);
   render(<TechnicalSupport ownerToken="expired-owner-token" onAuthError={onAuthError} />);
   await waitFor(() => expect(onAuthError).toHaveBeenCalledWith('Owner session expired'));
+});
+
+test('teacher assistant has teacher suggestions and correctly labels teacher reports', async () => {
+  const teacherTicket = { ...ticket, requester_role: 'teacher', requester_name: 'Test Teacher' };
+  askSupportBot.mockResolvedValue({ reply: 'Open Assign Homework on Teacher Home.', suggestions: [], needsTechnician: false });
+  createSupportTicket.mockResolvedValue({ ticket: teacherTicket, notificationWarning: null });
+  getSupportThread.mockResolvedValue({ ticket: teacherTicket, messages: [{ id: 'm2', author_role: 'teacher', content: 'Assignment button failed' }] });
+  render(<TechnicalSupport requesterRole="teacher" />);
+  expect(screen.getByRole('heading', { name: 'Teacher Support' })).toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: 'How do I submit homework?' })).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: 'How do I assign homework?' }));
+  expect(await screen.findByText('Open Assign Homework on Teacher Home.')).toBeInTheDocument();
+  expect(screen.getByText('Teacher', { selector: 'strong' })).toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: 'Report an issue' }));
+  fireEvent.change(screen.getByLabelText('Short title'), { target: { value: 'Assignment' } });
+  fireEvent.change(screen.getByLabelText('What happened?'), { target: { value: 'Button failed' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Send to technician' }));
+  expect(await screen.findByText('Assignment button failed')).toBeInTheDocument();
+  expect(screen.getByText('Teacher', { selector: 'strong' })).toBeInTheDocument();
+  expect(createSupportTicket.mock.calls[0][0].requester_role).toBeUndefined();
+});
+
+test('owner inbox displays teacher authors instead of labelling them as bots', async () => {
+  const teacherTicket = { ...ticket, requester_role: 'teacher', requester_name: 'Test Teacher' };
+  listSupportTickets.mockResolvedValue({ tickets: [teacherTicket], nextOffset: null });
+  getSupportThread.mockResolvedValue({ ticket: teacherTicket, messages: [{ id: 'm2', author_role: 'teacher', content: 'Teacher issue' }] });
+  render(<TechnicalSupport ownerToken="owner-mfa-token" />);
+  fireEvent.click(await screen.findByRole('button', { name: /Upload problem/ }));
+  expect(await screen.findByText('Teacher issue')).toBeInTheDocument();
+  expect(screen.getByText('Teacher', { selector: 'strong' })).toBeInTheDocument();
+  expect(screen.getByText(/Test Teacher · teacher/, { selector: 'small' })).toBeInTheDocument();
+});
+
+test('floating teacher support opens and closes an accessible modal and resets bot chat', async () => {
+  const originalShow = Object.getOwnPropertyDescriptor(HTMLDialogElement.prototype, 'showModal');
+  const originalClose = Object.getOwnPropertyDescriptor(HTMLDialogElement.prototype, 'close');
+  const showModal = jest.fn(function () { this.setAttribute('open', ''); });
+  const close = jest.fn(function () { this.removeAttribute('open'); });
+  Object.defineProperty(HTMLDialogElement.prototype, 'showModal', { configurable: true, value: showModal });
+  Object.defineProperty(HTMLDialogElement.prototype, 'close', { configurable: true, value: close });
+  try {
+    render(<TeacherSupportBubble />);
+    const launcher = screen.getByRole('button', { name: 'Open teacher support' });
+    fireEvent.click(launcher);
+    expect(screen.getByRole('dialog', { name: 'Teacher support' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'How do I assign homework?' }));
+    expect(await screen.findByText('Open Homework from Academics.')).toBeInTheDocument();
+    fireEvent.keyDown(screen.getByRole('dialog', { name: 'Teacher support' }), { key: 'Escape' });
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(launcher).toHaveFocus();
+    fireEvent.click(launcher);
+    expect(screen.queryByText('Open Homework from Academics.')).not.toBeInTheDocument();
+    expect(showModal).toHaveBeenCalledTimes(2);
+    await screen.findByText('Your reports and technician chats appear here.');
+    fireEvent.click(screen.getByRole('button', { name: 'Close teacher support' }));
+  } finally {
+    if (originalShow) Object.defineProperty(HTMLDialogElement.prototype, 'showModal', originalShow);
+    else delete HTMLDialogElement.prototype.showModal;
+    if (originalClose) Object.defineProperty(HTMLDialogElement.prototype, 'close', originalClose);
+    else delete HTMLDialogElement.prototype.close;
+  }
 });

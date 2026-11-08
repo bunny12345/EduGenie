@@ -2,6 +2,7 @@ import { strict as assert } from 'node:assert';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { Client } from 'pg';
+import { randomUUID } from 'node:crypto';
 
 async function main() {
   const url = process.env.SUPPORT_TEST_DATABASE_URL;
@@ -49,6 +50,23 @@ async function main() {
     ]));
     assert.equal((await db.query("select * from support_tickets where id='88888888-8888-4888-8888-888888888888'")).rows.length, 0, 'ticket and message creation must be atomic');
     await db.query('reset role');
+    await db.query(readFileSync(resolve('db/migrations/20261108_teacher_support.sql'), 'utf8'));
+    await db.query('set role service_role');
+    assert.equal((await db.query('select * from support_messages where ticket_id=$1', [id])).rows.length, 3,
+      'teacher extension must preserve existing student messages');
+    const teacherTicket = { ...payload, id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', requester_id: other, requester_role: 'teacher', requester_name: 'Test Teacher' };
+    const teacherMessage = { id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', author_role: 'teacher', content: 'Assignment failed' };
+    await db.query('select support_create_ticket($1::jsonb,$2::jsonb)', [teacherTicket, JSON.stringify([teacherMessage])]);
+    await db.query('select support_create_ticket($1::jsonb,$2::jsonb)', [teacherTicket, JSON.stringify([teacherMessage])]);
+    await assert.rejects(db.query('select support_create_ticket($1::jsonb,$2::jsonb)', [{ ...teacherTicket, requester_role: 'student' }, '[]']), /ownership mismatch/);
+    await assert.rejects(db.query('select support_append_message($1,$2,$3,$4,$5,$6)', [teacherTicket.id, other, school, randomId(), 'student', 'Wrong role']), /ownership mismatch/);
+    await assert.rejects(db.query('select support_append_message($1,$2,$3,$4,$5,$6)', [teacherTicket.id, other, other, randomId(), 'teacher', 'Wrong school']), /ownership mismatch/);
+    await assert.rejects(db.query('select support_append_message($1,$2,$3,$4,$5,$6)', [teacherTicket.id, null, null, randomId(), 'teacher', 'Missing identity']), /ownership mismatch/);
+    await assert.rejects(db.query('select support_append_message($1,$2,$3,$4,$5,$6)', [id, student, school, randomId(), 'teacher', 'Student ticket']), /ownership mismatch/);
+    await db.query('select support_append_message($1,$2,$3,$4,$5,$6)', [teacherTicket.id, other, school, randomId(), 'teacher', 'Follow-up']);
+    await db.query('select support_append_message($1,$2,$3,$4,$5,$6)', [teacherTicket.id, null, null, randomId(), 'owner', 'Teacher reply']);
+    assert.equal((await db.query('select * from support_messages where ticket_id=$1', [teacherTicket.id])).rows.length, 3);
+    await db.query('reset role');
     await db.query('set role authenticated');
     async function claims(sub: string, role = 'student', schoolId = school) {
       await db.query("select set_config('request.jwt.claims',$1,false)", [JSON.stringify({ sub, role, schoolId })]);
@@ -68,7 +86,9 @@ async function main() {
     await db.query('reset role');
     await db.query('set role anon');
     await assert.rejects(db.query('select * from support_tickets'));
-    console.log('Support SQL: atomic creation/replies, idempotency, reopen, student and school RLS isolation, and service-only writes PASS.');
+    console.log('Support SQL: student/teacher atomic writes, role/school isolation, idempotency, reopen, unchanged student RLS and service-only access PASS.');
   } finally { await db.end(); }
 }
 main().catch((error: Error) => { console.error(error.message); process.exitCode = 1; });
+
+function randomId() { return randomUUID(); }

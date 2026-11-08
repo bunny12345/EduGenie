@@ -117,7 +117,7 @@ class TeacherHomeTab extends ConsumerWidget {
     final targetClass = ref.watch(teacherTargetClassProvider);
 
     return SingleChildScrollView(
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 100),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -2223,4 +2223,3 @@ class _QuestionTile extends StatelessWidget {
     );
   }
 }
-

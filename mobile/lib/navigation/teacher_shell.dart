@@ -10,6 +10,7 @@ import '../state/session_provider.dart';
 import '../state/teacher_providers.dart';
 import '../theme/app_colors.dart';
 import '../theme/subject_background.dart';
+import '../widgets/teacher_support_bubble.dart';
 
 /// The site-wide "3D button" frame — a light-black ring border + soft drop
 /// shadow, ported from `.eg-subject-hw-card button`/the Academics panel.
@@ -173,6 +174,8 @@ class _TeacherShellState extends ConsumerState<TeacherShell> {
         ],
       ),
 
+      floatingActionButton: _index == 0 ? const TeacherSupportBubble() : null,
+      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
       bottomNavigationBar: SafeArea(
         minimum: const EdgeInsets.fromLTRB(16, 0, 16, 10),
         child: _FloatingNavBar(

@@ -1,4 +1,4 @@
-# Student Technical Query — website and mobile app
+# Student and teacher support — website and mobile app
 
 ## Student workflow
 
@@ -26,8 +26,8 @@ will be detected: the UI instructs students not to send sensitive information.
 
 1. Sign in at `https://academix.now/owner` and complete authenticator MFA.
 2. Select **Support Inbox**.
-3. Select a ticket, read its student/account role, school ID, class and messages.
-4. Send a reply. It appears in the student's Technical Query request.
+3. Select a ticket, read its requester/account role, school ID, classes and messages.
+4. Send a reply. It appears in the requester's support conversation.
 5. Use **Mark resolved** when done. A new message reopens the request.
 
 Notifications go to `jpr1521@gmail.com` by default. This is a backend-only
@@ -35,14 +35,33 @@ destination, not a client-supplied recipient. You may configure
 `SUPPORT_NOTIFICATION_EMAIL` on the backend to override it.
 
 **Reply inside Support Inbox, not Gmail.** Gmail replies are not imported.
-Students do not need email addresses to receive replies; they return to their
-authenticated request. New requests and student follow-ups notify the technician.
+Students and teachers do not need email addresses to receive replies; they return
+to their authenticated request. New requests and requester follow-ups notify the technician.
 The system does not promise immediate/live availability.
 
 While open, messages refresh every ten seconds and ticket lists every fifteen
 seconds. Lists are paginated; the conversation loads all message pages.
-Only the student who created the request, in the same verified school, can
-read or send student messages. The owner inbox requires owner MFA.
+Only the requester who created the request, with the same role and verified school,
+can read or send requester messages. The owner inbox requires owner MFA.
+
+## Teacher floating support
+
+On the teacher website Home (the Teacher section) or mobile Teacher Home, tap
+the blue floating message icon at the bottom right. It opens **Teacher Support**,
+using the same light blue support design, issue form, saved requests and replies
+as student support. Closing the panel clears only temporary bot chat.
+
+The teacher guide covers announcements, assigning homework, reviewing submissions,
+mock-test authoring, class rosters, AI Assistant navigation, progress, report cards,
+login and device permissions. It provides operational guidance only, not academic
+answers, internal implementation details, passwords, keys or student records.
+Unsupported questions offer **Connect to a technician** rather than invented
+answers. The guide has no LLM, source-code access or record lookup.
+
+Teacher identity, role, school and assigned classes are resolved by the backend,
+not accepted from the report form. Reports and follow-ups notify the configured
+technician email with the **teacher** role. Reply through the same owner inbox.
+Teacher and student tickets are kept separate even if account IDs coincide.
 
 ## Deployment
 
@@ -50,6 +69,13 @@ read or send student messages. The owner inbox requires owner MFA.
    Supabase project used by the backend, through the Supabase SQL editor or your
    trusted migration connection. It creates only new support tables, functions,
    indexes and RLS policies. It does not change existing tables or RLS.
+   If student support is already installed, do not rerun that migration.
+   For teacher support, additionally apply
+   `backend/db/migrations/20261108_teacher_support.sql` once. This approved
+   extension allows teacher message authors and updates service-only write
+   functions to enforce requester role, school and account identity. It preserves
+   existing messages and all existing RLS policies. Teacher reads and writes go
+   through the authenticated backend; no direct client database access is added.
 2. Ensure backend `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` are configured.
    Support ticket writes deliberately have no local mock fallback.
 3. Ensure the existing SMTP variables are working:
@@ -65,15 +91,14 @@ read or send student messages. The owner inbox requires owner MFA.
    student's reply view.
 
 No real reports/emails or production migrations are performed by the tests.
-Existing teacher and school portals are unchanged. Request role is stored
-for future expansion, but all public support endpoints currently require the
-student role. Students cannot forge account identity, technician messages, or
-notification recipients through request bodies.
+Existing school portal support is unchanged. Public support endpoints accept
+only student and teacher roles. Requesters cannot forge account identity,
+technician messages, or notification recipients through request bodies.
 
 ## Mobile and website sync
 
-The student app uses the same authenticated `/support/*` endpoints and Supabase
-tables as the website. Sign in to the same student account to see the same
+The student and teacher apps use the same authenticated `/support/*` endpoints and
+Supabase tables as the website. Sign in to the same account and role to see the same
 requests, status and technician replies on both platforms. The owner continues
 replying through the website's MFA-protected Support Inbox. Bot replies and
 suggestions come from the same backend guide; normal bot chat is temporary and
@@ -91,8 +116,9 @@ The app defaults to `https://academix.now`, matching the live website backend.
 Local web development currently uses `http://localhost:3000`; to test the app
 against that backend, pass `--dart-define=API_BASE_URL=http://localhost:3000`
 when running Flutter. Both clients must use the same backend for data parity.
-No new migration or backend deployment is required for this mobile addition.
-Rebuild/relaunch the app to use the new screen.
+The student mobile addition needs no additional migration. The teacher addition
+requires the teacher-support migration and a backend and website deployment.
+Rebuild/relaunch the app to use the new teacher floating button and support screen.
 
 If email delivery fails, the request remains saved and the UI explicitly warns
 that email was not delivered, with a retry-notification button. Missing database
@@ -125,4 +151,5 @@ It requires `SUPPORT_TEST_DATABASE_URL` pointing to an **empty disposable local*
 PostgreSQL database, owned by a role that can create test roles and schemas.
 Never point it at production. Run from `backend/` with `npx ts-node
 scripts/support_db_test.ts`. It verifies atomic creation, idempotency, reopen,
-student/school RLS isolation and service-only writes.
+student/school RLS isolation, teacher role/account/school write isolation and
+service-only access. It applies both support migrations to the disposable database.

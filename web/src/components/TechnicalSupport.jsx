@@ -6,15 +6,16 @@ import {
 
 const greeting = { role: 'bot', content: 'Hi! I’m the AcademiX Help Assistant. Ask me how to use the website or app. For a bug or a question I cannot solve, you can report an issue or connect to a technician. Never share passwords, verification codes or private records.' };
 
-export default function TechnicalSupport({ ownerToken, onAuthError }) {
+export default function TechnicalSupport({ ownerToken, onAuthError, requesterRole = 'student' }) {
   const owner = Boolean(ownerToken);
+  const teacher = requesterRole === 'teacher';
   const [tickets, setTickets] = useState([]);
   const [nextOffset, setNextOffset] = useState(null);
   const [selected, setSelected] = useState('');
   const [category, setCategory] = useState('');
-  const [messages, setMessages] = useState([greeting]);
+  const [messages, setMessages] = useState([teacher ? { role: 'bot', content: 'Hi! I’m the AcademiX Teacher Help Assistant. Ask me about using the teacher website or app: announcements, homework, tests, students and progress. Report an issue or connect to a technician if you need more help. Never share passwords, verification codes or private student records. I cannot provide internal technical information or academic answers.' } : greeting]);
   const [input, setInput] = useState('');
-  const [suggestions, setSuggestions] = useState(['How do I submit homework?', 'How do I use Sam?', 'My microphone is not working']);
+  const [suggestions, setSuggestions] = useState(teacher ? ['How do I assign homework?', 'How do I create a test?', 'How do I use AI Assistant?'] : ['How do I submit homework?', 'How do I use Sam?', 'My microphone is not working']);
   const [needsTechnician, setNeedsTechnician] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -111,8 +112,8 @@ export default function TechnicalSupport({ ownerToken, onAuthError }) {
       <header className="eg-support-header">
         <div>
           <span className="eg-support-eyebrow">{owner ? 'MFA-protected technician workspace' : 'Website & app help'}</span>
-          <h3>{owner ? 'Support Inbox' : 'Technical Query'}</h3>
-          <p>{owner ? 'View reported issues and reply directly to students. Email replies are not imported here.' : 'Get help with AcademiX, report an issue, or speak with a technician.'}</p>
+          <h3>{owner ? 'Support Inbox' : teacher ? 'Teacher Support' : 'Technical Query'}</h3>
+          <p>{owner ? 'View reported issues and reply directly to students and teachers. Email replies are not imported here.' : 'Get help with AcademiX, report an issue, or speak with a technician.'}</p>
         </div>
         {!owner ? <div className="eg-support-actions">
           <button type="button" onClick={() => escalate('glitch')}>Report an issue</button>
@@ -133,7 +134,7 @@ export default function TechnicalSupport({ ownerToken, onAuthError }) {
           {nextOffset !== null ? <button type="button" onClick={loadMore}>Show more requests</button> : null}
         </aside>
         <div className="eg-support-main">
-          {selected ? <SupportThread key={selected} id={selected} token={ownerToken} onError={handleError} onChanged={refresh} initialWarning={warning} /> :
+          {selected ? <SupportThread key={selected} id={selected} token={ownerToken} requesterRole={requesterRole} onError={handleError} onChanged={refresh} initialWarning={warning} /> :
             category ? <SupportReport key={category} category={category} history={messages} onCancel={() => setCategory('')} onCreated={(data) => {
               setWarning(data.notificationWarning || '');
               select(data.ticket.id);
@@ -142,7 +143,7 @@ export default function TechnicalSupport({ ownerToken, onAuthError }) {
             }} /> :
               owner ? <div className="eg-support-empty">Select a request to read its messages and reply.</div> :
                 <>
-                  <SupportMessages messages={messages} thinking={busy} />
+                  <SupportMessages messages={messages} thinking={busy} requesterRole={requesterRole} />
                   {needsTechnician ? <p className="eg-support-handoff">Still need help? A technician can review your question. Use Connect to a technician above.</p> : null}
                   <div className="eg-support-suggestions">{suggestions.map((suggestion) => <button key={suggestion} type="button" disabled={busy} onClick={() => ask(suggestion)}>{suggestion}</button>)}</div>
                   {error ? <p className="eg-support-error" role="alert">{error}</p> : null}
@@ -155,15 +156,16 @@ export default function TechnicalSupport({ ownerToken, onAuthError }) {
   );
 }
 
-function SupportMessages({ messages, thinking }) {
+function SupportMessages({ messages, thinking, requesterRole = 'student' }) {
   const end = useRef(null);
   useEffect(() => { end.current?.scrollIntoView?.({ behavior: 'smooth', block: 'nearest' }); }, [messages.length, thinking]);
   return <div className="eg-support-messages" role="log" aria-label="Support messages" aria-live="polite">
     {messages.map((message, index) => {
       const role = message.role || message.author_role;
-      const isStudent = role === 'user' || role === 'student';
-      return <article key={message.id || index} className={`eg-support-message ${isStudent ? 'student' : role === 'owner' ? 'technician' : 'bot'}`}>
-        <strong>{isStudent ? 'Student' : role === 'owner' ? 'Technician' : 'Help Assistant'}</strong>
+      const isRequester = role === 'user' || role === 'student' || role === 'teacher';
+      const label = role === 'teacher' || (role === 'user' && requesterRole === 'teacher') ? 'Teacher' : 'Student';
+      return <article key={message.id || index} className={`eg-support-message ${isRequester ? 'student' : role === 'owner' ? 'technician' : 'bot'}`}>
+        <strong>{isRequester ? label : role === 'owner' ? 'Technician' : 'Help Assistant'}</strong>
         <p>{message.content}</p>
         {message.created_at ? <time dateTime={message.created_at}>{new Date(message.created_at).toLocaleString()}</time> : null}
       </article>;
@@ -214,7 +216,7 @@ function SupportReport({ category, history, onCancel, onCreated }) {
   </form>;
 }
 
-function SupportThread({ id, token, onError, onChanged, initialWarning }) {
+function SupportThread({ id, token, requesterRole, onError, onChanged, initialWarning }) {
   const [thread, setThread] = useState(null);
   const [input, setInput] = useState('');
   const [busy, setBusy] = useState(false);
@@ -285,10 +287,10 @@ function SupportThread({ id, token, onError, onChanged, initialWarning }) {
     {thread ? <div className="eg-support-thread-heading"><div><h4>{thread.ticket.subject}</h4><p>{thread.ticket.status === 'resolved' ? 'Resolved. Sending another message reopens this request.' : 'Sent to the technician. Replies appear here.'}</p>
       {token ? <small>{thread.ticket.requester_name} · {thread.ticket.requester_role} · {thread.ticket.class_name}<br />School ID: {thread.ticket.school_id}<br />Account ID: {thread.ticket.requester_id}</small> : null}</div>
       {token ? <button type="button" disabled={busy} onClick={updateStatus}>{thread.ticket.status === 'open' ? 'Mark resolved' : 'Reopen'}</button> : <button type="button" disabled={busy} onClick={() => refresh()}>Check replies</button>}</div> : null}
-    <SupportMessages messages={thread?.messages || []} />
+    <SupportMessages messages={thread?.messages || []} requesterRole={requesterRole} />
     {error ? <p className="eg-support-error" role="alert">{error}</p> : null}
     {warning ? <div className="eg-support-warning" role="status">{warning}<button type="button" disabled={busy} onClick={retryEmail}>Retry email notification</button></div> : null}
-    <SupportComposer value={input} setValue={setInput} disabled={busy || !thread} onSubmit={send} placeholder={token ? 'Write your reply to this student…' : 'Message the technician…'} />
+    <SupportComposer value={input} setValue={setInput} disabled={busy || !thread} onSubmit={send} placeholder={token ? 'Write your reply…' : 'Message the technician…'} />
     <small className="eg-support-privacy">Never share passwords, verification codes or confidential records. Replies refresh automatically while this chat is open.</small>
   </>;
 }

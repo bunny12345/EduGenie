@@ -18,14 +18,30 @@ const guides = [
   { words: /\b(slow|blank|freeze|frozen|crash|bug|glitch|issue|error|broken|not working)\b/i, reply: 'Keep a copy of any unsent work first. Check your connection and reopen the affected page or app. Avoid repeatedly submitting the same work. If the problem continues, use Report an issue and include the page, what you tried, and what happened instead. Do not paste passwords, verification codes or private student records.' },
 ];
 
-export function answerSupportQuestion(text: string) {
-  if (/\b(secret|service.?role|source code|database|schema|server|api key|jwt|prompt|system instruction|credential)\b/i.test(text)) {
-    return { reply: 'I can help you use AcademiX, but I cannot provide internal systems, code, keys, credentials or private information. Describe the feature you are trying to use, without sharing any secrets.', needsTechnician: true, suggestions: ['How do I submit homework?', 'How do I use Sam?'] };
+const teacherGuides = [
+  { words: /\b(announcements?|notices?|schedule)\b/i, reply: 'On Teacher Home, choose your assigned class and open Announcements. Enter your notice and use the available schedule controls before posting. Check the selected class and dates if a notice is not visible. Do not include confidential student records in a support report.' },
+  { words: /\b(homework|assignments?|assign|submissions?|resubmit|grad(?:e|ing))\b/i, reply: 'On Teacher Home, select your assigned class and open Assign Homework. Choose the available subject lessons, enter the instructions and dates, then assign the work. Use View History for previous assignments. In Students, select a student to review their homework and the available grading controls. If an action fails, report the page and steps without sharing student work or private records.' },
+  { words: /\b(tests?|quiz(?:zes)?|exams?|mock|questions?|clone)\b/i, reply: 'Open Mock Tests on Teacher Home for test authoring. Use the available create, edit, clone and question controls, and check your assigned class before making changes. Save your work before leaving. For school exam marks, open Report Cards instead. Report any failed action with the test name and steps, not test answers or private records.' },
+  { words: /\b(report cards?|marks|scores?|progress|performance)\b/i, reply: 'Open Student Progress to review learning reports for students in your assigned classes. Open Report Cards for school exam marks and the available entry controls. Confirm the class and student selection first. This help bot cannot access, alter or disclose student records; report display issues without including private details.' },
+  { words: /\b(ai|assistant|sam|pdfs?|lessons?|subjects?|curriculum|uploads?)\b/i, reply: 'Open AI Assistant for subject-focused teaching help using the materials available to your assigned class. This floating Help Assistant is for portal operations, not lesson answers. Missing subjects, lessons or class assignments should be checked with your school administrator. Report an upload or display problem with the feature name, without sharing private files.' },
+  { words: /\b(students?|roster|class(?:es)?|register|invites?)\b/i, reply: 'Open Students and select one of your assigned classes to view its roster and available student actions. School administrators manage teacher registration and class assignments. If a student or class is missing, confirm the assignment with your school administrator. Support cannot reveal account passwords or private student information.' },
+  { words: /\b(password|login|log in|sign in|account)\b/i, reply: 'Use Teacher Login with the login ID and password provided by your school. Use the eye button where available to check your own password. For forgotten passwords or account access, contact your school administrator. Never send passwords or verification codes to this chat.' },
+  { words: /\b(microphone|mic|voice|audio|sound)\b/i, reply: 'In AI Assistant, allow microphone access if requested and check device volume for voice playback. If microphone permission was denied, update the browser or app permission and try again. You can type instead. Report the affected feature without sending permission screenshots that contain private information.' },
+  { words: /\b(slow|blank|freeze|frozen|crash|bug|glitch|issue|error|broken|not working)\b/i, reply: 'Keep a copy of unsent work, check your connection and reopen the affected page or app. Avoid repeating an assignment or marks submission. If the problem continues, choose Report an issue and describe the feature, what you tried and what happened. Never include passwords, student records or confidential files.' },
+  { words: /\b(navigation|navigate|where|find|home)\b/i, reply: 'Use the teacher website sidebar or app bottom navigation for Teacher Home, AI Assistant, Students, Student Progress and Report Cards. The floating message button on Home opens this operational Help Assistant and your saved support requests.' },
+];
+
+export function answerSupportQuestion(text: string, role: 'student' | 'teacher' = 'student') {
+  const initialSuggestions = role === 'teacher'
+    ? ['How do I assign homework?', 'How do I create a test?', 'How do I use AI Assistant?']
+    : ['How do I submit homework?', 'How do I use Sam?', 'My microphone is not working'];
+  if (/\b(secrets?|service.?role|source code|databases?|schemas?|servers?|api.?keys?|jwt|prompts?|system instructions?|credentials?|tokens?|configuration|sql|backend|environment variables?)\b/i.test(text)) {
+    return { reply: 'I can help you use AcademiX, but I cannot provide internal systems, code, keys, credentials or private information. Describe the feature you are trying to use, without sharing any secrets.', needsTechnician: true, suggestions: initialSuggestions };
   }
-  const guide = guides.find((item) => item.words.test(text));
+  const guide = (role === 'teacher' ? teacherGuides : guides).find((item) => item.words.test(text));
   if (guide) return { reply: guide.reply, needsTechnician: false, suggestions: ['Report an issue', 'Connect to a technician'] };
   if (/^(hi|hello|hey|thanks|thank you)[!. ]*$/i.test(text)) {
-    return { reply: 'Hi! I can help with using AcademiX on the website or app. What are you trying to do? Please do not share passwords or private records.', needsTechnician: false, suggestions: ['How do I submit homework?', 'How do I use Sam?', 'My microphone is not working'] };
+    return { reply: 'Hi! I can help with using AcademiX on the website or app. What are you trying to do? Please do not share passwords or private records.', needsTechnician: false, suggestions: initialSuggestions };
   }
   return { reply: 'I do not have a verified guide for that question. I can help with AcademiX features, but I will not guess. If this is an app or website issue, choose Connect to a technician and explain it so a person can help.', needsTechnician: true, suggestions: ['Connect to a technician', 'Report an issue'] };
 }

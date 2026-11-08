@@ -5,8 +5,8 @@ import { StudentAuthService } from '../auth/student-auth.service';
 import { EmailService } from '../auth/email.service';
 import { answerSupportQuestion, redactSupportText } from './support-guide';
 
-export interface SupportActor { actorId: string; actorRole: string }
-interface StudentIdentity { id: string; schoolId: string; name: string; className: string }
+export interface SupportActor { actorId: string; actorRole: string; user?: { schoolId?: string } }
+interface SupportIdentity { id: string; role: 'student' | 'teacher'; schoolId: string; name: string; className: string }
 export interface SupportTicket {
   id: string; requester_id: string; requester_role: string; school_id: string;
   requester_name: string; class_name: string; category: string; subject: string;
@@ -58,23 +58,35 @@ export class SupportService {
     return value;
   }
 
-  private student(actor: SupportActor) {
-    if (actor.actorRole !== 'student' || !actor.actorId) throw new ForbiddenException('Student support is available to signed-in students only.');
+  private requester(actor: SupportActor) {
+    if (!['student', 'teacher'].includes(actor.actorRole) || !actor.actorId) throw new ForbiddenException('Support is available to signed-in students and teachers only.');
     return actor.actorId;
   }
 
-  private async identity(actor: SupportActor): Promise<StudentIdentity> {
-    const id = this.student(actor);
+  private async identity(actor: SupportActor): Promise<SupportIdentity> {
+    const id = this.requester(actor);
     this.storageReady();
+    if (actor.actorRole === 'teacher') {
+      const rows = this.checked<Array<{ id: string; name: string; school_id: string; grades?: string[] }>>(
+        await this.db.client.from('teachers').select('id,name,school_id,grades').eq('id', id).limit(1), 'verify teacher');
+      const row = rows[0];
+      const local = row ? null : this.auth.getLocalTeacher(id);
+      const name = row?.name || local?.name;
+      const schoolId = row?.school_id || local?.schoolId;
+      if (!name || !schoolId || (actor.user?.schoolId && actor.user.schoolId !== schoolId)) {
+        throw new ForbiddenException('Your school account could not be verified. Contact your school administrator.');
+      }
+      return { id, role: 'teacher', name, schoolId, className: (row?.grades || local?.grades || []).join(', ') };
+    }
     const profile = await this.auth.resolveStudentProfile(id);
     if (!profile.name || !profile.schoolId) throw new ForbiddenException('Your school account could not be verified. Contact your school administrator.');
-    return { id, name: profile.name, className: profile.className, schoolId: profile.schoolId };
+    return { id, role: 'student', name: profile.name, className: profile.className, schoolId: profile.schoolId };
   }
 
   chat(actor: SupportActor, body: { message?: unknown }) {
-    const id = this.student(actor);
-    this.rateLimit(`bot:${id}`, 30);
-    return { success: true, ...answerSupportQuestion(this.text(body?.message, 2000)) };
+    const id = this.requester(actor);
+    this.rateLimit(`bot:${actor.actorRole}:${id}`, 30);
+    return { success: true, ...answerSupportQuestion(this.text(body?.message, 2000), actor.actorRole === 'teacher' ? 'teacher' : 'student') };
   }
 
   async list(actor?: SupportActor, offset = 0) {
@@ -82,15 +94,15 @@ export class SupportService {
     let query = this.db.client.from('support_tickets').select('*');
     if (actor) {
       const identity = await this.identity(actor);
-      query = query.eq('requester_id', identity.id).eq('requester_role', 'student').eq('school_id', identity.schoolId);
+      query = query.eq('requester_id', identity.id).eq('requester_role', identity.role).eq('school_id', identity.schoolId);
     }
     const tickets = this.checked<SupportTicket[]>(await query.order('updated_at', { ascending: false }).range(offset, offset + 49), 'list tickets');
     return { success: true, tickets, nextOffset: tickets.length === 50 ? offset + 50 : null };
   }
 
-  private async ticket(id: string, identity?: StudentIdentity) {
+  private async ticket(id: string, identity?: SupportIdentity) {
     let query = this.db.client.from('support_tickets').select('*').eq('id', this.uuid(id));
-    if (identity) query = query.eq('requester_id', identity.id).eq('requester_role', 'student').eq('school_id', identity.schoolId);
+    if (identity) query = query.eq('requester_id', identity.id).eq('requester_role', identity.role).eq('school_id', identity.schoolId);
     const tickets = this.checked<SupportTicket[]>(await query.limit(1), 'get ticket');
     if (!tickets?.[0]) throw new NotFoundException('Support request not found.');
     return tickets[0];
@@ -114,14 +126,14 @@ export class SupportService {
     const subject = this.text(body.subject, 120);
     const description = this.text(body.description);
     const history = Array.isArray(body.recentMessages) ? body.recentMessages.slice(-12) : [];
-    // Only student text is accepted from the client. Never store a claimed
+    // Only requester text is accepted from the client. Never store a claimed
     // technician or bot reply supplied by an untrusted browser.
     const messages = history.filter((m) => m && m.role === 'user').map((m) => ({
-      id: randomUUID(), author_role: 'student', content: this.text(m.content, 2000),
+      id: randomUUID(), author_role: identity.role, content: this.text(m.content, 2000),
     }));
-    messages.push({ id: randomUUID(), author_role: 'student', content: description });
+    messages.push({ id: randomUUID(), author_role: identity.role, content: description });
     this.checked(await this.db.client.rpc('support_create_ticket', {
-      p_ticket: { id, requester_id: identity.id, requester_role: 'student', school_id: identity.schoolId,
+      p_ticket: { id, requester_id: identity.id, requester_role: identity.role, school_id: identity.schoolId,
         requester_name: identity.name, class_name: identity.className, category, subject },
       p_messages: messages,
     }), 'create ticket');
@@ -139,7 +151,7 @@ export class SupportService {
     const messageId = this.uuid(body?.id);
     this.checked(await this.db.client.rpc('support_append_message', {
       p_ticket_id: id, p_requester_id: identity?.id || null, p_school_id: identity?.schoolId || null,
-      p_message_id: messageId, p_author_role: actor ? 'student' : 'owner', p_content: message,
+      p_message_id: messageId, p_author_role: identity?.role || 'owner', p_content: message,
     }), 'append message');
     const notificationWarning = identity ? await this.notify(ticket) : null;
     return { success: true, notificationWarning };
@@ -166,18 +178,18 @@ export class SupportService {
     const text = [
       'AcademiX support request',
       `Ticket: ${ticket.id}`, `Account role: ${ticket.requester_role}`,
-      `Student: ${ticket.requester_name}`, `Student account ID: ${ticket.requester_id}`,
+      `Requester: ${ticket.requester_name}`, `Account ID: ${ticket.requester_id}`,
       `School ID: ${ticket.school_id}`, `Class: ${ticket.class_name}`,
       `Category: ${ticket.category}`, `Subject: ${ticket.subject}`, '',
       ...messages.reverse().map((m) => `${m.author_role}: ${m.content}`),
       '', 'Reply in your MFA-protected AcademiX owner Support Inbox.',
       'https://academix.now/owner',
-      'Email replies are not imported into the student chat.',
+      'Email replies are not imported into the support chat.',
     ].join('\n');
     const safeHtml = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
     const result = await this.email.sendMail(
       process.env.SUPPORT_NOTIFICATION_EMAIL || 'jpr1521@gmail.com',
-      `[AcademiX support] Student ${ticket.category} - ${ticket.id.slice(0, 8)}`,
+      `[AcademiX support] ${ticket.requester_role === 'teacher' ? 'Teacher' : 'Student'} ${ticket.category} - ${ticket.id.slice(0, 8)}`,
       `<pre style="white-space:pre-wrap">${safeHtml}</pre>`, text,
     );
     if (!result.ok) {
