@@ -1,4 +1,7 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
+import 'tree_art.dart';
 
 /// Stage → emoji fallback, mirrors `STAGE_EMOJI` in
 /// `web/src/components/orchard/treeAssets.js`.
@@ -22,8 +25,8 @@ const Map<String, String> kTreeTypeEmoji = {
   'mango': '🌴',
 };
 
-/// Renders the artwork for a subject tree at a given growth stage — mirrors
-/// `TreeSprite.jsx`. Tries the real bundled PNG at
+/// Renders shared natural-tree artwork and chapter-mastery fruit — mirrors
+/// `TreeSprite.jsx` and `treeArt.js`. Tries the real bundled PNG at
 /// `assets/orchard/<treeType>/<stage>.png` first (same asset pipeline as
 /// web's `web/public/assets/orchard/`); if that stage/tree combo has no art
 /// yet it falls back to a styled emoji placeholder, exactly like web.
@@ -33,6 +36,7 @@ class TreeSprite extends StatelessWidget {
   final double size;
   final Color accentColor;
   final String health; // healthy | thirsty | wilting
+  final int? masteredChapters;
 
   const TreeSprite({
     super.key,
@@ -41,24 +45,77 @@ class TreeSprite extends StatelessWidget {
     this.size = 140,
     this.accentColor = const Color(0xFF22C55E),
     this.health = 'healthy',
+    this.masteredChapters,
   });
 
   @override
   Widget build(BuildContext context) {
-    final wilt = health == 'wilting' ? 0.55 : health == 'thirsty' ? 0.8 : 1.0;
-    final assetPath = 'assets/orchard/$treeType/$stage.png';
+    final wilt = health == 'wilting'
+        ? 0.55
+        : health == 'thirsty'
+        ? 0.8
+        : 1.0;
+    final count = math.max(0, masteredChapters ?? 0);
+    final art = treeArt(treeType);
+    final grownTree =
+        art != null &&
+        masteredChapters != null &&
+        (count > 0 || ['blossom', 'fruit', 'golden_fruit'].contains(stage));
+    final bakedOak = art?.assetType == 'oak';
+    final artwork = grownTree
+        ? (bakedOak && count > 0
+              ? 'acorns_${math.min(count, 9)}'
+              : 'fully_grown')
+        : (art != null &&
+                  !bakedOak &&
+                  ['blossom', 'fruit', 'golden_fruit'].contains(stage)
+              ? 'fully_grown'
+              : stage);
+    final assetType = art?.assetType ?? treeType;
+    final assetPath = 'assets/orchard/$assetType/$artwork.png';
+    final fruits = grownTree
+        ? masteryFruitRects(count, size, bakedOak: bakedOak)
+        : <Rect>[];
 
-    return SizedBox(
-      width: size,
-      height: size,
-      child: _Desaturate(
-        amount: 1 - wilt,
-        child: Image.asset(
-          assetPath,
-          width: size,
-          height: size,
-          fit: BoxFit.contain,
-          errorBuilder: (context, error, stack) => _Placeholder(stage: stage, treeType: treeType, size: size, accentColor: accentColor),
+    return Semantics(
+      label: grownTree
+          ? '${bakedOak ? 'Oak' : art.fruitName} tree with $count ${art.fruitPlural} for $count mastered lessons'
+          : '$treeType tree, $stage',
+      image: true,
+      child: SizedBox(
+        width: size,
+        height: size,
+        child: _Desaturate(
+          amount: 1 - wilt,
+          child: Stack(
+            children: [
+              Image.asset(
+                assetPath,
+                width: size,
+                height: size,
+                fit: BoxFit.contain,
+                excludeFromSemantics: true,
+                errorBuilder: (context, error, stack) => _Placeholder(
+                  stage: stage,
+                  treeType: treeType,
+                  size: size,
+                  accentColor: accentColor,
+                ),
+              ),
+              for (final fruit in fruits)
+                Positioned(
+                  left: fruit.left,
+                  top: fruit.top,
+                  width: fruit.width,
+                  height: fruit.height,
+                  child: Image.asset(
+                    'assets/orchard/$assetType/${bakedOak ? 'acorn' : 'mastery_fruit'}.png',
+                    fit: BoxFit.contain,
+                    excludeFromSemantics: true,
+                  ),
+                ),
+            ],
+          ),
         ),
       ),
     );
@@ -73,7 +130,12 @@ class _Placeholder extends StatelessWidget {
   final double size;
   final Color accentColor;
 
-  const _Placeholder({required this.stage, required this.treeType, required this.size, required this.accentColor});
+  const _Placeholder({
+    required this.stage,
+    required this.treeType,
+    required this.size,
+    required this.accentColor,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -86,7 +148,11 @@ class _Placeholder extends StatelessWidget {
         shape: BoxShape.circle,
         gradient: RadialGradient(
           center: const Alignment(0, -0.2),
-          colors: [accentColor.withValues(alpha: 0.22), accentColor.withValues(alpha: 0.05), Colors.transparent],
+          colors: [
+            accentColor.withValues(alpha: 0.22),
+            accentColor.withValues(alpha: 0.05),
+            Colors.transparent,
+          ],
           stops: const [0, 0.7, 1],
         ),
       ),
@@ -109,10 +175,26 @@ class _Desaturate extends StatelessWidget {
     final inv = 1 - m;
     // Standard luminance-preserving desaturation matrix, blended by `m`.
     final List<double> matrix = [
-      0.2126 * m + inv, 0.7152 * m, 0.0722 * m, 0, 0,
-      0.2126 * m, 0.7152 * m + inv, 0.0722 * m, 0, 0,
-      0.2126 * m, 0.7152 * m, 0.0722 * m + inv, 0, 0,
-      0, 0, 0, 1, 0,
+      0.2126 * m + inv,
+      0.7152 * m,
+      0.0722 * m,
+      0,
+      0,
+      0.2126 * m,
+      0.7152 * m + inv,
+      0.0722 * m,
+      0,
+      0,
+      0.2126 * m,
+      0.7152 * m,
+      0.0722 * m + inv,
+      0,
+      0,
+      0,
+      0,
+      0,
+      1,
+      0,
     ];
     return ColorFiltered(colorFilter: ColorFilter.matrix(matrix), child: child);
   }

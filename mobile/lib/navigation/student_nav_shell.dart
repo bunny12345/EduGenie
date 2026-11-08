@@ -12,10 +12,18 @@ import '../theme/app_colors.dart';
 /// shadow, ported from `.eg-subject-hw-card button`/the Academics panel.
 const Color _frame3dColor = Color(0xFF46464E);
 
-Border _frame3dBorder({double alpha = 0.35, double width = 1.5}) => Border.all(color: _frame3dColor.withValues(alpha: alpha), width: width);
+Border _frame3dBorder({double alpha = 0.35, double width = 1.5}) => Border.all(
+  color: _frame3dColor.withValues(alpha: alpha),
+  width: width,
+);
 
-List<BoxShadow> _frame3dShadow({double alpha = 0.18, double blur = 10}) =>
-    [BoxShadow(color: Colors.black.withValues(alpha: alpha), blurRadius: blur, offset: const Offset(0, 4))];
+List<BoxShadow> _frame3dShadow({double alpha = 0.18, double blur = 10}) => [
+  BoxShadow(
+    color: Colors.black.withValues(alpha: alpha),
+    blurRadius: blur,
+    offset: const Offset(0, 4),
+  ),
+];
 
 /// Student portal shell — native bottom navigation (NOT the desktop sidebar).
 /// 3 primary destinations: Home / Services / More.
@@ -31,11 +39,17 @@ class StudentShell extends StatefulWidget {
 }
 
 class _NavItem {
-  final IconData icon;
-  final IconData selectedIcon;
+  final IconData? icon;
+  final IconData? selectedIcon;
+  final String? assetPath;
   final String label;
 
-  const _NavItem({required this.icon, required this.selectedIcon, required this.label});
+  const _NavItem({
+    this.icon,
+    this.selectedIcon,
+    this.assetPath,
+    required this.label,
+  }) : assert(assetPath != null || (icon != null && selectedIcon != null));
 }
 
 class _StudentShellState extends State<StudentShell> {
@@ -49,9 +63,17 @@ class _StudentShellState extends State<StudentShell> {
   ];
 
   static const _navItems = [
-    _NavItem(icon: Icons.home_outlined, selectedIcon: Icons.home_rounded, label: 'Home'),
-    _NavItem(icon: Icons.miscellaneous_services_outlined, selectedIcon: Icons.miscellaneous_services_rounded, label: 'Services'),
-    _NavItem(icon: Icons.more_horiz_rounded, selectedIcon: Icons.more_horiz_rounded, label: 'More'),
+    _NavItem(
+      icon: Icons.home_outlined,
+      selectedIcon: Icons.home_rounded,
+      label: 'Home',
+    ),
+    _NavItem(assetPath: 'assets/branding/services.png', label: 'Services'),
+    _NavItem(
+      icon: Icons.more_horiz_rounded,
+      selectedIcon: Icons.more_horiz_rounded,
+      label: 'More',
+    ),
   ];
 
   // Any meaningful scroll-down compacts the pill; scrolling back up expands it —
@@ -103,7 +125,10 @@ class _StudentShellState extends State<StudentShell> {
 
 /// While Focus Mode is on, the system/app back button is intercepted here —
 /// entering the correct parent PIN both unlocks AND exits in one step.
-Future<bool> _requestFocusModePinToExit(BuildContext context, WidgetRef ref) async {
+Future<bool> _requestFocusModePinToExit(
+  BuildContext context,
+  WidgetRef ref,
+) async {
   final controller = TextEditingController();
   final pin = await showDialog<String>(
     context: context,
@@ -116,18 +141,32 @@ Future<bool> _requestFocusModePinToExit(BuildContext context, WidgetRef ref) asy
         keyboardType: TextInputType.number,
         maxLength: 6,
         inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-        decoration: const InputDecoration(labelText: '6-digit PIN', border: OutlineInputBorder(), counterText: ''),
+        decoration: const InputDecoration(
+          labelText: '6-digit PIN',
+          border: OutlineInputBorder(),
+          counterText: '',
+        ),
       ),
       actions: [
-        TextButton(onPressed: () => Navigator.of(ctx).pop(), child: const Text('Cancel')),
-        ElevatedButton(onPressed: () => Navigator.of(ctx).pop(controller.text.trim()), child: const Text('Confirm')),
+        TextButton(
+          onPressed: () => Navigator.of(ctx).pop(),
+          child: const Text('Cancel'),
+        ),
+        ElevatedButton(
+          onPressed: () => Navigator.of(ctx).pop(controller.text.trim()),
+          child: const Text('Confirm'),
+        ),
       ],
     ),
   );
   if (pin == null) return false;
   final correct = await ref.read(focusLockProvider.notifier).verifyPin(pin);
   if (!correct) {
-    if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Incorrect PIN.')));
+    if (context.mounted) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Incorrect PIN.')));
+    }
     return false;
   }
   await ref.read(focusLockProvider.notifier).disable();
@@ -143,7 +182,12 @@ class _FloatingNavBar extends StatelessWidget {
   final List<_NavItem> items;
   final ValueChanged<int> onSelected;
 
-  const _FloatingNavBar({required this.compact, required this.selectedIndex, required this.items, required this.onSelected});
+  const _FloatingNavBar({
+    required this.compact,
+    required this.selectedIndex,
+    required this.items,
+    required this.onSelected,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -162,7 +206,12 @@ class _FloatingNavBar extends StatelessWidget {
         mainAxisAlignment: MainAxisAlignment.spaceEvenly,
         children: [
           for (var i = 0; i < items.length; i++)
-            _NavIconButton(item: items[i], selected: i == selectedIndex, compact: compact, onTap: () => onSelected(i)),
+            _NavIconButton(
+              item: items[i],
+              selected: i == selectedIndex,
+              compact: compact,
+              onTap: () => onSelected(i),
+            ),
         ],
       ),
     );
@@ -177,7 +226,12 @@ class _NavIconButton extends StatefulWidget {
   final bool compact;
   final VoidCallback onTap;
 
-  const _NavIconButton({required this.item, required this.selected, required this.compact, required this.onTap});
+  const _NavIconButton({
+    required this.item,
+    required this.selected,
+    required this.compact,
+    required this.onTap,
+  });
 
   @override
   State<_NavIconButton> createState() => _NavIconButtonState();
@@ -212,17 +266,42 @@ class _NavIconButtonState extends State<_NavIconButton> {
               width: size,
               height: size,
               decoration: BoxDecoration(
-                color: widget.selected ? AppColors.brandSoft : Colors.transparent,
+                color: widget.selected
+                    ? AppColors.brandSoft
+                    : Colors.transparent,
                 shape: BoxShape.circle,
                 border: _pressed ? _frame3dBorder(alpha: 0.4) : null,
                 boxShadow: _pressed ? _frame3dShadow(blur: 6) : null,
               ),
               alignment: Alignment.center,
-              child: Icon(widget.selected ? widget.item.selectedIcon : widget.item.icon, size: iconSize, color: color),
+              child: widget.item.assetPath != null
+                  ? Image.asset(
+                      widget.item.assetPath!,
+                      width: iconSize,
+                      height: iconSize,
+                      fit: BoxFit.contain,
+                      color: color,
+                      colorBlendMode: BlendMode.srcIn,
+                      excludeFromSemantics: true,
+                    )
+                  : Icon(
+                      widget.selected
+                          ? widget.item.selectedIcon
+                          : widget.item.icon,
+                      size: iconSize,
+                      color: color,
+                    ),
             ),
             if (!widget.compact) ...[
               const SizedBox(height: 2),
-              Text(widget.item.label, style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: color)),
+              Text(
+                widget.item.label,
+                style: TextStyle(
+                  fontSize: 10,
+                  fontWeight: FontWeight.w600,
+                  color: color,
+                ),
+              ),
             ],
           ],
         ),

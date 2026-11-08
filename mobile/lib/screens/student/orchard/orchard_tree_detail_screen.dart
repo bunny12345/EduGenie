@@ -6,6 +6,7 @@ import '../../../state/student_providers.dart';
 import '../../../theme/app_colors.dart';
 import '../../../widgets/orchard/orchard_skeleton.dart';
 import '../../../widgets/orchard/tree_sprite.dart';
+import '../../../widgets/orchard/tree_art.dart';
 import '../../../widgets/pressable_scale.dart';
 import 'retention_check_modal.dart';
 
@@ -122,6 +123,8 @@ class _OrchardTreeDetailScreenState extends ConsumerState<OrchardTreeDetailScree
     final accent = detail.accentColor;
     final chapters = detail.chapters;
     final tree = detail.tree;
+    final art = treeArt(detail.treeType);
+    final fruitEmoji = art?.fruitEmoji ?? detail.fruitEmoji;
     final fruited = chapters.where((c) => c.stageIndex >= 6).length;
     final golden = chapters.where((c) => c.isGolden).length;
     final activeChapter = chapters.where((c) => c.chapterId == _activeChapterId).isEmpty
@@ -140,16 +143,18 @@ class _OrchardTreeDetailScreenState extends ConsumerState<OrchardTreeDetailScree
           ),
           child: Column(
             children: [
-              TreeSprite(treeType: detail.treeType, stage: tree.stage, size: 150, accentColor: accent, health: tree.health),
+              TreeSprite(treeType: detail.treeType, stage: tree.stage, size: 150, accentColor: accent, health: tree.health, masteredChapters: tree.masteredChapters),
               const SizedBox(height: 12),
-              Text('${detail.treeEmoji} ${detail.subject} Tree', textAlign: TextAlign.center, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800)),
+              Text('${art != null ? '🌳' : detail.treeEmoji} ${detail.subject} Tree', textAlign: TextAlign.center, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800)),
               const SizedBox(height: 10),
               Wrap(
                 alignment: WrapAlignment.center,
                 spacing: 8,
                 runSpacing: 8,
                 children: [
-                  _chip(tree.stageLabel, color: accent, bold: true),
+                  _chip(masteryStageLabel(detail.treeType, tree.stageLabel, tree.masteredChapters), color: accent, bold: true),
+                  if (art != null && tree.masteredChapters != null)
+                    _chip('${tree.masteredChapters} ${art.fruitPlural} · mastered lessons', color: accent),
                   _chip('Level ${tree.level} of ${tree.maxLevel}'),
                   _chip(
                     tree.health == 'healthy' ? '💚 Healthy' : tree.health == 'thirsty' ? '💧 Thirsty' : '🍂 Needs care',
@@ -263,7 +268,7 @@ class _OrchardTreeDetailScreenState extends ConsumerState<OrchardTreeDetailScree
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           mainAxisSize: MainAxisSize.max,
                           children: [
-                            Text(_chapterGlyph(ch, detail.fruitEmoji), style: const TextStyle(fontSize: 26, height: 1)),
+                            Text(_chapterGlyph(ch, fruitEmoji), style: const TextStyle(fontSize: 26, height: 1)),
                             Text(
                               '${ch.chapterNumber}. ${ch.title}',
                               textAlign: TextAlign.center,
@@ -299,9 +304,12 @@ class _OrchardTreeDetailScreenState extends ConsumerState<OrchardTreeDetailScree
             subjectKey: widget.subjectKey,
             subjectLabel: detail.subject,
             chapter: activeChapter,
-            fruitEmoji: detail.fruitEmoji,
+            fruitEmoji: fruitEmoji,
             onClose: () => setState(() => _activeChapterId = ''),
-            onReviewDone: () => ref.invalidate(orchardTreeProvider(widget.subjectKey)),
+            onReviewDone: () {
+              ref.invalidate(orchardTreeProvider(widget.subjectKey));
+              ref.invalidate(orchardProvider);
+            },
           ),
         ],
       ],

@@ -31,6 +31,43 @@ teacher and student login and invitation acceptance are unchanged.
 See [owner setup, school registration and MFA recovery](../docs/owner-school-registration.md)
 before deploying this change. Deploy the backend first, then the website.
 
+Orchard chapter mastery
+-----------------------
+
+Both `GET /orchard?studentId=...` and `GET /orchard/:subjectKey?studentId=...` expose
+`masteredChapters` (on each overview tree and on `tree` in detail).
+This is the unique count of current-class uploaded chapters at stage index 7
+(Golden Fruit), not `completedChapters` (which also includes ordinary Fruit).
+Chapter growth reads are paginated and scoped to the student and subject.
+Withdrawn lessons and growth rows from other classes do not earn acorns.
+Both clients use this count for natural-tree fruit artwork; existing stages,
+rewards and completion percentages are unchanged. No schema change is needed.
+
+Orchard school tree assignments
+-------------------------------
+
+Apply `db/migrations/20261112_orchard_school_tree_assignments.sql` once **before**
+deploying this backend. It creates one new school-scoped mapping table and a
+service-role-only atomic allocator; it does not alter existing tables or RLS.
+Missing migration/invalid allocation responses produce a visible Orchard error.
+
+There are ten artwork themes: acorn, apple, cherry, orange, pear, mango, lemon,
+peach, plum and coconut. The first Orchard read assigns each registered subject
+in that student's class a school-wide design. Registered base subjects prefer
+their usual designs when unused; extra subjects prefer the four new themes.
+All ten designs are used before reuse. After ten assignments, the least-used
+design is reused (ties use fixed pool order). Different schools allocate
+independently. Assignments persist across refreshes, new students, server restarts,
+class changes and new subjects; an absent subject retains its mapping if re-added.
+A later base subject uses an unused design if its usual design is already taken.
+
+Only class-registered subjects appear in the student's Orchard. Reused artwork
+does not share learning data: chapters, milestones, mastery, resources and rewards
+remain keyed by student + subject. Overview and detail return the same assigned
+`treeType`, natural `fruitType` and presentation metadata to both clients.
+Existing global subject catalog entries are not rewritten. Development's
+file-backed mock store uses the same allocation order and serializes local writes.
+
 Student technical support
 -------------------------
 

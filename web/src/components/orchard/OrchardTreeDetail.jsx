@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { getOrchardTree } from '../../api';
 import TreeSprite from './TreeSprite';
+import { treeArt, masteryStageLabel } from './treeArt';
 import { STAGE_EMOJI } from './treeAssets';
 import RetentionCheckModal from './RetentionCheckModal';
 import { Skel } from '../Skeleton';
@@ -113,7 +114,8 @@ export default function OrchardTreeDetail({ studentId, subjectKey, initialTree, 
   const chapters = useMemo(() => detail?.chapters || [], [detail]);
   const tree = detail?.tree || {};
   const accent = detail?.accentColor || '#7c3aed';
-  const fruitEmoji = detail?.fruitEmoji || '🍎';
+  const art = treeArt(detail?.treeType);
+  const fruitEmoji = art?.fruitEmoji || detail?.fruitEmoji || '🍎';
 
   const activeChapter = chapters.find((c) => c.chapterId === activeChapterId) || null;
 
@@ -149,14 +151,15 @@ export default function OrchardTreeDetail({ studentId, subjectKey, initialTree, 
       {/* Hero */}
       <div className="eg-tree-detail-hero">
         <div className="eg-tree-detail-hero-art">
-          <TreeSprite treeType={detail.treeType} stage={tree.stage} size={220} accentColor={accent} health={tree.health} />
+          <TreeSprite treeType={detail.treeType} stage={tree.stage} size={220} accentColor={accent} health={tree.health} masteredChapters={tree.masteredChapters} />
         </div>
         <div className="eg-tree-detail-hero-info">
           <h1>
-            <span className="eg-tree-detail-emoji">{detail.treeEmoji}</span> {detail.subject} Tree
+            <span className="eg-tree-detail-emoji">{art ? '🌳' : detail.treeEmoji}</span> {detail.subject} Tree
           </h1>
           <div className="eg-tree-detail-stage-row">
-            <span className="eg-tree-detail-stage">{tree.stageLabel}</span>
+            <span className="eg-tree-detail-stage">{masteryStageLabel(detail.treeType, tree.stageLabel, tree.masteredChapters)}</span>
+            {art && Number.isInteger(tree.masteredChapters) ? <span>{tree.masteredChapters} {art.fruitPlural} · mastered lessons</span> : null}
             <span className="eg-tree-detail-level">Level {tree.level} of {tree.maxLevel}</span>
             <span className={`eg-tree-detail-health health-${tree.health}`}>
               {tree.health === 'healthy' ? '💚 Healthy' : tree.health === 'thirsty' ? '💧 Thirsty' : '🍂 Needs care'}

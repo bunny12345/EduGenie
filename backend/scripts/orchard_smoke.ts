@@ -23,12 +23,15 @@ import * as path from 'path';
 
 // Isolate the mock store in a temp dir so we don't pollute local-data.
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'orchard-smoke-'));
+process.once('exit', () => fs.rmSync(tmp, { recursive: true, force: true }));
 fs.mkdirSync(path.join(tmp, 'local-data'), { recursive: true });
 process.chdir(tmp);
 
 import { SupabaseService } from '../src/supabase.service';
 import { StudentAuthService } from '../src/auth/student-auth.service';
 import { OrchardService } from '../src/orchard/orchard.service';
+import { STAGE_REQUIREMENTS } from '../src/orchard/orchard.constants';
+import { EmailService } from '../src/auth/email.service';
 
 const SCHOOL = 'smoke-school-1';
 const CLASS_A = 'Class 8';
@@ -85,7 +88,7 @@ async function addLesson(db: SupabaseService, title: string, subject: string, cl
 async function main() {
   const db = new SupabaseService();
   console.log('mock mode:', (db.client as any).isMock === true);
-  const svc = new OrchardService(db, new StudentAuthService(db));
+  const svc = new OrchardService(db, new StudentAuthService(db, new EmailService()));
 
   // ══ Part A — dynamic chapters ═════════════════════════════════════════════
   console.log('\n=== A. DYNAMIC CHAPTERS (uploads drive the trees) ===');
@@ -237,6 +240,43 @@ async function main() {
   const math = overview.trees.find((x: any) => x.subjectKey === 'mathematics');
   check('overview counts the fruited chapter', Boolean(math && math.completedChapters >= 1), String(math && math.completedChapters));
   check('growth never invented extra chapters', Boolean(math && math.totalChapters === 4), String(math && math.totalChapters));
+
+  console.log('\n=== C. OAK MASTERY COUNTS ===');
+  check('overview and detail expose the same mastery count',
+    math.masteredChapters === t.tree.masteredChapters);
+  const masteryStudent = 'smoke-mastery-student';
+  await addStudent(db, masteryStudent, 'Mastery Student', CLASS_A);
+  for (let i = 5; i <= 12; i++) {
+    await addLesson(db, `Uploaded lesson ${i}`, 'Mathematics', CLASS_A, i);
+  }
+  const masteryBefore = await svc.getTree(masteryStudent, 'mathematics');
+  check('newly uploaded lessons earn no acorns', masteryBefore.tree.masteredChapters === 0);
+  for (const chapter of masteryBefore.chapters) {
+    await db.client.from('chapter_growth').update({
+      stage_index: 7, stage: 'golden_fruit', is_golden: true, roots_pct: 100,
+      milestones: Object.fromEntries(Object.values(STAGE_REQUIREMENTS).flat().map((key) => [key, true])),
+    })
+      .eq('student_id', masteryStudent).eq('chapter_id', chapter.chapterId);
+  }
+  await insert(db, 'chapter_growth', {
+    student_id: masteryStudent, subject_key: 'mathematics',
+    chapter_id: class9Math.chapters[0].chapterId, stage_index: 7, stage: 'golden_fruit',
+  });
+  const masteredOverview = await svc.getOrchard(masteryStudent);
+  const masteredDetail = await svc.getTree(masteryStudent, 'mathematics');
+  check('more than nine mastered chapters are counted exactly',
+    masteredDetail.tree.masteredChapters === 12);
+  check('other-class mastery is excluded from the overview',
+    masteredOverview.trees.find((tree: any) => tree.subjectKey === 'mathematics').masteredChapters === 12);
+  await svc.recordActivity(masteryStudent, {
+    subjectKey: 'mathematics', chapterId: masteryBefore.chapters[0].chapterId, activityType: 'revision',
+  });
+  check('repeating tasks cannot earn another acorn for an already-mastered lesson',
+    (await svc.getTree(masteryStudent, 'mathematics')).tree.masteredChapters === 12);
+  const withdrawnLesson = masteryBefore.chapters[0].lessonId;
+  await db.client.from('lessons').delete().eq('id', withdrawnLesson);
+  check('withdrawn chapters no longer earn acorns',
+    (await svc.getTree(masteryStudent, 'mathematics')).tree.masteredChapters === 11);
 
   console.log(`\nSMOKE RESULT: ${failures === 0 ? 'PASS ✅' : `FAIL ❌ (${failures} failing checks)`}`);
   process.exit(failures === 0 ? 0 : 1);

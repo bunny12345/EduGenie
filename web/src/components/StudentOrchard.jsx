@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { getOrchard, getOrchardTree } from '../api';
 import TreeSprite from './orchard/TreeSprite';
+import { treeArt, masteryStageLabel } from './orchard/treeArt';
 import OrchardTreeDetail from './orchard/OrchardTreeDetail';
 import OrchardAmbience from './orchard/OrchardAmbience';
 import './StudentOrchard.css';
@@ -289,7 +290,7 @@ export default function StudentOrchard({ studentId, greetingName = 'there' }) {
             >
               <div className="eg-orch-tree-card-head">
                 <span className="eg-orch-tree-name">
-                  <span className="eg-orch-tree-emoji">{t.treeEmoji}</span> {t.subject}
+                  <span className="eg-orch-tree-emoji">{treeArt(t.treeType) ? '🌳' : t.treeEmoji}</span> {t.subject}
                 </span>
                 <ProgressRing value={t.progressPct} size={44} stroke={5} color={t.accentColor} />
               </div>
@@ -297,7 +298,7 @@ export default function StudentOrchard({ studentId, greetingName = 'there' }) {
                 <span className="eg-orch-tree-due-badge">📋 {t.dueReviewCount} review{t.dueReviewCount === 1 ? '' : 's'} due</span>
               )}
               <div className="eg-orch-tree-art">
-                <TreeSprite treeType={t.treeType} stage={t.stage} size={128} accentColor={t.accentColor} health={t.health} />
+                <TreeSprite treeType={t.treeType} stage={t.stage} size={128} accentColor={t.accentColor} health={t.health} masteredChapters={t.masteredChapters} />
                 {t.stage === 'golden_fruit' && (
                   <span className="eg-orch-tree-harvest-ribbon">🧺 Ready to harvest</span>
                 )}
@@ -306,7 +307,7 @@ export default function StudentOrchard({ studentId, greetingName = 'there' }) {
                 )}
               </div>
               <div className="eg-orch-tree-foot">
-                <span className="eg-orch-tree-stage">{t.stageLabel}</span>
+                <span className="eg-orch-tree-stage">{treeArt(t.treeType) && t.masteredChapters > 0 ? `${t.masteredChapters} ${treeArt(t.treeType).fruitPlural}` : t.stageLabel}</span>
                 <span className="eg-orch-tree-chapters">
                   {t.totalChapters ? `${t.completedChapters} / ${t.totalChapters} Lessons` : 'No lessons yet'}
                 </span>
@@ -332,7 +333,7 @@ export default function StudentOrchard({ studentId, greetingName = 'there' }) {
           {selectedTree ? (
             <>
               <div className="eg-orch-detail-head">
-                <span>{selectedTree.treeEmoji} {selectedTree.subject} Tree</span>
+                <span>{treeArt(selectedTree.treeType) ? '🌳' : selectedTree.treeEmoji} {selectedTree.subject} Tree</span>
                 <button className="eg-orch-detail-expand" onClick={() => setOpenKey(selectedTree.subjectKey)} title="Explore full tree">↗</button>
               </div>
               <div className="eg-orch-detail-art">
@@ -342,13 +343,15 @@ export default function StudentOrchard({ studentId, greetingName = 'there' }) {
                   size={200}
                   accentColor={selectedTree.accentColor}
                   health={selectedTree.health}
+                  masteredChapters={selectedTree.masteredChapters}
                 />
               </div>
               <div className="eg-orch-detail-stage">
-                <strong>{selectedTree.stageLabel}</strong>
+                <strong>{masteryStageLabel(selectedTree.treeType, selectedTree.stageLabel, selectedTree.masteredChapters)}</strong>
                 <span>Level {selectedTree.level} of {selectedTree.maxLevel}</span>
               </div>
               <div className="eg-orch-detail-chapters">
+                {treeArt(selectedTree.treeType) && Number.isInteger(selectedTree.masteredChapters) ? <p>{selectedTree.masteredChapters} {treeArt(selectedTree.treeType).fruitPlural} earned · One per fully mastered lesson</p> : null}
                 {selectedTree.totalChapters
                   ? `${selectedTree.completedChapters} / ${selectedTree.totalChapters} Lessons Completed`
                   : 'No lessons uploaded for your class yet'}

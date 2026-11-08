@@ -347,6 +347,7 @@ export async function getDashboard(studentId) {
 
 // ─── Knowledge Orchard ──────────────────────────────────────────────────────
 export async function getOrchard(studentId) {
+  // Trees include masteredChapters: unique current-class chapters at Golden Fruit.
   const url = `${API_BASE}/orchard?studentId=${encodeURIComponent(studentId)}`;
   return getJsonChecked(url, 'getOrchard');
 }

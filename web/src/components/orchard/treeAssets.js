@@ -1,4 +1,6 @@
 // Knowledge Orchard — tree art asset pipeline.
+// Natural mastery artwork and measured fruit placement live in treeArt.js.
+// Stored fantasy tree IDs are retained for compatibility with existing data.
 //
 // Drop your artwork into: web/public/assets/orchard/<treeType>/<stage>.<ext>
 //   treeType: oak | crystal | cherry_blossom | banyan | digital | mango

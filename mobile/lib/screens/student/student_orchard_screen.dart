@@ -8,6 +8,7 @@ import '../../theme/app_colors.dart';
 import '../../widgets/orchard/orchard_ambience.dart';
 import '../../widgets/orchard/orchard_skeleton.dart';
 import '../../widgets/orchard/tree_sprite.dart';
+import '../../widgets/orchard/tree_art.dart';
 import '../../widgets/pressable_scale.dart';
 import 'progress/progress_charts.dart' show RingGauge;
 import 'orchard/orchard_tree_detail_screen.dart';
@@ -45,6 +46,13 @@ class StudentOrchardScreen extends ConsumerStatefulWidget {
 
 class _StudentOrchardScreenState extends ConsumerState<StudentOrchardScreen> {
   String _selectedKey = '';
+
+  Future<void> _exploreTree(String subjectKey, String greetingName) async {
+    await Navigator.of(context).push(MaterialPageRoute(
+      builder: (_) => OrchardTreeDetailScreen(studentId: _studentId(), subjectKey: subjectKey, greetingName: greetingName),
+    ));
+    if (mounted) ref.invalidate(orchardProvider);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -196,9 +204,7 @@ class _StudentOrchardScreenState extends ConsumerState<StudentOrchardScreen> {
                   tree: trees[i],
                   selected: trees[i].subjectKey == _selectedKey,
                   onSelect: () => setState(() => _selectedKey = trees[i].subjectKey),
-                  onExplore: () => Navigator.of(context).push(MaterialPageRoute(
-                    builder: (_) => OrchardTreeDetailScreen(studentId: _studentId(), subjectKey: trees[i].subjectKey, greetingName: greetingName),
-                  )),
+                  onExplore: () => _exploreTree(trees[i].subjectKey, greetingName),
                 ),
               ),
             const SizedBox(height: 16),
@@ -207,9 +213,7 @@ class _StudentOrchardScreenState extends ConsumerState<StudentOrchardScreen> {
             if (selectedTree != null)
               _DetailPanel(
                 tree: selectedTree,
-                onExplore: () => Navigator.of(context).push(MaterialPageRoute(
-                  builder: (_) => OrchardTreeDetailScreen(studentId: _studentId(), subjectKey: selectedTree.subjectKey, greetingName: greetingName),
-                )),
+                onExplore: () => _exploreTree(selectedTree.subjectKey, greetingName),
               ),
             const SizedBox(height: 16),
 
@@ -288,7 +292,7 @@ class _TreeCard extends StatelessWidget {
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Expanded(
-                  child: Text('${tree.treeEmoji} ${tree.subject}',
+                  child: Text('${treeArt(tree.treeType) != null ? '🌳' : tree.treeEmoji} ${tree.subject}',
                       style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12.5), maxLines: 1, overflow: TextOverflow.ellipsis),
                 ),
                 RingGauge(diameter: 36, strokeWidth: 4, fraction: (tree.progressPct / 100).clamp(0.0, 1.0), color: accent),
@@ -303,7 +307,7 @@ class _TreeCard extends StatelessWidget {
                   // bounds), so they never collide with wherever a given piece
                   // of art happens to draw its visible pixels — works the same
                   // no matter what artwork is dropped into any tree type later.
-                  Center(child: TreeSprite(treeType: tree.treeType, stage: tree.stage, size: 92, accentColor: accent, health: tree.health)),
+                  Center(child: TreeSprite(treeType: tree.treeType, stage: tree.stage, size: 92, accentColor: accent, health: tree.health, masteredChapters: tree.masteredChapters)),
                   if (tree.stage == 'golden_fruit')
                     Positioned(
                       top: 4,
@@ -339,10 +343,17 @@ class _TreeCard extends StatelessWidget {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text(tree.stageLabel, style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700, color: accent)),
-                Text(
-                  tree.totalChapters > 0 ? '${tree.completedChapters} / ${tree.totalChapters} Lessons' : 'No lessons yet',
-                  style: TextStyle(fontSize: 9.5, color: AppColors.muted),
+                Expanded(child: Text(treeArt(tree.treeType) != null && tree.masteredChapters != null && tree.masteredChapters! > 0
+                    ? '${tree.masteredChapters} ${treeArt(tree.treeType)!.fruitPlural}' : tree.stageLabel,
+                    maxLines: 1, overflow: TextOverflow.ellipsis,
+                    style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700, color: accent))),
+                const SizedBox(width: 4),
+                Flexible(
+                  child: Text(
+                    tree.totalChapters > 0 ? '${tree.completedChapters} / ${tree.totalChapters} Lessons' : 'No lessons yet',
+                    maxLines: 2, overflow: TextOverflow.ellipsis, textAlign: TextAlign.end,
+                    style: TextStyle(fontSize: 9.5, color: AppColors.muted),
+                  ),
                 ),
               ],
             ),
@@ -386,7 +397,7 @@ class _DetailPanel extends StatelessWidget {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Expanded(child: Text('${tree.treeEmoji} ${tree.subject} Tree', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15))),
+              Expanded(child: Text('${treeArt(tree.treeType) != null ? '🌳' : tree.treeEmoji} ${tree.subject} Tree', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15))),
               PressableScale(
                 onTap: onExplore,
                 child: Container(
@@ -400,7 +411,7 @@ class _DetailPanel extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 10),
-          Center(child: TreeSprite(treeType: tree.treeType, stage: tree.stage, size: 150, accentColor: accent, health: tree.health)),
+          Center(child: TreeSprite(treeType: tree.treeType, stage: tree.stage, size: 150, accentColor: accent, health: tree.health, masteredChapters: tree.masteredChapters)),
           const SizedBox(height: 10),
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
@@ -408,12 +419,18 @@ class _DetailPanel extends StatelessWidget {
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text(tree.stageLabel, style: TextStyle(fontWeight: FontWeight.w700, color: accent)),
+                Expanded(child: Text(masteryStageLabel(tree.treeType, tree.stageLabel, tree.masteredChapters),
+                    maxLines: 1, overflow: TextOverflow.ellipsis,
+                    style: TextStyle(fontWeight: FontWeight.w700, color: accent))),
+                const SizedBox(width: 6),
                 Text('Level ${tree.level} of ${tree.maxLevel}', style: TextStyle(fontSize: 12, color: AppColors.muted)),
               ],
             ),
           ),
           const SizedBox(height: 8),
+          if (treeArt(tree.treeType) != null && tree.masteredChapters != null)
+            Text('${tree.masteredChapters} ${treeArt(tree.treeType)!.fruitPlural} earned · One per fully mastered lesson',
+                style: TextStyle(fontSize: 12, color: accent)),
           Text(
             tree.totalChapters > 0 ? '${tree.completedChapters} / ${tree.totalChapters} Lessons Completed' : 'No lessons uploaded for your class yet',
             style: TextStyle(fontSize: 12.5, color: AppColors.muted),
@@ -445,6 +462,10 @@ class _DetailPanel extends StatelessWidget {
   String _buildTip(OrchardTree t) {
     if (t.health == 'wilting') return 'Your ${t.subject} tree is thirsty. A little revision today will bring it back to life.';
     if (t.health == 'thirsty') return 'Your ${t.subject} tree needs some water. Try a quick revision or quiz.';
+    final art = treeArt(t.treeType);
+    if (art != null && (t.masteredChapters ?? 0) > 0) {
+      return 'Your ${t.subject} tree has ${t.masteredChapters} ${art.fruitPlural}! Fully master another lesson to earn one more. Completed lessons become mastered after retention reviews and deep understanding.';
+    }
     if (t.stage == 'golden_fruit') return 'Amazing! Your ${t.subject} tree is bearing golden fruit. You truly mastered this.';
     if (t.progressPct >= 60) return 'Great progress! Keep nurturing your ${t.subject} tree toward fruit.';
     return 'Plant more seeds — start the next ${t.subject} chapter to grow your tree.';
@@ -675,4 +696,3 @@ class _GrowthChartPainter extends CustomPainter {
   @override
   bool shouldRepaint(covariant _GrowthChartPainter old) => true;
 }
-

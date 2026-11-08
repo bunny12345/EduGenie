@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { treeAssetCandidates, STAGE_EMOJI, TREE_TYPE_EMOJI, moodForState } from './treeAssets';
+import { treeArt, masteryFruitRects } from './treeArt';
 
 /**
  * Renders the artwork for a subject tree at a given growth stage.
@@ -10,9 +11,18 @@ import { treeAssetCandidates, STAGE_EMOJI, TREE_TYPE_EMOJI, moodForState } from 
  *
  * Props: treeType, stage, size (px), accentColor, health, alt, mood (optional override)
  */
-export default function TreeSprite({ treeType, stage, size = 140, accentColor = '#22c55e', health = 'healthy', alt, mood }) {
+export default function TreeSprite({ treeType, stage, size = 140, accentColor = '#22c55e', health = 'healthy', alt, mood, masteredChapters }) {
   const activeMood = mood || moodForState(stage, health);
-  const candidates = treeAssetCandidates(treeType, stage, activeMood);
+  const art = treeArt(treeType);
+  const count = Number.isInteger(masteredChapters) ? Math.max(0, masteredChapters) : null;
+  const grown = art && count !== null && (count > 0 || ['blossom', 'fruit', 'golden_fruit'].includes(stage));
+  const bakedOak = art?.assetType === 'oak';
+  const artwork = grown ? (bakedOak && count > 0 ? `acorns_${Math.min(count, 9)}` : 'fully_grown')
+    : art && !bakedOak && ['blossom', 'fruit', 'golden_fruit'].includes(stage) ? 'fully_grown' : stage;
+  const publicUrl = process.env.PUBLIC_URL || '';
+  const base = `${publicUrl}/assets/orchard/${art?.assetType || treeType}`;
+  const candidates = art ? [`${base}/${artwork}.png`] : treeAssetCandidates(treeType, stage, activeMood);
+  const fruits = grown ? masteryFruitRects(count, size, bakedOak) : [];
   const [idx, setIdx] = useState(0);
   const [failed, setFailed] = useState(false);
 
@@ -20,22 +30,27 @@ export default function TreeSprite({ treeType, stage, size = 140, accentColor = 
   useEffect(() => {
     setIdx(0);
     setFailed(false);
-  }, [treeType, stage, activeMood]);
+  }, [treeType, stage, activeMood, masteredChapters]);
 
   const dim = { width: size, height: size };
   const wilt = health === 'wilting' ? 0.55 : health === 'thirsty' ? 0.8 : 1;
 
   if (!failed) {
     return (
-      <img
+      <div role="img" aria-label={alt || (grown ? `${bakedOak ? 'Oak' : art.fruitName} tree with ${count} ${art.fruitPlural} for ${count} mastered lessons` : `${treeType} ${stage} (${activeMood})`)}
+        style={{ ...dim, position: 'relative', filter: `saturate(${wilt})` }}>
+        <img
         src={candidates[idx]}
-        alt={alt || `${treeType} ${stage} (${activeMood})`}
-        style={{ ...dim, objectFit: 'contain', filter: `saturate(${wilt})`, display: 'block' }}
+        alt=""
+        style={{ ...dim, objectFit: 'contain', display: 'block' }}
         onError={() => {
           if (idx < candidates.length - 1) setIdx(idx + 1);
           else setFailed(true);
         }}
-      />
+        />
+        {fruits.map((rect, index) => <img key={index} src={`${base}/${bakedOak ? 'acorn' : 'mastery_fruit'}.png`} alt=""
+          style={{ ...rect, position: 'absolute', objectFit: 'contain' }} />)}
+      </div>
     );
   }
 

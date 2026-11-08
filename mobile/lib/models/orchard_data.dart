@@ -66,6 +66,7 @@ class OrchardTree {
   final int maxLevel;
   final int totalChapters;
   final int completedChapters;
+  final int? masteredChapters;
   final int progressPct;
   final int rootsPct;
   final int waterPct;
@@ -91,6 +92,7 @@ class OrchardTree {
     this.maxLevel = 7,
     this.totalChapters = 0,
     this.completedChapters = 0,
+    this.masteredChapters,
     this.progressPct = 0,
     this.rootsPct = 0,
     this.waterPct = 0,
@@ -117,6 +119,7 @@ class OrchardTree {
         maxLevel: (json['maxLevel'] as num?)?.toInt() ?? 7,
         totalChapters: (json['totalChapters'] as num?)?.toInt() ?? 0,
         completedChapters: (json['completedChapters'] as num?)?.toInt() ?? 0,
+        masteredChapters: (json['masteredChapters'] as num?)?.toInt(),
         progressPct: (json['progressPct'] as num?)?.toInt() ?? 0,
         rootsPct: (json['rootsPct'] as num?)?.toInt() ?? 0,
         waterPct: (json['waterPct'] as num?)?.toInt() ?? 0,
@@ -199,6 +202,7 @@ class OrchardTreeInfo {
   final int maxLevel;
   final int totalChapters;
   final int completedChapters;
+  final int? masteredChapters;
   final int progressPct;
   final int rootsPct;
   final int waterPct;
@@ -216,6 +220,7 @@ class OrchardTreeInfo {
     this.maxLevel = 7,
     this.totalChapters = 0,
     this.completedChapters = 0,
+    this.masteredChapters,
     this.progressPct = 0,
     this.rootsPct = 0,
     this.waterPct = 0,
@@ -236,6 +241,7 @@ class OrchardTreeInfo {
       maxLevel: (json['maxLevel'] as num?)?.toInt() ?? 7,
       totalChapters: (json['totalChapters'] as num?)?.toInt() ?? 0,
       completedChapters: (json['completedChapters'] as num?)?.toInt() ?? 0,
+      masteredChapters: (json['masteredChapters'] as num?)?.toInt(),
       progressPct: (json['progressPct'] as num?)?.toInt() ?? 0,
       rootsPct: (json['rootsPct'] as num?)?.toInt() ?? 0,
       waterPct: (json['waterPct'] as num?)?.toInt() ?? 0,

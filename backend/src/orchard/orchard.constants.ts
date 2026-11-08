@@ -86,6 +86,16 @@ export const STAGE_REQUIREMENTS: Record<StageKey, (keyof Milestones)[]> = {
 
 export const GOLDEN_ROOTS_THRESHOLD = 90;
 
+export function countMasteredChapters(
+  chapterIds: string[],
+  growth: Array<{ chapter_id: string; stage_index: number }>,
+): number {
+  const current = new Set(chapterIds);
+  return new Set(growth
+    .filter((row) => current.has(row.chapter_id) && row.stage_index === STAGE_INDEX.golden_fruit)
+    .map((row) => row.chapter_id)).size;
+}
+
 // Activity types accepted by the growth engine and their resource effects.
 // water/sunlight/fertilizer are added to the tree's rolling meters. Each
 // activity may also mark one or more milestones.
@@ -155,6 +165,52 @@ export const SUBJECT_BY_KEY: Record<string, SubjectCatalogEntry> = SUBJECT_CATAL
   acc[s.subject_key] = s;
   return acc;
 }, {} as Record<string, SubjectCatalogEntry>);
+
+type TreePalette = Pick<SubjectCatalogEntry, 'tree_type' | 'fruit_type' | 'fruit_emoji' | 'tree_emoji' | 'accent_color'>;
+
+export const ORCHARD_TREE_PALETTE: TreePalette[] = [
+  { tree_type: 'lemon', fruit_type: 'lemon', fruit_emoji: '🍋', tree_emoji: '🌳', accent_color: '#65a30d' },
+  { tree_type: 'peach', fruit_type: 'peach', fruit_emoji: '🍑', tree_emoji: '🌳', accent_color: '#f97316' },
+  { tree_type: 'plum', fruit_type: 'plum', fruit_emoji: '🟣', tree_emoji: '🌳', accent_color: '#7c3aed' },
+  { tree_type: 'coconut', fruit_type: 'coconut', fruit_emoji: '🥥', tree_emoji: '🌳', accent_color: '#0d9488' },
+  ...SUBJECT_CATALOG.map((subject, index) => ({
+    tree_type: subject.tree_type,
+    fruit_type: ['acorn', 'apple', 'cherry', 'orange', 'pear', 'mango'][index],
+    fruit_emoji: ['🌰', '🍎', '🍒', '🍊', '🍐', '🥭'][index],
+    tree_emoji: '🌳',
+    accent_color: subject.accent_color,
+  })),
+];
+
+export interface SchoolTreeAssignment {
+  subject_key: string;
+  tree_type: string;
+}
+
+// Mirrors the atomic SQL allocator for the file-backed development database.
+export function assignSchoolTrees(keys: string[], existing: SchoolTreeAssignment[]): SchoolTreeAssignment[] {
+  const assignments = new Map(existing.map((row) => [row.subject_key, row]));
+  const ordered = [...new Set(keys)].sort((a, b) => {
+    const aBase = SUBJECT_BY_KEY[a]?.order_index ?? 100;
+    const bBase = SUBJECT_BY_KEY[b]?.order_index ?? 100;
+    return aBase - bBase || (a < b ? -1 : a > b ? 1 : 0);
+  });
+  for (const key of ordered) {
+    if (assignments.has(key)) continue;
+    const usage = (type: string) => [...assignments.values()].filter((row) => row.tree_type === type).length;
+    const preferred = SUBJECT_BY_KEY[key]?.tree_type;
+    const type = preferred && usage(preferred) === 0 ? preferred
+      : [...ORCHARD_TREE_PALETTE].sort((a, b) => usage(a.tree_type) - usage(b.tree_type))[0].tree_type;
+    assignments.set(key, { subject_key: key, tree_type: type });
+  }
+  return keys.map((key) => assignments.get(key)!);
+}
+
+export function schoolTreeEntry(subject: SubjectCatalogEntry, treeType: string): SubjectCatalogEntry {
+  const palette = ORCHARD_TREE_PALETTE.find((entry) => entry.tree_type === treeType);
+  if (!palette) throw new Error(`Unknown Orchard tree assignment: ${treeType}`);
+  return { ...subject, ...palette };
+}
 
 // Turn any free-text subject name into a stable, url-safe key (e.g. "Biology" →
 // "biology", "Political Science" → "political_science"). Used for subjects that

@@ -2,6 +2,33 @@
 
 This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
 
+## Natural Orchard artwork
+
+The student Orchard matches mobile: Mathematics earns acorns, Science apples,
+English cherry rewards, Social Studies oranges, Computer pears and Hindi mangoes.
+Catalog tree identifiers are preserved; dynamic-subject palettes reuse these
+natural themes. A cherry pair is one lesson-mastery reward.
+
+Lemon, peach, plum and coconut complete the ten-design pool. New school subjects
+automatically receive unused designs before designs are reused. Assignments are
+saved per school by the backend and remain stable when new subjects are added.
+Both clients render the returned `treeType`; even subjects sharing a design keep
+independent chapter growth and fruit counts. See [backend assignment setup](../backend/README.md).
+
+Seeds, sprouts and young plants have distinct PNGs on transparent 2048 x 2048
+canvases. Later growth artwork reuses the supplied oak images. Each fully mastered
+Golden Fruit chapter earns one fruit at the measured oak coordinates. Beyond nine,
+additional fruit sprites appear in the upper canopy without limiting the count.
+Both clients use byte-identical assets and matching positioning calculations.
+Completion percentages, rewards, retention requirements and school scoping are unchanged.
+
+Deploy the backend providing `masteredChapters` before the updated clients.
+Without this count, no mastery is inferred from ordinary completion.
+Apply `backend/db/migrations/20261112_orchard_school_tree_assignments.sql` once
+before deploying the backend with stable school assignments; no existing table
+or policy is changed. Artwork is in `public/assets/orchard/`; its build script
+and source-sheet workflow are documented in [mobile](../mobile/README.md).
+
 ## School Student Progress
 
 Open **Student Progress** from the School Admin sidebar (`#progress`). Search by

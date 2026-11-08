@@ -5202,6 +5202,9 @@ textarea {
 @media (max-width: 480px) {
   .vc-phone-fields { grid-template-columns: minmax(0, 1fr); }
 }
+.eg-orch-tree-foot { gap: 6px; }
+.eg-orch-tree-stage { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.eg-orch-tree-chapters { flex-shrink: 0; white-space: nowrap; }
 .vc-contact-form textarea, .vc-compose textarea { resize: vertical; min-height: 74px; max-height: 180px; }
 .vc-contact-form .vc-consent { display: flex; align-items: flex-start; font-size: 10px; font-weight: 400; line-height: 1.5; }
 .vc-consent input { flex-shrink: 0; margin: 2px 4px 0 0; }
