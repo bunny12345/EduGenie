@@ -5065,6 +5065,181 @@ textarea {
   max-width: none;
 }
 
+.vc-launcher-wrap {
+  position: fixed;
+  right: 26px;
+  bottom: 26px;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.vc-launcher-caption {
+  padding: 10px 16px;
+  border: 1px solid #e1e5fb;
+  border-radius: 18px 18px 0 18px;
+  background: #ffffffed;
+  color: #36396b;
+  font-size: 12px;
+  font-weight: 700;
+  box-shadow: 0 5px 24px #4755b314;
+}
+.vc-launcher {
+  position: relative;
+  width: 64px;
+  height: 64px;
+  display: grid;
+  place-items: center;
+  border: 2px solid #c4ceff;
+  border-radius: 24px;
+  color: white;
+  background: linear-gradient(140deg, #7864eb, #345ada 55%, #139fb2);
+  box-shadow: 0 0 0 5px #7982f21a, 0 0 22px #6e70f56b, 0 9px 22px #3552a633;
+  cursor: pointer;
+  animation: vc-glow 3s ease-in-out infinite;
+}
+.vc-launcher svg { width: 32px; height: 32px; }
+.vc-launcher-dot {
+  position: absolute;
+  right: 2px;
+  top: 0;
+  width: 12px;
+  height: 12px;
+  border: 2px solid white;
+  border-radius: 50%;
+  background: #6ee7b7;
+}
+@keyframes vc-glow {
+  50% { box-shadow: 0 0 0 8px #7982f214, 0 0 32px #6e70f580, 0 9px 22px #3552a633; }
+}
+.vc-dialog {
+  position: fixed;
+  inset: auto 22px 22px auto;
+  margin: 0;
+  width: min(480px, calc(100vw - 32px));
+  max-width: none;
+  max-height: calc(100dvh - 44px);
+  padding: 0;
+  border: 1px solid #cbd5ff;
+  border-radius: 24px;
+  overflow: hidden;
+  color: #232745;
+  background: #f8faff;
+  box-shadow: 0 24px 90px #24255440, 0 0 0 5px #a7b9fd1a;
+}
+.vc-dialog[open] { display: flex; flex-direction: column; }
+.vc-dialog::backdrop { background: #242c502e; backdrop-filter: blur(3px); }
+.vc-hero {
+  position: relative;
+  flex-shrink: 0;
+  padding: 18px 24px 22px;
+  color: white;
+  background: radial-gradient(ellipse at 95% 0, #55c5df66, transparent 60%), linear-gradient(125deg, #40318c, #4e51bb 55%, #167eab);
+}
+.vc-hero-top { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 18px; }
+.vc-brand { display: flex; gap: 8px; align-items: center; font-size: 12px; font-weight: 700; }
+.vc-brand svg { width: 22px; height: 22px; }
+.vc-close {
+  border: 1px solid #ffffff50;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  color: white;
+  background: #ffffff14;
+  font-size: 24px;
+  cursor: pointer;
+}
+.vc-eyebrow { font-size: 9px; letter-spacing: 1.5px; font-weight: 700; color: #d9ddff; }
+.vc-hero h2 { color: white; margin: 9px 0; font-size: 27px; line-height: 1.2; letter-spacing: -.6px; }
+.vc-hero p { color: #e2e7ff; font-size: 12px; margin: 0 0 14px; }
+.vc-hero-tags { display: flex; flex-wrap: wrap; gap: 6px; }
+.vc-hero-tags span { padding: 5px 9px; border: 1px solid #ffffff33; background: #ffffff12; border-radius: 20px; font-size: 10px; }
+.vc-tabs { display: flex; padding: 10px 16px; gap: 6px; background: white; border-bottom: 1px solid #e9edf9; flex-shrink: 0; }
+.vc-tabs button { flex: 1; padding: 10px; border: 0; background: transparent; color: #687294; font-weight: 700; border-radius: 10px; cursor: pointer; font-size: 12px; }
+.vc-tabs button[aria-pressed="true"] { background: #eeeaff; color: #5740bc; }
+.vc-body { padding: 16px; overflow-y: auto; min-height: 0; }
+.vc-feature-strip { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin-bottom: 14px; }
+.vc-feature-strip > div { display: flex; flex-direction: column; gap: 5px; padding: 10px; border: 1px solid #e3e8f8; border-radius: 12px; background: white; }
+.vc-feature-strip span { color: #8171cc; font-size: 10px; font-weight: 800; }
+.vc-feature-strip strong { font-size: 11px; color: #373760; }
+.vc-feature-strip small { color: #7c86a7; font-size: 10px; line-height: 1.4; }
+.vc-bot-log { max-height: 250px; overflow-y: auto; }
+.vc-message { border-radius: 14px; padding: 12px 14px; margin: 0 0 10px; overflow-wrap: anywhere; }
+.vc-message > span { font-size: 10px; font-weight: 800; color: #5b52a0; }
+.vc-message p { white-space: pre-wrap; margin: 6px 0; line-height: 1.65; font-size: 12px; }
+.vc-message-admin { border: 1px solid #e3e6fa; background: white; margin-right: 16px; }
+.vc-message-visitor { background: #e9edff; margin-left: 26px; }
+.vc-message time { color: #7b84a4; font-size: 9px; }
+.vc-topics { display: flex; flex-wrap: wrap; gap: 6px; margin: 12px 0; }
+.vc-topics button { background: white; border: 1px solid #d9dff5; border-radius: 20px; padding: 7px 10px; color: #5a5393; cursor: pointer; font-size: 10px; font-weight: 600; }
+.vc-bot-compose { display: flex; gap: 8px; margin-top: 12px; }
+.vc-bot-compose input { flex: 1; min-width: 0; background: white; border: 1px solid #dce3f8; border-radius: 12px; padding: 12px; font-size: 12px; }
+.vc-primary { padding: 11px 16px; border: 0; border-radius: 12px; background: linear-gradient(120deg, #6548d0, #237cb9); color: white; font-size: 12px; font-weight: 700; cursor: pointer; }
+.vc-primary:disabled, .vc-topics button:disabled { opacity: .55; cursor: not-allowed; }
+.vc-privacy { font-size: 10px; line-height: 1.6; color: #7c86a4; margin: 12px 0 0; }
+.vc-contact-intro { display: flex; gap: 12px; margin: 4px 0 18px; align-items: center; }
+.vc-contact-intro h3 { font-size: 16px; margin: 0 0 6px; }
+.vc-contact-intro p, .vc-contact-form > p { font-size: 12px; color: #7b83a0; margin: 0; line-height: 1.6; }
+.vc-contact-icon { background: #ece8ff; color: #6c52c8; border-radius: 16px; padding: 12px; display: flex; }
+.vc-contact-icon svg { width: 28px; height: 28px; }
+.vc-contact-form, .vc-compose { display: grid; gap: 12px; }
+.vc-contact-form label, .vc-compose label { display: grid; gap: 6px; font-size: 11px; font-weight: 700; color: #4e5679; }
+.vc-contact-form input:not([type="checkbox"]), .vc-contact-form select, .vc-contact-form textarea, .vc-compose textarea {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid #dbe1f4;
+  border-radius: 10px;
+  padding: 10px 12px;
+  background: white;
+  color: #232745;
+  font: inherit;
+  font-size: 12px;
+}
+.vc-phone-fields { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 10px; }
+.vc-phone-fields label, .vc-phone-fields select { min-width: 0; }
+.vc-contact-form > .vc-phone-error { color: #9f1239; }
+.vc-phone-fields input[aria-invalid="true"] { border-color: #be123c; }
+@media (max-width: 480px) {
+  .vc-phone-fields { grid-template-columns: minmax(0, 1fr); }
+}
+.vc-contact-form textarea, .vc-compose textarea { resize: vertical; min-height: 74px; max-height: 180px; }
+.vc-contact-form .vc-consent { display: flex; align-items: flex-start; font-size: 10px; font-weight: 400; line-height: 1.5; }
+.vc-consent input { flex-shrink: 0; margin: 2px 4px 0 0; }
+.vc-text-btn, .vc-error button, .vc-warning button { border: 0; color: #604abd; background: transparent; padding: 8px 0; text-align: left; cursor: pointer; font-size: 11px; font-weight: 700; }
+.vc-error { border: 1px solid #fecdd3; background: #fff1f2; color: #9f1239; border-radius: 12px; padding: 10px 12px; font-size: 12px; overflow-wrap: anywhere; margin: 12px 0; }
+.vc-warning { background: #fff7df; border: 1px solid #f8df99; padding: 10px; border-radius: 12px; color: #875f14; font-size: 12px; }
+.vc-whatsapp-contact { margin-bottom: 14px; padding: 12px; border: 1px solid #b8e4d3; border-radius: 12px; background: #effbf5; font-size: 12px; }
+.vc-whatsapp-contact p { font-size: 11px; color: #52786b; line-height: 1.5; }
+.vc-whatsapp-contact a { color: #17654b; font-weight: 700; }
+.vc-thread-head { display: flex; flex-wrap: wrap; gap: 8px; justify-content: space-between; margin-bottom: 12px; }
+.vc-thread-head strong { font-size: 16px; }
+.vc-thread-head p { font-size: 11px; color: #7b84a4; line-height: 1.6; overflow-wrap: anywhere; }
+.vc-status { align-self: start; border-radius: 20px; background: #e0f5ee; color: #287e68; padding: 6px 9px; font-size: 10px; }
+.vc-thread-messages { max-height: 300px; overflow-y: auto; margin-bottom: 12px; }
+.vc-inbox-layout { display: grid; grid-template-columns: minmax(180px, 1fr) minmax(0, 2fr); gap: 16px; margin-top: 16px; }
+.vc-inbox h2 { margin-bottom: 8px; }
+.vc-inbox header > p { font-size: 12px; color: #737f9e; }
+.vc-enquiry-list { display: flex; flex-direction: column; gap: 8px; max-height: 500px; overflow-y: auto; }
+.vc-enquiry-list button { display: grid; gap: 6px; border: 1px solid #dbe1f4; padding: 12px; border-radius: 12px; background: white; text-align: left; cursor: pointer; overflow-wrap: anywhere; }
+.vc-enquiry-list button[aria-pressed="true"] { border-color: #8e7fe3; background: #f0edff; }
+.vc-enquiry-list span, .vc-enquiry-list small { font-size: 11px; color: #7b84a4; }
+.vc-typing { display: inline-block; letter-spacing: 4px; padding: 8px; color: #6c52c8; }
+.vc-sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
+.vc-dialog :focus-visible, .vc-launcher:focus-visible, .vc-inbox :focus-visible { outline: 3px solid #34a4da; outline-offset: 3px; }
+@media (max-width: 600px) {
+  .vc-launcher-wrap { right: 16px; bottom: 16px; }
+  .vc-launcher-caption { display: none; }
+  .vc-launcher { width: 58px; height: 58px; border-radius: 21px; }
+  .vc-dialog { inset: auto 12px 12px; width: auto; max-height: calc(100dvh - 24px); border-radius: 20px; }
+  .vc-hero { padding: 14px 18px 16px; }
+  .vc-hero h2 { font-size: 23px; }
+  .vc-hero-top { margin-bottom: 12px; }
+  .vc-body { padding: 12px; }
+  .vc-inbox-layout { grid-template-columns: 1fr; }
+  .rg-shell:has(.vc-launcher) { padding-bottom: 94px; }
+}
+@media (prefers-reduced-motion: reduce) { .vc-launcher { animation: none; } }
+
 .sd-progress-layout > article {
   min-width: 0;
 }

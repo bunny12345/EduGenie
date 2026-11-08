@@ -17,6 +17,40 @@ subject growth, daily/monthly trends, released exam results and pending subjects
 the authenticated `/school/*` APIs; student and teacher flows are unchanged.
 The picker stacks above reports on narrow screens. No mobile changes are included.
 
+## Login welcome assistant
+
+The bottom-right headset bubble opens a polished public AcademiX feature guide.
+It introduces the personal AI tutor, homework/exam practice, progress graphs,
+school branding and custom feature development. Login and invite forms are
+unchanged; the assistant does not create accounts or read their credentials.
+
+**Talk to admin** asks for enquiry details and consent, then verifies the
+visitor's email before sending the request. Admin receives an email notification
+and replies in the MFA owner page's **School enquiries** tab. Visitors receive
+reply notifications and can return to the assistant in the same browser.
+`AcademiX.enquiry` stores only the enquiry ID and private chat token; access
+expires after 30 days. Forgetting browser access does not delete the admin's
+saved enquiry. The chat does not import incoming email replies.
+
+Visitors can optionally select a country code and enter a mobile number with explicit
+WhatsApp contact permission. Country-specific length and numbering patterns are
+validated in the form and backend using `libphonenumber-js/max`, rather than a
+single fixed digit count. National leading zeros are handled by the phone metadata.
+Email verification is still required. Format validation does not verify ownership
+or whether the number is registered on WhatsApp. The admin sees
+the number and a manual WhatsApp contact link; numbers are visitor-supplied, not
+verified. WhatsApp conversations do not sync into the website chat. This addition
+requires the follow-up `20261111_school_enquiry_whatsapp.sql` migration before
+deploying the updated backend and website.
+
+The dialog supports Escape, focus restoration, responsive scrolling and reduced
+motion. Errors and failed notifications are visible; user-initiated sends show
+feedback, while conversations refresh silently in the background.
+
+See the [backend setup](../backend/README.md#public-school-enquiries) before
+deployment: one new migration plus configured SMTP are required for admin chat.
+No mobile UI changes are included.
+
 ## Available Scripts
 
 In the project directory, you can run:

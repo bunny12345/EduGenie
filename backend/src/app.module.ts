@@ -32,10 +32,14 @@ import { EmbeddingsService } from './embeddings/embeddings.service';
 import { SharedModule } from './shared/shared.module';
 import { SupportService } from './support/support.service';
 import { SupportController, OwnerSupportController } from './support/support.controller';
+import { VisitorController, OwnerEnquiriesController } from './support/visitor.controller';
+import { VisitorService } from './support/visitor.service';
 
 @Module({
   imports: [ChatModule, SharedModule],
   controllers: [
+    VisitorController,
+    OwnerEnquiriesController,
     SupportController,
     OwnerSupportController,
     HealthController,
@@ -55,6 +59,6 @@ import { SupportController, OwnerSupportController } from './support/support.con
     OrchardController,
     GamesController
   ],
-  providers: [SupabaseService, AuthGuard, OwnerAuthService, OwnerGuard, OwnerIdentityGuard, StudentAuthService, EmailService, CurriculumService, EmbeddingsService, OrchardService, FlashcardsService, QuizRushService, LlmService, LearningScoreService, SupportService]
+  providers: [SupabaseService, AuthGuard, OwnerAuthService, OwnerGuard, OwnerIdentityGuard, StudentAuthService, EmailService, CurriculumService, EmbeddingsService, OrchardService, FlashcardsService, QuizRushService, LlmService, LearningScoreService, SupportService, VisitorService]
 })
 export class AppModule {}

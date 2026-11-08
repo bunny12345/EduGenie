@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import WelcomeAssistant from './WelcomeAssistant';
 import {
   acceptInvite,
   getInviteInfo,
@@ -211,7 +212,7 @@ export default function RoleGateway({ onLogin }) {
           <img src="/logo.png" alt="AcademiX" className="rg-logo" />
           <p className="rg-kicker">AcademiX Portal</p>
           <h1>School, Teacher and Student Access</h1>
-          <p>School admins onboard teachers, teachers onboard students, and invite links support self-registration.</p>
+          <p>School admins onboard teachers and students.</p>
         </header>
 
         <div className="rg-role-toggle rg-role-toggle-3">
@@ -335,6 +336,7 @@ export default function RoleGateway({ onLogin }) {
           </form>
         ) : null}
       </main>
+      <WelcomeAssistant />
     </div>
   );
 }

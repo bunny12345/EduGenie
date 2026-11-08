@@ -39,6 +39,85 @@ technician chats. Notifications use the existing SMTP service; the MFA owner
 Support Inbox handles replies. Apply the new support migration before enabling
 requests. See [student support setup and workflows](../docs/student-technical-support.md).
 
+Public school enquiries
+-----------------------
+
+The login website has a welcome assistant for prospective schools. The public
+bot is a curated feature guide (no LLM, database records or account access).
+It explains personal AI tutoring, after-school learning, homework/exam practice,
+progress reports, school-name/logo branding and feature development on demand.
+Branding is offered through onboarding; custom scope, price and timeline are
+agreed with the admin. The assistant does not promise unbuilt features are live.
+
+**Setup, before enabling admin chat:**
+
+1. Apply `db/migrations/20261110_school_enquiries.sql` **once** in the Supabase
+   SQL editor. This independent migration creates three new enquiry tables and
+   service-only functions. It does not alter school/account-support tables or
+   their RLS. No support-migration prerequisite is needed for this migration.
+2. Ensure backend `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` and the existing
+   SMTP settings (`SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM`)
+   are configured. Never put the service key or SMTP credentials in the website.
+3. Notifications go to the existing `SUPPORT_NOTIFICATION_EMAIL` override, or
+   the configured default admin mailbox. The requester receives verification
+   codes and admin-reply notifications at their verified email address.
+4. Deploy backend first, then website. Existing CloudFront `support*` and
+   `owner/support*` forwarding covers these endpoints; keep caching disabled
+   and forward Authorization. No production deployment is performed by tests.
+
+**Workflow:** visitor supplies name, school, email, message and explicit consent.
+A random six-digit code expires after 10 minutes and allows five attempts.
+Only its challenge-bound SHA-256 hash is stored. Verification atomically consumes
+the code, creates the enquiry/message and a hashed 256-bit chat capability.
+The browser remembers the private capability for up to 30 days (never in a URL).
+Treat it as a secret; clearing browser storage loses access. Visitors with expired
+or lost access can verify their email to start a new enquiry. A lost verification
+response may require a new code/enquiry; consumed codes cannot be replayed.
+
+Admin replies live in `/owner` → **School enquiries**, protected by existing
+owner authenticator MFA. All enquiries identify their verified email and school.
+Visitors reopen the welcome assistant → **Talk to admin** in the same browser
+to read/reply. Email replies are **not** imported into chat. Messages persist
+even if notifications fail; that failure is shown explicitly. Stable reply IDs
+make write retries idempotent. Resolved enquiries reopen when a message is sent.
+
+Public routes are `/support/public/chat`, `/code`, `/verify`, and
+`/enquiries/:id` with `/messages` and `/notify`. Enquiry access uses
+`Authorization: Enquiry <opaque-token>`, not a student/school login token.
+Owner routes are `/owner/support/enquiries`, `/:id`, `/:id/messages` and
+`/:id/status`. Threads paginate in 100-message pages; owner lists in 50-row
+pages. Open views poll and pause while the browser tab is hidden.
+
+Optional WhatsApp contact: apply `db/migrations/20261111_school_enquiry_whatsapp.sql`
+once **after** the base `20261110_school_enquiries.sql` migration, before deploying
+the updated backend and website. Do not rerun the base migration on installed tables.
+The new migration adds nullable numbers and preserves existing enquiries and RLS.
+Visitors select a country code and enter a national number, then separately
+consent to WhatsApp contact. Web and backend use `libphonenumber-js/max` metadata
+to validate country-specific lengths and numbering patterns, including countries
+with variable-length numbers or shared calling codes. The API accepts normalized
+international `whatsappNumber` and optional ISO `whatsappCountry`; older clients
+can still send an international number without the country field. A stored number
+signifies permission. This selector needs no additional database migration.
+Email verification remains mandatory; the WhatsApp number itself is not verified.
+The admin inbox and notification email show the number and a manual `wa.me` link.
+No automatic WhatsApp messages are sent, and WhatsApp replies do not sync to chat.
+
+Rate limits are process-local: 30 bot requests/minute and 5 code requests/10
+minutes per socket IP, plus 3 code deliveries/10 minutes per email. Verification
+attempts are also enforced atomically in PostgreSQL. Behind a proxy, the socket
+IP limit may group visitors; arbitrary forwarded IP headers are not trusted.
+For large public campaigns, configure edge abuse protection/distributed limiting.
+Operators should periodically purge expired code challenges and define enquiry
+retention/deletion procedures. The assistant warns visitors against sharing
+passwords or student records and redacts common secret patterns; it is not a
+general-purpose sensitive-data scrubber.
+
+Validation: `node -r ts-node/register --test src/support/visitor.test.ts`.
+SQL integration: run `scripts/school_enquiries_db_test.ts` with
+`ENQUIRY_TEST_DATABASE_URL` set to a disposable localhost PostgreSQL database,
+never production.
+
 School student progress
 -----------------------
 

@@ -84,6 +84,41 @@ async function ownerRequest(path, token, body) {
 }
 
 export const getOwnerAccess = (token) => ownerRequest('owner/access', token);
+
+async function enquiryRequest(path, { token, owner = false, body, signal } = {}) {
+  const res = await fetch(`${API_BASE}${path}`, {
+    method: body === undefined ? 'GET' : 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `${owner ? 'Bearer' : 'Enquiry'} ${token}` } : {})
+    },
+    ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+    signal
+  });
+  if (!res.headers.get('content-type')?.includes('application/json')) {
+    throw new Error('The enquiry service could not be reached. Please try again later.');
+  }
+  const data = await res.json();
+  if (!res.ok || data?.success !== true) {
+    const error = new Error(data?.message || data?.error || 'The school enquiry request failed. Please try again.');
+    error.status = res.status;
+    throw error;
+  }
+  return data;
+}
+export const askVisitorBot = (message) => enquiryRequest('/support/public/chat', { body: { message } });
+export const requestEnquiryCode = (body) => enquiryRequest('/support/public/code', { body });
+export const verifyEnquiryCode = (body) => enquiryRequest('/support/public/verify', { body });
+export const listSchoolEnquiries = (token, offset = 0, signal) =>
+  enquiryRequest(`/owner/support/enquiries?offset=${offset}`, { token, owner: true, signal });
+export const getSchoolEnquiry = (id, token, owner = false, offset = 0, signal) =>
+  enquiryRequest(`${owner ? '/owner/support' : '/support/public'}/enquiries/${encodeURIComponent(id)}?offset=${offset}`, { token, owner, signal });
+export const replySchoolEnquiry = (id, body, token, owner = false) =>
+  enquiryRequest(`${owner ? '/owner/support' : '/support/public'}/enquiries/${encodeURIComponent(id)}/messages`, { token, owner, body });
+export const retryEnquiryNotification = (id, token) =>
+  enquiryRequest(`/support/public/enquiries/${encodeURIComponent(id)}/notify`, { token, body: {} });
+export const setSchoolEnquiryStatus = (id, status, token) =>
+  enquiryRequest(`/owner/support/enquiries/${encodeURIComponent(id)}/status`, { token, owner: true, body: { status } });
 export const schoolRegister = (payload, token) => ownerRequest('school/register', token, payload);
 export const schoolRegisterRequestOtp = (payload, token) => ownerRequest('school/register/request-otp', token, payload);
 export const schoolRegisterVerifyOtp = (email, otp, token) => ownerRequest('school/register/verify-otp', token, { email, otp });
