@@ -52,7 +52,7 @@ service-role-only atomic allocator; it does not alter existing tables or RLS.
 Missing migration/invalid allocation responses produce a visible Orchard error.
 
 There are ten artwork themes: acorn, apple, cherry, orange, pear, mango, lemon,
-peach, plum and coconut. The first Orchard read assigns each registered subject
+peach, plum and strawberry. The first Orchard read assigns each registered subject
 in that student's class a school-wide design. Registered base subjects prefer
 their usual designs when unused; extra subjects prefer the four new themes.
 All ten designs are used before reuse. After ten assignments, the least-used
@@ -67,6 +67,12 @@ remain keyed by student + subject. Overview and detail return the same assigned
 `treeType`, natural `fruitType` and presentation metadata to both clients.
 Existing global subject catalog entries are not rewritten. Development's
 file-backed mock store uses the same allocation order and serializes local writes.
+Strawberry returns `treeType: strawberry`, `fruitType: strawberry` and 🍓
+metadata. The existing SQL allocator's legacy `coconut` slot is normalized on
+read, preserving saved assignments without rewriting tables or policies.
+The file-backed allocator uses the canonical strawberry key. Both clients use
+strawberry-named asset folders and accept the old key for compatibility.
+No additional migration is required.
 
 Student technical support
 -------------------------

@@ -25,6 +25,7 @@ import {
   schoolTreeEntry,
   SchoolTreeAssignment,
   ORCHARD_TREE_PALETTE,
+  normalizeTreeType,
 } from './orchard.constants';
 
 const METER_WINDOW_DAYS = 14; // rolling window for water/sunlight/fertilizer
@@ -404,10 +405,10 @@ export class OrchardService {
   private checkedAssignments(result: { data: SchoolTreeAssignment[] | null; error: { message: string } | null }): SchoolTreeAssignment[] {
     if (result.error) this.assignmentFailure(result.error.message);
     if (!Array.isArray(result.data) || result.data.some((row) =>
-      !row || typeof row.subject_key !== 'string' || !ORCHARD_TREE_PALETTE.some((p) => p.tree_type === row.tree_type))) {
+      !row || typeof row.subject_key !== 'string' || !ORCHARD_TREE_PALETTE.some((p) => p.tree_type === normalizeTreeType(row.tree_type)))) {
       this.assignmentFailure('Invalid assignment response');
     }
-    return result.data;
+    return result.data.map((row) => ({ ...row, tree_type: normalizeTreeType(row.tree_type) }));
   }
 
   private async ensureSchoolTreeAssignments(schoolId: string, keys: string[]): Promise<SchoolTreeAssignment[]> {

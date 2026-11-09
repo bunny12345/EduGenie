@@ -131,7 +131,10 @@ test('production allocator uses only the resolved school identity', async () => 
   });
   keys.set('student-a', ['biology']);
   const { catalog } = await makeService().ensureOrchard('student-a');
-  assert.equal(catalog[0].tree_type, 'coconut');
+  assert.equal(catalog[0].tree_type, 'strawberry');
+  assert.equal(catalog[0].fruit_type, 'strawberry');
+  assert.equal(catalog[0].fruit_emoji, '🍓');
+  assert.equal(catalog[0].accent_color, '#e11d48');
 });
 
 test('missing migration, incomplete responses and unverified school report errors', async () => {

@@ -9,11 +9,14 @@ English cherry rewards, Social Studies oranges, Computer pears and Hindi mangoes
 Catalog tree identifiers are preserved; dynamic-subject palettes reuse these
 natural themes. A cherry pair is one lesson-mastery reward.
 
-Lemon, peach, plum and coconut complete the ten-design pool. New school subjects
+Lemon, peach, plum and strawberry complete the ten-design pool. New school subjects
 automatically receive unused designs before designs are reused. Assignments are
 saved per school by the backend and remain stable when new subjects are added.
 Both clients render the returned `treeType`; even subjects sharing a design keep
 independent chapter growth and fruit counts. See [backend assignment setup](../backend/README.md).
+Strawberry uses the `strawberry` tree key and `public/assets/orchard/strawberry/`
+folder. Older `coconut` assignments normalize to strawberry and remain supported
+as a client alias. No additional migration is needed; existing growth is preserved.
 
 Seeds, sprouts and young plants have distinct PNGs on transparent 2048 x 2048
 canvases. Later growth artwork reuses the supplied oak images. Each fully mastered

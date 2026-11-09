@@ -88,10 +88,15 @@ void main() {
       expect(treeArt('digital')!.fruitName, 'pear');
       expect(treeArt('mango')!.fruitName, 'mango');
       expect(treeArt('oak')!.fruitName, 'acorn');
-      for (final type in ['lemon', 'peach', 'plum', 'coconut']) {
+      for (final type in ['lemon', 'peach', 'plum']) {
         expect(treeArt(type)!.assetType, type);
         expect(treeArt(type)!.fruitName, type);
       }
+      expect(treeArt('strawberry')!.assetType, 'strawberry');
+      expect(treeArt('coconut'), treeArt('strawberry'));
+      expect(treeArt('coconut')!.fruitName, 'strawberry');
+      expect(treeArt('coconut')!.fruitPlural, 'strawberries');
+      expect(treeArt('coconut')!.fruitEmoji, '🍓');
       expect(treeArt('pine'), treeArt('crystal'));
       expect(treeArt('palm'), treeArt('mango'));
       expect(treeArt('unknown'), isNull);
@@ -128,7 +133,7 @@ void main() {
     'lemon',
     'peach',
     'plum',
-    'coconut',
+    'strawberry',
   ]) {
     testWidgets(
       '$type uses exact shared size and one natural reward per mastered lesson',
@@ -188,7 +193,7 @@ void main() {
         'lemon',
         'peach',
         'plum',
-        'coconut',
+        'strawberry',
       ]) {
         for (final stage in [
           'seed',

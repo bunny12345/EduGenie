@@ -33,7 +33,7 @@ test('six established subjects and four additions use ten distinct designs', () 
     assert.equal(assigned.find((row) => row.subject_key === subject.subject_key)?.tree_type, subject.tree_type);
   }
   assert.deepEqual(new Set(assigned.filter((row) => !SUBJECT_CATALOG.some((s) => s.subject_key === row.subject_key))
-    .map((row) => row.tree_type)), new Set(['lemon', 'peach', 'plum', 'coconut']));
+    .map((row) => row.tree_type)), new Set(['lemon', 'peach', 'plum', 'strawberry']));
 });
 
 test('any ten custom subjects use unused designs before reusing the balanced pool', () => {
@@ -60,4 +60,11 @@ test('school-specific presentation does not change a subject key or growth rules
   assert.equal(themed.fruit_emoji, '🍋');
   assert.notEqual(original.tree_type, 'lemon');
   assert.throws(() => schoolTreeEntry(original, 'missing'), /Unknown Orchard/);
+});
+
+test('legacy coconut assignments normalize without allocating a duplicate strawberry design', () => {
+  const rows = assignSchoolTrees(['old_subject', 'new_subject'], [{ subject_key: 'old_subject', tree_type: 'coconut' }]);
+  assert.equal(rows[0].tree_type, 'strawberry');
+  assert.equal(rows[1].tree_type, 'lemon');
+  assert.equal(schoolTreeEntry(subjectEntryFor('old_subject'), 'coconut').tree_type, 'strawberry');
 });

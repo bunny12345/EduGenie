@@ -172,7 +172,7 @@ export const ORCHARD_TREE_PALETTE: TreePalette[] = [
   { tree_type: 'lemon', fruit_type: 'lemon', fruit_emoji: '🍋', tree_emoji: '🌳', accent_color: '#65a30d' },
   { tree_type: 'peach', fruit_type: 'peach', fruit_emoji: '🍑', tree_emoji: '🌳', accent_color: '#f97316' },
   { tree_type: 'plum', fruit_type: 'plum', fruit_emoji: '🟣', tree_emoji: '🌳', accent_color: '#7c3aed' },
-  { tree_type: 'coconut', fruit_type: 'coconut', fruit_emoji: '🥥', tree_emoji: '🌳', accent_color: '#0d9488' },
+  { tree_type: 'strawberry', fruit_type: 'strawberry', fruit_emoji: '🍓', tree_emoji: '🌳', accent_color: '#e11d48' },
   ...SUBJECT_CATALOG.map((subject, index) => ({
     tree_type: subject.tree_type,
     fruit_type: ['acorn', 'apple', 'cherry', 'orange', 'pear', 'mango'][index],
@@ -187,9 +187,13 @@ export interface SchoolTreeAssignment {
   tree_type: string;
 }
 
+export function normalizeTreeType(treeType: string): string {
+  return treeType === 'coconut' ? 'strawberry' : treeType;
+}
+
 // Mirrors the atomic SQL allocator for the file-backed development database.
 export function assignSchoolTrees(keys: string[], existing: SchoolTreeAssignment[]): SchoolTreeAssignment[] {
-  const assignments = new Map(existing.map((row) => [row.subject_key, row]));
+  const assignments = new Map(existing.map((row) => [row.subject_key, { ...row, tree_type: normalizeTreeType(row.tree_type) }]));
   const ordered = [...new Set(keys)].sort((a, b) => {
     const aBase = SUBJECT_BY_KEY[a]?.order_index ?? 100;
     const bBase = SUBJECT_BY_KEY[b]?.order_index ?? 100;
@@ -207,7 +211,7 @@ export function assignSchoolTrees(keys: string[], existing: SchoolTreeAssignment
 }
 
 export function schoolTreeEntry(subject: SubjectCatalogEntry, treeType: string): SubjectCatalogEntry {
-  const palette = ORCHARD_TREE_PALETTE.find((entry) => entry.tree_type === treeType);
+  const palette = ORCHARD_TREE_PALETTE.find((entry) => entry.tree_type === normalizeTreeType(treeType));
   if (!palette) throw new Error(`Unknown Orchard tree assignment: ${treeType}`);
   return { ...subject, ...palette };
 }

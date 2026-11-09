@@ -164,19 +164,26 @@ class _OrchardTreeDetailScreenState extends ConsumerState<OrchardTreeDetailScree
                 ],
               ),
               const SizedBox(height: 14),
-              GridView.count(
-                crossAxisCount: 2,
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
-                childAspectRatio: 2.4,
-                mainAxisSpacing: 10,
-                crossAxisSpacing: 10,
-                children: [
-                  _stat('Lessons fruited', '$fruited / ${tree.totalChapters}'),
-                  _stat('Golden fruits', '$golden', icon: '✨'),
-                  _stat('Roots (understanding)', '${tree.rootsPct}%'),
-                  _stat('Overall growth', '${tree.progressPct}%'),
-                ],
+              IntrinsicHeight(
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Expanded(child: _stat('Lessons fruited', '$fruited / ${tree.totalChapters}')),
+                    const SizedBox(width: 10),
+                    Expanded(child: _stat('Golden fruits', '$golden', icon: '✨')),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 10),
+              IntrinsicHeight(
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Expanded(child: _stat('Roots (understanding)', '${tree.rootsPct}%')),
+                    const SizedBox(width: 10),
+                    Expanded(child: _stat('Overall growth', '${tree.progressPct}%')),
+                  ],
+                ),
               ),
               const SizedBox(height: 10),
               Container(
@@ -331,6 +338,7 @@ class _OrchardTreeDetailScreenState extends ConsumerState<OrchardTreeDetailScree
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisAlignment: MainAxisAlignment.center,
+        mainAxisSize: MainAxisSize.min,
         children: [
           Text('${icon != null ? '$icon ' : ''}$value', style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800)),
           Text(label, style: TextStyle(fontSize: 10.5, color: AppColors.muted)),

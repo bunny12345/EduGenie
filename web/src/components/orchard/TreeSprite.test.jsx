@@ -7,7 +7,7 @@ function artwork(file) {
   return screen.queryAllByAltText('').filter((image) => image.getAttribute('src').endsWith(`/${file}.png`));
 }
 
-test.each(['crystal', 'cherry_blossom', 'banyan', 'digital', 'mango', 'lemon', 'peach', 'plum', 'coconut'])('%s grows natural fruit at the oak positions without changing its identifier', (treeType) => {
+test.each(['crystal', 'cherry_blossom', 'banyan', 'digital', 'mango', 'lemon', 'peach', 'plum', 'strawberry'])('%s grows natural fruit at the oak positions without changing its identifier', (treeType) => {
   const { rerender } = render(<TreeSprite treeType={treeType} stage="fruit" masteredChapters={1} size={220} />);
   let image = screen.getByRole('img');
   expect(image).toHaveAccessibleName(new RegExp(`1 ${treeArt(treeType).fruitPlural}`));
@@ -26,6 +26,15 @@ test('oak retains the supplied images and adds matching acorns above nine', () =
   expect(artwork('acorns_9')).toHaveLength(1);
   rerender(<TreeSprite treeType="oak" stage="golden_fruit" masteredChapters={12} />);
   expect(artwork('acorn')).toHaveLength(3);
+});
+
+test('saved coconut assignments present strawberries without resetting the tree', () => {
+  render(<TreeSprite treeType="coconut" stage="golden_fruit" masteredChapters={12} />);
+  expect(screen.getByRole('img')).toHaveAccessibleName(/12 strawberries/);
+  expect(artwork('mastery_fruit')).toHaveLength(12);
+  expect(treeArt('coconut').fruitEmoji).toBe('🍓');
+  expect(artwork('fully_grown')[0]).toHaveAttribute('src', '/assets/orchard/strawberry/fully_grown.png');
+  expect(treeArt('coconut')).toBe(treeArt('strawberry'));
 });
 
 test('zero mastery and unavailable mastery do not invent fruit rewards', () => {

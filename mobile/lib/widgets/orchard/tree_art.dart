@@ -30,7 +30,7 @@ const _themes = {
   'lemon': TreeArt('lemon', 'lemon', 'lemons', '🍋'),
   'peach': TreeArt('peach', 'peach', 'peaches', '🍑'),
   'plum': TreeArt('plum', 'plum', 'plums', '🟣'),
-  'coconut': TreeArt('coconut', 'coconut', 'coconuts', '🥥'),
+  'strawberry': TreeArt('strawberry', 'strawberry', 'strawberries', '🍓'),
 };
 
 TreeArt? treeArt(String treeType) =>
@@ -41,6 +41,7 @@ TreeArt? treeArt(String treeType) =>
           'palm': 'mango',
           'olive': 'banyan',
           'redwood': 'digital',
+          'coconut': 'strawberry',
         }[treeType] ??
         treeType];
 

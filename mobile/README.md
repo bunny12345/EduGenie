@@ -30,11 +30,15 @@ Natural themes use apples for Science (`crystal`), cherry rewards for English
 unchanged, including dynamic-subject aliases. Each cherry reward is drawn as a
 pair of cherries but represents one mastered lesson, not two.
 
-Four additional themes (`lemon`, `peach`, `plum`, `coconut`) supply automatic
+Four additional themes (lemon, peach, plum and strawberry) supply automatic
 school-wide assignments for new subjects. The backend returns the assigned
 `treeType`; neither client guesses from the subject name. It fills unused designs
 before reusing the ten-theme pool. Persisted mappings keep each subject's design
 stable and never combine different subjects' learning progress.
+Strawberry uses the `strawberry` tree key and `assets/orchard/strawberry/` folder.
+Older stored `coconut` assignments are normalized to strawberry by the backend
+and supported as a client alias. Existing assignments and growth remain intact;
+this replacement requires no additional migration.
 
 Each theme has a newly designed seed, sprout and young plant on a transparent
 2048 x 2048 canvas. Growing, mature and fully-grown PNGs reuse the supplied oak
@@ -49,6 +53,10 @@ four-row generated asset sheet (1254 x 1254), using Pillow, and mirrors assets t
 The four-column extension source is `tool/artwork/extra-fruit-sheet.png`;
 `--extra-sheet /path/to/the/extra-sheet.png` can replace it. Both sources are
 bundled for regeneration. Install Pillow before running the script.
+`tool/artwork/strawberry-sheet.png` overrides the former coconut column.
+Use `--strawberry-sheet /path/to/sheet.png --strawberry-only` to regenerate only
+that theme and mirror it to web. The reviewed strawberry source is 1254 x 1254
+with one column of seed, sprout, young plant and fruit.
 The generated sheet provides natural seeds, seedlings and fruits; oak originals
 are not edited.
 
@@ -61,6 +69,9 @@ Older backends never infer mastery from completion: natural trees display no
 mastery fruits without the count, while oak keeps its previous stage art.
 Learning stages and rewards remain unchanged. Stop and relaunch Flutter after
 adding or replacing these bundled PNGs.
+
+Orchard detail stat cards use content-sized, equal-height pairs rather than a
+fixed grid aspect ratio, so wrapped labels and larger accessibility text fit.
 
 ## Getting Started
 

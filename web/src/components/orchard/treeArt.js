@@ -8,10 +8,10 @@ export const TREE_ART = {
   lemon: { assetType: 'lemon', fruitName: 'lemon', fruitPlural: 'lemons', fruitEmoji: '🍋' },
   peach: { assetType: 'peach', fruitName: 'peach', fruitPlural: 'peaches', fruitEmoji: '🍑' },
   plum: { assetType: 'plum', fruitName: 'plum', fruitPlural: 'plums', fruitEmoji: '🟣' },
-  coconut: { assetType: 'coconut', fruitName: 'coconut', fruitPlural: 'coconuts', fruitEmoji: '🥥' },
+  strawberry: { assetType: 'strawberry', fruitName: 'strawberry', fruitPlural: 'strawberries', fruitEmoji: '🍓' },
 };
 export function treeArt(treeType) {
-  const aliases = { willow: 'cherry_blossom', maple: 'cherry_blossom', pine: 'crystal', palm: 'mango', olive: 'banyan', redwood: 'digital' };
+  const aliases = { willow: 'cherry_blossom', maple: 'cherry_blossom', pine: 'crystal', palm: 'mango', olive: 'banyan', redwood: 'digital', coconut: 'strawberry' };
   return TREE_ART[aliases[treeType] || treeType];
 }
 export function masteryStageLabel(treeType, stageLabel, masteredChapters) {
