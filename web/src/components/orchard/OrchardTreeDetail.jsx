@@ -75,32 +75,40 @@ function chapterGlyph(chapter, fruitEmoji) {
   return STAGE_EMOJI[chapter.stage] || '🌰';
 }
 
-export default function OrchardTreeDetail({ studentId, subjectKey, initialTree, onBack }) {
+export default function OrchardTreeDetail({ studentId, subjectKey, initialTree, onBack, requestTree = getOrchardTree }) {
   const [detail, setDetail] = useState(initialTree || null);
   const [loading, setLoading] = useState(!initialTree);
   const [activeChapterId, setActiveChapterId] = useState('');
   const [reviewModal, setReviewModal] = useState(null); // { chapter, reviewType } | null
+  const [error, setError] = useState('');
 
   const loadDetail = React.useCallback(async () => {
     if (!studentId || !subjectKey) return;
+    setError('');
     try {
-      const res = await getOrchardTree(studentId, subjectKey);
+      const res = await requestTree(studentId, subjectKey);
       setDetail(res);
-    } catch {
-      /* keep any existing data */
+    } catch (e) {
+      setError(e?.message || 'Unable to load this tree.');
     }
-  }, [studentId, subjectKey]);
+  }, [studentId, subjectKey, requestTree]);
 
   useEffect(() => {
     let cancelled = false;
     async function load() {
       if (!studentId || !subjectKey) return;
+      if (initialTree?.subjectKey === subjectKey) {
+        setDetail(initialTree);
+        setLoading(false);
+        return;
+      }
       setLoading(true);
+      setError('');
       try {
-        const res = await getOrchardTree(studentId, subjectKey);
+        const res = await requestTree(studentId, subjectKey);
         if (!cancelled) setDetail(res);
-      } catch {
-        /* keep any initial data */
+      } catch (e) {
+        if (!cancelled) setError(e?.message || 'Unable to load this tree.');
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -109,7 +117,7 @@ export default function OrchardTreeDetail({ studentId, subjectKey, initialTree, 
     return () => {
       cancelled = true;
     };
-  }, [studentId, subjectKey]);
+  }, [studentId, subjectKey, initialTree, requestTree]);
 
   const chapters = useMemo(() => detail?.chapters || [], [detail]);
   const tree = detail?.tree || {};
@@ -138,7 +146,8 @@ export default function OrchardTreeDetail({ studentId, subjectKey, initialTree, 
   if (!detail) {
     return (
       <div className="eg-orch-error">
-        <p>Could not load this tree.</p>
+        <p role="alert">{error || 'Could not load this tree.'}</p>
+        <button onClick={loadDetail}>Retry</button>
         <button onClick={onBack}>Back to orchard</button>
       </div>
     );
@@ -147,6 +156,7 @@ export default function OrchardTreeDetail({ studentId, subjectKey, initialTree, 
   return (
     <div className="eg-tree-detail" style={{ '--accent': accent }}>
       <button className="eg-tree-detail-back" onClick={onBack}>← Back to Orchard</button>
+      {error ? <div role="alert"><p>{error}</p><button onClick={loadDetail}>Retry</button></div> : null}
 
       {/* Hero */}
       <div className="eg-tree-detail-hero">

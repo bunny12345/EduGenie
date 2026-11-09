@@ -49,6 +49,7 @@ import MathMarkdown from './MathMarkdown';
 import SamAvatar from './SamAvatar';
 import QuickSamBubble from './QuickSamBubble';
 import TechnicalSupport from './TechnicalSupport';
+import useVisiblePanels from '../hooks/useVisiblePanels';
 
 function safeArray(v) {
   return Array.isArray(v) ? v : [];
@@ -482,6 +483,7 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
   const profileDropdownRef = useRef(null);
   const [homework, setHomework] = useState([]);
   const [progress, setProgress] = useState([]);
+  const [orchardData, setOrchardData] = useState(null);
   const [events, setEvents] = useState([]);
   const [rewards, setRewards] = useState({ coins: 0, badges: [] });
   const [coinGain, setCoinGain] = useState(null); // { id, amount } — floating "+N" highlight on the coins chip
@@ -1170,32 +1172,34 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
   }
 
   useEffect(() => {
-    let active = true;
-    async function loadAll() {
-      await Promise.all([
-        loadStudentProfilePanel(),
-        loadDashboardPanel(),
-        loadHomeworkPanel(),
-        loadProgressPanel(),
-        loadCalendarPanel(),
-        loadRewardsPanel(),
-        loadTestsPanel(),
-        loadLibraryPanel(),
-        loadLearningTimelinePanel(),
-        loadSettingsPanel(),
-        loadChatPanel(),
-        onAutoCheckIn()
-      ]);
-    }
-    if (active) loadAll();
-    return () => {
-      active = false;
-    };
+    loadStudentProfilePanel();
+    loadSettingsPanel();
+    onAutoCheckIn();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [studentId]);
 
+  const visiblePanels = ['dashboard', 'rewards'];
+  if (activeSidebarTab === 'Home' || activeSidebarTab === 'Homework') {
+    visiblePanels.push('homework', 'progress', 'tests');
+  }
+  if (activeSidebarTab === 'AI Tutor') visiblePanels.push('timeline');
+  if (activeSidebarTab === 'Calendar') visiblePanels.push('calendar');
+  if (activeSidebarTab === 'Library') visiblePanels.push('library');
+  if (activeSidebarTab === 'Settings') visiblePanels.push('settings');
+  useVisiblePanels(studentId, visiblePanels, {
+    dashboard: loadDashboardPanel,
+    rewards: loadRewardsPanel,
+    homework: loadHomeworkPanel,
+    progress: loadProgressPanel,
+    tests: loadTestsPanel,
+    timeline: loadLearningTimelinePanel,
+    calendar: loadCalendarPanel,
+    library: loadLibraryPanel,
+    settings: loadSettingsPanel,
+  });
+
   useEffect(() => {
-    if (tutorHandoffRef.current) return;
+    if (activeSidebarTab !== 'AI Tutor' || tutorHandoffRef.current) return;
     // A lesson id was restored (from the URL hash, or mid-flight) but hasn't
     // resolved into a full lesson object yet — loading now would fetch the
     // wrong "all-lessons" conversation and a slower in-flight request could
@@ -1207,18 +1211,23 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
     if (selectedTutorLessonId && !selectedTutorLesson) return;
     loadChatPanel(getCurrentTutorConversationId());
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [studentId, tutorSubject, selectedTutorLesson?.id, tutorLessons]);
+  }, [activeSidebarTab, studentId, tutorSubject, selectedTutorLesson?.id, tutorLessons]);
 
   // Keeps this conversation's chat in sync with the mobile app (and other
   // browser tabs) — polls the same history endpoint every few seconds while
   // a lesson is open, same pattern as the dashboard/homework/progress poll
   // below just on a shorter interval since chat is more time-sensitive.
   useEffect(() => {
-    if (!selectedTutorLesson) return;
-    const timer = setInterval(pollChatHistory, 6000);
+    if (activeSidebarTab !== 'AI Tutor' || !selectedTutorLesson) return;
+    let pending = false;
+    const timer = setInterval(async () => {
+      if (document.visibilityState === 'hidden' || pending) return;
+      pending = true;
+      try { await pollChatHistory(); } finally { pending = false; }
+    }, 6000);
     return () => clearInterval(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedTutorLesson?.id, studentId]);
+  }, [activeSidebarTab, selectedTutorLesson?.id, studentId, tutorSubject, chatLoading]);
 
   useEffect(() => {
     // Follow the class's actual subjects: pick the first one, and clear the
@@ -1236,12 +1245,12 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
   }, [subjects, tutorSubject]);
 
   useEffect(() => {
-    if (tutorHandoffRef.current) return;
-    if (studentProfile?.className || studentProfile?.class_name || dashboard?.student?.className || dashboard?.student?.class_name) {
+    if (activeSidebarTab !== 'AI Tutor' || tutorHandoffRef.current) return;
+    if (studentProfile?.className || studentProfile?.class_name || dashboard?.className || dashboard?.student?.className || dashboard?.student?.class_name) {
       loadTutorLessonsPanel(tutorSubject);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [studentProfile, dashboard, tutorSubject]);
+  }, [activeSidebarTab, studentProfile?.className, studentProfile?.class_name, dashboard?.className, tutorSubject]);
 
   useEffect(() => {
     if (!showProfileDropdown) return;
@@ -1252,23 +1261,10 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
     return () => document.removeEventListener('mousedown', handleClick);
   }, [showProfileDropdown]);
 
-  useEffect(() => {
-    const timer = setInterval(() => {
-      loadDashboardPanel();
-      loadHomeworkPanel();
-      loadTestsPanel();
-      // Progress has to poll too, otherwise the subject score cards keep
-      // showing the numbers from page load while the student keeps studying.
-      loadProgressPanel();
-    }, 20000);
-    return () => clearInterval(timer);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [studentId]);
-
   // Top-3 rank badge for the profile chip — silent background fetch.
   useEffect(() => {
     let active = true;
-    const loadBadge = () => getStudentReportCards()
+    const loadBadge = () => document.visibilityState !== 'hidden' && getStudentReportCards()
       .then((res) => { if (active) setRankBadge(res?.badge || null); })
       .catch(() => {});
     loadBadge();
@@ -4229,7 +4225,7 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
         {activeSidebarTab === 'AI Tutor' ? (
           tutorPanel
         ) : activeSidebarTab === 'My Orchard' ? (
-          <StudentOrchard studentId={studentId} greetingName={greetingName} />
+          <StudentOrchard studentId={studentId} greetingName={greetingName} initialData={orchardData} onData={setOrchardData} />
         ) : activeSidebarTab === 'Games' ? (
           <StudentGames studentId={studentId} greetingName={greetingName} onAskTutor={onAskTutorFromGame} onCoinsEarned={onGameCoinsEarned} />
         ) : activeSidebarTab === 'Progress' ? (

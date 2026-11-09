@@ -51,4 +51,39 @@ test('Orchard card, side panel and expanded tree show the same natural mastery c
   expect(await screen.findByText('3 apples · mastered lessons')).toBeInTheDocument();
   expect(screen.getByRole('img', { name: /apple tree with 3 apples/ })).toBeInTheDocument();
   expect(getOrchardTree).toHaveBeenCalledWith('student-1', 'science');
+  expect(getOrchardTree).toHaveBeenCalledTimes(1);
+});
+
+test('opening a tree during the selected detail request shares that request', async () => {
+  let finish;
+  getOrchardTree.mockReturnValue(new Promise((resolve) => { finish = resolve; }));
+  render(<StudentOrchard studentId="student-1" />);
+  expect(await screen.findByText('3 apples')).toBeInTheDocument();
+  await waitFor(() => expect(getOrchardTree).toHaveBeenCalledTimes(1));
+  fireEvent.click(screen.getByText('Explore tree →'));
+  await waitFor(() => expect(getOrchardTree).toHaveBeenCalledTimes(1));
+  finish({ ...tree, tree, chapters: [], nextChapter: null });
+  expect(await screen.findByText('3 apples · mastered lessons')).toBeInTheDocument();
+  expect(getOrchardTree).toHaveBeenCalledTimes(1);
+});
+
+test('revisiting Orchard shows retained data immediately while refreshing real progress', async () => {
+  let finish;
+  getOrchard.mockReturnValue(new Promise((resolve) => { finish = resolve; }));
+  const onData = jest.fn();
+  render(<StudentOrchard studentId="student-1" initialData={{ trees: [tree], profile: {} }} onData={onData} />);
+  expect(screen.getByText('3 apples')).toBeInTheDocument();
+  const updated = { trees: [{ ...tree, masteredChapters: 4 }], profile: {} };
+  finish(updated);
+  expect(await screen.findByText('4 apples')).toBeInTheDocument();
+  expect(onData).toHaveBeenCalledWith(updated);
+});
+
+test('tree-detail failures are shown and Retry performs a fresh request', async () => {
+  getOrchardTree.mockRejectedValueOnce(new Error('Tree temporarily unavailable'));
+  render(<StudentOrchard studentId="student-1" />);
+  expect(await screen.findByRole('alert')).toHaveTextContent('Tree temporarily unavailable');
+  fireEvent.click(screen.getByText('Retry tree details'));
+  await waitFor(() => expect(getOrchardTree).toHaveBeenCalledTimes(2));
+  await waitFor(() => expect(screen.queryByRole('alert')).not.toBeInTheDocument());
 });

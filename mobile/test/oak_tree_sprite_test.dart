@@ -14,14 +14,43 @@ Future<void> loadArtwork(WidgetTester tester) async {
   });
 }
 
-Finder asset(String path) => find.byWidgetPredicate(
-  (widget) =>
-      widget is Image &&
-      widget.image is AssetImage &&
-      (widget.image as AssetImage).assetName == 'assets/orchard/$path.png',
-);
+Finder asset(String path) => find.byWidgetPredicate((widget) {
+  if (widget is! Image) return false;
+  final provider = widget.image;
+  final original = provider is ResizeImage ? provider.imageProvider : provider;
+  return original is AssetImage &&
+      original.assetName == 'assets/orchard/$path.png';
+});
 
 void main() {
+  testWidgets('artwork decodes at the displayed physical size', (tester) async {
+    tester.view.devicePixelRatio = 2;
+    addTearDown(tester.view.resetDevicePixelRatio);
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: TreeSprite(
+          treeType: 'oak',
+          stage: 'fruit',
+          masteredChapters: 10,
+          size: 220,
+        ),
+      ),
+    );
+    await loadArtwork(tester);
+    await tester.pumpAndSettle();
+    final base = tester.widget<Image>(asset('oak/acorns_9'));
+    expect(
+      base.image,
+      isA<ResizeImage>().having((image) => image.width, 'width', 440),
+    );
+    final fruit = tester.widget<Image>(asset('oak/acorn'));
+    expect(
+      fruit.image,
+      isA<ResizeImage>().having((image) => image.width, 'width', lessThan(50)),
+    );
+    expect(tester.takeException(), isNull);
+  });
+
   for (final type in ['oak', 'crystal']) {
     testWidgets(
       '$type decodes real artwork throughout all eight growth stages',

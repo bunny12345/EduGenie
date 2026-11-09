@@ -4,7 +4,7 @@ import TreeSprite from './TreeSprite';
 import { masteryFruitRects, treeArt } from './treeArt';
 
 function artwork(file) {
-  return screen.queryAllByAltText('').filter((image) => image.getAttribute('src').endsWith(`/${file}.png`));
+  return screen.queryAllByAltText('').filter((image) => new RegExp(`/${file}\\.(png|webp)$`).test(image.getAttribute('src')));
 }
 
 test.each(['oak', 'crystal'])('%s selects the correct artwork for all eight learning stages', (treeType) => {
@@ -25,7 +25,7 @@ test.each(['crystal', 'cherry_blossom', 'banyan', 'digital', 'mango', 'lemon', '
   let image = screen.getByRole('img');
   expect(image).toHaveAccessibleName(new RegExp(`1 ${treeArt(treeType).fruitPlural}`));
   const [base] = artwork('fully_grown');
-  expect(base).toHaveAttribute('src', `/assets/orchard/${treeType}/fully_grown.png`);
+  expect(base).toHaveAttribute('src', `/assets/orchard/${treeType}/fully_grown.webp`);
   const [fruit] = artwork('mastery_fruit');
   expect(fruit).toHaveStyle({ left: `${220 * (0.253 - 0.035)}px`, top: `${220 * (0.590 - 0.045)}px` });
   rerender(<TreeSprite treeType={treeType} stage="golden_fruit" masteredChapters={17} size={220} health="wilting" />);
@@ -46,7 +46,7 @@ test('saved coconut assignments present strawberries without resetting the tree'
   expect(screen.getByRole('img')).toHaveAccessibleName(/12 strawberries/);
   expect(artwork('mastery_fruit')).toHaveLength(12);
   expect(treeArt('coconut').fruitEmoji).toBe('🍓');
-  expect(artwork('fully_grown')[0]).toHaveAttribute('src', '/assets/orchard/strawberry/fully_grown.png');
+  expect(artwork('fully_grown')[0]).toHaveAttribute('src', '/assets/orchard/strawberry/fully_grown.webp');
   expect(treeArt('coconut')).toBe(treeArt('strawberry'));
 });
 
@@ -62,6 +62,25 @@ test('unknown tree types keep existing fallback behaviour', () => {
   render(<TreeSprite treeType="unknown" stage="seed" />);
   for (let i = 0; i < 6; i++) fireEvent.error(screen.getByAltText(''));
   expect(screen.getByLabelText(/unknown seed/)).toHaveClass('eg-tree-placeholder');
+});
+
+test('optimized artwork falls back to the original PNG if unavailable', () => {
+  render(<TreeSprite treeType="oak" stage="seed" masteredChapters={0} />);
+  expect(artwork('seed')[0]).toHaveAttribute('src', '/assets/orchard/oak/seed.webp');
+  fireEvent.error(artwork('seed')[0]);
+  expect(artwork('seed')[0]).toHaveAttribute('src', '/assets/orchard/oak/seed.png');
+  fireEvent.error(artwork('seed')[0]);
+  expect(screen.getByLabelText(/oak seed/)).toHaveClass('eg-tree-placeholder');
+});
+
+test('optimized fruit sprites fall back to their original PNG if unavailable', () => {
+  render(<TreeSprite treeType="crystal" stage="golden_fruit" masteredChapters={1} />);
+  const [fruit] = artwork('mastery_fruit');
+  expect(fruit).toHaveAttribute('src', '/assets/orchard/crystal/mastery_fruit.webp');
+  fireEvent.error(fruit);
+  expect(fruit).toHaveAttribute('src', '/assets/orchard/crystal/mastery_fruit.png');
+  fireEvent.error(fruit);
+  expect(fruit).toHaveAttribute('src', '/assets/orchard/crystal/mastery_fruit.png');
 });
 
 test('all mastery fruits fit inside the canvas, with no nine-fruit cap', () => {

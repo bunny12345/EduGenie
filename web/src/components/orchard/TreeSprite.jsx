@@ -21,7 +21,7 @@ export default function TreeSprite({ treeType, stage, size = 140, accentColor = 
     : art && !bakedOak && ['blossom', 'fruit', 'golden_fruit'].includes(stage) ? 'fully_grown' : stage;
   const publicUrl = process.env.PUBLIC_URL || '';
   const base = `${publicUrl}/assets/orchard/${art?.assetType || treeType}`;
-  const candidates = art ? [`${base}/${artwork}.png`] : treeAssetCandidates(treeType, stage, activeMood);
+  const candidates = art ? [`${base}/${artwork}.webp`, `${base}/${artwork}.png`] : treeAssetCandidates(treeType, stage, activeMood);
   const fruits = grown ? masteryFruitRects(count, size, bakedOak) : [];
   const [idx, setIdx] = useState(0);
   const [failed, setFailed] = useState(false);
@@ -42,13 +42,18 @@ export default function TreeSprite({ treeType, stage, size = 140, accentColor = 
         <img
         src={candidates[idx]}
         alt=""
+        decoding="async"
         style={{ ...dim, objectFit: 'contain', display: 'block' }}
         onError={() => {
           if (idx < candidates.length - 1) setIdx(idx + 1);
           else setFailed(true);
         }}
         />
-        {fruits.map((rect, index) => <img key={index} src={`${base}/${bakedOak ? 'acorn' : 'mastery_fruit'}.png`} alt=""
+        {fruits.map((rect, index) => <img key={index}
+          src={`${base}/${bakedOak ? 'acorn' : 'mastery_fruit'}.webp`} alt="" decoding="async"
+          onError={({ currentTarget }) => {
+            if (currentTarget.src.endsWith('.webp')) currentTarget.src = `${base}/${bakedOak ? 'acorn' : 'mastery_fruit'}.png`;
+          }}
           style={{ ...rect, position: 'absolute', objectFit: 'contain' }} />)}
       </div>
     );

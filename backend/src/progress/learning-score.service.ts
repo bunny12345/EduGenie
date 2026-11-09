@@ -71,6 +71,7 @@ type Dims = Record<string, number>;
 @Injectable()
 export class LearningScoreService {
   private readonly logger = new Logger(LearningScoreService.name);
+  private readonly pendingReports = new Map<string, Promise<any>>();
   constructor(
     private readonly db: SupabaseService,
     private readonly orchard: OrchardService,
@@ -512,6 +513,18 @@ export class LearningScoreService {
 
   // ── public entry point ─────────────────────────────────────────────────────
   async getLearningScore(studentId: string): Promise<any> {
+    const pending = this.pendingReports.get(studentId);
+    if (pending) return pending;
+    const request = this.calculateLearningScore(studentId);
+    this.pendingReports.set(studentId, request);
+    try {
+      return await request;
+    } finally {
+      this.pendingReports.delete(studentId);
+    }
+  }
+
+  private async calculateLearningScore(studentId: string): Promise<any> {
     const [rawAttempts, rawHwAttempts, fcProgress, sessions, profileRows, rawTrees, rawGrowth, rewards, msgs, pmetrics, activity, reviews, subjectKeys, studentRow, className, dbHomework] =
       await Promise.all([
         this.rows('test_attempts', studentId),

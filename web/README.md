@@ -2,7 +2,43 @@
 
 This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
 
+## Loading and refresh performance
+
+Portal dashboards and the owner portal load as separate JavaScript chunks, only
+when their role/path is opened. Login/logout hash clearing and the dashboard
+layout are unchanged. A failed portal load offers an explicit Reload action.
+
+The student dashboard retains Home summaries but defers Calendar, Library,
+learning timeline, tutor lessons and chat until their section is opened.
+Profile/settings and the existing daily check-in still initialize once.
+Visible panels refresh in the background, reuse recently fetched data on quick
+revisits, and skip overlapping scheduled requests. Hidden browser tabs pause
+refreshes and refresh stale visible data when returning. Tutor history polls
+only while AI Tutor is open. User actions still refresh their affected data.
+Errors continue to appear through the existing panel messages.
+
+Regression checks:
+`CI=true npm test -- --watchAll=false --runInBand src/hooks/useVisiblePanels.test.js src/components/StudentDashboard.performance.test.jsx src/App.test.js`.
+
 ## Natural Orchard artwork
+
+Orchard retains its overview within the logged-in student dashboard while
+refreshing on revisit. Its side panel and expanded view share an in-flight tree
+request; an already-loaded selected tree is reused on expansion. Returning from a
+tree refreshes both the overview and selected detail so learning/review changes
+remain visible. Detail errors offer Retry rather than silently disappearing.
+
+Tree sprites prefer transparent WebP copies (maximum 768 pixels, quality 90),
+with original PNG fallbacks. Originals remain unchanged. After replacing artwork,
+run `node scripts/optimize-orchard-art.js` from `web/` with `cwebp` installed and
+deploy the generated WebP files alongside the website. Current 82 optimized
+images total about 2.66 MB versus 67.95 MB of PNG originals; only images used by
+rendered trees are requested, so this is not each page's total download size.
+Native Flutter keeps the original bundled PNGs but decodes tree/fruit images at
+their displayed physical size to reduce image-memory overhead.
+
+Regression checks:
+`CI=true npm test -- --watchAll=false --runInBand src/components/StudentOrchard.test.jsx src/components/orchard/TreeSprite.test.jsx`.
 
 The student Orchard matches mobile: Mathematics earns acorns, Science apples,
 English cherry rewards, Social Studies oranges, Computer pears and Hindi mangoes.

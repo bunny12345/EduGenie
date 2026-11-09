@@ -41,38 +41,57 @@ export class DashboardController {
         teacher_id: profile.teacherId || null,
       };
 
-      // Fetch gender, loginId and school name for profile card
-      let gender: string | null = null;
-      let loginId: string | null = null;
-      let schoolName: string | null = null;
-      try {
-        const stuRows = await this.db.client.from('students').select('gender,login_id').eq('id', id).limit(1);
-        const stuRow = Array.isArray((stuRows as any)?.data) ? (stuRows as any).data[0] : null;
-        gender = stuRow?.gender || null;
-        loginId = stuRow?.login_id || null;
-        if (!loginId) {
-          const accRows = await this.db.client.from('student_accounts').select('login_id,gender').eq('student_id', id).limit(1);
-          const accRow = Array.isArray((accRows as any)?.data) ? (accRows as any).data[0] : null;
-          loginId = accRow?.login_id || null;
-          if (!gender) gender = accRow?.gender || null;
+      // These reads do not depend on one another. Start them together instead
+      // of paying one database round trip per section.
+      const homeworkRequest = this.db.client.from('homework').select('*').eq('student_id', id).order('due_at', { ascending: true }).limit(8);
+      const progressRequest = this.db.client.from('progress_metrics').select('*').eq('student_id', id).order(METRIC_ORDER_COLUMN, { ascending: false }).limit(10);
+      const memoriesRequest = this.db.client.from('memories').select('*').eq('student_id', id).limit(6);
+      const announcementsRequest = this.db.client.from('announcements').select('*')
+        .in('audience', ['students', 'all']).order('created_at', { ascending: false }).limit(20);
+      const teachersRequest = (async () => {
+        try {
+          return student.school_id && student.class_name
+            ? await this.studentAuth.listClassTeachers(student.school_id, student.class_name) : [];
+        } catch (_e) {
+          return [];
         }
-      } catch { /* non-fatal */ }
-      if (!gender || !loginId) {
-        const local = this.studentAuth.getLocalStudent(id);
-        if (local) {
-          if (!gender) gender = local.gender || null;
-          if (!loginId) loginId = local.loginId || null;
+      })();
+      const profileRequest = (async () => {
+        let gender: string | null = null;
+        let loginId: string | null = null;
+        let schoolName: string | null = null;
+        try {
+          const stuRows = await this.db.client.from('students').select('gender,login_id').eq('id', id).limit(1);
+          const stuRow = Array.isArray((stuRows as any)?.data) ? (stuRows as any).data[0] : null;
+          gender = stuRow?.gender || null;
+          loginId = stuRow?.login_id || null;
+          if (!loginId) {
+            const accRows = await this.db.client.from('student_accounts').select('login_id,gender').eq('student_id', id).limit(1);
+            const accRow = Array.isArray((accRows as any)?.data) ? (accRows as any).data[0] : null;
+            loginId = accRow?.login_id || null;
+            if (!gender) gender = accRow?.gender || null;
+          }
+        } catch { /* non-fatal */ }
+        if (!gender || !loginId) {
+          const local = this.studentAuth.getLocalStudent(id);
+          if (local) {
+            if (!gender) gender = local.gender || null;
+            if (!loginId) loginId = local.loginId || null;
+          }
         }
-      }
-      try {
-        if (student.school_id) {
-          const schRows = await this.db.client.from('schools').select('school_name').eq('id', student.school_id).limit(1);
-          const schRow = Array.isArray((schRows as any)?.data) ? (schRows as any).data[0] : null;
-          schoolName = schRow?.school_name || null;
-        }
-      } catch { /* non-fatal */ }
+        try {
+          if (student.school_id) {
+            const schRows = await this.db.client.from('schools').select('school_name').eq('id', student.school_id).limit(1);
+            const schRow = Array.isArray((schRows as any)?.data) ? (schRows as any).data[0] : null;
+            schoolName = schRow?.school_name || null;
+          }
+        } catch { /* non-fatal */ }
+        return { gender, loginId, schoolName };
+      })();
 
-      const hw = await this.db.client.from('homework').select('*').eq('student_id', id).order('due_at', { ascending: true }).limit(8);
+      const [hw, pm, memRes, ann, classTeachers, { gender, loginId, schoolName }] = await Promise.all([
+        homeworkRequest, progressRequest, memoriesRequest, announcementsRequest, teachersRequest, profileRequest,
+      ]);
       const homeworkRows = (hw && (hw as any).data) || [];
       const mergedHomeworkRows = Array.isArray(homeworkRows) && homeworkRows.length
         ? homeworkRows
@@ -91,7 +110,6 @@ export class DashboardController {
         status: h.status || (h.graded ? 'completed' : 'pending')
       }));
 
-      const pm = await this.db.client.from('progress_metrics').select('*').eq('student_id', id).order(METRIC_ORDER_COLUMN, { ascending: false }).limit(10);
       const progressRows = (pm && (pm as any).data) || [];
 
       const subjectsMap = new Map<string, { scoreSum: number; count: number }>();
@@ -112,19 +130,12 @@ export class DashboardController {
         goal: 85
       }));
 
-      const memRes = await this.db.client.from('memories').select('*').eq('student_id', id).limit(6);
       const memRows = (memRes && (memRes as any).data) || [];
       const recommendations = (Array.isArray(memRows) ? memRows : []).slice(0, 4).map((m: any) => ({
         topic: m.key || 'study topic',
         reason: m.value || 'Recommended from your learning pattern'
       }));
 
-      const ann = await this.db.client
-        .from('announcements')
-        .select('*')
-        .in('audience', ['students', 'all'])
-        .order('created_at', { ascending: false })
-        .limit(20);
       const announcementRows = (ann && (ann as any).data) || [];
       // Only show announcements currently inside their (optional) visibility window.
       const isAnnouncementVisible = (a: any) => {
@@ -150,19 +161,6 @@ export class DashboardController {
         : this.localFeed.listAnnouncements().filter(isAnnouncementVisible).slice(0, 8);
 
       const streak = await this.computeLearningStreak(id, mergedHomeworkRows, progressRows);
-
-      // Teachers responsible for this student's class (with their subjects), so
-      // the student portal can show "My Teachers" for their class.
-      let classTeachers: Array<{ id: string; name: string; subject: string }> = [];
-      try {
-        const schoolId = student?.school_id || null;
-        const className = student?.class_name || null;
-        if (schoolId && className) {
-          classTeachers = await this.studentAuth.listClassTeachers(schoolId, className);
-        }
-      } catch (_e) {
-        classTeachers = [];
-      }
 
       const dashboard = {
         greetingName: student?.name || null,
@@ -273,17 +271,18 @@ export class DashboardController {
       add(metricAt(p));
     }
 
-    // 3) Test attempts.
-    try {
-      const ta = await this.db.client.from('test_attempts').select('*').eq('student_id', id).limit(500);
-      for (const a of ((ta as any)?.data || [])) add(a?.started_at || a?.submitted_at || a?.finished_at || a?.completed_at || a?.created_at);
-    } catch { /* table may not exist in some envs */ }
-
-    // 4) Orchard nurturing activity.
-    try {
-      const oa = await this.db.client.from('orchard_activity').select('*').eq('student_id', id).limit(1000);
-      for (const a of ((oa as any)?.data || [])) add(a?.occurred_at || a?.created_at);
-    } catch { /* orchard optional */ }
+    // Independent optional streak sources can be read concurrently.
+    await Promise.all([(async () => {
+      try {
+        const ta = await this.db.client.from('test_attempts').select('*').eq('student_id', id).limit(500);
+        for (const a of ((ta as any)?.data || [])) add(a?.started_at || a?.submitted_at || a?.finished_at || a?.completed_at || a?.created_at);
+      } catch { /* table may not exist in some envs */ }
+    })(), (async () => {
+      try {
+        const oa = await this.db.client.from('orchard_activity').select('*').eq('student_id', id).limit(1000);
+        for (const a of ((oa as any)?.data || [])) add(a?.occurred_at || a?.created_at);
+      } catch { /* orchard optional */ }
+    })()]);
 
     if (!days.size) return empty;
 

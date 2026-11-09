@@ -20,6 +20,45 @@ npm run start:dev
 
 The server starts on `PORT` from `.env` (default 3000) and exposes `POST /chat`.
 
+Dashboard and report performance
+--------------------------------
+
+Dashboard profile and summary reads run concurrently where independent, including
+the optional streak sources. Existing limits, class filtering, local fallbacks
+and dashboard cache behavior remain unchanged. This speeds up the shared API
+used by both the website and mobile app without changing its response contract.
+Concurrent learning-score requests for the same student share one in-flight
+calculation; completed results and failures are not cached. Different students
+remain isolated, and all historical evidence and score formulas are unchanged.
+No database schema, RLS or infrastructure changes are required.
+
+Validate with:
+`node --test -r ts-node/register src/controllers/dashboard.performance.test.ts src/progress/learning-score.service.test.ts`.
+
+Orchard loading performance
+--------------------------
+
+An overview reads the curriculum once and reuses synchronized chapters for tree
+initialization and mastery counts. Up to three subjects initialize concurrently;
+independent summary reads run in parallel. Tree-detail requests initialize only
+the requested subject, while school artwork assignments still use the full
+allowed subject list. Growth rules, rewards, review ordering and response
+contracts are unchanged.
+
+Overlapping identical reads share an in-flight result per student/subject.
+Initialization is serialized per student, and overlapping chapter synchronization
+is shared per subject/class within the backend process. Completed results and
+failures are not cached: later reads still synchronize uploads, renames and
+withdrawals and calculate live decay. No migrations or RLS changes are needed.
+
+Checks:
+`node --test -r ts-node/register src/orchard/orchard.performance.test.ts src/orchard/orchard.mastery.test.ts src/orchard/orchard.assignments.test.ts src/orchard/orchard.constants.test.ts`
+and `npx ts-node scripts/orchard_stage_smoke.ts`.
+The performance tests assert query budgets and simulate 80 overlapping identical
+requests and 80 distinct students using an in-memory database. They verify
+isolation/concurrency, not production capacity; latency and database saturation
+still need an authorized staging load test before an 80-user rollout.
+
 Owner-only school registration
 ------------------------------
 

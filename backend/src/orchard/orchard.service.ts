@@ -39,9 +39,23 @@ interface ActivityInput {
   occurredAt?: string; // ISO — caller-supplied for historical/month-wise seeding
 }
 
+interface CurriculumSnapshot {
+  lessons: any[];
+  visibility: any[];
+}
+
+interface OrchardInitialization {
+  className: string;
+  catalog: SubjectCatalogEntry[];
+  chaptersBySubject: Map<string, any[]>;
+}
+
 @Injectable()
 export class OrchardService {
   private static readonly assignmentLocks = new Map<string, Promise<void>>();
+  private readonly pendingChapters = new Map<string, Promise<any[]>>();
+  private readonly pendingReads = new Map<string, Promise<any>>();
+  private readonly pendingInitialization = new Map<string, { subjectKey?: string; promise: Promise<OrchardInitialization> }>();
   constructor(
     private readonly db: SupabaseService,
     private readonly studentAuth: StudentAuthService,
@@ -114,7 +128,7 @@ export class OrchardService {
   // teachers has no subjects, and therefore no orchard trees, no flashcard
   // decks, no tutor lessons and no progress rows. The student portal's subject
   // nav resolves the same sources, so the two always agree.
-  async resolveStudentSubjectKeys(studentId: string): Promise<string[]> {
+  async resolveStudentSubjectKeys(studentId: string, context?: { schoolId: string; className: string }): Promise<string[]> {
     const names = new Set<string>();
 
     // Subjects registered for the student's class via their teacher(s). This is
@@ -125,7 +139,7 @@ export class OrchardService {
     // metrics must never resurrect a subject whose teacher is gone, otherwise a
     // class could show a subject nobody teaches.
     try {
-      const { schoolId, className } = await this.resolveStudentContext(studentId);
+      const { schoolId, className } = context || await this.resolveStudentContext(studentId);
       if (schoolId && className) {
         const teachers = await this.studentAuth.listClassTeachers(schoolId, className);
         for (const t of teachers || []) {
@@ -193,11 +207,16 @@ export class OrchardService {
   // uploaded for that subject AND that exact class. We mirror them into
   // `orchard_chapters` (linked by lesson_id) so every uploaded chapter becomes a
   // seed in the tree — for existing students and for anyone who registers later.
-  private async chaptersFromCurriculum(subjectKey: string, className: string): Promise<any[]> {
-    const lessons = await this.selectRows('lessons', []);
+  private async readCurriculum(): Promise<CurriculumSnapshot> {
+    const [lessons, visibility] = await Promise.all([
+      this.selectRows('lessons', []),
+      this.selectRows('lesson_class_visibility', []),
+    ]);
+    return { lessons, visibility };
+  }
 
-    // Which lessons are published to this class?
-    const visibility = await this.selectRows('lesson_class_visibility', []);
+  private async chaptersFromCurriculum(subjectKey: string, className: string, snapshot?: CurriculumSnapshot): Promise<any[]> {
+    const { lessons, visibility } = snapshot || await this.readCurriculum();
     const visibleLessonIds = new Set(
       (visibility || [])
         .filter((v) => String(v.class_name || '').trim().toLowerCase() === className.trim().toLowerCase() && v.is_visible !== false)
@@ -275,8 +294,17 @@ export class OrchardService {
   // Chapters are ALWAYS the uploaded curriculum — nothing more, nothing less.
   // A subject with no uploaded lessons for this class legitimately has zero
   // chapters and renders as an empty tree waiting for its first upload.
-  private async ensureChapters(subjectKey: string, className: string): Promise<any[]> {
-    return this.chaptersFromCurriculum(subjectKey, className);
+  private async ensureChapters(subjectKey: string, className: string, snapshot?: CurriculumSnapshot): Promise<any[]> {
+    const key = JSON.stringify([subjectKey, className]);
+    const pending = this.pendingChapters.get(key);
+    if (pending) return pending;
+    const request = this.chaptersFromCurriculum(subjectKey, className, snapshot);
+    this.pendingChapters.set(key, request);
+    try {
+      return await request;
+    } finally {
+      this.pendingChapters.delete(key);
+    }
   }
 
   // ─── ensure per-student profile ──────────────────────────────────────────────
@@ -300,8 +328,8 @@ export class OrchardService {
   }
 
   // ─── ensure a tree + its chapter_growth seeds for a subject ──────────────────
-  private async ensureTree(studentId: string, subject: SubjectCatalogEntry, className: string): Promise<any> {
-    const chapters = await this.ensureChapters(subject.subject_key, className);
+  private async ensureTree(studentId: string, subject: SubjectCatalogEntry, className: string, resolvedChapters?: any[]): Promise<any> {
+    const chapters = resolvedChapters || await this.ensureChapters(subject.subject_key, className);
 
     let trees = await this.selectRows('orchard_trees', [
       ['student_id', studentId],
@@ -374,27 +402,70 @@ export class OrchardService {
   }
 
   // ─── ensure the whole orchard exists for a student ───────────────────────────
-  async ensureOrchard(studentId: string): Promise<{ className: string; catalog: SubjectCatalogEntry[] }> {
-    const { schoolId, className } = await this.resolveStudentContext(studentId);
+  async ensureOrchard(studentId: string, subjectKey?: string): Promise<OrchardInitialization> {
+    const pending = this.pendingInitialization.get(studentId);
+    if (pending) {
+      if (!pending.subjectKey || pending.subjectKey === subjectKey) return pending.promise;
+      await pending.promise;
+      return this.ensureOrchard(studentId, subjectKey);
+    }
+    const promise = this.initializeOrchard(studentId, subjectKey);
+    this.pendingInitialization.set(studentId, { subjectKey, promise });
+    try {
+      return await promise;
+    } finally {
+      this.pendingInitialization.delete(studentId);
+    }
+  }
+
+  private async initializeOrchard(studentId: string, subjectKey?: string): Promise<OrchardInitialization> {
+    const [context, entries] = await Promise.all([
+      this.resolveStudentContext(studentId),
+      this.getCatalog(),
+    ]);
+    const { schoolId, className } = context;
     // Only build trees for the subjects this student actually has (mirrors the
     // student portal). Subjects not registered for the student get no tree.
     // Dynamic subjects (outside the fixed base catalog) get a synthesized entry
     // so a freshly-registered subject still grows its own tree.
-    const allowedKeys = await this.resolveStudentSubjectKeys(studentId);
-    const byKey = new Map((await this.getCatalog()).map((s) => [s.subject_key, s]));
+    const allowedKeys = await this.resolveStudentSubjectKeys(studentId, context);
+    const byKey = new Map(entries.map((s) => [s.subject_key, s]));
     const assignments = allowedKeys.length ? await this.ensureSchoolTreeAssignments(schoolId, allowedKeys) : [];
     const assignedTypes = new Map(assignments.map((row) => [row.subject_key, row.tree_type]));
     const catalog = allowedKeys
       .map((key) => schoolTreeEntry(byKey.get(key) || subjectEntryFor(key), assignedTypes.get(key)!))
       .sort((a, b) => a.order_index - b.order_index);
-    await this.ensureProfile(studentId);
-    for (const subject of catalog) {
-      // Dynamic subjects need a catalog row before their chapters/trees can be
-      // stored (orchard_chapters references orchard_subjects).
-      await this.ensureSubjectRegistered(byKey.get(subject.subject_key) || subjectEntryFor(subject.subject_key));
-      await this.ensureTree(studentId, subject, className);
-    }
-    return { className, catalog };
+    const subjects = subjectKey ? catalog.filter((s) => s.subject_key === subjectKey) : catalog;
+    const chaptersBySubject = new Map<string, any[]>();
+    await Promise.all([
+      this.ensureProfile(studentId),
+      (async () => {
+        if (!subjects.length) return;
+        const snapshot = await this.readCurriculum();
+        await this.forEachSubject(subjects, async (subject) => {
+          if (!byKey.has(subject.subject_key)) {
+            await this.ensureSubjectRegistered(subjectEntryFor(subject.subject_key));
+          }
+          const chapters = await this.ensureChapters(subject.subject_key, className, snapshot);
+          chaptersBySubject.set(subject.subject_key, chapters);
+          await this.ensureTree(studentId, subject, className, chapters);
+        });
+      })(),
+    ]);
+    return { className, catalog, chaptersBySubject };
+  }
+
+  private async forEachSubject(subjects: SubjectCatalogEntry[], action: (subject: SubjectCatalogEntry) => Promise<void>): Promise<void> {
+    let next = 0;
+    // Limit fan-out instead of issuing every subject's queries at once.
+    const results = await Promise.allSettled(Array.from({ length: Math.min(3, subjects.length) }, async () => {
+      while (next < subjects.length) {
+        const subject = subjects[next++];
+        await action(subject);
+      }
+    }));
+    const failed = results.find((result): result is PromiseRejectedResult => result.status === 'rejected');
+    if (failed) throw failed.reason;
   }
 
   private assignmentFailure(message: string): never {
@@ -900,8 +971,8 @@ export class OrchardService {
   }
 
   // ─── read: full orchard overview ─────────────────────────────────────────────
-  private async masteredChapters(studentId: string, subjectKey: string, className: string): Promise<number> {
-    const chapters = await this.ensureChapters(subjectKey, className);
+  private async masteredChapters(studentId: string, subjectKey: string, className: string, resolvedChapters?: any[]): Promise<number> {
+    const chapters = resolvedChapters || await this.ensureChapters(subjectKey, className);
     const growth: Array<{ chapter_id: string; stage_index: number }> = [];
     const pageSize = 500;
     for (let offset = 0; ; offset += pageSize) {
@@ -923,18 +994,38 @@ export class OrchardService {
   }
 
   async getOrchard(studentId: string): Promise<any> {
-    const { catalog, className } = await this.ensureOrchard(studentId);
-    const masteredCounts = new Map(await Promise.all(catalog.map(async (subject) =>
-      [subject.subject_key, await this.masteredChapters(studentId, subject.subject_key, className)] as const
-    )));
-    const treeRows = await this.selectRows('orchard_trees', [['student_id', studentId]]);
+    return this.shareRead(JSON.stringify(['overview', studentId]), () => this.readOrchard(studentId));
+  }
+
+  private async shareRead(key: string, read: () => Promise<any>): Promise<any> {
+    const pending = this.pendingReads.get(key);
+    if (pending) return pending;
+    const request = read();
+    this.pendingReads.set(key, request);
+    try {
+      return await request;
+    } finally {
+      this.pendingReads.delete(key);
+    }
+  }
+
+  private async readOrchard(studentId: string): Promise<any> {
+    const { catalog, className, chaptersBySubject } = await this.ensureOrchard(studentId);
+    const masteredCounts = new Map<string, number>();
+    const [, treeRows, activityMap, dueRows] = await Promise.all([
+      this.forEachSubject(catalog, async (subject) => {
+        masteredCounts.set(subject.subject_key, await this.masteredChapters(
+          studentId, subject.subject_key, className, chaptersBySubject.get(subject.subject_key),
+        ));
+      }),
+      this.selectRows('orchard_trees', [['student_id', studentId]]),
+      this.activityBySubject(studentId),
+      this.dueReviewRows(studentId),
+    ]);
     const byKey = new Map((treeRows || []).map((t) => [t.subject_key, t]));
-    // Live meters relative to NOW so trees decay when the student stops studying.
-    const activityMap = await this.activityBySubject(studentId);
 
     // Retention checks (Blossom/Fruit) due right now, counted per subject so
     // the tree card can nudge "2 reviews due" before the student opens it.
-    const dueRows = await this.dueReviewRows(studentId);
     const dueCountBySubject = new Map<string, number>();
     for (const r of dueRows) {
       const key = String(r.subject_key || '');
@@ -1001,30 +1092,30 @@ export class OrchardService {
 
   // ─── read: single tree detail with its chapters ──────────────────────────────
   async getTree(studentId: string, subjectKey: string): Promise<any> {
+    return this.shareRead(JSON.stringify(['tree', studentId, subjectKey]), () => this.readTree(studentId, subjectKey));
+  }
+
+  private async readTree(studentId: string, subjectKey: string): Promise<any> {
     if (!subjectKey) return { success: false, error: 'unknown subject' };
-    const allowedForTree = new Set(await this.resolveStudentSubjectKeys(studentId));
-    if (!SUBJECT_BY_KEY[subjectKey] && !allowedForTree.has(subjectKey)) return { success: false, error: 'unknown subject' };
-    const { catalog, className } = await this.ensureOrchard(studentId);
+    const { catalog, className, chaptersBySubject } = await this.ensureOrchard(studentId, subjectKey);
     const subject = catalog.find((s) => s.subject_key === subjectKey);
     if (!subject) return { success: false, error: 'unknown subject' };
-    const treeRows = await this.selectRows('orchard_trees', [
-      ['student_id', studentId],
-      ['subject_key', subjectKey],
+    const chapterRows = chaptersBySubject.get(subjectKey) || [];
+    const [treeRows, growthRows, dueRows, activity, masteredCount] = await Promise.all([
+      this.selectRows('orchard_trees', [['student_id', studentId], ['subject_key', subjectKey]]),
+      this.selectRows('chapter_growth', [['student_id', studentId], ['subject_key', subjectKey]]),
+      this.dueReviewRows(studentId, [['subject_key', subjectKey]]),
+      this.selectRows('orchard_activity', [['student_id', studentId], ['subject_key', subjectKey]]),
+      this.masteredChapters(studentId, subjectKey, className, chapterRows),
     ]);
     const t = (treeRows && treeRows[0]) || {};
     // Chapters are per subject AND per class — never show another grade's
     // chapters. This resolves them from the uploaded curriculum for the
     // student's own class.
-    const chapterRows = await this.ensureChapters(subjectKey, className);
-    const growthRows = await this.selectRows('chapter_growth', [
-      ['student_id', studentId],
-      ['subject_key', subjectKey],
-    ]);
     const growthByChapter = new Map((growthRows || []).map((g) => [String(g.chapter_id), g]));
 
     // Which chapters have a retention check due right now (week/month), so the
     // checklist can offer a "take the check" action instead of sitting dead.
-    const dueRows = await this.dueReviewRows(studentId, [['subject_key', subjectKey]]);
     const dueByChapter = new Map<string, 'week' | 'month'>();
     for (const r of dueRows) {
       const key = String(r.chapter_id);
@@ -1055,10 +1146,6 @@ export class OrchardService {
     const nextChapter = chapters.find((c) => c.chapterId === t.next_chapter_id) || chapters.find((c) => c.stageIndex === 0) || null;
 
     // Live meters relative to NOW so this tree decays when study stops.
-    const activity = await this.selectRows('orchard_activity', [
-      ['student_id', studentId],
-      ['subject_key', subjectKey],
-    ]);
     const live = this.computeLiveMeters(activity);
     const stage = t.stage || 'seed';
     const health = healthFromWater(live.water);
@@ -1081,7 +1168,7 @@ export class OrchardService {
         // a subject with no uploaded lessons genuinely has 0 chapters.
         totalChapters: chapters.length,
         completedChapters: t.completed_chapters || 0,
-        masteredChapters: await this.masteredChapters(studentId, subjectKey, className),
+        masteredChapters: masteredCount,
         progressPct: t.progress_pct || 0,
         rootsPct: t.roots_pct || 0,
         waterPct: live.water,

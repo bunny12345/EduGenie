@@ -120,12 +120,27 @@ function WeekStrip({ activeDates = [] }) {
   );
 }
 
-export default function StudentOrchard({ studentId, greetingName = 'there' }) {
-  const [data, setData] = useState(null);
+export default function StudentOrchard({ studentId, greetingName = 'there', initialData = null, onData }) {
+  const [data, setData] = useState(initialData);
   const [error, setError] = useState('');
   const [selectedKey, setSelectedKey] = useState('');
   const [detail, setDetail] = useState(null);
   const [openKey, setOpenKey] = useState('');
+  const [detailError, setDetailError] = useState('');
+  const [detailRefresh, setDetailRefresh] = useState(0);
+  const loadTree = useMemo(() => {
+    const pending = new Map();
+    return async (_id, key) => {
+      if (pending.has(key)) return pending.get(key);
+      const request = getOrchardTree(studentId, key);
+      pending.set(key, request);
+      try {
+        return await request;
+      } finally {
+        pending.delete(key);
+      }
+    };
+  }, [studentId]);
 
   // The orchard loads quietly in the background — no "growing your orchard"
   // screen. It renders as soon as the data lands, and later refreshes swap the
@@ -136,12 +151,13 @@ export default function StudentOrchard({ studentId, greetingName = 'there' }) {
     try {
       const res = await getOrchard(studentId);
       setData(res);
+      onData?.(res);
       const first = res?.trees?.[0]?.subjectKey || '';
       setSelectedKey((prev) => prev || first);
     } catch (e) {
       setError(String(e?.message || e || 'Failed to load orchard'));
     }
-  }, [studentId]);
+  }, [studentId, onData]);
 
   useEffect(() => {
     loadOrchard();
@@ -151,18 +167,19 @@ export default function StudentOrchard({ studentId, greetingName = 'there' }) {
     let cancelled = false;
     async function loadDetail() {
       if (!studentId || !selectedKey) return;
+      setDetailError('');
       try {
-        const res = await getOrchardTree(studentId, selectedKey);
+        const res = await loadTree(studentId, selectedKey);
         if (!cancelled) setDetail(res);
-      } catch {
-        if (!cancelled) setDetail(null);
+      } catch (e) {
+        if (!cancelled) setDetailError(e?.message || 'Unable to load tree details.');
       }
     }
     loadDetail();
     return () => {
       cancelled = true;
     };
-  }, [studentId, selectedKey, data]);
+  }, [studentId, selectedKey, data, detailRefresh, loadTree]);
 
   const profile = data?.profile || {};
   const trees = useMemo(() => data?.trees || [], [data]);
@@ -201,6 +218,7 @@ export default function StudentOrchard({ studentId, greetingName = 'there' }) {
           studentId={studentId}
           subjectKey={openKey}
           initialTree={initialTree}
+          requestTree={loadTree}
           onBack={() => {
             setOpenKey('');
             loadOrchard();
@@ -358,7 +376,11 @@ export default function StudentOrchard({ studentId, greetingName = 'there' }) {
               </div>
 
               {/* Next chapter */}
-              {detail?.nextChapter && (
+              {detailError ? <div role="alert">
+                <p>{detailError}</p>
+                <button onClick={() => setDetailRefresh((value) => value + 1)}>Retry tree details</button>
+              </div> : null}
+              {detail?.subjectKey === selectedKey && detail?.nextChapter && (
                 <div className="eg-orch-next">
                   <span className="eg-orch-next-label">Next Chapter</span>
                   <div className="eg-orch-next-row">

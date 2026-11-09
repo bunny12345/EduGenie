@@ -74,6 +74,26 @@ function own(rows: Row[]): Row[] {
   return rows.map((row, i) => ({ id: `row-${i}`, student_id: 'student', ...row }));
 }
 
+test('concurrent reports share reads per student, without caching completed results', async () => {
+  const { service, requests } = fixture();
+  const [first, second] = await Promise.all([
+    service.getLearningScore('student'), service.getLearningScore('student'),
+  ]);
+  assert.deepEqual(first, second);
+  assert.equal(requests.filter((request) => request.table === 'messages').length, 1);
+  await service.getLearningScore('student');
+  assert.equal(requests.filter((request) => request.table === 'messages').length, 2);
+  await Promise.all([service.getLearningScore('student'), service.getLearningScore('another-student')]);
+  assert.equal(requests.filter((request) => request.table === 'messages').length, 4);
+});
+
+test('a failed report is not retained and subsequent requests can retry', async () => {
+  const { service, requests } = fixture({}, 'messages');
+  await assert.rejects(service.getLearningScore('student'), ServiceUnavailableException);
+  await assert.rejects(service.getLearningScore('student'), ServiceUnavailableException);
+  assert.equal(requests.filter((request) => request.table === 'messages').length, 2);
+});
+
 function assertEndpoints(report: Awaited<ReturnType<LearningScoreService['getLearningScore']>>) {
   assert.equal(report.dailyTrend.at(-1).score, report.score);
   const currentMonth = report.trend.filter((point: { future: boolean }) => !point.future).at(-1);

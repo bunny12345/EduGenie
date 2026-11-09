@@ -1,11 +1,27 @@
 import React from 'react';
 import './App.css';
-import StudentDashboard from './components/StudentDashboard';
-import TeacherDashboard from './components/TeacherDashboard';
-import SchoolDashboard from './components/SchoolDashboard';
 import RoleGateway from './components/RoleGateway';
-import OwnerPortal from './components/OwnerPortal';
 import { setRuntimeDevToken } from './api';
+
+const StudentDashboard = React.lazy(() => import('./components/StudentDashboard'));
+const TeacherDashboard = React.lazy(() => import('./components/TeacherDashboard'));
+const SchoolDashboard = React.lazy(() => import('./components/SchoolDashboard'));
+const OwnerPortal = React.lazy(() => import('./components/OwnerPortal'));
+
+class PortalBoundary extends React.Component {
+  state = { failed: false };
+  static getDerivedStateFromError() { return { failed: true }; }
+  componentDidCatch(error) { console.error('Unable to open portal:', error); }
+  render() {
+    if (this.state.failed) {
+      return <main role="alert">
+        <p>Unable to open this portal. Check your connection and reload.</p>
+        <button type="button" onClick={() => window.location.reload()}>Reload</button>
+      </main>;
+    }
+    return this.props.children;
+  }
+}
 
 // Temporary debug switch: disables automatic auth-expiry flows that can feel like
 // page loops while we stabilize homework submit.
@@ -40,7 +56,7 @@ function secondsUntilExpiry(token) {
   return Math.max(0, Math.floor(exp - Date.now() / 1000));
 }
 
-function App() {
+function AppContent() {
   const [session, setSession] = React.useState(() => {
     try {
       const raw = localStorage.getItem('AcademiX.session');
@@ -158,7 +174,11 @@ function App() {
     return <SchoolDashboard session={session} onLogout={handleLogout} />;
   }
 
-  return <StudentDashboard studentId={session.userId || 'test'} onLogout={handleLogout} />;
+  return <StudentDashboard key={session.userId || 'test'} studentId={session.userId || 'test'} onLogout={handleLogout} />;
+}
+
+function App() {
+  return <PortalBoundary><React.Suspense fallback={null}><AppContent /></React.Suspense></PortalBoundary>;
 }
 
 export default App;

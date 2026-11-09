@@ -94,6 +94,7 @@ class TreeSprite extends StatelessWidget {
                 width: size,
                 height: size,
                 fit: BoxFit.contain,
+                cacheWidth: (size * MediaQuery.devicePixelRatioOf(context)).ceil(),
                 excludeFromSemantics: true,
                 errorBuilder: (context, error, stack) => _Placeholder(
                   stage: stage,
@@ -111,6 +112,7 @@ class TreeSprite extends StatelessWidget {
                   child: Image.asset(
                     'assets/orchard/$assetType/${bakedOak ? 'acorn' : 'mastery_fruit'}.png',
                     fit: BoxFit.contain,
+                    cacheWidth: (fruit.width * MediaQuery.devicePixelRatioOf(context)).ceil(),
                     excludeFromSemantics: true,
                   ),
                 ),

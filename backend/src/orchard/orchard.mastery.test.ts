@@ -35,13 +35,10 @@ function fixture(failPage = false) {
   const studentAuth: StudentAuthService = Object.create(StudentAuthService.prototype);
   const service = new OrchardService(db, studentAuth);
   Object.defineProperty(service, 'ensureOrchard', {
-    value: async () => ({ className: 'Class 8', catalog: [SUBJECT_CATALOG[0]] }),
-  });
-  Object.defineProperty(service, 'ensureChapters', {
-    value: async (_subject: string, className: string) => {
-      assert.equal(className, 'Class 8');
-      return ids.map((id) => ({ id }));
-    },
+    value: async () => ({
+      className: 'Class 8', catalog: [SUBJECT_CATALOG[0]],
+      chaptersBySubject: new Map([[SUBJECT_CATALOG[0].subject_key, ids.map((id) => ({ id }))]]),
+    }),
   });
   return { service, pages };
 }
