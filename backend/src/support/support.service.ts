@@ -1,4 +1,4 @@
-import { BadRequestException, ForbiddenException, Injectable, NotFoundException, ServiceUnavailableException, HttpException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, NotFoundException, ServiceUnavailableException, HttpException, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import { SupabaseService } from '../supabase.service';
 import { StudentAuthService } from '../auth/student-auth.service';
@@ -16,10 +16,48 @@ export interface SupportMessage { id: string; ticket_id: string; author_role: st
 interface DbResult<T> { data: T; error: { message: string } | null }
 
 @Injectable()
-export class SupportService {
+export class SupportService implements OnModuleInit, OnModuleDestroy {
   private readonly limits = new Map<string, { count: number; until: number }>();
+  private cleanupTimer?: ReturnType<typeof setInterval>;
+  private cleanupTask?: Promise<void>;
 
   constructor(private readonly db: SupabaseService, private readonly auth: StudentAuthService, private readonly email: EmailService) {}
+
+  async onModuleInit() {
+    if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) return;
+    await this.scheduledCleanup();
+    this.cleanupTimer = setInterval(() => { void this.scheduledCleanup(); }, 60000);
+    this.cleanupTimer.unref();
+  }
+
+  onModuleDestroy() {
+    if (this.cleanupTimer) clearInterval(this.cleanupTimer);
+  }
+
+  private async scheduledCleanup() {
+    try {
+      await this.cleanupResolvedTickets();
+    } catch (error) {
+      console.error('[support] Scheduled resolved-request cleanup failed; retrying on the next sweep:', error);
+    }
+  }
+
+  async cleanupResolvedTickets() {
+    this.storageReady();
+    if (this.cleanupTask) return this.cleanupTask;
+    const cutoff = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString();
+    this.cleanupTask = (async () => {
+      // One conditional delete lets PostgreSQL serialize cleanup with reopening.
+      // The existing foreign key cascades deletion to the conversation messages.
+      this.checked(await this.db.client.from('support_tickets').delete()
+        .eq('status', 'resolved').lte('updated_at', cutoff), 'delete expired resolved tickets');
+    })();
+    try {
+      await this.cleanupTask;
+    } finally {
+      this.cleanupTask = undefined;
+    }
+  }
 
   private storageReady() {
     if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
@@ -96,17 +134,26 @@ export class SupportService {
     return { id, role: 'student', name: profile.name, className: profile.className, schoolId: profile.schoolId };
   }
 
-  chat(actor: SupportActor, body: { message?: unknown }) {
+  chat(actor: SupportActor, body: { message?: unknown; previousQuestions?: unknown }) {
     const role = this.requester(actor);
     this.rateLimit(`bot:${role}:${actor.actorId}`, 30);
-    return { success: true, ...answerSupportQuestion(this.text(body?.message, 2000), role) };
+    const history = body?.previousQuestions;
+    let previousQuestions: string[] = [];
+    if (history !== undefined) {
+      if (!Array.isArray(history) || history.length > 4) {
+        throw new BadRequestException('Support context must contain at most four previous questions.');
+      }
+      previousQuestions = history.map((question) => this.text(question, 2000));
+    }
+    return { success: true, ...answerSupportQuestion(this.text(body?.message, 2000), role, previousQuestions) };
   }
 
   async list(actor?: SupportActor, offset = 0) {
     this.storageReady();
+    const identity = actor ? await this.identity(actor) : undefined;
+    await this.cleanupResolvedTickets();
     let query = this.db.client.from('support_tickets').select('*');
-    if (actor) {
-      const identity = await this.identity(actor);
+    if (identity) {
       query = query.eq('requester_id', identity.id).eq('requester_role', identity.role).eq('school_id', identity.schoolId);
     }
     const tickets = this.checked<SupportTicket[]>(await query.order('updated_at', { ascending: false }).range(offset, offset + 49), 'list tickets');
@@ -114,7 +161,9 @@ export class SupportService {
   }
 
   private async ticket(id: string, identity?: SupportIdentity) {
-    let query = this.db.client.from('support_tickets').select('*').eq('id', this.uuid(id));
+    const ticketId = this.uuid(id);
+    await this.cleanupResolvedTickets();
+    let query = this.db.client.from('support_tickets').select('*').eq('id', ticketId);
     if (identity) query = query.eq('requester_id', identity.id).eq('requester_role', identity.role).eq('school_id', identity.schoolId);
     const tickets = this.checked<SupportTicket[]>(await query.limit(1), 'get ticket');
     if (!tickets?.[0]) throw new NotFoundException('Support request not found.');
@@ -174,7 +223,8 @@ export class SupportService {
     this.storageReady();
     if (status !== 'open' && status !== 'resolved') throw new BadRequestException('Invalid request status.');
     await this.ticket(id);
-    this.checked(await this.db.client.from('support_tickets').update({ status, updated_at: new Date().toISOString() }).eq('id', id), 'update status');
+    this.checked(await this.db.client.from('support_tickets').update({ status, updated_at: new Date(Date.now()).toISOString() })
+      .eq('id', id).neq('status', status), 'update status');
     return { success: true };
   }
 

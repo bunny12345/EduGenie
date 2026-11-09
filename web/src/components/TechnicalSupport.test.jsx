@@ -32,9 +32,20 @@ test('student bot answers operational questions and offers human escalation', as
   fireEvent.change(screen.getByLabelText('Message'), { target: { value: 'How do I submit homework?' } });
   fireEvent.click(screen.getByRole('button', { name: 'Send', exact: true }));
   expect(await screen.findByText('Open Homework from Academics.')).toBeInTheDocument();
-  expect(askSupportBot).toHaveBeenCalledWith('How do I submit homework?');
+  expect(askSupportBot).toHaveBeenCalledWith('How do I submit homework?', []);
   expect(screen.getByRole('button', { name: 'Connect to a technician' })).toBeInTheDocument();
   expect(createSupportTicket).not.toHaveBeenCalled();
+});
+
+test.each(['student', 'teacher', 'school_admin'])('bot sends recent user-only context for %s follow-ups', async (requesterRole) => {
+  render(<TechnicalSupport requesterRole={requesterRole} />);
+  const questions = ['How do I submit homework?', 'What if I sent the wrong file?', 'Can I edit it?', 'What if the window closed?', 'Who can help?', 'It still does not work'];
+  for (const [index, question] of questions.entries()) {
+    fireEvent.change(screen.getByLabelText('Message'), { target: { value: question } });
+    fireEvent.click(screen.getByRole('button', { name: 'Send', exact: true }));
+    await waitFor(() => expect(askSupportBot).toHaveBeenNthCalledWith(index + 1, question, questions.slice(Math.max(0, index - 4), index)));
+    await waitFor(() => expect(screen.getAllByText('Open Homework from Academics.')).toHaveLength(index + 1));
+  }
 });
 
 test('unknown bot answer visibly offers a technician', async () => {
@@ -130,6 +141,27 @@ test('owner inbox displays teacher authors instead of labelling them as bots', a
   expect(await screen.findByText('Teacher issue')).toBeInTheDocument();
   expect(screen.getByText('Teacher', { selector: 'strong' })).toBeInTheDocument();
   expect(screen.getByText(/Test Teacher · teacher/, { selector: 'small' })).toBeInTheDocument();
+});
+
+test.each(['student', 'teacher', 'school_admin'])('resolved %s thread explains retention and clears deleted messages on refresh', async (requesterRole) => {
+  const resolvedTicket = { ...ticket, requester_role: requesterRole, status: 'resolved' };
+  listSupportTickets.mockResolvedValue({ tickets: [resolvedTicket], nextOffset: null });
+  getSupportThread.mockResolvedValue({
+    ticket: resolvedTicket,
+    messages: [{ id: 'm1', author_role: 'owner', content: 'Resolved conversation content' }],
+  });
+  render(<TechnicalSupport requesterRole={requesterRole} />);
+  fireEvent.click(await screen.findByRole('button', { name: /Upload problem/ }));
+  expect(await screen.findByText(/automatically deleted 48 hours after resolution/)).toBeInTheDocument();
+  expect(screen.getByText('Resolved conversation content')).toBeInTheDocument();
+  const error = new Error('Support request not found.');
+  error.status = 404;
+  getSupportThread.mockRejectedValue(error);
+  fireEvent.click(screen.getByRole('button', { name: 'Check replies' }));
+  expect(await screen.findByRole('alert')).toHaveTextContent('Support request not found.');
+  expect(screen.queryByText('Resolved conversation content')).not.toBeInTheDocument();
+  fireEvent.change(screen.getByLabelText('Message'), { target: { value: 'Cannot send to a deleted request' } });
+  expect(screen.getByRole('button', { name: 'Send', exact: true })).toBeDisabled();
 });
 
 test('floating teacher support opens and closes an accessible modal and resets bot chat', async () => {

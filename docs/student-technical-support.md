@@ -22,6 +22,32 @@ messages are persisted. Common token/key and labelled-password patterns are
 redacted server-side, but this is not a guarantee that arbitrary personal text
 will be detected: the UI instructs students not to send sensitive information.
 
+### Scenario-based help across portals
+
+The authenticated student, teacher and school bots share the same backend guide
+on web and mobile (where that portal is implemented). Specific scenarios take
+priority over generic feature keywords: wrong homework attachments and the
+one-hour resubmission window, uncertain saves, missing class material, ungraded
+work, progress versus exam marks, Orchard milestones, interrupted tests, teacher
+grading and test editing, incomplete report cards and school upload/link issues.
+Answers describe checks, consequences, role-appropriate next steps and limits;
+they never claim to inspect records, change results or restore deleted content.
+
+`POST /support/chat` accepts `{ message, previousQuestions?: string[] }`.
+Clients send at most four previous user questions (no bot messages), each capped
+at 2,000 characters, for short follow-ups such as "Can I edit it?". Context is
+validated and redacted server-side and is not stored as a bot conversation.
+The authenticated role always controls the guide, regardless of context.
+Explicit new topics override previous topics; unclear follow-ups request detail.
+Repeated failures offer a technician rather than looping through the same advice.
+Old clients may omit context and still receive single-question guidance.
+
+This remains a curated assistant, not a general-purpose AI or live account agent.
+Unsupported scenarios are not guaranteed an answer. Secrets, internal technical
+details and academic solutions are refused; unknown requests ask for detail or
+offer a technician. Deploy the backend before updated web/mobile clients. No
+database migration is needed for scenario guidance or temporary context.
+
 ## Technician workflow
 
 1. Sign in at `https://academix.now/owner` and complete authenticator MFA.
@@ -38,6 +64,25 @@ destination, not a client-supplied recipient. You may configure
 Students, teachers and school administrators do not need email addresses to receive replies; they return
 to their authenticated request. New requests and requester follow-ups notify the technician.
 The system does not promise immediate/live availability.
+
+### Resolved request retention
+
+Resolved requests and their conversation messages are automatically deleted
+48 hours after they are marked resolved, for students, teachers, school
+administrators and the owner inbox on both web and mobile. Open requests are
+never removed by this policy. A new message reopens a request; marking it
+resolved again starts a new 48-hour period. Repeating "Mark resolved" on an
+already-resolved request does not extend its retention.
+
+The backend runs cleanup at startup and every minute, including when nobody is
+using support. It also cleans up before ticket lists and thread access, so
+expired requests are not served after downtime. While the backend is offline,
+cleanup waits until it starts again. The existing message foreign key cascades
+deletion; no schema or RLS changes are required. Failures are logged and retried;
+read-time cleanup failures are surfaced rather than returning stale results.
+This removes stored portal conversations, not copies already delivered by email
+or retained in database backups. Deploy the backend to enable deletion and
+update the web/mobile clients to display the retention notice.
 
 While open, messages refresh every ten seconds and ticket lists every fifteen
 seconds. Lists are paginated; the conversation loads all message pages.
@@ -73,7 +118,15 @@ saved requests.
 
 The curated school guide covers teacher/student registration, private invite
 links, teacher class assignments, curriculum PDFs, class filters and school
-login. It refuses internal technical information and academic questions, has
+login. Action-specific school guides take priority over broad words such as
+student, teacher, progress and password. Account-deletion answers explain the
+consequences, checks before confirmation, safer Edit/Reset password alternatives
+and lack of self-service undo. Student/teacher password and detail changes give
+concrete roster steps instead of registration instructions. Ambiguous deletion
+or recovery questions ask for the item type and offer a technician, rather than
+guessing. The bot cannot execute actions, verify deletion cleanup or promise
+recovery; it does not claim that re-registration restores learning history.
+It refuses internal technical information and academic questions, has
 no access to private records or secrets, and offers technician escalation for
 unsupported questions. Never paste passwords, codes, invite links or records.
 

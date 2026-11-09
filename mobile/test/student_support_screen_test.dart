@@ -31,20 +31,25 @@ class _SupportStub extends SupportApiService {
   final reportIds = <String>[];
   final replyIds = <String>[];
   String? lastQuestion;
+  List<String> lastPreviousQuestions = [];
   bool failReport = false;
   bool failReply = false;
   bool saved = false;
   bool ownerReplied = false;
   bool failList = false;
   bool teacher = false;
+  bool resolved = false;
+  bool deleted = false;
   Completer<SupportBotReply>? pendingBot;
 
   @override
   Future<SupportBotReply> ask(
     String message, {
+    List<String> previousQuestions = const [],
     CancelToken? cancelToken,
   }) async {
     lastQuestion = message;
+    lastPreviousQuestions = previousQuestions;
     if (pendingBot != null) return pendingBot!.future;
     return SupportBotReply.fromJson({
       'reply': teacher
@@ -68,15 +73,28 @@ class _SupportStub extends SupportApiService {
   }
 
   @override
-  Future<SupportThread> thread(String id, {CancelToken? cancelToken}) async =>
-      SupportThread(SupportTicket.fromJson(_ticketJson), [
+  Future<SupportThread> thread(String id, {CancelToken? cancelToken}) async {
+    if (deleted) {
+      throw const SupportApiException(
+        'Support request not found.',
+        statusCode: 404,
+      );
+    }
+    return SupportThread(
+      SupportTicket.fromJson({
+        ..._ticketJson,
+        if (resolved) 'status': 'resolved',
+      }),
+      [
         SupportMessage(
           teacher ? 'teacher' : 'student',
           'Question submitted on website',
         ),
         if (ownerReplied)
           const SupportMessage('owner', 'Please try uploading again.'),
-      ]);
+      ],
+    );
+  }
 
   @override
   Future<SupportSubmission> create({
@@ -171,6 +189,60 @@ Future<void> _dispose(WidgetTester tester) async {
 }
 
 void main() {
+  for (final teacher in [false, true]) {
+    testWidgets(
+      'resolved thread retention and expired message removal ($teacher)',
+      (tester) async {
+        final api = _SupportStub()
+          ..teacher = teacher
+          ..saved = true
+          ..ownerReplied = true
+          ..resolved = true;
+        await _mount(tester, api, teacher: teacher);
+        await _tap(tester, find.text('Upload problem'));
+        expect(
+          find.textContaining('automatically deleted 48 hours'),
+          findsOneWidget,
+        );
+        expect(find.text('Please try uploading again.'), findsOneWidget);
+        api.deleted = true;
+        await tester.pump(const Duration(seconds: 10));
+        await tester.pumpAndSettle();
+        expect(find.text('Support request not found.'), findsOneWidget);
+        expect(find.text('Please try uploading again.'), findsNothing);
+        await _dispose(tester);
+      },
+    );
+  }
+
+  for (final teacher in [false, true]) {
+    testWidgets(
+      'bot follow-ups send only the last four user questions ($teacher)',
+      (tester) async {
+        final api = _SupportStub()..teacher = teacher;
+        await _mount(tester, api, teacher: teacher);
+        final questions = [
+          'How do I submit homework?',
+          'What if I sent the wrong file?',
+          'Can I edit it?',
+          'What if the window closed?',
+          'Who can help?',
+          'It still does not work',
+        ];
+        for (var index = 0; index < questions.length; index++) {
+          await tester.enterText(find.byType(TextField), questions[index]);
+          await _tap(tester, find.text('Send'));
+          expect(api.lastQuestion, questions[index]);
+          expect(
+            api.lastPreviousQuestions,
+            questions.sublist(index > 4 ? index - 4 : 0, index),
+          );
+        }
+        await _dispose(tester);
+      },
+    );
+  }
+
   for (final scale in [1.0, 1.5]) {
     testWidgets(
       'teacher floating message button opens teacher help at text scale $scale',

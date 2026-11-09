@@ -24,12 +24,21 @@ class SupportTicket {
   final String subject;
   final String category;
   final String status;
+  final DateTime? updatedAt;
 
   SupportTicket.fromJson(Map<String, dynamic> json)
     : id = json['id'] as String,
       subject = json['subject'] as String,
       category = json['category'] as String,
-      status = json['status'] as String;
+      status = json['status'] as String,
+      updatedAt = json['updated_at'] == null
+          ? null
+          : DateTime.parse(json['updated_at'] as String);
+
+  bool get expired =>
+      status == 'resolved' &&
+      updatedAt != null &&
+      !updatedAt!.add(const Duration(hours: 48)).isAfter(DateTime.now());
 }
 
 class SupportMessage {
@@ -87,7 +96,8 @@ class SupportSubmission {
 
 class SupportApiException implements Exception {
   final String message;
-  const SupportApiException(this.message);
+  final int? statusCode;
+  const SupportApiException(this.message, {this.statusCode});
   @override
   String toString() => message;
 }
@@ -119,7 +129,10 @@ class SupportApiService {
     } on DioException catch (e) {
       if (CancelToken.isCancel(e)) rethrow;
       if (e.response?.data is Map) {
-        throw SupportApiException(_message(e.response!.data as Map));
+        throw SupportApiException(
+          _message(e.response!.data as Map),
+          statusCode: e.response?.statusCode,
+        );
       }
       throw const SupportApiException(
         'Unable to connect to support. Check your connection and try again.',
@@ -135,11 +148,12 @@ class SupportApiService {
 
   Future<SupportBotReply> ask(
     String message, {
+    List<String> previousQuestions = const [],
     CancelToken? cancelToken,
   }) async => SupportBotReply.fromJson(
     await _request(
       '/support/chat',
-      body: {'message': message},
+      body: {'message': message, 'previousQuestions': previousQuestions},
       cancelToken: cancelToken,
     ),
   );

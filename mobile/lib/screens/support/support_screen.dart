@@ -152,7 +152,9 @@ class _SupportScreenState extends ConsumerState<SupportScreen>
               ]
             : [
                 ...page.tickets,
-                ..._tickets.skip(50).where((t) => !incomingIds.contains(t.id)),
+                ..._tickets.skip(50).where(
+                  (t) => !incomingIds.contains(t.id) && !t.expired,
+                ),
               ];
         if (more || _tickets.length <= 50) _nextOffset = page.nextOffset;
         _listError = null;
@@ -182,7 +184,13 @@ class _SupportScreenState extends ConsumerState<SupportScreen>
       }
     } catch (e) {
       if (mounted && _selected == id && !_cancelled(e)) {
-        setState(() => _error = e.toString());
+        setState(() {
+          if (e is SupportApiException && e.statusCode == 404) {
+            _thread = null;
+            _tickets.removeWhere((ticket) => ticket.id == id);
+          }
+          _error = e.toString();
+        });
       }
     } finally {
       _threadBusy = false;
@@ -240,6 +248,13 @@ class _SupportScreenState extends ConsumerState<SupportScreen>
       return;
     }
     final epoch = _epoch;
+    final questions = _botMessages
+        .where((message) => message.role == 'user')
+        .map((message) => message.content)
+        .toList();
+    final previousQuestions = questions.length > 4
+        ? questions.sublist(questions.length - 4)
+        : questions;
     setState(() {
       _busy = true;
       _error = null;
@@ -247,7 +262,11 @@ class _SupportScreenState extends ConsumerState<SupportScreen>
       _botMessages.add(SupportMessage('user', text));
     });
     try {
-      final data = await _api.ask(text, cancelToken: _cancel);
+      final data = await _api.ask(
+        text,
+        previousQuestions: previousQuestions,
+        cancelToken: _cancel,
+      );
       if (!mounted || epoch != _epoch) return;
       setState(() {
         _botMessages.add(SupportMessage('bot', data.reply));
@@ -581,7 +600,7 @@ class _SupportScreenState extends ConsumerState<SupportScreen>
           const SizedBox(height: 8),
           Text(
             _thread?.ticket.status == 'resolved'
-                ? 'Resolved. Sending another message reopens this request.'
+                ? 'Resolved. This request and its messages are automatically deleted 48 hours after resolution. Sending another message before then reopens it.'
                 : 'Sent to the technician. Replies appear here.',
           ),
           TextButton(

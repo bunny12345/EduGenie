@@ -15,7 +15,7 @@ function offset(value?: string) {
 export class SupportController {
   constructor(private readonly support: SupportService) {}
   @Post('chat')
-  chat(@Req() req: SupportActor, @Body() body: { message?: unknown }) { return this.support.chat(req, body); }
+  chat(@Req() req: SupportActor, @Body() body: Parameters<SupportService['chat']>[1]) { return this.support.chat(req, body); }
   @Get('tickets')
   list(@Req() req: SupportActor, @Query('offset') page?: string) { return this.support.list(req, offset(page)); }
   @Post('tickets')

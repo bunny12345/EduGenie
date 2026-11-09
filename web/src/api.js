@@ -138,7 +138,7 @@ async function supportRequest(path, { token, body, signal } = {}) {
   return data;
 }
 
-export const askSupportBot = (message) => supportRequest('/support/chat', { body: { message } });
+export const askSupportBot = (message, previousQuestions = []) => supportRequest('/support/chat', { body: { message, previousQuestions } });
 export const createSupportTicket = (body) => supportRequest('/support/tickets', { body });
 export const listSupportTickets = (offset = 0, token, signal) =>
   supportRequest(`${token ? '/owner/support' : '/support'}/tickets?offset=${offset}`, { token, signal });

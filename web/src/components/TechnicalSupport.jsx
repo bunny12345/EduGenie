@@ -90,7 +90,8 @@ export default function TechnicalSupport({ ownerToken, onAuthError, requesterRol
     setInput('');
     setMessages((previous) => [...previous, { role: 'user', content: text }]);
     try {
-      const data = await askSupportBot(text);
+      const previousQuestions = messages.filter((message) => message.role === 'user').slice(-4).map((message) => message.content);
+      const data = await askSupportBot(text, previousQuestions);
       if (epoch !== botEpoch.current) return;
       setMessages((previous) => [...previous, { role: 'bot', content: data.reply }]);
       setSuggestions(data.suggestions);
@@ -148,7 +149,7 @@ export default function TechnicalSupport({ ownerToken, onAuthError, requesterRol
                   {needsTechnician ? <p className="eg-support-handoff">Still need help? A technician can review your question. Use Connect to a technician above.</p> : null}
                   <div className="eg-support-suggestions">{suggestions.map((suggestion) => <button key={suggestion} type="button" disabled={busy} onClick={() => ask(suggestion)}>{suggestion}</button>)}</div>
                   {error ? <p className="eg-support-error" role="alert">{error}</p> : null}
-                  <SupportComposer value={input} setValue={setInput} disabled={busy} onSubmit={() => ask()} placeholder="Ask how to use AcademiX…" />
+                  <SupportComposer value={input} setValue={setInput} disabled={busy} sending={busy} onSubmit={() => ask()} placeholder="Ask how to use AcademiX…" />
                   <small className="eg-support-privacy">The assistant gives verified feature guidance, not academic answers. Only questions you send to a technician are saved.</small>
                 </>}
         </div>
@@ -177,10 +178,10 @@ function SupportMessages({ messages, thinking, requesterRole = 'student' }) {
   </div>;
 }
 
-function SupportComposer({ value, setValue, disabled, onSubmit, placeholder }) {
+function SupportComposer({ value, setValue, disabled, sending, onSubmit, placeholder }) {
   return <form className="eg-support-composer" onSubmit={(e) => { e.preventDefault(); if (!disabled && value.trim()) onSubmit(); }}>
     <label className="eg-support-input-label">Message<textarea value={value} onChange={(e) => setValue(e.target.value)} maxLength={2000} rows={2} placeholder={placeholder} disabled={disabled} /></label>
-    <button type="submit" className="eg-support-primary" disabled={disabled || !value.trim()}>{disabled ? 'Sending…' : 'Send'}</button>
+    <button type="submit" className="eg-support-primary" disabled={disabled || !value.trim()}>{sending ? 'Sending…' : 'Send'}</button>
   </form>;
 }
 
@@ -235,7 +236,12 @@ function SupportThread({ id, token, requesterRole, onError, onChanged, initialWa
     try {
       const data = await getSupportThread(id, token, signal);
       if (alive.current && !signal?.aborted) { setThread(data); setError(''); }
-    } catch (e) { if (alive.current) onError(e, setError); }
+    } catch (e) {
+      if (alive.current) {
+        if (e.status === 404) setThread(null);
+        onError(e, setError);
+      }
+    }
     finally { if (refreshing.current === request) refreshing.current = null; }
   }, [id, token, onError]);
 
@@ -286,13 +292,13 @@ function SupportThread({ id, token, requesterRole, onError, onChanged, initialWa
   }
 
   return <>
-    {thread ? <div className="eg-support-thread-heading"><div><h4>{thread.ticket.subject}</h4><p>{thread.ticket.status === 'resolved' ? 'Resolved. Sending another message reopens this request.' : 'Sent to the technician. Replies appear here.'}</p>
+    {thread ? <div className="eg-support-thread-heading"><div><h4>{thread.ticket.subject}</h4><p>{thread.ticket.status === 'resolved' ? 'Resolved. This request and its messages are automatically deleted 48 hours after resolution. Sending another message before then reopens it.' : 'Sent to the technician. Replies appear here.'}</p>
       {token ? <small>{thread.ticket.requester_name} · {thread.ticket.requester_role} · {thread.ticket.class_name}<br />School ID: {thread.ticket.school_id}<br />Account ID: {thread.ticket.requester_id}</small> : null}</div>
       {token ? <button type="button" disabled={busy} onClick={updateStatus}>{thread.ticket.status === 'open' ? 'Mark resolved' : 'Reopen'}</button> : <button type="button" disabled={busy} onClick={() => refresh()}>Check replies</button>}</div> : null}
     <SupportMessages messages={thread?.messages || []} requesterRole={requesterRole} />
     {error ? <p className="eg-support-error" role="alert">{error}</p> : null}
     {warning ? <div className="eg-support-warning" role="status">{warning}<button type="button" disabled={busy} onClick={retryEmail}>Retry email notification</button></div> : null}
-    <SupportComposer value={input} setValue={setInput} disabled={busy || !thread} onSubmit={send} placeholder={token ? 'Write your reply…' : 'Message the technician…'} />
+    <SupportComposer value={input} setValue={setInput} disabled={busy || !thread} sending={busy} onSubmit={send} placeholder={token ? 'Write your reply…' : 'Message the technician…'} />
     <small className="eg-support-privacy">Never share passwords, verification codes or confidential records. Replies refresh automatically while this chat is open.</small>
   </>;
 }

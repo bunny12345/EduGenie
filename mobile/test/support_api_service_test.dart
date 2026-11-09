@@ -53,7 +53,10 @@ void main() {
         expect(options.path, '/support/chat');
         expect(options.method, 'POST');
         expect(options.headers['Authorization'], 'Bearer test-student-token');
-        expect(options.data, {'message': 'How do I use Sam?'});
+        expect(options.data, {
+          'message': 'How do I use Sam?',
+          'previousQuestions': [],
+        });
         return _response({
           'success': true,
           'reply': 'Use the Sam bubble.',
@@ -64,6 +67,28 @@ void main() {
       final result = await service.ask('How do I use Sam?');
       expect(result.reply, 'Use the Sam bubble.');
       expect(result.suggestions, ['Report an issue']);
+    },
+  );
+
+  test(
+    'bot sends bounded user-question context using the web contract',
+    () async {
+      dio.httpClientAdapter = _Adapter((options) async {
+        expect(options.data, {
+          'message': 'What if I sent the wrong file?',
+          'previousQuestions': ['How do I submit homework?'],
+        });
+        return _response({
+          'success': true,
+          'reply': 'Check the resubmission window.',
+          'suggestions': ['Connect to a technician'],
+          'needsTechnician': false,
+        });
+      });
+      await service.ask(
+        'What if I sent the wrong file?',
+        previousQuestions: ['How do I submit homework?'],
+      );
     },
   );
 
@@ -219,4 +244,50 @@ void main() {
       );
     }
   });
+
+  test(
+    'resolved expiry uses the resolution timestamp, never ticket creation',
+    () {
+      SupportTicket ticket(String status, DateTime updatedAt) =>
+          SupportTicket.fromJson({
+            ..._ticket('retention'),
+            'status': status,
+            'created_at': '2020-01-01T00:00:00Z',
+            'updated_at': updatedAt.toIso8601String(),
+          });
+      final now = DateTime.now();
+      expect(
+        ticket('resolved', now.subtract(const Duration(hours: 49))).expired,
+        isTrue,
+      );
+      expect(
+        ticket('resolved', now.subtract(const Duration(hours: 47))).expired,
+        isFalse,
+      );
+      expect(
+        ticket('open', now.subtract(const Duration(days: 10))).expired,
+        isFalse,
+      );
+    },
+  );
+
+  test(
+    'deleted thread preserves HTTP status for clearing stale conversations',
+    () async {
+      dio.httpClientAdapter = _Adapter(
+        (options) async =>
+            _response({'message': 'Support request not found.'}, 404),
+      );
+      await expectLater(
+        service.thread('deleted'),
+        throwsA(
+          isA<SupportApiException>().having(
+            (error) => error.statusCode,
+            'status',
+            404,
+          ),
+        ),
+      );
+    },
+  );
 }
