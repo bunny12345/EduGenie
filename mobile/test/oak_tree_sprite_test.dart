@@ -22,6 +22,49 @@ Finder asset(String path) => find.byWidgetPredicate(
 );
 
 void main() {
+  for (final type in ['oak', 'crystal']) {
+    testWidgets(
+      '$type decodes real artwork throughout all eight growth stages',
+      (tester) async {
+        for (final stage in [
+          'seed',
+          'sprout',
+          'young_plant',
+          'growing_tree',
+          'mature_tree',
+          'blossom',
+          'fruit',
+          'golden_fruit',
+        ]) {
+          final mastered = stage == 'golden_fruit' ? 1 : 0;
+          await tester.pumpWidget(
+            MaterialApp(
+              home: Center(
+                child: TreeSprite(
+                  treeType: type,
+                  stage: stage,
+                  masteredChapters: mastered,
+                ),
+              ),
+            ),
+          );
+          await loadArtwork(tester);
+          await tester.pumpAndSettle();
+          final file = mastered > 0
+              ? (type == 'oak' ? 'acorns_1' : 'fully_grown')
+              : ['blossom', 'fruit'].contains(stage)
+              ? 'fully_grown'
+              : stage;
+          expect(asset('$type/$file'), findsOneWidget);
+          expect(
+            asset('$type/mastery_fruit'),
+            type == 'crystal' && mastered > 0 ? findsOneWidget : findsNothing,
+          );
+          expect(tester.takeException(), isNull, reason: '$type $stage');
+        }
+      },
+    );
+  }
   test('mastery is parsed without inferring it from ordinary completion', () {
     expect(
       OrchardTree.fromJson({'completedChapters': 10}).masteredChapters,

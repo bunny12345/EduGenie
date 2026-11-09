@@ -7,6 +7,7 @@ import '../../../models/flashcard_models.dart';
 import '../../../state/session_provider.dart';
 import '../../../state/student_providers.dart';
 import '../../../widgets/shimmer_wave.dart';
+import 'game_widgets.dart';
 
 enum _FcPhase { loading, picker, playing, summary, empty }
 
@@ -62,7 +63,9 @@ class _FlashcardsScreenState extends ConsumerState<FlashcardsScreen> {
       _error = null;
     });
     try {
-      final subs = await ref.read(studentApiServiceProvider).getFlashcardOverview(_studentId);
+      final subs = await ref
+          .read(studentApiServiceProvider)
+          .getFlashcardOverview(_studentId);
       setState(() {
         _subjects = subs;
         _activeSubjectKey = subs.isNotEmpty ? subs.first.subjectKey : null;
@@ -76,11 +79,17 @@ class _FlashcardsScreenState extends ConsumerState<FlashcardsScreen> {
     }
   }
 
-  Future<void> _startSession(FlashcardSubject subject, FlashcardChapter? chapter, {String? modeOverride}) async {
+  Future<void> _startSession(
+    FlashcardSubject subject,
+    FlashcardChapter? chapter, {
+    String? modeOverride,
+  }) async {
     final useMode = modeOverride ?? _mode;
     setState(() => _phase = _FcPhase.loading);
     try {
-      final cards = await ref.read(studentApiServiceProvider).getFlashcardCards(
+      final cards = await ref
+          .read(studentApiServiceProvider)
+          .getFlashcardCards(
             _studentId,
             subject: subject.subjectKey,
             deckId: chapter?.deckId,
@@ -90,7 +99,9 @@ class _FlashcardsScreenState extends ConsumerState<FlashcardsScreen> {
           );
       if (cards.isEmpty) {
         setState(() {
-          _error = useMode == 'review' ? 'Nothing due right now — try Practice all!' : 'No cards here yet.';
+          _error = useMode == 'review'
+              ? 'Nothing due right now — try Practice all!'
+              : 'No cards here yet.';
           _phase = _FcPhase.picker;
         });
         return;
@@ -142,7 +153,9 @@ class _FlashcardsScreenState extends ConsumerState<FlashcardsScreen> {
         'meta': {'cards': _done},
       });
       if (_sessionScope == 'deck' && _sessionDeckId != null) {
-        final res = await ref.read(studentApiServiceProvider).completeFlashcardChapter(
+        final res = await ref
+            .read(studentApiServiceProvider)
+            .completeFlashcardChapter(
               _studentId,
               _sessionDeckId!,
               subjectKey: _sessionSubjectKey,
@@ -171,7 +184,9 @@ class _FlashcardsScreenState extends ConsumerState<FlashcardsScreen> {
 
     FlashcardSchedule? schedule;
     try {
-      final res = await ref.read(studentApiServiceProvider).submitFlashcardReview(card.flashcardId, rating);
+      final res = await ref
+          .read(studentApiServiceProvider)
+          .submitFlashcardReview(card.flashcardId, rating);
       schedule = res;
     } catch (_) {
       // keep the session flowing even if the write hiccups
@@ -205,7 +220,9 @@ class _FlashcardsScreenState extends ConsumerState<FlashcardsScreen> {
   }
 
   void _repeatChapter() {
-    final subj = _subjects.where((s) => s.subjectKey == _sessionSubjectKey).firstOrNull;
+    final subj = _subjects
+        .where((s) => s.subjectKey == _sessionSubjectKey)
+        .firstOrNull;
     if (subj == null) {
       _loadOverview();
       return;
@@ -228,10 +245,7 @@ class _FlashcardsScreenState extends ConsumerState<FlashcardsScreen> {
       backgroundColor: const Color(0xFFF7F7FC),
       appBar: AppBar(title: const Text('AI Flashcards')),
       body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: _buildPhase(),
-        ),
+        child: Padding(padding: const EdgeInsets.all(16), child: _buildPhase()),
       ),
     );
   }
@@ -311,12 +325,24 @@ class _EmptyView extends StatelessWidget {
           children: [
             const Text('🃏', style: TextStyle(fontSize: 52)),
             const SizedBox(height: 8),
-            const Text('No flashcards yet', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800, color: Color(0xFF2A2652))),
+            const Text(
+              'No flashcards yet',
+              style: TextStyle(
+                fontSize: 20,
+                fontWeight: FontWeight.w800,
+                color: Color(0xFF2A2652),
+              ),
+            ),
             const SizedBox(height: 4),
             Text(
-              message ?? "Flashcards appear automatically once your teacher uploads chapter content. Check back soon!",
+              message ??
+                  "Flashcards appear automatically once your teacher uploads chapter content. Check back soon!",
               textAlign: TextAlign.center,
-              style: const TextStyle(fontSize: 13, color: Color(0xFF6D739C), height: 1.5),
+              style: const TextStyle(
+                fontSize: 13,
+                color: Color(0xFF6D739C),
+                height: 1.5,
+              ),
             ),
             const SizedBox(height: 16),
             _GhostButton(label: 'Refresh', onTap: onRefresh),
@@ -367,9 +393,19 @@ class _PickerView extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text('Choose a subject', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: Color(0xFF2A2652))),
+                  Text(
+                    'Choose a subject',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w900,
+                      color: Color(0xFF2A2652),
+                    ),
+                  ),
                   SizedBox(height: 2),
-                  Text("Cards are built from your teacher's uploaded chapters.", style: TextStyle(fontSize: 12, color: Color(0xFF7B81A6))),
+                  Text(
+                    "Cards are built from your teacher's uploaded chapters.",
+                    style: TextStyle(fontSize: 12, color: Color(0xFF7B81A6)),
+                  ),
                 ],
               ),
             ),
@@ -378,12 +414,24 @@ class _PickerView extends StatelessWidget {
         const SizedBox(height: 14),
         Container(
           padding: const EdgeInsets.all(3),
-          decoration: BoxDecoration(color: const Color(0xFFF0F1FB), borderRadius: BorderRadius.circular(999)),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
+          decoration: BoxDecoration(
+            color: const Color(0xFFF0F1FB),
+            borderRadius: BorderRadius.circular(999),
+          ),
+          child: Wrap(
+            spacing: 4,
+            runSpacing: 4,
             children: [
-              _ModeOption(label: '⏰ Review due', active: mode == 'review', onTap: () => onModeChange('review')),
-              _ModeOption(label: '🔀 Practice all', active: mode == 'all', onTap: () => onModeChange('all')),
+              _ModeOption(
+                label: '⏰ Review due',
+                active: mode == 'review',
+                onTap: () => onModeChange('review'),
+              ),
+              _ModeOption(
+                label: '🔀 Practice all',
+                active: mode == 'all',
+                onTap: () => onModeChange('all'),
+              ),
             ],
           ),
         ),
@@ -397,19 +445,25 @@ class _PickerView extends StatelessWidget {
               border: Border.all(color: const Color(0xFFFFE2B0)),
               borderRadius: BorderRadius.circular(10),
             ),
-            child: Text(error!, style: const TextStyle(color: Color(0xFF9A6A12), fontSize: 12)),
+            child: Text(
+              error!,
+              style: const TextStyle(color: Color(0xFF9A6A12), fontSize: 12),
+            ),
           ),
-        SizedBox(
-          height: 92,
-          child: ListView.separated(
-            scrollDirection: Axis.horizontal,
-            itemCount: subjects.length,
-            separatorBuilder: (_, _) => const SizedBox(width: 10),
-            itemBuilder: (context, i) {
-              final s = subjects[i];
-              final isActive = s.subjectKey == activeSubjectKey;
-              return _SubjectTab(subject: s, active: isActive, onTap: () => onSubjectTap(s.subjectKey));
-            },
+        SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              for (var i = 0; i < subjects.length; i++) ...[
+                if (i > 0) const SizedBox(width: 10),
+                _SubjectTab(
+                  subject: subjects[i],
+                  active: subjects[i].subjectKey == activeSubjectKey,
+                  onTap: () => onSubjectTap(subjects[i].subjectKey),
+                ),
+              ],
+            ],
           ),
         ),
         const SizedBox(height: 16),
@@ -420,22 +474,49 @@ class _PickerView extends StatelessWidget {
               children: [
                 Text(active.treeEmoji, style: const TextStyle(fontSize: 46)),
                 const SizedBox(height: 10),
-                Text('No ${active.displayName} chapters yet', style: const TextStyle(fontSize: 16, color: Color(0xFF2A2652), fontWeight: FontWeight.w700)),
+                Text(
+                  'No ${active.displayName} chapters yet',
+                  style: const TextStyle(
+                    fontSize: 16,
+                    color: Color(0xFF2A2652),
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
                 const SizedBox(height: 6),
                 Text(
                   "Flashcards are created automatically as soon as your teacher uploads ${active.displayName} chapter content — just like Mathematics.",
                   textAlign: TextAlign.center,
-                  style: const TextStyle(fontSize: 12.5, color: Color(0xFF6D739C), height: 1.5),
+                  style: const TextStyle(
+                    fontSize: 12.5,
+                    color: Color(0xFF6D739C),
+                    height: 1.5,
+                  ),
                 ),
               ],
             ),
           )
         else if (active != null) ...[
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          Wrap(
+            alignment: WrapAlignment.spaceBetween,
+            spacing: 8,
+            runSpacing: 4,
             children: [
-              Text('${active.treeEmoji} ${active.displayName} chapters', style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w900, color: Color(0xFF2A2652))),
-              Text('${active.chapters.length} uploaded', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: active.accent)),
+              Text(
+                '${active.treeEmoji} ${active.displayName} chapters',
+                style: const TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w900,
+                  color: Color(0xFF2A2652),
+                ),
+              ),
+              Text(
+                '${active.chapters.length} uploaded',
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                  color: active.accent,
+                ),
+              ),
             ],
           ),
           const SizedBox(height: 8),
@@ -445,7 +526,8 @@ class _PickerView extends StatelessWidget {
             sub: 'Random mix from ${active.displayName}',
             badges: [
               _Badge(text: '${active.totalCards} cards'),
-              if (active.dueCount > 0) _Badge(text: '${active.dueCount} due', kind: _BadgeKind.due),
+              if (active.dueCount > 0)
+                _Badge(text: '${active.dueCount} due', kind: _BadgeKind.due),
             ],
             highlight: true,
             onTap: () => onStartAll(active),
@@ -458,8 +540,10 @@ class _PickerView extends StatelessWidget {
               chapterNumber: ch.chapterNumber > 0 ? ch.chapterNumber : null,
               badges: [
                 _Badge(text: '${ch.cardCount} cards'),
-                if (ch.dueCount > 0) _Badge(text: '${ch.dueCount} due', kind: _BadgeKind.due),
-                if (ch.newCount > 0) _Badge(text: '${ch.newCount} new', kind: _BadgeKind.newCard),
+                if (ch.dueCount > 0)
+                  _Badge(text: '${ch.dueCount} due', kind: _BadgeKind.due),
+                if (ch.newCount > 0)
+                  _Badge(text: '${ch.newCount} new', kind: _BadgeKind.newCard),
               ],
               onTap: () => onStartChapter(active, ch),
             ),
@@ -476,7 +560,11 @@ class _ModeOption extends StatelessWidget {
   final bool active;
   final VoidCallback onTap;
 
-  const _ModeOption({required this.label, required this.active, required this.onTap});
+  const _ModeOption({
+    required this.label,
+    required this.active,
+    required this.onTap,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -492,7 +580,11 @@ class _ModeOption extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
           child: Text(
             label,
-            style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: active ? const Color(0xFF4B3FD6) : const Color(0xFF6D739C)),
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
+              color: active ? const Color(0xFF4B3FD6) : const Color(0xFF6D739C),
+            ),
           ),
         ),
       ),
@@ -505,7 +597,11 @@ class _SubjectTab extends StatelessWidget {
   final bool active;
   final VoidCallback onTap;
 
-  const _SubjectTab({required this.subject, required this.active, required this.onTap});
+  const _SubjectTab({
+    required this.subject,
+    required this.active,
+    required this.onTap,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -518,8 +614,13 @@ class _SubjectTab extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: active ? accent : const Color(0xFFE8E9F5), width: active ? 2 : 1),
-          color: active ? Color.alphaBlend(accent.withValues(alpha: 0.12), Colors.white) : Colors.white,
+          border: Border.all(
+            color: active ? accent : const Color(0xFFE8E9F5),
+            width: active ? 2 : 1,
+          ),
+          color: active
+              ? Color.alphaBlend(accent.withValues(alpha: 0.12), Colors.white)
+              : Colors.white,
         ),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -530,22 +631,49 @@ class _SubjectTab extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(subject.displayName, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w800, color: Color(0xFF2A2652))),
+                  Text(
+                    subject.displayName,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w800,
+                      color: Color(0xFF2A2652),
+                    ),
+                  ),
                   const SizedBox(height: 2),
-                  Row(
+                  Wrap(
+                    spacing: 6,
+                    runSpacing: 4,
                     children: [
-                      Flexible(
-                        child: Text(
-                          subject.empty ? 'Coming soon' : '${subject.totalCards} cards',
-                          style: const TextStyle(fontSize: 11, color: Color(0xFF7B81A6)),
+                      Text(
+                        subject.empty
+                            ? 'Coming soon'
+                            : '${subject.totalCards} cards',
+                        style: const TextStyle(
+                          fontSize: 11,
+                          color: Color(0xFF7B81A6),
                         ),
                       ),
                       if (subject.dueCount > 0) ...[
                         const SizedBox(width: 6),
                         Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 1),
-                          decoration: BoxDecoration(color: const Color(0xFFFFE9E7), borderRadius: BorderRadius.circular(999)),
-                          child: Text('${subject.dueCount} due', style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w800, color: Color(0xFFD9534F))),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 7,
+                            vertical: 1,
+                          ),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFFFE9E7),
+                            borderRadius: BorderRadius.circular(999),
+                          ),
+                          child: Text(
+                            '${subject.dueCount} due',
+                            style: const TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.w800,
+                              color: Color(0xFFD9534F),
+                            ),
+                          ),
                         ),
                       ],
                     ],
@@ -591,7 +719,9 @@ class _ChapterRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Material(
-      color: highlight ? Color.alphaBlend(accent.withValues(alpha: 0.08), Colors.white) : Colors.white,
+      color: highlight
+          ? Color.alphaBlend(accent.withValues(alpha: 0.08), Colors.white)
+          : Colors.white,
       borderRadius: BorderRadius.circular(14),
       child: InkWell(
         borderRadius: BorderRadius.circular(14),
@@ -600,7 +730,14 @@ class _ChapterRow extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 13),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: highlight ? Color.alphaBlend(accent.withValues(alpha: 0.3), Colors.white) : const Color(0xFFE8E9F5)),
+            border: Border.all(
+              color: highlight
+                  ? Color.alphaBlend(
+                      accent.withValues(alpha: 0.3),
+                      Colors.white,
+                    )
+                  : const Color(0xFFE8E9F5),
+            ),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -612,19 +749,45 @@ class _ChapterRow extends StatelessWidget {
                       width: 20,
                       height: 20,
                       alignment: Alignment.center,
-                      decoration: BoxDecoration(color: Color.alphaBlend(accent.withValues(alpha: 0.14), Colors.white), borderRadius: BorderRadius.circular(6)),
-                      child: Text('$chapterNumber', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: accent)),
+                      decoration: BoxDecoration(
+                        color: Color.alphaBlend(
+                          accent.withValues(alpha: 0.14),
+                          Colors.white,
+                        ),
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: Text(
+                        '$chapterNumber',
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w800,
+                          color: accent,
+                        ),
+                      ),
                     ),
                     const SizedBox(width: 8),
                   ],
                   Expanded(
-                    child: Text(title, style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w800, color: Color(0xFF2A2652))),
+                    child: Text(
+                      title,
+                      style: const TextStyle(
+                        fontSize: 13.5,
+                        fontWeight: FontWeight.w800,
+                        color: Color(0xFF2A2652),
+                      ),
+                    ),
                   ),
                 ],
               ),
               if (sub != null) ...[
                 const SizedBox(height: 4),
-                Text(sub!, style: const TextStyle(fontSize: 11, color: Color(0xFF7B81A6))),
+                Text(
+                  sub!,
+                  style: const TextStyle(
+                    fontSize: 11,
+                    color: Color(0xFF7B81A6),
+                  ),
+                ),
               ],
               const SizedBox(height: 6),
               Wrap(
@@ -633,13 +796,16 @@ class _ChapterRow extends StatelessWidget {
                 children: [
                   for (final b in badges)
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 2,
+                      ),
                       decoration: BoxDecoration(
                         color: b.kind == _BadgeKind.due
                             ? const Color(0xFFFFE9E7)
                             : b.kind == _BadgeKind.newCard
-                                ? const Color(0xFFE7F6EC)
-                                : const Color(0xFFF1F2F8),
+                            ? const Color(0xFFE7F6EC)
+                            : const Color(0xFFF1F2F8),
                         borderRadius: BorderRadius.circular(999),
                       ),
                       child: Text(
@@ -650,8 +816,8 @@ class _ChapterRow extends StatelessWidget {
                           color: b.kind == _BadgeKind.due
                               ? const Color(0xFFD9534F)
                               : b.kind == _BadgeKind.newCard
-                                  ? const Color(0xFF22A05A)
-                                  : const Color(0xFF6A7099),
+                              ? const Color(0xFF22A05A)
+                              : const Color(0xFF6A7099),
                         ),
                       ),
                     ),
@@ -702,27 +868,16 @@ class _PlayingView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final progressPct = totalToStudy > 0 ? (done / totalToStudy).clamp(0.0, 1.0) : 0.0;
+    final progressPct = totalToStudy > 0
+        ? (done / totalToStudy).clamp(0.0, 1.0)
+        : 0.0;
     return ListView(
       children: [
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Row(
-              children: [
-                Text(treeEmoji, style: const TextStyle(fontSize: 24)),
-                const SizedBox(width: 10),
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(subjectName, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: Color(0xFF2A2652))),
-                    Text(chapterTitle, style: const TextStyle(fontSize: 11, color: Color(0xFF7B81A6))),
-                  ],
-                ),
-              ],
-            ),
-            _GhostButton(label: 'Exit', small: true, onTap: onExit),
-          ],
+        GamePlayHeader(
+          treeEmoji: treeEmoji,
+          subjectName: subjectName,
+          chapterTitle: chapterTitle,
+          onExit: onExit,
         ),
         const SizedBox(height: 12),
         ClipRRect(
@@ -734,16 +889,37 @@ class _PlayingView extends StatelessWidget {
               alignment: Alignment.centerLeft,
               widthFactor: progressPct,
               child: Container(
-                decoration: BoxDecoration(gradient: LinearGradient(colors: [accent, Color.alphaBlend(accent.withValues(alpha: 0.55), Colors.white)])),
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [
+                      accent,
+                      Color.alphaBlend(
+                        accent.withValues(alpha: 0.55),
+                        Colors.white,
+                      ),
+                    ],
+                  ),
+                ),
               ),
             ),
           ),
         ),
         Padding(
           padding: const EdgeInsets.only(top: 6, bottom: 14),
-          child: Text('$done / $totalToStudy mastered · $queueLength left', textAlign: TextAlign.right, style: const TextStyle(fontSize: 11, color: Color(0xFF8B90B3))),
+          child: Text(
+            '$done / $totalToStudy mastered · $queueLength left',
+            textAlign: TextAlign.right,
+            style: const TextStyle(fontSize: 11, color: Color(0xFF8B90B3)),
+          ),
         ),
-        if (current != null) _FlipCard(accent: accent, card: current!, flipped: flipped, onTap: onFlip, onAskTutor: onAskTutor),
+        if (current != null)
+          _FlipCard(
+            accent: accent,
+            card: current!,
+            flipped: flipped,
+            onTap: onFlip,
+            onAskTutor: onAskTutor,
+          ),
         const SizedBox(height: 18),
         if (!flipped)
           Center(
@@ -753,13 +929,37 @@ class _PlayingView extends StatelessWidget {
                 borderRadius: BorderRadius.circular(999),
                 onTap: onReveal,
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 30, vertical: 12),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 30,
+                    vertical: 12,
+                  ),
                   decoration: BoxDecoration(
                     borderRadius: BorderRadius.circular(999),
-                    gradient: LinearGradient(colors: [accent, Color.alphaBlend(accent.withValues(alpha: 0.6), const Color(0xFF3B2FB0))]),
-                    boxShadow: [BoxShadow(color: accent.withValues(alpha: 0.28), blurRadius: 20, offset: const Offset(0, 8))],
+                    gradient: LinearGradient(
+                      colors: [
+                        accent,
+                        Color.alphaBlend(
+                          accent.withValues(alpha: 0.6),
+                          const Color(0xFF3B2FB0),
+                        ),
+                      ],
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: accent.withValues(alpha: 0.28),
+                        blurRadius: 20,
+                        offset: const Offset(0, 8),
+                      ),
+                    ],
                   ),
-                  child: const Text('Show answer', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 14)),
+                  child: const Text(
+                    'Show answer',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w800,
+                      fontSize: 14,
+                    ),
+                  ),
                 ),
               ),
             ),
@@ -767,11 +967,32 @@ class _PlayingView extends StatelessWidget {
         else
           Row(
             children: [
-              Expanded(child: _RateButton(icon: '🔁', label: 'Again', color: const Color(0xFFD9534F), onTap: () => onRate('again'))),
+              Expanded(
+                child: _RateButton(
+                  icon: '🔁',
+                  label: 'Again',
+                  color: const Color(0xFFD9534F),
+                  onTap: () => onRate('again'),
+                ),
+              ),
               const SizedBox(width: 10),
-              Expanded(child: _RateButton(icon: '✅', label: 'Got it', color: const Color(0xFF2A9D5C), onTap: () => onRate('good'))),
+              Expanded(
+                child: _RateButton(
+                  icon: '✅',
+                  label: 'Got it',
+                  color: const Color(0xFF2A9D5C),
+                  onTap: () => onRate('good'),
+                ),
+              ),
               const SizedBox(width: 10),
-              Expanded(child: _RateButton(icon: '⚡', label: 'Easy', color: const Color(0xFFD98A10), onTap: () => onRate('easy'))),
+              Expanded(
+                child: _RateButton(
+                  icon: '⚡',
+                  label: 'Easy',
+                  color: const Color(0xFFD98A10),
+                  onTap: () => onRate('easy'),
+                ),
+              ),
             ],
           ),
         if (lastSchedule != null)
@@ -779,8 +1000,18 @@ class _PlayingView extends StatelessWidget {
             child: Container(
               margin: const EdgeInsets.only(top: 14),
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-              decoration: BoxDecoration(color: const Color(0xFFEFECFF), borderRadius: BorderRadius.circular(999)),
-              child: Text('🗓️ Next review ${lastSchedule!.label}', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Color(0xFF4B3FD6))),
+              decoration: BoxDecoration(
+                color: const Color(0xFFEFECFF),
+                borderRadius: BorderRadius.circular(999),
+              ),
+              child: Text(
+                '🗓️ Next review ${lastSchedule!.label}',
+                style: const TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                  color: Color(0xFF4B3FD6),
+                ),
+              ),
             ),
           ),
       ],
@@ -795,14 +1026,24 @@ class _FlipCard extends StatefulWidget {
   final VoidCallback onTap;
   final VoidCallback onAskTutor;
 
-  const _FlipCard({required this.accent, required this.card, required this.flipped, required this.onTap, required this.onAskTutor});
+  const _FlipCard({
+    required this.accent,
+    required this.card,
+    required this.flipped,
+    required this.onTap,
+    required this.onAskTutor,
+  });
 
   @override
   State<_FlipCard> createState() => _FlipCardState();
 }
 
-class _FlipCardState extends State<_FlipCard> with SingleTickerProviderStateMixin {
-  late final AnimationController _ctrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 450));
+class _FlipCardState extends State<_FlipCard>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _ctrl = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 450),
+  );
 
   @override
   void initState() {
@@ -840,7 +1081,11 @@ class _FlipCardState extends State<_FlipCard> with SingleTickerProviderStateMixi
             final angle = _ctrl.value * math.pi;
             final isBack = angle > math.pi / 2;
             final child = isBack
-                ? Transform(alignment: Alignment.center, transform: Matrix4.identity()..rotateY(math.pi), child: _back())
+                ? Transform(
+                    alignment: Alignment.center,
+                    transform: Matrix4.identity()..rotateY(math.pi),
+                    child: _back(),
+                  )
                 : _front();
             return Transform(
               alignment: Alignment.center,
@@ -870,8 +1115,18 @@ class _FlipCardState extends State<_FlipCard> with SingleTickerProviderStateMixi
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(20),
         border: Border.all(color: const Color(0xFFE8E9F5)),
-        gradient: const LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [Colors.white, Color(0xFFF7F6FF)]),
-        boxShadow: const [BoxShadow(color: Color(0x1E3C3282), blurRadius: 36, offset: Offset(0, 16))],
+        gradient: const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Colors.white, Color(0xFFF7F6FF)],
+        ),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x1E3C3282),
+            blurRadius: 36,
+            offset: Offset(0, 16),
+          ),
+        ],
       ),
       child: Stack(
         children: [
@@ -881,33 +1136,83 @@ class _FlipCardState extends State<_FlipCard> with SingleTickerProviderStateMixi
               right: 0,
               child: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
-                decoration: BoxDecoration(color: diff.$2, borderRadius: BorderRadius.circular(999)),
-                child: Text(card.difficulty.toUpperCase(), style: TextStyle(fontSize: 9.5, fontWeight: FontWeight.w800, letterSpacing: 0.5, color: diff.$1)),
+                decoration: BoxDecoration(
+                  color: diff.$2,
+                  borderRadius: BorderRadius.circular(999),
+                ),
+                child: Text(
+                  card.difficulty.toUpperCase(),
+                  style: TextStyle(
+                    fontSize: 9.5,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 0.5,
+                    color: diff.$1,
+                  ),
+                ),
               ),
             ),
-          Center(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                  decoration: BoxDecoration(color: const Color(0xFFF1F2F8), borderRadius: BorderRadius.circular(999)),
-                  child: const Text('QUESTION', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800, letterSpacing: 1, color: Color(0xFF9096B6))),
-                ),
-                const SizedBox(height: 14),
-                Text(card.front, textAlign: TextAlign.center, style: const TextStyle(fontSize: 19, fontWeight: FontWeight.w700, color: Color(0xFF26224F), height: 1.4)),
-                if (card.hint != null && card.hint!.isNotEmpty) ...[
+          Positioned.fill(
+            top: 28,
+            bottom: 30,
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 4,
+                    ),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF1F2F8),
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                    child: const Text(
+                      'QUESTION',
+                      style: TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: 1,
+                        color: Color(0xFF9096B6),
+                      ),
+                    ),
+                  ),
                   const SizedBox(height: 14),
-                  Text('💡 ${card.hint}', textAlign: TextAlign.center, style: const TextStyle(fontSize: 12, color: Color(0xFF8A70C0))),
+                  Text(
+                    card.front,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      fontSize: 19,
+                      fontWeight: FontWeight.w700,
+                      color: Color(0xFF26224F),
+                      height: 1.4,
+                    ),
+                  ),
+                  if (card.hint != null && card.hint!.isNotEmpty) ...[
+                    const SizedBox(height: 14),
+                    Text(
+                      '💡 ${card.hint}',
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                        fontSize: 12,
+                        color: Color(0xFF8A70C0),
+                      ),
+                    ),
+                  ],
                 ],
-              ],
+              ),
             ),
           ),
           const Positioned(
             bottom: 4,
             left: 0,
             right: 0,
-            child: Center(child: Text('Tap to reveal', style: TextStyle(fontSize: 10.5, color: Color(0xFFB3B7D0)))),
+            child: Center(
+              child: Text(
+                'Tap to reveal',
+                style: TextStyle(fontSize: 10.5, color: Color(0xFFB3B7D0)),
+              ),
+            ),
           ),
         ],
       ),
@@ -923,44 +1228,98 @@ class _FlipCardState extends State<_FlipCard> with SingleTickerProviderStateMixi
       padding: const EdgeInsets.all(26),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: Color.alphaBlend(accent.withValues(alpha: 0.3), Colors.white)),
-        gradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [Color.alphaBlend(accent.withValues(alpha: 0.12), Colors.white), Colors.white]),
-        boxShadow: const [BoxShadow(color: Color(0x1E3C3282), blurRadius: 36, offset: Offset(0, 16))],
+        border: Border.all(
+          color: Color.alphaBlend(accent.withValues(alpha: 0.3), Colors.white),
+        ),
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            Color.alphaBlend(accent.withValues(alpha: 0.12), Colors.white),
+            Colors.white,
+          ],
+        ),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x1E3C3282),
+            blurRadius: 36,
+            offset: Offset(0, 16),
+          ),
+        ],
       ),
-      child: Stack(
+      child: Column(
         children: [
-          Center(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                  decoration: BoxDecoration(color: Color.alphaBlend(accent.withValues(alpha: 0.14), Colors.white), borderRadius: BorderRadius.circular(999)),
-                  child: Text('ANSWER', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800, letterSpacing: 1, color: accent)),
-                ),
-                const SizedBox(height: 14),
-                Text(card.back, textAlign: TextAlign.center, style: const TextStyle(fontSize: 19, fontWeight: FontWeight.w700, color: Color(0xFF26224F), height: 1.4)),
-              ],
+          Expanded(
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 4,
+                    ),
+                    decoration: BoxDecoration(
+                      color: Color.alphaBlend(
+                        accent.withValues(alpha: 0.14),
+                        Colors.white,
+                      ),
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                    child: Text(
+                      'ANSWER',
+                      style: TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: 1,
+                        color: accent,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  Text(
+                    card.back,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      fontSize: 19,
+                      fontWeight: FontWeight.w700,
+                      color: Color(0xFF26224F),
+                      height: 1.4,
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
-          Positioned(
-            bottom: 4,
-            left: 0,
-            right: 0,
-            child: Center(
-              child: Material(
-                color: Colors.white,
+          const SizedBox(height: 10),
+          Center(
+            child: Material(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(999),
+              child: InkWell(
                 borderRadius: BorderRadius.circular(999),
-                child: InkWell(
-                  borderRadius: BorderRadius.circular(999),
-                  onTap: widget.onAskTutor,
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(999),
-                      border: Border.all(color: Color.alphaBlend(accent.withValues(alpha: 0.35), Colors.white)),
+                onTap: widget.onAskTutor,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 6,
+                  ),
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(999),
+                    border: Border.all(
+                      color: Color.alphaBlend(
+                        accent.withValues(alpha: 0.35),
+                        Colors.white,
+                      ),
                     ),
-                    child: Text('🤖 Ask AI to explain', style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w800, color: accent)),
+                  ),
+                  child: Text(
+                    '🤖 Ask AI to explain',
+                    style: TextStyle(
+                      fontSize: 11.5,
+                      fontWeight: FontWeight.w800,
+                      color: accent,
+                    ),
                   ),
                 ),
               ),
@@ -978,7 +1337,12 @@ class _RateButton extends StatelessWidget {
   final Color color;
   final VoidCallback onTap;
 
-  const _RateButton({required this.icon, required this.label, required this.color, required this.onTap});
+  const _RateButton({
+    required this.icon,
+    required this.label,
+    required this.color,
+    required this.onTap,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -990,12 +1354,22 @@ class _RateButton extends StatelessWidget {
         onTap: onTap,
         child: Container(
           padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
-          decoration: BoxDecoration(borderRadius: BorderRadius.circular(14), border: Border.all(color: const Color(0xFFE8E9F5))),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: const Color(0xFFE8E9F5)),
+          ),
           child: Column(
             children: [
               Text(icon, style: const TextStyle(fontSize: 20)),
               const SizedBox(height: 3),
-              Text(label, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: color)),
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w800,
+                  color: color,
+                ),
+              ),
             ],
           ),
         ),
@@ -1040,10 +1414,24 @@ class _SummaryView extends StatelessWidget {
         const SizedBox(height: 8),
         Center(child: Text(emoji, style: const TextStyle(fontSize: 52))),
         const SizedBox(height: 8),
-        const Center(child: Text('Session complete!', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800, color: Color(0xFF2A2652)))),
+        const Center(
+          child: Text(
+            'Session complete!',
+            style: TextStyle(
+              fontSize: 20,
+              fontWeight: FontWeight.w800,
+              color: Color(0xFF2A2652),
+            ),
+          ),
+        ),
         const SizedBox(height: 4),
         if (subjectName != null)
-          Center(child: Text('$subjectName · $chapterTitle', style: const TextStyle(fontSize: 12, color: Color(0xFF7B81A6)))),
+          Center(
+            child: Text(
+              '$subjectName · $chapterTitle',
+              style: const TextStyle(fontSize: 12, color: Color(0xFF7B81A6)),
+            ),
+          ),
         const SizedBox(height: 16),
         Row(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -1064,7 +1452,9 @@ class _SummaryView extends StatelessWidget {
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(16),
                 border: Border.all(color: const Color(0xFFF4D780)),
-                gradient: const LinearGradient(colors: [Color(0xFFFFF5D6), Color(0xFFFFE9A8)]),
+                gradient: const LinearGradient(
+                  colors: [Color(0xFFFFF5D6), Color(0xFFFFE9A8)],
+                ),
               ),
               child: Row(
                 mainAxisSize: MainAxisSize.min,
@@ -1074,8 +1464,21 @@ class _SummaryView extends StatelessWidget {
                   Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text('+$awarded coins!', style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800, color: Color(0xFFA06A00))),
-                      Text('Chapter complete — balance ${coinAward?['coins'] ?? 0}', style: const TextStyle(fontSize: 11.5, color: Color(0xFFB07F1A))),
+                      Text(
+                        '+$awarded coins!',
+                        style: const TextStyle(
+                          fontSize: 17,
+                          fontWeight: FontWeight.w800,
+                          color: Color(0xFFA06A00),
+                        ),
+                      ),
+                      Text(
+                        'Chapter complete — balance ${coinAward?['coins'] ?? 0}',
+                        style: const TextStyle(
+                          fontSize: 11.5,
+                          color: Color(0xFFB07F1A),
+                        ),
+                      ),
                     ],
                   ),
                 ],
@@ -1086,12 +1489,17 @@ class _SummaryView extends StatelessWidget {
           const Center(
             child: Padding(
               padding: EdgeInsets.only(bottom: 14),
-              child: Text('🪙 Chapter bonus already collected — nice revision!', style: TextStyle(fontSize: 12, color: Color(0xFFA07F2A))),
+              child: Text(
+                '🪙 Chapter bonus already collected — nice revision!',
+                style: TextStyle(fontSize: 12, color: Color(0xFFA07F2A)),
+              ),
             ),
           ),
         Center(
           child: Text(
-            saving ? 'Saving your progress…' : '✅ Progress saved — cards will return on their own schedule.',
+            saving
+                ? 'Saving your progress…'
+                : '✅ Progress saved — cards will return on their own schedule.',
             style: const TextStyle(fontSize: 12, color: Color(0xFF6A7099)),
           ),
         ),
@@ -1101,7 +1509,8 @@ class _SummaryView extends StatelessWidget {
           spacing: 10,
           runSpacing: 10,
           children: [
-            if (scope == 'deck') _GhostButton(label: '🔁 Repeat chapter', onTap: onRepeatChapter),
+            if (scope == 'deck')
+              _GhostButton(label: '🔁 Repeat chapter', onTap: onRepeatChapter),
             _PrimaryButton(label: 'Pick another deck', onTap: onPickAnother),
           ],
         ),
@@ -1120,8 +1529,18 @@ class _StatBlock extends StatelessWidget {
   Widget build(BuildContext context) {
     return Column(
       children: [
-        Text(value, style: const TextStyle(fontSize: 26, fontWeight: FontWeight.w800, color: Color(0xFF4B3FD6))),
-        Text(label, style: const TextStyle(fontSize: 11, color: Color(0xFF8B90B3))),
+        Text(
+          value,
+          style: const TextStyle(
+            fontSize: 26,
+            fontWeight: FontWeight.w800,
+            color: Color(0xFF4B3FD6),
+          ),
+        ),
+        Text(
+          label,
+          style: const TextStyle(fontSize: 11, color: Color(0xFF8B90B3)),
+        ),
       ],
     );
   }
@@ -1145,10 +1564,25 @@ class _PrimaryButton extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 10),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(999),
-            gradient: const LinearGradient(colors: [Color(0xFF6D5EFC), Color(0xFF4B3FB8)]),
-            boxShadow: const [BoxShadow(color: Color(0x3D5A46C8), blurRadius: 18, offset: Offset(0, 8))],
+            gradient: const LinearGradient(
+              colors: [Color(0xFF6D5EFC), Color(0xFF4B3FB8)],
+            ),
+            boxShadow: const [
+              BoxShadow(
+                color: Color(0x3D5A46C8),
+                blurRadius: 18,
+                offset: Offset(0, 8),
+              ),
+            ],
           ),
-          child: Text(label, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 13)),
+          child: Text(
+            label,
+            style: const TextStyle(
+              color: Colors.white,
+              fontWeight: FontWeight.w800,
+              fontSize: 13,
+            ),
+          ),
         ),
       ),
     );
@@ -1157,10 +1591,9 @@ class _PrimaryButton extends StatelessWidget {
 
 class _GhostButton extends StatelessWidget {
   final String label;
-  final bool small;
   final VoidCallback onTap;
 
-  const _GhostButton({required this.label, this.small = false, required this.onTap});
+  const _GhostButton({required this.label, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
@@ -1171,9 +1604,19 @@ class _GhostButton extends StatelessWidget {
         borderRadius: BorderRadius.circular(999),
         onTap: onTap,
         child: Container(
-          padding: EdgeInsets.symmetric(horizontal: small ? 14 : 22, vertical: small ? 6 : 10),
-          decoration: BoxDecoration(borderRadius: BorderRadius.circular(999), border: Border.all(color: const Color(0xFFE4E5F3))),
-          child: Text(label, style: TextStyle(color: const Color(0xFF4A4F7A), fontWeight: FontWeight.w700, fontSize: small ? 12 : 13)),
+          padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 10),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(999),
+            border: Border.all(color: const Color(0xFFE4E5F3)),
+          ),
+          child: Text(
+            label,
+            style: const TextStyle(
+              color: Color(0xFF4A4F7A),
+              fontWeight: FontWeight.w700,
+              fontSize: 13,
+            ),
+          ),
         ),
       ),
     );

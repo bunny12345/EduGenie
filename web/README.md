@@ -24,6 +24,8 @@ Golden Fruit chapter earns one fruit at the measured oak coordinates. Beyond nin
 additional fruit sprites appear in the upper canopy without limiting the count.
 Both clients use byte-identical assets and matching positioning calculations.
 Completion percentages, rewards, retention requirements and school scoping are unchanged.
+Returning from an expanded tree refreshes both overview data and selected chapter
+details, so completed chapters do not remain displayed as the next unfinished lesson.
 
 Deploy the backend providing `masteredChapters` before the updated clients.
 Without this count, no mastery is inferred from ordinary completion.
@@ -147,3 +149,10 @@ This section has moved here: [https://facebook.github.io/create-react-app/docs/d
 ### `npm run build` fails to minify
 
 This section has moved here: [https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify](https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify)
+# Learning progress
+
+Progress graphs use the shared `GET /progress/learning-score` history: understanding,
+tree growth, tests/mock tests, practice and homework all contribute. Both graph
+ranges and the current subject score use the same backend formula. Homework is
+included in the subject's score breakdown; no client-side game-only calculation
+or migration is needed. Deploy the backend changes to update the calculation.

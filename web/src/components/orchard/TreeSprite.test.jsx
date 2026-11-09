@@ -7,6 +7,19 @@ function artwork(file) {
   return screen.queryAllByAltText('').filter((image) => image.getAttribute('src').endsWith(`/${file}.png`));
 }
 
+test.each(['oak', 'crystal'])('%s selects the correct artwork for all eight learning stages', (treeType) => {
+  const { rerender } = render(<TreeSprite treeType={treeType} stage="seed" masteredChapters={0} />);
+  for (const stage of ['seed', 'sprout', 'young_plant', 'growing_tree', 'mature_tree', 'blossom', 'fruit', 'golden_fruit']) {
+    const masteredChapters = stage === 'golden_fruit' ? 1 : 0;
+    rerender(<TreeSprite treeType={treeType} stage={stage} masteredChapters={masteredChapters} />);
+    const file = masteredChapters > 0 ? (treeType === 'oak' ? 'acorns_1' : 'fully_grown')
+      : ['blossom', 'fruit'].includes(stage) ? 'fully_grown' : stage;
+    expect(artwork(file)).toHaveLength(1);
+    expect(artwork('mastery_fruit')).toHaveLength(treeType === 'crystal' && masteredChapters > 0 ? 1 : 0);
+    expect(screen.getByRole('img')).not.toHaveClass('eg-tree-placeholder');
+  }
+});
+
 test.each(['crystal', 'cherry_blossom', 'banyan', 'digital', 'mango', 'lemon', 'peach', 'plum', 'strawberry'])('%s grows natural fruit at the oak positions without changing its identifier', (treeType) => {
   const { rerender } = render(<TreeSprite treeType={treeType} stage="fruit" masteredChapters={1} size={220} />);
   let image = screen.getByRole('img');

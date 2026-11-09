@@ -9,6 +9,27 @@ Use a transparent PNG; its silhouette is tinted to match the selected/unselected
 navigation colors and scales down with the compact navigation bar.
 After adding or replacing a bundled image, stop and relaunch the app to refresh assets.
 
+## Homework layouts
+
+Homework feedback and history actions wrap on narrow screens instead of forcing
+buttons beyond the card edge. Subject mock-test headings wrap too. Layout
+regressions cover 320/390/600px widths and text scaling up to 2x.
+
+## Games layouts
+
+Game hub cards and flashcard subject tabs size to their content. Gameplay titles
+wrap while keeping Exit visible. Long flashcard questions and answers scroll
+inside the flip card, with the reveal hint and Ask AI button kept separate from
+the scrolling text. Regression tests cover narrow screens and larger text sizes.
+
+## Learning progress
+
+The app displays `GET /progress/learning-score` histories without recalculating
+scores locally. Understanding, tree growth, tests/mock tests, practice and
+homework all contribute to subject progress, including the daily/monthly graphs.
+The subject breakdown includes homework. The shared backend must be deployed
+for the updated calculation to appear in both mobile and web.
+
 ## Orchard mastery artwork
 
 Oak trees use `assets/orchard/oak/fully_grown.png` and `acorns_1.png` through

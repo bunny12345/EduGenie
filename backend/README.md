@@ -42,6 +42,68 @@ Chapter growth reads are paginated and scoped to the student and subject.
 Withdrawn lessons and growth rows from other classes do not earn acorns.
 Both clients use this count for natural-tree fruit artwork; existing stages,
 rewards and completion percentages are unchanged. No schema change is needed.
+`npx ts-node scripts/orchard_stage_smoke.ts` tests all eight stages for Mathematics
+and Science in a disposable file-backed database, including retention failures,
+90% roots, independent growth and overview/detail parity. It never uses production.
+
+Learning progress graphs
+------------------------
+
+`GET /progress/learning-score` supplies the same daily/monthly histories to web
+and mobile. Subject scores combine understanding (20%), tree growth (20%),
+tests/mock tests (25%), practice (20%) and homework (15%), renormalizing weights
+for components without evidence. Tree growth measures chapter stages from seed
+to mastery, not just the number of completed chapters. Only current-class chapter
+growth counts. Tests are graded percentages, linked to their parent assignment
+and dated by completion; started/unsubmitted attempts do not count.
+Legacy `local-test-*` IDs are resolved from the existing local
+assignment feed, never sent to Supabase UUID filters. If their assignment metadata
+has disappeared, the backend logs the unresolved references and keeps the original
+attempts in overall progress (and subject progress when the attempt itself names
+the subject). It does not invent subject assignments or suppress genuine DB errors.
+Homework assignments are read with `select('*')` and merged with the existing
+student-scoped persisted local feed, supporting legacy databases without a
+`homework.subject` column. Submitted/resubmitted/graded assignment records with
+`submitted_at` provide completion evidence when no attempt row exists. Pending,
+other-class and undated assignments earn no dated credit. Real attempts take
+precedence; an ungraded assignment's default grade is not treated as zero.
+Assignment grade snapshots apply from `graded_at`/`updated_at`, not retroactively.
+
+Each graph point uses the same scoring formula as its current score. Orchard
+activity and passed retention reviews replay the existing growth-engine effects
+at their recorded dates; games are not needed to unlock a graph. Later game or
+test activity does not proportionally rescale past understanding/tree growth.
+Practice includes flashcards, revision/recall/application tasks and recorded
+practice metrics. Unscored practice uses completion volume (20 tasks = 100%);
+accuracy is used when available. Homework blends grades with unique completed
+assignments (eight = full completion credit); ungraded submissions earn completion
+credit, not a fabricated zero grade. Resubmissions count once.
+
+The overall nine-dimension weights are unchanged. Understanding now explicitly
+includes tree growth, and revision/consistency include non-game learning records.
+The overall score is a separate nine-dimension composite, not an average of the
+subject-card scores. Its day/month graphs retain the `/1000` scale; subject graphs
+use percentages. Only currently registered subject trees contribute to overall
+Orchard averages, preventing old removed subjects from diluting them.
+Overall consistency includes homework, tests, practice and reward check-in dates
+alongside Orchard activity. Historical sunlight is reconstructed from the same
+14-day activity window and scale as the Orchard meter when a newer tree snapshot
+would otherwise hide it. Later watering does not erase prior confidence evidence.
+Assignment-level grades can complement an ungraded attempt at their recorded
+grading date, while completion counts stay unique and old-class homework is excluded.
+Mirrored test/homework metrics are not treated as practice. Historical test
+metrics remain part of the test average after newer real attempts arrive;
+same-subject, same-score metrics within 60 seconds of a completed attempt are
+excluded as mirrored writes.
+Historical mutable snapshots (such as flashcard review totals or legacy growth
+without a complete activity ledger) only apply from their last recorded update;
+missing historical evidence is not invented. Future months remain null, and the
+monthly window includes the current academic year, capped at 24 months.
+No database migration or data seeding is needed. Deploy the backend to update both
+clients' calculations.
+
+Regression command:
+`node --test -r ts-node/register src/progress/learning-score.service.test.ts`
 
 Orchard school tree assignments
 -------------------------------

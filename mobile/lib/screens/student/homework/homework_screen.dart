@@ -384,11 +384,13 @@ class _HomeworkScreenState extends ConsumerState<HomeworkScreen> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Row(
+                            Wrap(
+                              alignment: WrapAlignment.spaceBetween,
+                              crossAxisAlignment: WrapCrossAlignment.center,
+                              spacing: 12,
+                              runSpacing: 8,
                               children: [
-                                Expanded(
-                                  child: Text('${_selectedSubject ?? ''} Homework', style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800, color: Color(0xFF111827))),
-                                ),
+                                Text('${_selectedSubject ?? ''} Homework', style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800, color: Color(0xFF111827))),
                                 _FramedTextButton(
                                   label: _showHistory ? 'Hide history' : 'Open history',
                                   onPressed: () => setState(() => _showHistory = !_showHistory),
@@ -544,7 +546,7 @@ class _HomeworkScreenState extends ConsumerState<HomeworkScreen> {
                               children: [
                                 Icon(Icons.assignment_turned_in_rounded, size: 18, color: iconColor),
                                 const SizedBox(width: 8),
-                                Text('${_selectedSubject ?? ''} Mock Tests', style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: Color(0xFF111827))),
+                                Expanded(child: Text('${_selectedSubject ?? ''} Mock Tests', style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: Color(0xFF111827)))),
                               ],
                             ),
                             const SizedBox(height: 10),
@@ -1127,8 +1129,11 @@ class _HomeworkCard extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  Wrap(
+                    alignment: WrapAlignment.spaceBetween,
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    spacing: 12,
+                    runSpacing: 8,
                     children: [
                       const Text('Teacher feedback', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Color(0xFF1D4ED8))),
                       _FramedTextButton(label: expandedFeedback ? 'Hide feedback' : 'Show feedback', onPressed: onToggleFeedback),

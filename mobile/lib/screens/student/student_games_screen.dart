@@ -74,14 +74,23 @@ class _ArcadeHero extends StatelessWidget {
               height: 200,
               decoration: const BoxDecoration(
                 shape: BoxShape.circle,
-                gradient: RadialGradient(colors: [Color(0x477C5CFF), Colors.transparent]),
+                gradient: RadialGradient(
+                  colors: [Color(0x477C5CFF), Colors.transparent],
+                ),
               ),
             ),
           ),
           Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text('Learning Arcade 🎮', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800, color: Color(0xFF2A2360))),
+              const Text(
+                'Learning Arcade 🎮',
+                style: TextStyle(
+                  fontSize: 22,
+                  fontWeight: FontWeight.w800,
+                  color: Color(0xFF2A2360),
+                ),
+              ),
               const SizedBox(height: 4),
               Text(
                 greetingName != null && greetingName!.isNotEmpty
@@ -105,19 +114,31 @@ class _GamesGrid extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (games.isEmpty) {
-      return const Text('No games available yet.', style: TextStyle(color: Color(0xFF9096B6), fontSize: 13));
+      return const Text(
+        'No games available yet.',
+        style: TextStyle(color: Color(0xFF9096B6), fontSize: 13),
+      );
     }
-    return GridView.builder(
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      itemCount: games.length,
-      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: 2,
-        crossAxisSpacing: 14,
-        mainAxisSpacing: 14,
-        childAspectRatio: 0.82,
-      ),
-      itemBuilder: (context, i) => _GameCard(game: games[i]),
+    return Column(
+      children: [
+        for (var i = 0; i < games.length; i += 2) ...[
+          if (i > 0) const SizedBox(height: 14),
+          IntrinsicHeight(
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Expanded(child: _GameCard(game: games[i])),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: i + 1 < games.length
+                      ? _GameCard(game: games[i + 1])
+                      : const SizedBox.shrink(),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ],
     );
   }
 }
@@ -130,8 +151,13 @@ class _GameCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final accent = game.accent;
-    final iconBg = Color.alphaBlend(accent.withValues(alpha: 0.14), Colors.white);
-    final statusBg = game.isLive ? Color.alphaBlend(accent.withValues(alpha: 0.16), Colors.white) : const Color(0xFFF1F2F8);
+    final iconBg = Color.alphaBlend(
+      accent.withValues(alpha: 0.14),
+      Colors.white,
+    );
+    final statusBg = game.isLive
+        ? Color.alphaBlend(accent.withValues(alpha: 0.16), Colors.white)
+        : const Color(0xFFF1F2F8);
     final statusText = game.isLive ? accent : const Color(0xFF9096B6);
 
     return Opacity(
@@ -143,19 +169,23 @@ class _GameCard extends StatelessWidget {
           borderRadius: BorderRadius.circular(16),
           onTap: game.isLive
               ? () => Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => switch (game.gameKey) {
-                        'flashcards' => const FlashcardsScreen(),
-                        'quiz_rush' => const QuizRushScreen(),
-                        'memory_maze' => const MemoryMazeScreen(),
-                        _ => Scaffold(
-                            appBar: AppBar(title: Text(game.title)),
-                            body: ComingSoonView(icon: Icons.videogame_asset_rounded, title: game.title, subtitle: 'This game is coming to the app soon.'),
-                          ),
-                      },
-                    ),
-                  )
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => switch (game.gameKey) {
+                      'flashcards' => const FlashcardsScreen(),
+                      'quiz_rush' => const QuizRushScreen(),
+                      'memory_maze' => const MemoryMazeScreen(),
+                      _ => Scaffold(
+                        appBar: AppBar(title: Text(game.title)),
+                        body: ComingSoonView(
+                          icon: Icons.videogame_asset_rounded,
+                          title: game.title,
+                          subtitle: 'This game is coming to the app soon.',
+                        ),
+                      ),
+                    },
+                  ),
+                )
               : null,
           child: Container(
             clipBehavior: Clip.antiAlias,
@@ -167,35 +197,61 @@ class _GameCard extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Container(height: 4, decoration: BoxDecoration(color: accent.withValues(alpha: 0.9))),
+                Container(
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: accent.withValues(alpha: 0.9),
+                  ),
+                ),
                 const SizedBox(height: 10),
                 Container(
                   width: 54,
                   height: 54,
                   alignment: Alignment.center,
-                  decoration: BoxDecoration(color: iconBg, borderRadius: BorderRadius.circular(14)),
+                  decoration: BoxDecoration(
+                    color: iconBg,
+                    borderRadius: BorderRadius.circular(14),
+                  ),
                   child: Text(game.icon, style: const TextStyle(fontSize: 34)),
                 ),
                 const SizedBox(height: 6),
-                Text(game.title, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: Color(0xFF26224F))),
-                const SizedBox(height: 6),
-                SizedBox(
-                  height: 30,
-                  child: Text(
-                    game.tagline,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(fontSize: 11.5, color: Color(0xFF6D739C), height: 1.35),
+                Text(
+                  game.title,
+                  style: const TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w800,
+                    color: Color(0xFF26224F),
                   ),
                 ),
-                const Spacer(),
+                const SizedBox(height: 6),
+                Text(
+                  game.tagline,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 11.5,
+                    color: Color(0xFF6D739C),
+                    height: 1.35,
+                  ),
+                ),
+                const SizedBox(height: 12),
                 Container(
                   margin: const EdgeInsets.only(top: 4),
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                  decoration: BoxDecoration(color: statusBg, borderRadius: BorderRadius.circular(999)),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 4,
+                  ),
+                  decoration: BoxDecoration(
+                    color: statusBg,
+                    borderRadius: BorderRadius.circular(999),
+                  ),
                   child: Text(
                     game.isLive ? '▶ Play' : '🔒 Coming soon',
-                    style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: statusText),
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w800,
+                      color: statusText,
+                    ),
                   ),
                 ),
               ],

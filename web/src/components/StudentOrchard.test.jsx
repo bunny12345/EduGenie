@@ -1,5 +1,5 @@
 import React from 'react';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import StudentOrchard from './StudentOrchard';
 import { getOrchard, getOrchardTree } from '../api';
 
@@ -15,10 +15,30 @@ const tree = {
   health: 'healthy', season: 'spring',
 };
 beforeEach(() => {
+  jest.clearAllMocks();
   getOrchard.mockResolvedValue({ trees: [tree], overallProgress: 33, profile: {} });
   getOrchardTree.mockResolvedValue({
     ...tree, tree, chapters: [], nextChapter: null,
   });
+});
+
+test('returning from a tree refreshes the selected chapter detail along with overview progress', async () => {
+    getOrchardTree.mockResolvedValue({
+      ...tree, tree, chapters: [],
+      nextChapter: { chapterId: 'chapter-1', title: 'Old unfinished chapter', stageLabel: 'Growing Tree' },
+    });
+    render(<StudentOrchard studentId="student-1" />);
+    expect(await screen.findByText('Old unfinished chapter')).toBeInTheDocument();
+    fireEvent.click(screen.getByText('Explore tree →'));
+    expect(await screen.findByText('← Back to Orchard')).toBeInTheDocument();
+    const mastered = { ...tree, stage: 'golden_fruit', stageLabel: 'Golden Fruit', masteredChapters: 12, completedChapters: 12, progressPct: 100 };
+    getOrchard.mockResolvedValue({ trees: [mastered], overallProgress: 100, profile: {} });
+    getOrchardTree.mockResolvedValue({ ...mastered, tree: mastered, chapters: [], nextChapter: null });
+    const previousReads = getOrchardTree.mock.calls.length;
+    fireEvent.click(screen.getByText('← Back to Orchard'));
+    expect(await screen.findByText('12 apples')).toBeInTheDocument();
+    await waitFor(() => expect(getOrchardTree.mock.calls.length).toBeGreaterThan(previousReads));
+    await waitFor(() => expect(screen.queryByText('Old unfinished chapter')).not.toBeInTheDocument());
 });
 
 test('Orchard card, side panel and expanded tree show the same natural mastery count', async () => {

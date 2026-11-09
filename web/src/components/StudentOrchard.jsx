@@ -162,7 +162,7 @@ export default function StudentOrchard({ studentId, greetingName = 'there' }) {
     return () => {
       cancelled = true;
     };
-  }, [studentId, selectedKey]);
+  }, [studentId, selectedKey, data]);
 
   const profile = data?.profile || {};
   const trees = useMemo(() => data?.trees || [], [data]);
