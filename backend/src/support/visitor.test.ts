@@ -118,6 +118,15 @@ test('public school enquiries verify email, isolate guest sessions and guard the
     assert.equal(res.status, 201);
     assert.match((await object(res)).reply, /cannot share/);
     assert.equal((await request('/support/public/chat', { message: '' })).status, 400);
+    const fee = await request('/support/public/chat', { message: 'Do you have school fee payement feature in this app?' });
+    assert.match((await object(fee)).reply, /not currently a live/);
+    const followup = await request('/support/public/chat', {
+      message: 'Can it do that?', previousQuestions: ['Do you have fee payments in the app?'],
+    });
+    assert.match((await object(followup)).reply, /not currently a live/);
+    for (const previousQuestions of ['bad', [1], [''], Array(5).fill('fees'), ['x'.repeat(2001)]]) {
+      assert.equal((await request('/support/public/chat', { message: 'What about that?', previousQuestions })).status, 400);
+    }
   });
   await t.test('consent and valid email are required before code delivery', async () => {
     const res = await request('/support/public/code', { email: 'bad', name: 'A', schoolName: 'B', message: 'Demo', consent: false });

@@ -80,12 +80,26 @@ test('feature chips and free-text questions call the public bot without login', 
   open();
   fireEvent.click(screen.getByRole('button', { name: 'Your school name & logo' }));
   expect(await screen.findByText('Your school name and logo can be part of onboarding.')).toBeInTheDocument();
-  expect(askVisitorBot).toHaveBeenCalledWith('Your school name & logo');
+  expect(askVisitorBot).toHaveBeenCalledWith('Your school name & logo', []);
   askVisitorBot.mockResolvedValueOnce({ reply: 'Please talk to our admin for that detail.', handoff: true });
   fireEvent.change(screen.getByLabelText('Ask about AcademiX'), { target: { value: 'Can you build a custom feature?' } });
   fireEvent.click(screen.getByRole('button', { name: 'Send question' }));
   expect(await screen.findByText('Please talk to our admin for that detail.')).toBeInTheDocument();
+  expect(askVisitorBot).toHaveBeenLastCalledWith('Can you build a custom feature?', ['Your school name & logo']);
   expect(screen.getAllByRole('button', { name: /Talk to admin/ })).toHaveLength(2);
+});
+
+test('scenario follow-ups send only the last four user questions, never bot replies', async () => {
+  render(<WelcomeAssistant />);
+  open();
+  const questions = ['Fee payments?', 'Can it do that?', 'What about receipts?', 'Can we use it?', 'What about refunds?', 'How do we arrange that?'];
+  for (const [index, question] of questions.entries()) {
+    askVisitorBot.mockResolvedValueOnce({ reply: `Public answer ${index}`, handoff: false });
+    fireEvent.change(screen.getByLabelText('Ask about AcademiX'), { target: { value: question } });
+    fireEvent.click(screen.getByRole('button', { name: 'Send question' }));
+    await screen.findByText(`Public answer ${index}`);
+    expect(askVisitorBot).toHaveBeenLastCalledWith(question, questions.slice(Math.max(0, index - 4), index));
+  }
 });
 
 test('contact requires consent and email verification, then saves only private chat access in browser', async () => {

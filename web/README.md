@@ -92,6 +92,20 @@ It introduces the personal AI tutor, homework/exam practice, progress graphs,
 school branding and custom feature development. Login and invite forms are
 unchanged; the assistant does not create accounts or read their credentials.
 
+The public guide prioritizes practical scenarios over generic “app” or “feature”
+keywords. Fee payments and Attendance/Transport/Medical Info previews are not
+described as live workflows; unverified features are referred to admin rather
+than promised. It covers submission mistakes, connectivity, interrupted tests,
+learning reports versus school marks, Orchard mastery, lesson visibility, login
+access and AI answer limitations. No private accounts or school records are read.
+Short follow-ups can use the last four user questions, validated/redacted by the
+backend (2,000 characters each); bot replies are excluded and this context is not
+persisted. Explicit new topics override previous questions.
+
+Deploy the backend before the website. Regression checks:
+`cd backend && node --test -r ts-node/register src/support/visitor-guide.test.ts src/support/visitor.test.ts`
+and `cd web && CI=true npm test -- --watchAll=false --runInBand src/components/WelcomeAssistant.test.jsx`.
+
 **Talk to admin** asks for enquiry details and consent, then verifies the
 visitor's email before sending the request. Admin receives an email notification
 and replies in the MFA owner page's **School enquiries** tab. Visitors receive

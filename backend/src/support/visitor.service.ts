@@ -60,9 +60,14 @@ export class VisitorService {
     const { session_hash, session_expires_at, ...safe } = enquiry;
     return safe;
   }
-  chat(ip: string, body: { message?: unknown }) {
+  chat(ip: string, body: { message?: unknown; previousQuestions?: unknown }) {
     this.limit(`bot:${ip}`, 30);
-    return { success: true, ...answerVisitorQuestion(this.text(body?.message, 2000)) };
+    const history = body?.previousQuestions;
+    if (history !== undefined && (!Array.isArray(history) || history.length > 4)) {
+      throw new BadRequestException('Visitor context must contain at most four previous questions.');
+    }
+    const previousQuestions = Array.isArray(history) ? history.map((question) => this.text(question, 2000)) : [];
+    return { success: true, ...answerVisitorQuestion(this.text(body?.message, 2000), previousQuestions) };
   }
 
   async requestCode(ip: string, body: { email?: unknown; name?: unknown; schoolName?: unknown; message?: unknown; consent?: unknown; whatsappNumber?: unknown; whatsappConsent?: unknown; whatsappCountry?: unknown }) {

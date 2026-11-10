@@ -81,7 +81,8 @@ export default function WelcomeAssistant() {
     setMessages((list) => [...list, { role: 'user', content: message.trim() }]);
     setDraft('');
     run(async () => {
-      const result = await askVisitorBot(message.trim());
+      const previousQuestions = messages.filter((item) => item.role === 'user').slice(-4).map((item) => item.content);
+      const result = await askVisitorBot(message.trim(), previousQuestions);
       if (active.current) setMessages((list) => [...list, { role: 'bot', content: result.reply, handoff: result.handoff }]);
     });
   }

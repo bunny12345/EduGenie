@@ -106,7 +106,7 @@ async function enquiryRequest(path, { token, owner = false, body, signal } = {})
   }
   return data;
 }
-export const askVisitorBot = (message) => enquiryRequest('/support/public/chat', { body: { message } });
+export const askVisitorBot = (message, previousQuestions = []) => enquiryRequest('/support/public/chat', { body: { message, previousQuestions } });
 export const requestEnquiryCode = (body) => enquiryRequest('/support/public/code', { body });
 export const verifyEnquiryCode = (body) => enquiryRequest('/support/public/verify', { body });
 export const listSchoolEnquiries = (token, offset = 0, signal) =>
