@@ -1,4 +1,4 @@
-package com.example.mobile
+package now.academix.app
 
 import android.app.ActivityManager
 import android.content.Context

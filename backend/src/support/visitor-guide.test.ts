@@ -10,7 +10,7 @@ const cases: Array<[string, RegExp]> = [
   ['Can you build fee payments as a custom feature?', /fee-payment integration.*availability is not promised/],
   ['Does the mobile app track the school bus live?', /not live.*bus tracking/],
   ['Can I mark attendance in this app?', /demo previews/],
-  ['Can the principal register teachers in the mobile app?', /School Admin mobile portal is not currently/],
+  ['Can the principal register teachers in the mobile app?', /school administration is web-only/],
   ['I forgot my password. How do I log in?', /correct School, Teacher or Student login/],
   ['A student submitted the wrong homework attachment. What now?', /resubmission.*allowed window/],
   ['What if a child has no internet at home?', /internet connection is needed/i],

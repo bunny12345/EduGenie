@@ -34,7 +34,7 @@ class Session {
       };
 
   factory Session.fromJson(Map<String, dynamic> json) => Session(
-        role: json['role'] as String? ?? 'student',
+        role: json['role'] as String? ?? '',
         token: json['token'] as String? ?? '',
         userId: json['userId'] as String? ?? '',
         schoolId: json['schoolId'] as String? ?? '',

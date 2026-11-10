@@ -44,7 +44,7 @@ const scenarios = [
   {
     topic: /\b(school admin|school administrator|principal)\b/i,
     when: /\b(app|mobile|phone)\b/i,
-    reply: 'School administrators should use the website for registration, curriculum and school-management tasks. The School Admin mobile portal is not currently a full working management portal. Do not assume every website action is available on a phone app. Choose “Talk to admin” to confirm the mobile setup needed by your school before onboarding.',
+    reply: 'School administrators use the AcademiX website for registration, curriculum and school-management tasks. The mobile app is for students and teachers only; school administration is web-only. Choose “Talk to admin” if your school needs help getting started.',
     handoff: true,
   },
   {

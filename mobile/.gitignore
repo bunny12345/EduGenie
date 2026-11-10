@@ -43,3 +43,10 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+# Private mobile signing material
+**/key.properties
+*.jks
+*.keystore
+*.p12
+*.mobileprovision

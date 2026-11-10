@@ -2,6 +2,20 @@
 
 This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
 
+## Illustrated AcademiX branding
+
+`public/logo.png` is the transparent illustrated logo used by login, all portal
+headers and report cards. It is byte-identical to the Flutter master at
+`mobile/assets/branding/logo.png`. The blue A, graduation cap, book, swoosh, star,
+name and tagline are preserved with a matte painted finish.
+
+After replacing the master, run `swift tool/build_launcher_icons.swift` from
+`mobile/` on macOS. This updates both clients' logo/icon assets, including
+correctly sized web manifest icons, favicon PNG/ICO and the 180px Apple touch icon.
+Small icons use only the emblem so the name/tagline do not become unreadable.
+Deploy the generated public assets together; the source replacement alone does
+not update the production website.
+
 ## Loading and refresh performance
 
 Portal dashboards and the owner portal load as separate JavaScript chunks, only

@@ -7,7 +7,7 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
-	<string>Mobile</string>
+	<string>AcademiX</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -15,7 +15,7 @@
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
 	<key>CFBundleName</key>
-	<string>mobile</string>
+	<string>AcademiX</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
@@ -29,7 +29,9 @@
 	<key>NSPhotoLibraryAddUsageDescription</key>
 	<string>AcademiX saves downloaded homework attachment images to your photo library.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
-	<string>AcademiX saves downloaded homework attachment images to your photo library.</string>
+	<string>AcademiX lets you select homework photos to attach to submissions and assignments.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>AcademiX uses the microphone when you choose to speak to the AI Tutor.</string>
 	<key>NSCameraUsageDescription</key>
 	<string>AcademiX uses the camera to take photos of homework to attach to submissions and assignments.</string>
 	<key>UIApplicationSceneManifest</key>

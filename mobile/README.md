@@ -1,6 +1,114 @@
-# mobile
+# AcademiX mobile
 
-A new Flutter project.
+The native app supports **Student and Teacher only**. School administrators use
+the website; there is no mobile school portal. Restored school/unsupported-role
+sessions show a web-only/unsupported notice and can sign out, never fall through
+to the student portal. Web school administration and existing API/session
+contracts remain unchanged.
+
+## Internal testing / TestFlight release preparation
+
+Both platforms use the owner-confirmed permanent identifier `now.academix.app`
+and display name **AcademiX**. Verify availability/register it in both developer
+accounts before the first upload; changing it after publication creates a
+different app. iOS test targets use `now.academix.app.RunnerTests`.
+The version is `1.0.0+1`; increment the build number for each subsequent upload.
+
+### Android signing
+
+Copy [android/key.properties.example](android/key.properties.example) to private
+`android/key.properties` and fill all four fields using your existing upload
+keystore. Relative `storeFile` paths resolve from `mobile/android/`; absolute
+paths work too. Use forward slashes and Java `.properties` escaping for special
+characters. Keep the keystore outside Git, back it up securely, and never send
+passwords through chat. Signing properties, JKS/keystore and Apple signing files
+are gitignored. If a key has ever been committed, ignoring it does not remove
+history or replace the need for rotation/recovery.
+
+Release builds **fail** when upload signing is missing; there is no debug-key
+fallback. Debug builds remain available for local testing.
+
+```bash
+flutter analyze
+flutter test
+flutter build appbundle --release --dart-define=API_BASE_URL=https://academix.now
+```
+
+Upload the signed `build/app/outputs/bundle/release/app-release.aab` to Google
+Play **Internal testing**, not production. Do not upload a debug APK. Enable Play
+App Signing and preserve the upload key. Resolve SDK/license requirements shown
+by `flutter doctor -v`; the operator must review/accept Android licenses.
+
+### Apple signing
+
+Install full supported Xcode and required CocoaPods tooling, then open
+`ios/Runner.xcworkspace`. Select the Apple developer team for Runner, register the
+Bundle ID, and configure signing in Xcode. No team ID or certificates are
+invented/committed here. Then:
+
+```bash
+flutter build ipa --release --dart-define=API_BASE_URL=https://academix.now
+```
+
+Upload the signed archive through Xcode Organizer/Transporter to App Store
+Connect and start **TestFlight** testing. Native iOS compilation/signing cannot
+be verified with Command Line Tools alone.
+
+### Branding, permissions and verification
+
+The illustrated AcademiX logo keeps the blue A, cap, open book, swoosh and gold
+star, with a matte painted finish instead of glossy metallic shading.
+`assets/branding/logo.png` is the transparent master, including the name and
+tagline. The generator copies it byte-for-byte to the website's `public/logo.png`
+and extracts the emblem for native/browser/store icons on opaque white squares.
+Android density icons, all iOS asset-catalog sizes,
+`assets/branding/store_icon.png` (512px Play listing source), website favicons,
+touch/PWA icons and Flutter-web icons are generated together on macOS:
+
+```bash
+swift tool/build_launcher_icons.swift
+flutter test test/role_router_test.dart test/release_configuration_test.dart test/widget_test.dart
+```
+
+The script uses the illustrated logo's emblem crop; review it after any logo
+replacement. iOS icons have no alpha channel, and maskable browser icons have
+extra safe-zone padding. Rebuild/relaunch the app after replacing bundled assets;
+deploy the website assets to update the live site. Android Internet/microphone
+permissions are in the main manifest so release builds don't depend on debug
+permissions. iOS has explicit microphone/camera/photo-library purpose strings.
+These declarations do not replace runtime consent or testing permission denial.
+
+Production builds must use the live HTTPS API above. A developer's
+`web/.env.local` may target localhost and is **not** a production mobile endpoint.
+Never bundle backend `.env`, database passwords, service-role keys or an upload
+keystore. Application-ID changes mean old development installs may coexist as a
+separate app; sign in afresh and expect runtime permissions to be requested again.
+
+### Remaining launch gates (not completed by configuration changes)
+
+- Provide the existing private upload keystore for a signed AAB; configure Apple
+  developer signing and full Xcode for the IPA.
+- Publish owner-reviewed privacy/support pages; accurately complete Play Data
+  safety and Apple App Privacy for student records, photos, microphone/audio,
+  AI services and every relevant SDK. No placeholder policy URL is shipped.
+- Decide and implement the required account-deletion/request flow for
+  school-provisioned accounts, including retention obligations and the
+  public deletion-request page where required. Logging out is not deletion;
+  do not delete school records without an approved retention/scope decision.
+- Verify children's/education requirements and AI-content reporting/safety,
+  including required disclosure/consent before third-party personal-data sharing.
+  Camera/microphone OS permission alone is not consent for all processing.
+- Test student/teacher workflows, offline/error paths and denied permissions on
+  real Android/iPhone devices. Provide reviewer accounts with synthetic data.
+- Confirm production backend security fixes are deployed and both mobile roles
+  work against that backend. Store acceptance is not established by a debug build.
+
+Initial preparation validation: Android debug APK builds with the correct ID,
+label and merged Internet/microphone permissions; release AAB intentionally
+stops on missing signing. Flutter analysis passes. The full suite currently
+includes nine existing failures in `test/natural_tree_art_test.dart` caused by
+casting `ResizeImage` to `AssetImage`; they are not changed by release setup and
+must be resolved before treating the full regression suite as green.
 
 ## Student navigation icon
 

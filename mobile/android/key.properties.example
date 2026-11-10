@@ -1,0 +1,7 @@
+# Copy to key.properties (gitignored) and fill privately.
+# Relative storeFile paths resolve from mobile/android; absolute paths also work.
+# Use forward slashes in paths. Escape Java .properties special characters.
+storeFile=
+storePassword=
+keyAlias=
+keyPassword=
