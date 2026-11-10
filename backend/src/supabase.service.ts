@@ -3,6 +3,7 @@ import { createClient } from '@supabase/supabase-js';
 import * as jwt from 'jsonwebtoken';
 import * as fs from 'fs';
 import * as path from 'path';
+import { jwtSecret } from './auth/jwt-secret';
 
 @Injectable()
 export class SupabaseService {
@@ -250,24 +251,14 @@ export class SupabaseService {
   verifyJwt(token?: string) {
     if (!token) return null;
     const t = token.replace(/^Bearer\s+/i, '');
-    const secret = process.env.SUPABASE_JWT_SECRET;
     try {
-      if (secret) {
-        // Verify signature when the project JWT secret is available
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const payload = (jwt as any).verify(t, secret as string);
-        return payload;
-      }
-      // No secret available (dev). Decode without verification for local flows.
-      // WARNING: this is insecure and only intended for local/dev without SUPABASE_JWT_SECRET.
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const decoded = (jwt as any).decode(t);
+      const payload = jwt.verify(t, jwtSecret(), { algorithms: ['HS256'] });
+      if (typeof payload === 'string' || typeof payload.sub !== 'string' || !payload.sub.trim()
+        || typeof payload.exp !== 'number') throw new jwt.JsonWebTokenError('Required token claims are missing');
+      return payload;
+    } catch (e: unknown) {
       // eslint-disable-next-line no-console
-      console.warn('SUPABASE_JWT_SECRET not set — JWT decoded without verification');
-      return decoded;
-    } catch (e: any) {
-      // eslint-disable-next-line no-console
-      console.warn('JWT verification failed', e?.message || e);
+      console.warn('JWT verification failed', e instanceof Error ? e.message : 'Invalid token');
       return null;
     }
   }

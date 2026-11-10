@@ -1,8 +1,9 @@
-import { Controller, Get, Post, Patch, Delete, Param, Body, Query, UseGuards, Req } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Delete, Param, Body, Query, UseGuards, Req, ForbiddenException, NotFoundException, ServiceUnavailableException } from '@nestjs/common';
 import { SupabaseService } from '../supabase.service';
 import { AuthGuard } from '../auth/auth.guard';
 import { LocalFeedService } from '../shared/local-feed.service';
 import { StudentAuthService } from '../auth/student-auth.service';
+import { requireStudentIdentity } from '../auth/student-identity';
 
 @Controller('tests')
 export class TestsController {
@@ -11,6 +12,60 @@ export class TestsController {
     private readonly localFeed: LocalFeedService,
     private readonly studentAuth: StudentAuthService
   ) {}
+
+  private requireTeacher(req: any) {
+    if (req?.user?.role !== 'teacher' || !req.user.sub || !req.user.schoolId) {
+      throw new ForbiddenException('Teacher access required');
+    }
+  }
+
+  private async loadTest(testId: string) {
+    const local = this.localFeed.listTests().find((row: any) => String(row.id) === testId);
+    if (testId.startsWith('local-test-') && local) return local;
+    const res = await this.db.client.from('tests').select('*').eq('id', testId).limit(1);
+    if (res?.error) throw new ServiceUnavailableException('Unable to verify test access');
+    const row = res?.data?.[0] || local;
+    if (!row) throw new NotFoundException('Test not found');
+    return row;
+  }
+
+  private async requireOwnedTest(req: any, testId: string) {
+    this.requireTeacher(req);
+    const row = await this.loadTest(testId);
+    if (row.teacher_id !== req.user.sub || row.school_id !== req.user.schoolId) {
+      throw new ForbiddenException('Test not in teacher scope');
+    }
+    return row;
+  }
+
+  private async loadStudentAttempt(attemptId: string, studentId: string) {
+    const local = this.localFeed.getAttempt(attemptId);
+    if (local && local.student_id !== studentId) {
+      throw new ForbiddenException('Attempt not owned by this student');
+    }
+    if (attemptId.startsWith('local-attempt-')) return local;
+    const res = await this.db.client.from('test_attempts').select('*')
+      .eq('id', attemptId).eq('student_id', studentId).limit(1);
+    if (res?.error) throw new ServiceUnavailableException('Unable to verify attempt access');
+    const row = res?.data?.[0] || local;
+    if (row && row.student_id !== studentId) throw new ForbiddenException('Attempt not owned by this student');
+    return row;
+  }
+
+  private async scopeTests(req: any, rows: any[]) {
+    if (req?.user?.role === 'teacher') {
+      this.requireTeacher(req);
+      return rows.filter((row) => row.teacher_id === req.user.sub && row.school_id === req.user.schoolId);
+    }
+    const id = requireStudentIdentity(req);
+    const profile = await this.studentAuth.resolveStudentProfile(id);
+    if (!profile?.schoolId || !profile?.className) {
+      throw new ForbiddenException('Student school and class are required');
+    }
+    return rows.filter((row) => row.status === 'assigned'
+      && row.school_id === profile.schoolId
+      && (!row.class_name || String(row.class_name).trim().toLowerCase() === profile.className.trim().toLowerCase()));
+  }
 
   // Students only ever see tests their teacher has explicitly assigned
   // (status 'assigned'), scoped to their own class. Teachers (filter 'all')
@@ -182,12 +237,12 @@ export class TestsController {
       const res = await this.db.client.from('tests').select('*');
       let tests = (res && (res as any).data) || [];
       if (!Array.isArray(tests) || !tests.length) tests = this.localFeed.listTests();
-      tests = await this.filterTestsForRequest(tests, filter, id);
+      tests = await this.filterTestsForRequest(await this.scopeTests(req, tests), filter, id);
       if (filter === 'upcoming') tests = await this.attachAttemptStatus(tests, id);
       return { success: true, tests: Array.isArray(tests) ? tests : [] };
     } catch (e) {
       let tests = this.localFeed.listTests();
-      tests = await this.filterTestsForRequest(tests, filter, id);
+      tests = await this.filterTestsForRequest(await this.scopeTests(req, tests), filter, id);
       if (filter === 'upcoming') tests = await this.attachAttemptStatus(tests, id);
       return { success: true, error: String((e as any)?.message || e || 'tests list fallback'), tests };
     }
@@ -197,13 +252,14 @@ export class TestsController {
   @Post('create')
   @UseGuards(AuthGuard)
   async create(@Req() req: any, @Body() body: any) {
+    this.requireTeacher(req);
     try {
       const row = {
         title: String(body.title || 'Untitled Test').slice(0, 200),
         subject: String(body.subject || 'General').slice(0, 100),
         class_name: String(body.className || body.class_name || '').slice(0, 100),
-        school_id: req?.user?.schoolId || body.schoolId || null,
-        teacher_id: req?.user?.sub || body.teacherId || null,
+        school_id: req.user.schoolId,
+        teacher_id: req.user.sub,
         duration_minutes: Math.max(1, Number(body.durationMinutes || 30)),
         status: 'draft',
         created_at: new Date().toISOString()
@@ -215,6 +271,8 @@ export class TestsController {
         title: test.title,
         subject: test.subject,
         class_name: test.class_name || row.class_name,
+        school_id: row.school_id,
+        teacher_id: row.teacher_id,
         duration_minutes: test.duration_minutes || row.duration_minutes,
         status: test.status || 'draft'
       };
@@ -229,7 +287,8 @@ export class TestsController {
   // only during the given [startAt, endAt] attempt window.
   @Post(':testId/assign')
   @UseGuards(AuthGuard)
-  async assign(@Param('testId') testId: string, @Body() body: any) {
+  async assign(@Req() req: any, @Param('testId') testId: string, @Body() body: any) {
+    const ownedTest = await this.requireOwnedTest(req, testId);
     try {
       const questionsRes = await this.db.client.from('test_questions').select('id').eq('test_id', testId);
       const dbQuestionCount = Array.isArray((questionsRes as any)?.data) ? (questionsRes as any).data.length : 0;
@@ -266,6 +325,8 @@ export class TestsController {
         title: test.title,
         subject: test.subject,
         class_name: test.class_name || test.className || '',
+        school_id: ownedTest.school_id,
+        teacher_id: ownedTest.teacher_id,
         duration_minutes: test.duration_minutes || 30,
         status: 'assigned',
         start_at: test.start_at || startAt,
@@ -281,6 +342,7 @@ export class TestsController {
   @Patch(':testId')
   @UseGuards(AuthGuard)
   async update(@Req() req: any, @Param('testId') testId: string, @Body() body: any) {
+    const ownedTest = await this.requireOwnedTest(req, testId);
     try {
       const patch = {
         title: body.title !== undefined ? String(body.title || 'Untitled Test').slice(0, 200) : undefined,
@@ -303,6 +365,8 @@ export class TestsController {
         title: test.title,
         subject: test.subject,
         class_name: test.class_name || test.className || '',
+        school_id: ownedTest.school_id,
+        teacher_id: ownedTest.teacher_id,
         duration_minutes: test.duration_minutes || 30,
         status: test.status || 'upcoming'
       });
@@ -326,13 +390,8 @@ export class TestsController {
   @Post(':testId/clone')
   @UseGuards(AuthGuard)
   async clone(@Req() req: any, @Param('testId') testId: string, @Body() body: any) {
+    const sourceFinal = await this.requireOwnedTest(req, testId);
     try {
-      const testRes = await this.db.client.from('tests').select('*').eq('id', testId).limit(1);
-      const source = (testRes as any)?.data?.[0] || null;
-      const localSource = this.localFeed.listTests().find((t: any) => String(t?.id || '') === String(testId));
-      const sourceFinal = source || localSource;
-      if (!sourceFinal) return { success: false, error: 'Test not found', test: null, questions: [] };
-
       const questionsRes = await this.db.client.from('test_questions').select('*').eq('test_id', testId).order('created_at', { ascending: true });
       const sourceQuestions = Array.isArray((questionsRes as any)?.data) && (questionsRes as any).data.length
         ? (questionsRes as any).data
@@ -369,6 +428,8 @@ export class TestsController {
         title: clonedTest.title,
         subject: clonedTest.subject,
         class_name: clonedTest.class_name || clonedTest.className || '',
+        school_id: sourceFinal.school_id,
+        teacher_id: sourceFinal.teacher_id,
         duration_minutes: clonedTest.duration_minutes || 30,
         status: clonedTest.status || 'upcoming'
       });
@@ -410,6 +471,7 @@ export class TestsController {
   @Post(':testId/questions')
   @UseGuards(AuthGuard)
   async addQuestion(@Req() req: any, @Param('testId') testId: string, @Body() body: any) {
+    await this.requireOwnedTest(req, testId);
     try {
       const options = Array.isArray(body.options) ? body.options : [];
       const row = {
@@ -450,7 +512,8 @@ export class TestsController {
   // Teacher: update a question for a test
   @Patch(':testId/questions/:questionId')
   @UseGuards(AuthGuard)
-  async updateQuestion(@Param('testId') testId: string, @Param('questionId') questionId: string, @Body() body: any) {
+  async updateQuestion(@Req() req: any, @Param('testId') testId: string, @Param('questionId') questionId: string, @Body() body: any) {
+    await this.requireOwnedTest(req, testId);
     try {
       const patch = {
         text: body.text !== undefined ? String(body.text || '').slice(0, 500) : undefined,
@@ -507,7 +570,8 @@ export class TestsController {
   // Teacher: delete a question from a test
   @Delete(':testId/questions/:questionId')
   @UseGuards(AuthGuard)
-  async deleteQuestion(@Param('testId') testId: string, @Param('questionId') questionId: string) {
+  async deleteQuestion(@Req() req: any, @Param('testId') testId: string, @Param('questionId') questionId: string) {
+    await this.requireOwnedTest(req, testId);
     try {
       await this.db.client.from('test_questions').delete().eq('id', questionId).eq('test_id', testId);
       this.localFeed.removeQuestion(testId, questionId);
@@ -521,7 +585,8 @@ export class TestsController {
   // Teacher: list questions for a test
   @Get(':testId/questions')
   @UseGuards(AuthGuard)
-  async listQuestions(@Param('testId') testId: string) {
+  async listQuestions(@Req() req: any, @Param('testId') testId: string) {
+    await this.requireOwnedTest(req, testId);
     try {
       const res = await this.db.client.from('test_questions').select('*').eq('test_id', testId).order('created_at', { ascending: true });
       const rows = (res as any)?.data || [];
@@ -555,7 +620,8 @@ export class TestsController {
   // Teacher: delete a test
   @Delete(':testId')
   @UseGuards(AuthGuard)
-  async remove(@Param('testId') testId: string) {
+  async remove(@Req() req: any, @Param('testId') testId: string) {
+    await this.requireOwnedTest(req, testId);
     try {
       await this.db.client.from('test_questions').delete().eq('test_id', testId);
       await this.db.client.from('tests').delete().eq('id', testId);
@@ -570,8 +636,12 @@ export class TestsController {
   @Post(':testId/start')
   @UseGuards(AuthGuard)
   async start(@Req() req: any, @Param('testId') testId: string, @Body() body: any) {
+    const sId = requireStudentIdentity(req, body.studentId);
+    const testRow = await this.loadTest(testId);
+    if (!(await this.scopeTests(req, [testRow])).length) {
+      throw new ForbiddenException('Test not assigned to this student');
+    }
     try {
-      const sId = body.studentId || req.studentId;
       const existingRes = await this.db.client.from('test_attempts').select('*').eq('test_id', testId).eq('student_id', sId);
       const existingRows = Array.isArray((existingRes as any)?.data) ? (existingRes as any).data : [];
       const alreadySubmitted = existingRows.some((a: any) => a.score !== null && a.score !== undefined);
@@ -579,8 +649,6 @@ export class TestsController {
         return { success: false, error: 'You have already submitted this test.', attemptId: null, questions: [] };
       }
 
-      const testRes = await this.db.client.from('tests').select('*').eq('id', testId).limit(1);
-      const testRow = (testRes as any)?.data?.[0] || this.localFeed.listTests().find((t: any) => String(t?.id || '') === String(testId));
       const windowStatus = this.computeWindowStatus(testRow || {});
       if (windowStatus === 'scheduled') {
         const opensAt = testRow?.start_at || testRow?.startAt;
@@ -618,29 +686,30 @@ export class TestsController {
   @Post('/attempts/:attemptId/submit')
   @UseGuards(AuthGuard)
   async submit(@Req() req: any, @Param('attemptId') attemptId: string, @Body() body: any) {
+    const actorId = requireStudentIdentity(req, body.studentId);
     try {
-      const attemptRes = await this.db.client.from('test_attempts').select('*').eq('id', attemptId).limit(1);
-      const attempt = (attemptRes as any)?.data?.[0] || this.localFeed.getAttempt(attemptId);
+      const attempt = await this.loadStudentAttempt(attemptId, actorId);
       if (!attempt?.test_id) {
         return { success: false, error: 'Attempt not found', score: 0, feedback: 'Submission failed', perQuestionFeedback: [] };
       }
       const answers = body.answers || {};
-      const actorId = body.studentId || req.studentId || attempt.student_id;
       const result = await this.scoreAndFinalizeAttempt(attempt, answers, actorId);
       return { success: true, score: result.score, feedback: result.feedback, perQuestionFeedback: result.perQuestionFeedback };
     } catch (e) {
+      if (e instanceof ForbiddenException || e instanceof ServiceUnavailableException) throw e;
       return { success: false, error: String(e), score: 0, feedback: 'Submission failed', perQuestionFeedback: [] };
     }
   }
 
   @Get('/attempts/:attemptId')
   @UseGuards(AuthGuard)
-  async result(@Param('attemptId') attemptId: string) {
+  async result(@Req() req: any, @Param('attemptId') attemptId: string) {
+    const studentId = requireStudentIdentity(req);
     try {
-      const res = await this.db.client.from('test_attempts').select('*').eq('id', attemptId).limit(1);
-      const row = (res && (res as any).data && (res as any).data[0]) || this.localFeed.getAttempt(attemptId);
+      const row = await this.loadStudentAttempt(attemptId, studentId);
       return { success: true, result: row };
     } catch (e) {
+      if (e instanceof ForbiddenException || e instanceof ServiceUnavailableException) throw e;
       return { success: false, error: String((e as any)?.message || e || 'test result failed'), result: null };
     }
   }
@@ -650,8 +719,8 @@ export class TestsController {
   @Get(':testId/review')
   @UseGuards(AuthGuard)
   async review(@Req() req: any, @Param('testId') testId: string, @Query('studentId') studentId: string) {
+    const sId = requireStudentIdentity(req, studentId);
     try {
-      const sId = String(req.studentId || studentId || '').trim();
       const attemptsRes = await this.db.client.from('test_attempts').select('*').eq('test_id', testId).eq('student_id', sId);
       const attemptRows = Array.isArray((attemptsRes as any)?.data) ? (attemptsRes as any).data : [];
       const submitted = attemptRows.filter((a: any) => a.score !== null && a.score !== undefined);

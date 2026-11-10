@@ -12,7 +12,9 @@ export class AuthGuard implements CanActivate {
     if (!token) throw new UnauthorizedException('Missing Authorization header');
 
     const payload = await this.supabase.verifyJwt(token as string);
-    if (!payload) throw new UnauthorizedException('Invalid or expired token');
+    if (!payload || typeof payload.sub !== 'string' || !payload.sub.trim()) {
+      throw new UnauthorizedException('Invalid or expired token');
+    }
 
     // Attach user info and studentId to request for downstream handlers
     req.user = payload;

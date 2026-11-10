@@ -5,6 +5,7 @@ import { LearningScoreService } from '../progress/learning-score.service';
 import { OrchardService } from '../orchard/orchard.service';
 import { normalizeSubjectKey } from '../orchard/orchard.constants';
 import { METRIC_ORDER_COLUMN, metricMinutes, metricRow, metricScore } from '../progress/progress-metric.util';
+import { requireStudentIdentity } from '../auth/student-identity';
 
 @Controller('progress')
 export class ProgressController {
@@ -76,7 +77,7 @@ export class ProgressController {
   @Post()
   @UseGuards(AuthGuard)
   async record(@Req() req: any, @Body() body: any) {
-    const sid = body.studentId || req.studentId;
+    const sid = requireStudentIdentity(req, body.studentId);
     const subject = String(body.subject || 'General').slice(0, 100);
     const score = Math.max(0, Math.min(100, Number(body.score ?? 0)));
     const minutes = Math.max(0, Number(body.minutes || body.timeSpent || 0));

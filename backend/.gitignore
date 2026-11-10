@@ -5,3 +5,5 @@ dist/
 .cache
 logs/
 *.log
+backups/
+__pycache__/

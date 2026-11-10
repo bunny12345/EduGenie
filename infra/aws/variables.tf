@@ -4,6 +4,16 @@ variable "aws_region" {
   default     = "ap-south-1"
 }
 
+variable "backup_snapshot_time_utc" {
+  description = "Daily backend disk snapshot start time in UTC (HH:MM)."
+  type        = string
+  default     = "03:00"
+  validation {
+    condition     = can(regex("^([01][0-9]|2[0-3]):[0-5][0-9]$", var.backup_snapshot_time_utc))
+    error_message = "Use a UTC time in HH:MM format."
+  }
+}
+
 variable "domain_name" {
   description = "Root domain for the app."
   type        = string

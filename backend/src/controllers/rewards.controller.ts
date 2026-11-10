@@ -2,6 +2,7 @@ import { Controller, Get, Post, Query, Body, UseGuards, Req } from '@nestjs/comm
 import { SupabaseService } from '../supabase.service';
 import { AuthGuard } from '../auth/auth.guard';
 import { LocalFeedService } from '../shared/local-feed.service';
+import { requireStudentIdentity } from '../auth/student-identity';
 
 @Controller('rewards')
 export class RewardsController {
@@ -13,7 +14,7 @@ export class RewardsController {
   @Get()
   @UseGuards(AuthGuard)
   async getRewards(@Req() req: any, @Query('studentId') studentId: string) {
-    const id = req.studentId || studentId;
+    const id = requireStudentIdentity(req, studentId);
     try {
       const res = await this.db.client.from('student_rewards').select('*').eq('student_id', id).limit(500);
       if ((res as any)?.error) throw (res as any).error;
@@ -59,7 +60,7 @@ export class RewardsController {
   @Post('checkin')
   @UseGuards(AuthGuard)
   async checkIn(@Req() req: any, @Body() body: any) {
-    const sid = body.studentId || req.studentId;
+    const sid = requireStudentIdentity(req, body.studentId);
     const coins = 10;
     const reason = 'Daily study check-in';
     const todayKey = new Date().toISOString().slice(0, 10); // YYYY-MM-DD, server date
@@ -117,7 +118,7 @@ export class RewardsController {
   @Post('earn')
   @UseGuards(AuthGuard)
   async earn(@Req() req: any, @Body() body: any) {
-    const sid = body.studentId || req.studentId;
+    const sid = requireStudentIdentity(req, body.studentId);
     const coins = Math.max(1, Math.min(1000, Number(body.coins || 10)));
     const reason = String(body.reason || 'Activity reward').slice(0, 200);
     try {
@@ -162,8 +163,8 @@ export class RewardsController {
   @Post('redeem')
   @UseGuards(AuthGuard)
   async redeem(@Req() req: any, @Body() body: any) {
+    const sid = requireStudentIdentity(req, body.studentId);
     try {
-      const sid = body.studentId || req.studentId;
       const rec = { student_id: sid, reward_id: body.rewardId, created_at: new Date().toISOString() };
       await this.db.client.from('redemptions').insert([rec]);
       const balanceRes = await this.db.client.from('student_rewards').select('coins').eq('student_id', sid).limit(1);

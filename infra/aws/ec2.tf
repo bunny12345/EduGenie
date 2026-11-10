@@ -5,6 +5,7 @@ resource "aws_instance" "backend" {
   key_name                    = data.aws_key_pair.backend.key_name
   vpc_security_group_ids      = [aws_security_group.backend.id]
   associate_public_ip_address = true
+  iam_instance_profile        = aws_iam_instance_profile.backend_backups.name
 
   root_block_device {
     volume_size           = 20
@@ -14,7 +15,7 @@ resource "aws_instance" "backend" {
 
   user_data = file("${path.module}/files/user_data.sh")
 
-  tags = { Name = "academix-backend" }
+  tags = { Name = "academix-backend", AcademiXBackup = "daily" }
 
   lifecycle {
     # Avoid a forced replacement if the "latest Amazon Linux 2023" AMI id

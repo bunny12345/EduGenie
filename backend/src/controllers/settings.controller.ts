@@ -1,6 +1,7 @@
 import { Controller, Get, Post, Query, Body, UseGuards, Req } from '@nestjs/common';
 import { SupabaseService } from '../supabase.service';
 import { AuthGuard } from '../auth/auth.guard';
+import { requireStudentIdentity } from '../auth/student-identity';
 
 @Controller('settings')
 export class SettingsController {
@@ -22,15 +23,19 @@ export class SettingsController {
   @Post()
   @UseGuards(AuthGuard)
   async saveSettings(@Req() req: any, @Body() body: any) {
+    const studentId = requireStudentIdentity(req, body.studentId);
+    requireStudentIdentity(req, body.student_id);
     try {
       const payload = {
         ...body,
-        student_id: body.studentId || body.student_id || req.studentId,
+        student_id: studentId,
         prefs: body.prefs || body.preferences || body.prefs || {}
       };
       if (payload.id) {
-        const upd = await this.db.client.from('settings').update(payload).eq('id', payload.id).select();
-        const saved = (upd && (upd as any).data && (upd as any).data[0]) || payload;
+        const upd = await this.db.client.from('settings').update(payload).eq('id', payload.id).eq('student_id', studentId).select();
+        if (upd?.error) throw upd.error;
+        const saved = upd?.data?.[0];
+        if (!saved) return { success: false, error: 'Settings not found for this student' };
         return { success: true, settings: { studentId: saved.student_id, prefs: saved.prefs || {} } };
       }
       const ins = await this.db.client.from('settings').insert([payload]).select();

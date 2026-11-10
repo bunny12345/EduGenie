@@ -20,6 +20,117 @@ npm run start:dev
 
 The server starts on `PORT` from `.env` (default 3000) and exposes `POST /chat`.
 
+Database backups
+----------------
+
+`bash scripts/backup_db.sh` creates a PostgreSQL custom-format `.dump` archive,
+not the old `.sql.gz` format. Set `BACKUP_DATABASE_URL` privately (preferred)
+or use the existing `DATABASE_URL`; quoted URI values are supported. Credentials
+are passed through private process/container environments, never command-line
+arguments. Remote connections require certificate and hostname verification.
+For Supabase use the project's CA certificate with `--ssl-root-cert /secure/ca.crt`.
+On IPv4-only servers use the exact **Session pooler** hostname from Supabase's
+Connect dialog, port 5432, and the pooled username. HTTPS project URLs, API keys
+and Supabase account-login passwords are not PostgreSQL credentials.
+
+The runner writes into a private temporary directory, checks the `PGDMP` header
+and `pg_restore --list`, then atomically publishes the archive. Failed/invalid
+dumps cannot produce a success-shaped empty backup. `--s3-uri s3://BUCKET/database`
+uploads with SSE-S3 encryption, downloads the object again and checks SHA-256
+before reporting offsite success or pruning old local archives. S3 retains seven
+days; the production runner retains local archives for one day after verified
+upload. Upload failures preserve the completed local archive and fail explicitly.
+New backups are gitignored; old tracked backup files are not proof of recovery.
+The two historical July SQL gzip files were found to contain zero uncompressed
+bytes and must not be used as restore points.
+
+This is a full logical database dump, not a physical database snapshot or PITR.
+It includes accessible database schema/data/policies/grants, but not cluster roles,
+Supabase Storage file contents or files on EC2. Managed roles/extensions must
+exist in a compatible restore target. Chat `conversation_snapshots` are application
+history, not disaster-recovery backups. Database archives and EC2 snapshots are
+independent and are not an atomic cross-system recovery point.
+
+See [AWS backup setup and recovery](../infra/aws/README.md#daily-backups) for
+schedules, deployment, monitoring and restore procedures. The existing four-table,
+unpaginated `backup_via_rest.sh` export is **not** a complete backup and is not
+used by the daily job.
+
+Tests use only a disposable local PostgreSQL cluster:
+
+```bash
+PYTHONDONTWRITEBYTECODE=1 python3 scripts/test_backup_db.py -v
+```
+
+They perform a real fixture restore, verify data/RLS/grants, and check corrupt
+archives, failed dumps, upload/download checksum failures, credential redaction
+and Docker timeout cleanup. Production's per-run catalog/checksum validation
+does not prove a full production restore; rehearse recovery on an isolated
+compatible target before relying on these archives for disaster recovery.
+
+Supabase Advisor security hardening
+----------------------------------
+
+The 15 "RLS Disabled in Public" alerts and the invitation-token "Sensitive
+Columns Exposed" alert are database access configuration findings, not CVE IDs.
+The targeted migration is
+[`db/migrations/20261110_supabase_advisor_hardening.sql`](db/migrations/20261110_supabase_advisor_hardening.sql).
+It enables RLS and revokes both table and column privileges from `PUBLIC`,
+`anon` and `authenticated` on the 15 reported tables. No data, columns or
+existing policies are dropped or rewritten. These tables are accessed through
+the NestJS API, not directly by web/mobile Supabase clients.
+
+Before applying:
+
+1. Confirm the **deployed** backend has `SUPABASE_SERVICE_ROLE_KEY` and the
+   existing `SUPABASE_JWT_SECRET` configured. Never put either key in a client
+   build. The local mock database remains supported; anonymous database access
+   is not a substitute for server credentials.
+2. Save the current metadata from
+   [`db/verify_supabase_advisor.sql`](db/verify_supabase_advisor.sql) in the
+   correct project's Supabase SQL Editor, and review its existing policies and
+   grants. Take a normal database backup before production changes.
+3. Execute **only the targeted migration** in SQL Editor as the database
+   administrator. It is transactional/idempotent and aborts if an expected
+   table is absent, backend privileges are missing or inherited client grants
+   still expose a table. Do not rerun the old policy scripts: they replace
+   policies and are not required here.
+4. Rerun the verification query: all 15 tables must have `table_exists` and
+   `rls_enabled` true, `anon_access` and `authenticated_access` false, and
+   `backend_access` true. Existing policy counts must be unchanged. Rerun
+   Supabase Advisor and check login/invite acceptance, chat history, tests,
+   flashcards, Quiz Rush, stories and rewards in both clients. An anonymous
+   request for `registration_invites?select=token&limit=0` must be denied,
+   while the server's service-role request must still succeed.
+
+The backend additionally verifies JWT signatures with HS256, subject and expiry;
+missing signing configuration fails closed for production or a configured
+Supabase deployment. Mock-only development uses an unpredictable process-local
+signing key, so local sessions must log in again after a restart. Unsigned and
+fixed-development-secret tokens are not accepted. Owner Supabase MFA validation
+is unchanged.
+
+Student reward, test-attempt, progress-write and settings-write operations reject
+another student's ID. Teacher test authoring/answer-key access requires ownership
+and the same school. Student test lists/start requests are limited to assigned
+tests in their school/class, regardless of the requested list filter. Legacy
+tests without school/teacher attribution are denied rather than exposed across
+schools; review their attribution separately instead of broadening access.
+Deploy the backend changes independently; the SQL migration does not deploy code.
+
+Regression checks (no live database/application records are used):
+
+```bash
+node --test scripts/test_supabase_hardening.js
+node --test -r ts-node/register src/auth/security.test.ts src/auth/owner-auth.test.ts
+npx tsc --noEmit
+```
+
+The SQL test requires existing local PostgreSQL tools (`initdb`, `pg_ctl`) and
+uses its own disposable Unix-socket cluster. It checks all 15 tables, actual
+client denial/backend CRUD, unchanged policies/data, repeat application and
+transaction rollback. It never uses `DATABASE_URL`.
+
 Dashboard and report performance
 --------------------------------
 

@@ -5,6 +5,7 @@ import { SupabaseService } from '../supabase.service';
 import { EmailService } from './email.service';
 import * as fs from 'fs';
 import * as path from 'path';
+import { jwtSecret } from './jwt-secret';
 
 const ACCOUNTS_DIR = path.join(process.cwd(), 'local-data');
 const STUDENT_ACCOUNTS_FILE = path.join(ACCOUNTS_DIR, 'student-accounts.json');
@@ -292,12 +293,12 @@ export class StudentAuthService implements OnModuleInit {
   }
 
   private makeToken(studentId: string) {
-    const secret = process.env.SUPABASE_JWT_SECRET || 'dev-insecure-secret';
+    const secret = jwtSecret();
     return jwt.sign({ sub: studentId, role: 'student' }, secret, { expiresIn: '12h' });
   }
 
   private makeRoleToken(sub: string, role: string, extras?: Record<string, any>) {
-    const secret = process.env.SUPABASE_JWT_SECRET || 'dev-insecure-secret';
+    const secret = jwtSecret();
     const payload = { sub, role, ...(extras || {}) };
     return jwt.sign(payload, secret, { expiresIn: '12h' });
   }
