@@ -20,6 +20,28 @@ npm run start:dev
 
 The server starts on `PORT` from `.env` (default 3000) and exposes `POST /chat`.
 
+### AI Tutor reply latency
+
+`POST /chat` starts independent profile, message embedding, memory, history,
+snapshot and selected-lesson/chunk reads together. Subject-scoped homework
+checks overlap with those reads when the subject is already supplied; otherwise
+they use the subject resolved from lesson metadata. All required context and
+homework checks still finish before calling the model. Lesson document coverage,
+topic boundaries, conversation IDs, history fallbacks and response shapes are
+unchanged, so this benefits both web and Flutter without client changes.
+
+Snapshot/message persistence, reply embeddings, Orchard activity and mastery
+updates remain asynchronous after generation. No shared answer cache, shorter
+context, weaker homework checks or model/provider change is introduced.
+
+Validate with:
+`node --test -r ts-node/register src/chat/chat.performance.test.ts`
+and `npx tsc --noEmit`. The regression includes a simulated-latency budget and
+tests context, locked homework, history failures and slow persistence.
+Its timing is not a production/model latency measurement. Deploy the backend
+for these improvements to reach the live app; provider generation time and
+first-time homework-image transcription can still dominate a reply.
+
 Database backups
 ----------------
 

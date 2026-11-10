@@ -758,30 +758,55 @@ export class ChatService {
     let profileRow: any = null;
     this.appendCacheTurn(studentId, convId, userTurn);
 
-    // Compute embedding for the incoming message
-    const emb = await this.embeddings.embed(message);
+    // Observe rejections immediately while independent context reads overlap.
+    const historyReads = Promise.allSettled([
+      Promise.resolve(this.db.client.from('memories').select('*').eq('student_id', studentId)),
+      Promise.resolve(this.db.client
+        .from('messages')
+        .select('role,message,created_at,message_metadata')
+        .eq('conversation_id', convId)
+        .eq('student_id', studentId)
+        .order('created_at', { ascending: false })
+        .limit(40)),
+      this.loadSnapshotHistory(studentId, convId),
+    ]);
+    const lessonReads = lessonId ? Promise.allSettled([
+      this.db.client.from('lessons').select('*').eq('id', lessonId).limit(1),
+      this.db.client.from('lesson_chunks').select('*').eq('lesson_id', lessonId)
+        .order('created_at', { ascending: true }),
+    ]) : null;
+    let homeworkEntriesPromise = lessonSubject
+      ? this.getHomeworkGuardrailEntries(studentId, lessonSubject)
+      : undefined;
 
-    try {
-      const profileRes = await this.db.client
+    const [emb, profileResult] = await Promise.all([
+      this.embeddings.embed(message),
+      Promise.resolve(this.db.client
         .from('students')
         .select('id,name,class_name,class')
         .eq('id', studentId)
-        .limit(1);
-      const profileRows = Array.isArray((profileRes as any)?.data) ? (profileRes as any).data : [];
+        .limit(1)).catch((error: unknown) => {
+          console.warn('Tutor profile lookup failed', error);
+          return { data: [] };
+        }),
+    ]);
+
+    try {
+      const profileRows = Array.isArray(profileResult?.data) ? profileResult.data : [];
       profileRow = profileRows[0] || null;
 
-      if (lessonId) {
-        const lessonRes = await this.db.client.from('lessons').select('*').eq('id', lessonId).limit(1);
+      if (lessonReads) {
+        const [lessonResult, chunksResult] = await lessonReads;
+        if (lessonResult.status === 'rejected') throw lessonResult.reason;
+        const lessonRes = lessonResult.value;
         const lessonRow = Array.isArray((lessonRes as any)?.data) ? (lessonRes as any).data[0] : null;
         if (lessonRow) {
           lessonTitle = lessonTitle || String(lessonRow.title || '').trim();
           lessonSubject = lessonSubject || String(lessonRow.subject || '').trim();
+          homeworkEntriesPromise ??= this.getHomeworkGuardrailEntries(studentId, lessonSubject);
 
-          const chunksRes = await this.db.client
-            .from('lesson_chunks')
-            .select('*')
-            .eq('lesson_id', lessonId)
-            .order('created_at', { ascending: true });
+          if (chunksResult.status === 'rejected') throw chunksResult.reason;
+          const chunksRes = chunksResult.value;
           const chunks = Array.isArray((chunksRes as any)?.data) ? (chunksRes as any).data : [];
 
           // Fetch document names so we can label chunks by source
@@ -929,27 +954,18 @@ export class ChatService {
       }
     } catch (e) { /* ignore */ }
 
-    // Kick off the independent DB reads together so their network round-trips
-    // overlap instead of running one-after-another on the reply's critical path.
-    // Supabase query builders are lazy, so Promise.resolve() forces them to start.
-    const memoriesPromise = Promise.resolve(
-      this.db.client.from('memories').select('*').eq('student_id', studentId)
-    );
-    const historyPromise = Promise.resolve(
-      this.db.client
-        .from('messages')
-        .select('role,message,created_at,message_metadata')
-        .eq('conversation_id', convId)
-        .eq('student_id', studentId)
-        .order('created_at', { ascending: false })
-        .limit(40)
-    );
-    const snapshotPromise = this.loadSnapshotHistory(studentId, convId);
+    homeworkEntriesPromise ??= this.getHomeworkGuardrailEntries(studentId, lessonSubject);
+    const [memoriesResult, historyResult, snapshotResult] = await historyReads;
+    for (const [index, result] of [memoriesResult, historyResult, snapshotResult].entries()) {
+      if (result.status === 'rejected') {
+        console.warn(`Tutor ${['memories', 'history', 'snapshot'][index]} lookup failed`, result.reason);
+      }
+    }
 
     // ── Fetch recent memories (top-3 by cosine similarity) ────────────────
     let relevantMemories: string[] = [];
     try {
-      const res = await memoriesPromise;
+      const res = memoriesResult.status === 'fulfilled' ? memoriesResult.value : null;
       memRows = (res && (res as any).data) || (Array.isArray(res) ? res : []);
       if (Array.isArray(memRows) && memRows.length > 0) {
         // Fallback name/class from memories if not in students table
@@ -976,7 +992,7 @@ export class ChatService {
     // ── Fetch recent conversation history (conversation-scoped) ───────────
     let recentHistory: Array<{ role: string; content: string }> = [];
     try {
-      const hres = await historyPromise;
+      const hres = historyResult.status === 'fulfilled' ? historyResult.value : null;
       const hrows = (hres && hres.data) || (Array.isArray(hres) ? hres : []);
       if (Array.isArray(hrows)) {
         recentHistory = hrows
@@ -992,7 +1008,9 @@ export class ChatService {
       }
     } catch (e) { /* ignore */ }
 
-    const snapshotHistory = this.toContextMessages(await snapshotPromise);
+    const snapshotHistory = this.toContextMessages(
+      snapshotResult.status === 'fulfilled' ? snapshotResult.value : []
+    );
 
     const cacheHistory = this.toContextMessages(this.getCacheHistory(studentId, convId));
 
@@ -1034,7 +1052,7 @@ export class ChatService {
         }).join('\n')}`
       : '';
 
-    const homeworkEntries = await this.getHomeworkGuardrailEntries(studentId, lessonSubject);
+    const homeworkEntries = await homeworkEntriesPromise;
     const homeworkGuardrailSection = this.buildHomeworkGuardrailSectionText(homeworkEntries);
     const lockedHomeworkMatch = this.findLockedHomeworkMatch(homeworkEntries, message);
 
