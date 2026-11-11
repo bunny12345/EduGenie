@@ -6,6 +6,9 @@ import { OrchardService } from '../orchard/orchard.service';
 import { ACTIVITY_EFFECTS } from '../orchard/orchard.constants';
 import { LearningScoreService } from './learning-score.service';
 import { LocalFeedService } from '../shared/local-feed.service';
+import { StudentAuthService } from '../auth/student-auth.service';
+import { ProgressController } from '../controllers/progress.controller';
+import { TestsController } from '../controllers/tests.controller';
 
 type Row = Record<string, unknown>;
 
@@ -24,12 +27,13 @@ function dayKey(daysAgo: number): string {
 
 function fixture(initial: Record<string, Row[]> = {}, failingTable = '', isMock = true) {
   const tables: Record<string, Row[]> = {
-    students: [{ id: 'student', created_at: at(60) }],
     orchard_chapters: (initial.chapter_growth || []).map((r) => ({ id: r.chapter_id, class_name: 'Class 8' })),
     ...initial,
+    students: (initial.students || [{ id: 'student', created_at: at(60) }]).map((row) => ({ school_id: 'school', ...row })),
     homework: (initial.homework || []).map((r) => ({ student_id: 'student', ...r })),
   };
   const requests: Array<{ table: string; filters: Record<string, unknown> }> = [];
+  const failingWrites = new Set<string>();
   const db: SupabaseService = Object.create(SupabaseService.prototype);
   Object.defineProperty(db, 'client', { value: {
     isMock,
@@ -38,9 +42,12 @@ function fixture(initial: Record<string, Row[]> = {}, failingTable = '', isMock 
       let ids: unknown[] | null = null;
       let start = 0;
       let end = Infinity;
+      let patch: Row | undefined;
       const query = {
         select() { return query; },
         eq(key: string, value: unknown) { filters[key] = value; return query; },
+        is(key: string, value: unknown) { filters[key] = value; return query; },
+        update(value: Row) { patch = value; return query; },
         in(_key: string, values: unknown[]) { ids = values; return query; },
         order() { return query; },
         range(from: number, to: number) { start = from; end = to; return query; },
@@ -51,11 +58,12 @@ function fixture(initial: Record<string, Row[]> = {}, failingTable = '', isMock 
             return resolve({ data: [], error: { message: 'invalid input syntax for type uuid' } });
           }
           const rows = (tables[table] || []).filter((row) =>
-            Object.entries(filters).every(([key, value]) => row[key] === value)
+            Object.entries(filters).every(([key, value]) => (value === null ? row[key] == null : row[key] === value))
               && (!ids || ids.includes(row.id)));
+          if (patch && !failingWrites.has(table)) rows.forEach((row) => Object.assign(row, patch));
           resolve({
             data: rows.slice(start, end + 1),
-            error: table === failingTable ? { message: 'simulated query failure' } : null,
+            error: table === failingTable || (patch && failingWrites.has(table)) ? { message: 'simulated query failure' } : null,
           });
         },
       };
@@ -66,8 +74,14 @@ function fixture(initial: Record<string, Row[]> = {}, failingTable = '', isMock 
   Object.defineProperty(orchard, 'resolveStudentSubjectKeys', { value: async () => ['science', 'english', 'telugu'] });
   Object.defineProperty(orchard, 'resolveStudentClassName', { value: async () => 'Class 8' });
   const localFeed = new LocalFeedService();
-  const service = new LearningScoreService(db, orchard, localFeed);
-  return { service, tables, requests, localFeed };
+  const auth: StudentAuthService = Object.create(StudentAuthService.prototype);
+  auth.resolveStudentProfile = async () => ({ id: 'student', name: 'Student', schoolId: 'school', className: 'Class 8', teacherId: '' });
+  const service = new LearningScoreService(db, orchard, localFeed, auth);
+  return {
+    service, tables, requests, localFeed, failingWrites,
+    progressController: new ProgressController(db, service, orchard),
+    testsController: new TestsController(db, localFeed, auth),
+  };
 }
 
 function own(rows: Row[]): Row[] {
@@ -166,7 +180,7 @@ test('partial tree growth counts before a chapter fruits; later activity cannot 
 
 test('tests resolve assignment subjects and use finished_at and percentage scores, not start time', async () => {
   const { service } = fixture({
-    tests: [{ id: 'test', subject: 'Science' }],
+    tests: [{ id: 'test', subject: 'Science', school_id: 'school', status: 'assigned', created_at: at(9) }],
     test_attempts: own([
       { test_id: 'test', started_at: at(9), created_at: at(9), finished_at: at(3), score: 80 },
       { test_id: 'test', started_at: at(1), score: null },
@@ -185,7 +199,7 @@ test('tests resolve assignment subjects and use finished_at and percentage score
   assertEndpoints(result);
 });
 
-test('homework-only submissions and grades contribute; resubmissions do not inflate completion', async () => {
+test('homework uses submitted / assigned, ignoring grades and duplicate resubmissions', async () => {
   const { service } = fixture({
     homework: [{ id: 'hw', subject: 'Science' }],
     homework_attempts: own([
@@ -195,10 +209,10 @@ test('homework-only submissions and grades contribute; resubmissions do not infl
   });
   const result = await service.getLearningScore('student');
   const science = result.subjects[0];
-  assert.equal(science.daily.find((p: { key: string }) => p.key === dayKey(5)).value, 13);
-  assert.equal(science.score, 53); // 60% grade + 40% one completed assignment out of eight.
+  assert.equal(science.daily.find((p: { key: string }) => p.key === dayKey(5)).value, 100);
+  assert.equal(science.score, 100);
   assert.equal(science.stats.find((s: { key: string }) => s.key === 'homework').value, 1);
-  assert.equal(science.metrics.find((m: { key: string }) => m.key === 'homework').value, 53);
+  assert.equal(science.metrics.find((m: { key: string }) => m.key === 'homework').value, 100);
   assert.ok(result.dimensions.find((d: { key: string }) => d.key === 'homework').value > 0);
   assertEndpoints(result);
 });
@@ -227,13 +241,13 @@ test('mixed games and flashcards contribute together to both current and histori
   assertEndpoints(result);
 });
 
-test('test-only fallback metrics count as tests, not practice', async () => {
+test('unlinked legacy test metrics earn neither test nor practice credit', async () => {
   const { service } = fixture({
     progress_metrics: own([{ subject: 'Science', metric_value: 72, recorded_at: at(3), details: { source: 'mock_test' } }]),
   });
   const result = await service.getLearningScore('student');
-  assert.equal(result.subjects[0].score, 72);
-  assert.equal(result.subjects[0].metrics.find((m: { key: string }) => m.key === 'tests').value, 72);
+  assert.equal(result.subjects[0].score, 0);
+  assert.equal(result.subjects[0].metrics.find((m: { key: string }) => m.key === 'tests').value, 0);
   assert.equal(result.subjects[0].metrics.find((m: { key: string }) => m.key === 'practice').value, 0);
   assertEndpoints(result);
 });
@@ -242,7 +256,8 @@ test('all five subject components use the same documented weights for score and 
   const { service } = fixture({
     orchard_trees: own([{ subject_key: 'science', total_chapters: 1 }]),
     chapter_growth: own([{ subject_key: 'science', chapter_id: 'chapter', stage_index: 7, roots_pct: 90, stage_updated_at: at(3) }]),
-    test_attempts: own([{ subject: 'Science', score: 16, max_score: 20, finished_at: at(3) }]),
+    tests: [{ id: 'test', subject: 'Science', school_id: 'school', status: 'assigned', created_at: at(3) }],
+    test_attempts: own([{ test_id: 'test', subject: 'Science', score: 16, max_score: 20, finished_at: at(3) }]),
     game_sessions: own([{ subject_key: 'science', score: 6, total: 10, ended_at: at(3) }]),
     homework_attempts: own(Array.from({ length: 8 }, (_, i) => ({ homework_id: `hw-${i}`, subject: 'Science', score: 100, created_at: at(3) }))),
   });
@@ -254,12 +269,13 @@ test('all five subject components use the same documented weights for score and 
 
 test('lower later test performance lowers the curve rather than forcing monotonic improvement', async () => {
   const { service } = fixture({
-    test_attempts: own([{ subject: 'Science', score: 100, finished_at: at(4) }, { subject: 'Science', score: 20, finished_at: at(1) }]),
+    tests: [{ id: 'test', subject: 'Science', school_id: 'school', status: 'assigned', created_at: at(4) }],
+    test_attempts: own([{ test_id: 'test', score: 100, finished_at: at(4) }, { test_id: 'test', score: 20, finished_at: at(1) }]),
   });
   const result = await service.getLearningScore('student');
   const science = result.subjects[0];
   assert.equal(science.daily.find((p: { key: string }) => p.key === dayKey(4)).value, 100);
-  assert.equal(science.score, 60);
+  assert.equal(science.score, 20); // Latest result per assigned test, not an average of retries.
   assertEndpoints(result);
 });
 
@@ -336,7 +352,7 @@ test('production UUID queries exclude legacy local IDs while retaining mixed his
   const databaseTest = '11111111-1111-1111-1111-111111111111';
   const databaseHomework = '22222222-2222-2222-2222-222222222222';
   const { service, requests, localFeed } = fixture({
-    tests: [{ id: databaseTest, subject: 'Science' }],
+    tests: [{ id: databaseTest, subject: 'Science', school_id: 'school', status: 'assigned', created_at: at(4) }],
     homework: [{ id: databaseHomework, subject: 'Science' }],
     test_attempts: own([
       { test_id: databaseTest, score: 80, finished_at: at(3) },
@@ -348,13 +364,15 @@ test('production UUID queries exclude legacy local IDs while retaining mixed his
       { homework_id: 'local-homework-deleted', subject: 'Science', score: 70, created_at: at(2) },
     ]),
   }, '', false);
-  Object.defineProperty(localFeed, 'listTests', { value: () => [{ id: 'local-test-1791399844044', subject: 'Science' }] });
+  Object.defineProperty(localFeed, 'listTests', { value: () => [{
+    id: 'local-test-1791399844044', subject: 'Science', school_id: 'school', status: 'assigned', created_at: at(4),
+  }] });
   const result = await service.getLearningScore('student');
   assert.equal(result.success, true);
   assert.equal(result.subjects[0].metrics.find((m: { key: string }) => m.key === 'tests').value, 70);
   assert.equal(result.subjects[0].stats.find((s: { key: string }) => s.key === 'tests').value, 2);
   assert.equal(result.subjects[0].stats.find((s: { key: string }) => s.key === 'homework').value, 2);
-  assert.equal(result.dimensions.find((d: { key: string }) => d.key === 'tests').value, 60);
+  assert.equal(result.dimensions.find((d: { key: string }) => d.key === 'tests').value, 70);
   assert.equal(requests.filter((r) => r.table === 'tests').length, 1);
   assertEndpoints(result);
 });
@@ -365,8 +383,8 @@ test('legacy-only deleted assignment metadata does not prevent a report loading'
   }, '', false);
   const result = await service.getLearningScore('student');
   assert.equal(result.success, true);
-  assert.equal(result.dimensions.find((d: { key: string }) => d.key === 'tests').value, 75);
-  assert.equal(requests.filter((r) => r.table === 'tests').length, 0);
+  assert.equal(result.dimensions.find((d: { key: string }) => d.key === 'tests').value, 0);
+  assert.equal(requests.filter((r) => r.table === 'tests').length, 1);
   assertEndpoints(result);
 });
 
@@ -377,10 +395,11 @@ test('genuine database assignment failures are still surfaced instead of hidden 
   await assert.rejects(service.getLearningScore('student'), ServiceUnavailableException);
 });
 
-test('Telugu counts persisted assignment submissions without attempt rows and keeps older test history', async () => {
+test('Telugu assigned zero-mark test does not inherit 62% from six old unlinked metrics', async () => {
   const { service, localFeed } = fixture({
     orchard_trees: own([{ subject_key: 'telugu', total_chapters: 0 }]),
-    test_attempts: own([{ subject: 'Telugu', score: 0, finished_at: at(3) }]),
+    tests: [{ id: 'telugu-test', subject: 'Telugu', school_id: 'school', status: 'assigned', created_at: at(10) }],
+    test_attempts: own([{ test_id: 'telugu-test', subject: 'Telugu', score: 0, finished_at: at(3) }]),
     progress_metrics: own([100, 100, 100, 100, 0, 33].map((value) => ({
       subject: 'Telugu', metric_value: value, recorded_at: at(40), details: { source: 'test' },
     }))),
@@ -394,10 +413,11 @@ test('Telugu counts persisted assignment submissions without attempt rows and ke
   ]) });
   const result = await service.getLearningScore('student');
   const telugu = result.subjects.find((s: { subjectKey: string }) => s.subjectKey === 'telugu');
-  assert.equal(telugu.metrics.find((m: { key: string }) => m.key === 'homework').value, 38); // Three of eight; ungraded default 0 is not a grade.
+  assert.equal(telugu.metrics.find((m: { key: string }) => m.key === 'homework').value, 75); // Three submitted out of four assigned.
   assert.equal(telugu.stats.find((s: { key: string }) => s.key === 'homework').value, 3);
-  assert.equal(telugu.metrics.find((m: { key: string }) => m.key === 'tests').value, 62); // (433 + 0) / 7, not the newest zero alone.
-  assert.equal(telugu.score, 53); // (61.857 * .25 + 37.5 * .15) / .4.
+  assert.equal(telugu.metrics.find((m: { key: string }) => m.key === 'tests').value, 0);
+  assert.deepEqual(telugu.testPerformance, { assigned: 1, completed: 1, averageMarks: 0, completionRate: 100, score: 0 });
+  assert.equal(telugu.score, 28); // (0 * .25 + 75 * .15) / .4.
   assert.ok(telugu.daily.every((p: { value: number }) => p.value > 0));
   assertEndpoints(result);
 });
@@ -412,12 +432,12 @@ test('DB homework submission status is evidence even without a subject column or
   ]) });
   const result = await service.getLearningScore('student');
   const telugu = result.subjects.find((s: { subjectKey: string }) => s.subjectKey === 'telugu');
-  assert.equal(telugu.score, 13);
+  assert.equal(telugu.score, 100);
   assert.equal(telugu.stats.find((s: { key: string }) => s.key === 'homework').value, 1);
   assertEndpoints(result);
 });
 
-test('assignment status does not duplicate real attempts and mutable grades begin on grading date', async () => {
+test('assignment status does not duplicate submissions and grades do not alter completion scores', async () => {
   const { service } = fixture({
     homework: own([
       { id: 'existing', subject: 'Science', status: 'submitted', submitted_at: at(5) },
@@ -429,22 +449,23 @@ test('assignment status does not duplicate real attempts and mutable grades begi
   const result = await service.getLearningScore('student');
   const science = result.subjects[0];
   assert.equal(science.stats.find((s: { key: string }) => s.key === 'homework').value, 2);
-  assert.equal(science.daily.find((p: { key: string }) => p.key === dayKey(5)).value, 25);
-  assert.equal(science.score, 58); // 80*.6 + 25*.4.
+  assert.equal(science.daily.find((p: { key: string }) => p.key === dayKey(5)).value, 100);
+  assert.equal(science.score, 67); // Two dated submissions out of three assignments.
   assertEndpoints(result);
 });
 
-test('later tests retain older legacy metrics while same-time mirrored scores count once', async () => {
+test('assigned test marks exclude both old unlinked metrics and mirrored metric writes', async () => {
   const { service } = fixture({
-    test_attempts: own([{ subject: 'Science', score: 0, finished_at: at(2) }]),
+    tests: [{ id: 'test', subject: 'Science', school_id: 'school', status: 'assigned', created_at: at(5) }],
+    test_attempts: own([{ test_id: 'test', subject: 'Science', score: 0, finished_at: at(2) }]),
     progress_metrics: own([
       { subject: 'Science', metric_value: 80, recorded_at: at(4), details: { source: 'test' } },
       { subject: 'Science', metric_value: 0, recorded_at: at(2), details: { source: 'test' } },
     ]),
   });
   const result = await service.getLearningScore('student');
-  assert.equal(result.subjects[0].score, 40);
-  assert.equal(result.subjects[0].daily.find((p: { key: string }) => p.key === dayKey(4)).value, 80);
+  assert.equal(result.subjects[0].score, 0);
+  assert.equal(result.subjects[0].daily.find((p: { key: string }) => p.key === dayKey(4)).value, 0);
   assertEndpoints(result);
 });
 
@@ -459,9 +480,13 @@ test('all subject scores and the overall graph use exact source values and indep
       { subject_key: 'science', chapter_id: 'science-chapter', stage_index: 3, roots_pct: 50, stage_updated_at: at(3) },
       { subject_key: 'english', chapter_id: 'english-chapter', stage_index: 0, roots_pct: 0, stage_updated_at: at(2) },
     ]),
+    tests: [
+      { id: 'science-test', subject: 'Science', school_id: 'school', status: 'assigned', created_at: at(3) },
+      { id: 'english-test', subject: 'English', school_id: 'school', status: 'assigned', created_at: at(2) },
+    ],
     test_attempts: own([
-      { subject: 'Science', score: 80, finished_at: at(3) },
-      { subject: 'English', score: 40, finished_at: at(2) },
+      { test_id: 'science-test', subject: 'Science', score: 80, finished_at: at(3) },
+      { test_id: 'english-test', subject: 'English', score: 40, finished_at: at(2) },
     ]),
     game_sessions: own([
       { subject_key: 'science', chapter_id: 'science-chapter', score: 1, total: 2, ended_at: at(3) },
@@ -474,14 +499,14 @@ test('all subject scores and the overall graph use exact source values and indep
     ]),
   });
   const report = await service.getLearningScore('student');
-  assert.equal(report.subjects[0].score, 53);
-  assert.equal(report.subjects[1].score, 32);
+  assert.equal(report.subjects[0].score, 67);
+  assert.equal(report.subjects[1].score, 45);
   assert.equal(report.subjects[2].score, 0);
   const practice = (50 + 100 + 80) / 3;
   const expected = {
     understanding: .4 * 25 + .1 * (3 / 14 * 100) + .3 * 60 + .2 * practice,
     tests: 60,
-    homework: 25,
+    homework: 100,
     consistency: .5 * (4 / 21 * 100) + .5 * (4 / 20 * 100),
     revision: .4 * practice + .3 * 40 + .3 * (10 / 120 * 100),
     focus: .4 * 75,
@@ -498,7 +523,8 @@ test('all subject scores and the overall graph use exact source values and indep
 test('homework, tests, games and check-ins all count toward overall consistency without Orchard events', async () => {
   const { service } = fixture({
     homework_attempts: own([{ subject: 'Science', homework_id: 'hw', created_at: at(5) }]),
-    test_attempts: own([{ subject: 'Science', score: 70, finished_at: at(4) }]),
+    tests: [{ id: 'test', subject: 'Science', school_id: 'school', status: 'assigned', created_at: at(4) }],
+    test_attempts: own([{ test_id: 'test', subject: 'Science', score: 70, finished_at: at(4) }]),
     game_sessions: own([{ subject_key: 'science', score: 1, total: 2, ended_at: at(3) }]),
     student_rewards: own([{ reward_type: 'coin', amount: 10, created_at: at(2) }]),
   });
@@ -521,7 +547,7 @@ test('a later watering activity cannot erase historical confidence from earlier 
   assertEndpoints(after);
 });
 
-test('persisted grades complement ungraded real attempts without adding a homework completion', async () => {
+test('persisted grades do not change completion scores and old-class homework is excluded', async () => {
   const { service } = fixture({
     homework: own([
       { id: 'hw', subject: 'Science', class_name: 'Class 8', status: 'graded', submitted_at: at(4), updated_at: at(2), grade: 80 },
@@ -535,7 +561,299 @@ test('persisted grades complement ungraded real attempts without adding a homewo
   const report = await service.getLearningScore('student');
   const science = report.subjects[0];
   assert.equal(science.stats.find((s: { key: string }) => s.key === 'homework').value, 1);
-  assert.equal(science.daily.find((p: { key: string }) => p.key === dayKey(4)).value, 13);
-  assert.equal(science.score, 53);
+  assert.equal(science.daily.find((p: { key: string }) => p.key === dayKey(4)).value, 100);
+  assert.equal(science.score, 100);
   assertEndpoints(report);
+});
+
+test('35 of 100 homework and tests produce 35% homework and 28% tests at 80% average marks', async () => {
+  const { service } = fixture({
+    homework: Array.from({ length: 100 }, (_, i) => ({
+      id: `hw-${i}`, subject: 'Science', class_name: 'Class 8', created_at: at(8), status: 'pending',
+    })),
+    tests: Array.from({ length: 100 }, (_, i) => ({
+      id: `test-${i}`, subject: 'Science', school_id: 'school', class_name: 'Class 8',
+      status: 'assigned', created_at: at(8),
+    })),
+    homework_attempts: own(Array.from({ length: 35 }, (_, i) => ({
+      homework_id: `hw-${i}`, created_at: at(4), score: 100,
+    }))),
+    test_attempts: own(Array.from({ length: 35 }, (_, i) => ({
+      test_id: `test-${i}`, finished_at: at(4), score: 16, max_score: 20,
+    }))),
+  });
+  const report = await service.getLearningScore('student');
+  const science = report.subjects[0];
+  assert.equal(science.metrics.find((m: { key: string }) => m.key === 'homework').value, 35);
+  assert.equal(science.metrics.find((m: { key: string }) => m.key === 'tests').value, 28);
+  assert.equal(report.dimensions.find((d: { key: string }) => d.key === 'homework').value, 35);
+  assert.equal(report.dimensions.find((d: { key: string }) => d.key === 'tests').value, 28);
+  assert.equal(science.score, 31);
+  assert.equal(science.daily.find((p: { key: string }) => p.key === dayKey(5)).value, 0);
+  assert.equal(science.daily.find((p: { key: string }) => p.key === dayKey(4)).value, 31);
+  assertEndpoints(report);
+});
+
+test('new assignments reduce completion now without rewriting earlier daily/monthly scores', async () => {
+  const { service, tables } = fixture({
+    homework: [{ id: 'hw', subject: 'Science', created_at: at(50) }],
+    tests: [{ id: 'test', subject: 'Science', school_id: 'school', status: 'assigned', created_at: at(50) }],
+    homework_attempts: own([{ homework_id: 'hw', created_at: at(45) }]),
+    test_attempts: own([{ test_id: 'test', score: 80, finished_at: at(45) }]),
+  });
+  const before = await service.getLearningScore('student');
+  tables.homework.push({ id: 'new-hw', student_id: 'student', subject: 'Science', created_at: at(1) });
+  tables.tests.push({ id: 'new-test', school_id: 'school', subject: 'Science', status: 'assigned', start_at: at(1) });
+  const after = await service.getLearningScore('student');
+  assert.equal(before.subjects[0].score, 88);
+  assert.equal(after.subjects[0].score, 44);
+  assert.equal(after.subjects[0].daily.find((p: { key: string }) => p.key === dayKey(2)).value, 88);
+  for (const point of before.subjects[0].monthly.filter((p: { future: boolean; key: string }) =>
+    !p.future && p.key !== new Date().toISOString().slice(0, 7))) {
+    assert.deepEqual(after.subjects[0].monthly.find((p: { key: string }) => p.key === point.key), point);
+  }
+  assertEndpoints(after);
+});
+
+test('test denominator excludes other schools/classes, drafts, cancelled and future tests', async () => {
+  const base = { subject: 'Science', school_id: 'school', class_name: 'Class 8', status: 'assigned', created_at: at(8) };
+  const { service } = fixture({
+    tests: [
+      { ...base, id: 'own' },
+      { ...base, id: 'pending' },
+      { ...base, id: 'other-school', school_id: 'other' },
+      { ...base, id: 'other-class', class_name: 'Class 7' },
+      { ...base, id: 'draft', status: 'draft' },
+      { ...base, id: 'cancelled', status: 'cancelled' },
+      { ...base, id: 'future', start_at: at(-3) },
+    ],
+    homework: [
+      { id: 'hw', subject: 'Science', created_at: at(8) },
+      { id: 'pending-hw', subject: 'Science', created_at: at(8) },
+      { id: 'other-class-hw', subject: 'Science', class_name: 'Class 7', created_at: at(8) },
+      { id: 'other-student-hw', student_id: 'other', subject: 'Science', created_at: at(8) },
+      { id: 'draft-hw', subject: 'Science', status: 'draft', created_at: at(8) },
+      { id: 'future-hw', subject: 'Science', created_at: at(-3) },
+    ],
+    test_attempts: own([
+      { test_id: 'own', score: 80, finished_at: at(4) },
+      { test_id: 'pending', score: null, created_at: at(4) },
+      { test_id: 'other-class', score: 100, finished_at: at(4) },
+      { test_id: 'other-school', score: 100, finished_at: at(4) },
+    ]),
+    homework_attempts: own([{ homework_id: 'hw', created_at: at(4) }]),
+  });
+  const report = await service.getLearningScore('student');
+  assert.equal(report.subjects[0].metrics.find((m: { key: string }) => m.key === 'tests').value, 40);
+  assert.equal(report.subjects[0].metrics.find((m: { key: string }) => m.key === 'homework').value, 50);
+  assertEndpoints(report);
+});
+
+test('retries count a test once and use its latest marks; homework grades never boost completion', async () => {
+  const { service } = fixture({
+    tests: ['a', 'b', 'c', 'd'].map((id) => ({
+      id, subject: 'Science', school_id: 'school', status: 'assigned', created_at: at(8),
+    })),
+    test_attempts: own([
+      { test_id: 'a', score: 100, finished_at: at(6) },
+      { test_id: 'a', score: 80, finished_at: at(4) },
+      { test_id: 'b', score: 40, finished_at: at(4) },
+    ]),
+    homework: ['a', 'b', 'c', 'd'].map((id) => ({ id, subject: 'Science', created_at: at(8) })),
+    homework_attempts: own([
+      { homework_id: 'a', score: null, created_at: at(6) },
+      { homework_id: 'a', score: 100, created_at: at(4) },
+    ]),
+  });
+  const report = await service.getLearningScore('student');
+  assert.equal(report.subjects[0].metrics.find((m: { key: string }) => m.key === 'tests').value, 30); // 2/4 * mean(80,40).
+  assert.equal(report.subjects[0].metrics.find((m: { key: string }) => m.key === 'homework').value, 25);
+  assertEndpoints(report);
+});
+
+test('assignment denominators page beyond 500 and local assignments share the same scope', async () => {
+  const { service, requests, localFeed, testsController } = fixture({
+    tests: Array.from({ length: 501 }, (_, i) => ({
+      id: `test-${i}`, subject: 'Science', school_id: 'school', status: 'assigned', created_at: at(8),
+    })),
+    test_attempts: own([{ test_id: 'test-0', score: 100, finished_at: at(3) }]),
+  });
+  Object.defineProperty(localFeed, 'listTests', { value: () => [
+    { id: 'local-test-pending', subject: 'Science', school_id: 'school', status: 'assigned', created_at: at(8) },
+    { id: 'test-0', subject: 'Science', school_id: 'school', status: 'assigned', created_at: at(8) },
+    { id: 'local-test-other', subject: 'Science', school_id: 'other', status: 'assigned', created_at: at(8) },
+  ] });
+  const report = await service.getLearningScore('student');
+  assert.equal(report.subjects[0].score, 0); // 1 / 502 * 100 rounds to zero.
+  const understanding = report.dimensions.find((d: { key: string }) => d.key === 'understanding');
+  assert.equal(understanding.value, 0);
+  const reads = requests.filter((r) => r.table === 'tests' && r.filters.school_id === 'school');
+  assert.equal(reads.length, 2);
+  assert(reads.every((r) => r.filters.school_id === 'school'));
+  const listed = await testsController.list(studentRequest, 'student', 'upcoming');
+  assert.equal(listed.tests.length, 502);
+  assert.equal(listed.tests.filter((row: { attempted: boolean }) => row.attempted).length, 1);
+  assertEndpoints(report);
+});
+
+const studentRequest = { studentId: 'student', user: { sub: 'student', role: 'student' } };
+
+test('Telugu subject card, list, review and graph all show the saved zero, not the latest 33% metric', async () => {
+  const { service, progressController, testsController } = fixture({
+    tests: [{
+      id: 'telugu-test', subject: 'Telugu', school_id: 'school', status: 'assigned', created_at: at(10),
+    }],
+    test_questions: [{ id: 'q', test_id: 'telugu-test', options: ['A', 'B'], correct_option: 0 }],
+    test_attempts: own([{ test_id: 'telugu-test', score: 0, finished_at: at(3), answers: {} }]),
+    progress_metrics: own([100, 100, 100, 100, 0, 33].map((score) => ({
+      subject: 'Telugu', metric_value: score, recorded_at: at(40), details: { source: 'test' },
+    }))),
+  });
+  const progress = await progressController.getProgress(studentRequest, 'student', '');
+  assert.equal(progress.success, true);
+  assert.deepEqual(progress.subjectScores, [{
+    subject: 'Telugu', score: 0, trend: 0, assigned: 1, completed: 1, testScore: 0,
+  }]);
+  const report = await service.getLearningScore('student');
+  const telugu = report.subjects.find((s: { subjectKey: string }) => s.subjectKey === 'telugu');
+  assert.equal(telugu.testPerformance.score, 0);
+  const listed = await testsController.list(studentRequest, 'student', 'upcoming');
+  assert.equal(listed.tests[0].lastScore, 0);
+  const review = await testsController.review(studentRequest, 'telugu-test', 'student');
+  assert.equal(review.score, 0);
+  assert.equal(review.perQuestionFeedback[0].selectedOption, -1);
+});
+
+test('actual 33% saved marks on one of one assigned tests produces 33% on every surface', async () => {
+  const { service, progressController, testsController } = fixture({
+    tests: [{ id: 'test', subject: 'Telugu', school_id: 'school', status: 'assigned', created_at: at(8) }],
+    test_attempts: own([{ test_id: 'test', score: 33, finished_at: at(3) }]),
+    progress_metrics: own([{ subject: 'Telugu', metric_value: 100, recorded_at: at(1), details: { source: 'test' } }]),
+  });
+  const report = await service.getLearningScore('student');
+  const telugu = report.subjects.find((s: { subjectKey: string }) => s.subjectKey === 'telugu');
+  assert.deepEqual(telugu.testPerformance, {
+    assigned: 1, completed: 1, averageMarks: 33, completionRate: 100, score: 33,
+  });
+  assert.equal(telugu.metrics.find((m: { key: string }) => m.key === 'tests').value, 33);
+  assert.equal((await progressController.getProgress(studentRequest, 'student', '')).subjectScores[0].score, 33);
+  assert.equal((await testsController.list(studentRequest, 'student', 'upcoming')).tests[0].lastScore, 33);
+  assert.equal((await testsController.review(studentRequest, 'test', 'student')).score, 33);
+  assertEndpoints(report);
+});
+
+test('subject card shows average marks while graph correctly includes completion, even with conflicting metric IDs', async () => {
+  const { service, progressController } = fixture({
+    tests: ['a', 'b', 'c', 'd'].map((id) => ({
+      id, subject: 'Science', school_id: 'school', status: 'assigned', created_at: at(8),
+    })),
+    test_attempts: own([{ test_id: 'a', score: 80, finished_at: at(3) }, { test_id: 'b', score: 40, finished_at: at(3) }]),
+    progress_metrics: own([{ subject: 'Science', metric_value: 100, recorded_at: at(1), details: { source: 'test', testId: 'a' } }]),
+  });
+  const report = await service.getLearningScore('student');
+  assert.equal(report.subjects[0].testPerformance.score, 30); // 2/4 * mean(80,40).
+  const card = (await progressController.getProgress(studentRequest, 'student', '')).subjectScores[0];
+  assert.equal(card.score, 60);
+  assert.equal(card.completed, 2);
+  assert.equal(card.assigned, 4);
+});
+
+test('local fallback results count once across card, graph, list and review; database wins duplicate IDs', async () => {
+  const { service, localFeed, testsController, progressController } = fixture({
+    tests: [{ id: 'database-test', subject: 'Science', school_id: 'school', status: 'assigned', created_at: at(8) }],
+    test_attempts: own([{ id: 'duplicate', test_id: 'database-test', score: 0, finished_at: at(3) }]),
+  });
+  localFeed.upsertTest({ id: 'local-test-a', subject: 'Science', school_id: 'school', status: 'assigned', created_at: at(8) });
+  localFeed.setQuestions('local-test-a', [{ id: 'q', options: ['A', 'B'], correct_option: 0 }]);
+  const attempt = localFeed.createAttempt('local-test-a', 'student');
+  localFeed.finishAttempt(attempt.id, { score: 100, answers: { q: 0 }, finished_at: at(3) });
+  Object.defineProperty(localFeed, 'listAttemptsForStudent', { value: (id: string) => id === 'student' ? [
+    localFeed.getAttempt(attempt.id),
+    { id: 'duplicate', student_id: 'student', test_id: 'database-test', score: 100, finished_at: at(1) },
+  ] : [] });
+  const report = await service.getLearningScore('student');
+  assert.equal(report.subjects[0].testPerformance.score, 50);
+  const card = (await progressController.getProgress(studentRequest, 'student', '')).subjectScores[0];
+  assert.equal(card.score, 50);
+  const listed = await testsController.list(studentRequest, 'student', 'upcoming');
+  assert.equal(listed.tests.find((row: { id: string }) => row.id === 'local-test-a').lastScore, 100);
+  assert.equal((await testsController.review(studentRequest, 'local-test-a', 'student')).score, 100);
+});
+
+test('failed result writes return an error without publishing marks; finalized results cannot be overwritten', async () => {
+  const { tables, failingWrites, testsController } = fixture({
+    tests: [{ id: 'test', subject: 'Science', school_id: 'school', status: 'assigned' }],
+    test_questions: [{ id: 'q', test_id: 'test', options: ['A', 'B'], correct_option: 0 }],
+    test_attempts: own([{ id: 'attempt', test_id: 'test', score: null, created_at: at(1) }]),
+  });
+  failingWrites.add('test_attempts');
+  await assert.rejects(testsController.submit(studentRequest, 'attempt', { answers: { q: 0 } }), ServiceUnavailableException);
+  assert.equal(tables.test_attempts[0].score, null);
+  failingWrites.clear();
+  const first = await testsController.submit(studentRequest, 'attempt', { answers: { q: 0 } });
+  assert.equal(first.success, true);
+  assert.equal(first.score, 100);
+  const repeated = await testsController.submit(studentRequest, 'attempt', { answers: {} });
+  assert.equal(repeated.score, 100);
+  assert.deepEqual(tables.test_attempts[0].answers, { q: 0 });
+});
+
+test('expired attempts finalize persisted answers once and reports subsequently use that result', async () => {
+  const { tables, testsController, progressController } = fixture({
+    tests: [{
+      id: 'test', subject: 'Science', school_id: 'school', status: 'assigned', created_at: at(10), end_at: at(1),
+    }],
+    test_questions: [{ id: 'q', test_id: 'test', options: ['A', 'B'], correct_option: 0 }],
+    test_attempts: own([{ id: 'attempt', test_id: 'test', score: null, started_at: at(2), answers: { q: 0 } }]),
+  });
+  const listed = await testsController.list(studentRequest, 'student', 'upcoming');
+  assert.equal(listed.tests[0].lastScore, 100);
+  assert.equal(tables.test_attempts[0].score, 100);
+  const finalizedAt = tables.test_attempts[0].finished_at;
+  await testsController.list(studentRequest, 'student', 'upcoming');
+  assert.equal(tables.test_attempts[0].finished_at, finalizedAt);
+  assert.equal((await progressController.getProgress(studentRequest, 'student', '')).subjectScores[0].score, 100);
+});
+
+test('a missing question set is not silently finalized as zero', async () => {
+  const { tables, testsController } = fixture({
+    tests: [{ id: 'test', subject: 'Science', school_id: 'school', status: 'assigned' }],
+    test_attempts: own([{ id: 'attempt', test_id: 'test', score: null, created_at: at(1) }]),
+  });
+  await assert.rejects(testsController.submit(studentRequest, 'attempt', { answers: {} }), ServiceUnavailableException);
+  assert.equal(tables.test_attempts[0].score, null);
+});
+
+test('subject cards preserve allowed-subject time tracking without inventing mock-test averages', async () => {
+  const { progressController } = fixture({
+    progress_metrics: own([
+      { subject: 'Science', metric_value: 80, details: { minutes: 5, source: 'practice' }, recorded_at: at(1) },
+      { subject: 'removed-subject', metric_value: 100, details: { minutes: 20 }, recorded_at: at(1) },
+    ]),
+  });
+  const progress = await progressController.getProgress(studentRequest, 'student', '');
+  assert.equal(progress.timeSpent, 5);
+  assert.deepEqual(progress.subjectScores, []);
+});
+
+test('database draft status overrides a stale local assigned copy in both graph and list', async () => {
+  const { service, testsController, localFeed } = fixture({
+    tests: [{ id: 'test', subject: 'Science', school_id: 'school', status: 'draft', created_at: at(8) }],
+    test_attempts: own([{ test_id: 'test', score: 100, finished_at: at(3) }]),
+  });
+  localFeed.upsertTest({ id: 'test', subject: 'Science', school_id: 'school', status: 'assigned', created_at: at(8) });
+  assert.equal((await service.getLearningScore('student')).subjects[0].testPerformance.assigned, 0);
+  assert.deepEqual((await testsController.list(studentRequest, 'student', 'upcoming')).tests, []);
+});
+
+test('local fallback test can start and submit without sending local IDs to UUID columns', async () => {
+  const { testsController, localFeed, requests } = fixture({}, '', false);
+  localFeed.upsertTest({ id: 'local-test-a', subject: 'Science', school_id: 'school', status: 'assigned', created_at: at(8) });
+  localFeed.setQuestions('local-test-a', [{ id: 'q', options: ['A', 'B'], correct_option: 0 }]);
+  const started = await testsController.start(studentRequest, 'local-test-a', {});
+  assert.equal(started.success, true);
+  assert.ok(started.attemptId?.startsWith('local-attempt-'));
+  assert.equal((await testsController.submit(studentRequest, started.attemptId, { answers: { q: 0 } })).score, 100);
+  assert.ok(requests.every(({ filters }) => !Object.values(filters).some((value) => String(value).startsWith('local-'))));
+  assert.equal((await testsController.start(studentRequest, 'local-test-a', {})).success, false);
 });

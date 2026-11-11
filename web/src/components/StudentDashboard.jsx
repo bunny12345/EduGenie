@@ -1869,7 +1869,7 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
   async function onSubmitMockTest(options = {}) {
     if (!activeMockTest) return;
     const autoSubmit = !!options.autoSubmit;
-    const { attemptId, questions, subject } = activeMockTest;
+    const { attemptId, questions } = activeMockTest;
     if (!autoSubmit) {
       const unanswered = questions.filter((q) => mockTestAnswers[q.id] === undefined);
       if (unanswered.length) {
@@ -1886,12 +1886,6 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
       const perQuestionFeedback = Array.isArray(submitRes?.perQuestionFeedback) ? submitRes.perQuestionFeedback : [];
       setMockTestResult({ score, feedback, perQuestionFeedback });
       setTestResult({ score, feedback });
-      recordProgress({
-        studentId,
-        subject: subject || 'Test',
-        score: Number(score),
-        source: 'test'
-      }).catch(() => {});
       await loadTestsPanel();
       await loadProgressPanel();
     } catch (e) {
@@ -5311,7 +5305,7 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
                 <div className="eg-subject-progress-score" style={{ color: subjectTheme.color }}>
                   {progressBySubject.get(activeView)}%
                 </div>
-                <small style={{ color: '#6b7280' }}>Average Score</small>
+                <small style={{ color: '#6b7280' }}>Average Mock Test Score</small>
               </article>
             )}
             </div>

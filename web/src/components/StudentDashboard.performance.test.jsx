@@ -1,5 +1,5 @@
 import React from 'react';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import StudentDashboard from './StudentDashboard';
 import * as api from '../api';
 
@@ -62,4 +62,16 @@ test('restored Calendar hash fetches calendar without fetching unrelated homewor
   expect(api.getProgress).not.toHaveBeenCalled();
   expect(api.getTests).not.toHaveBeenCalled();
   expect(api.getChatHistory).not.toHaveBeenCalled();
+});
+
+test('subject average card labels the backend mock-test marks and preserves a real zero', async () => {
+  window.location.hash = 'Home/Science';
+  api.getProgress.mockResolvedValue({
+    subjectScores: [{ subject: 'Science', score: 0, assigned: 1, completed: 1, testScore: 0 }],
+  });
+  render(<StudentDashboard studentId="student" onLogout={() => {}} />);
+  expect(await screen.findByText('Average Mock Test Score')).toBeInTheDocument();
+  const card = screen.getAllByRole('article').find((article) => within(article).queryByText('Average Mock Test Score'));
+  expect(within(card).getByText('0%')).toBeInTheDocument();
+  expect(api.getProgress).toHaveBeenCalledTimes(1);
 });

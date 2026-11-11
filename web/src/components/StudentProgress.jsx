@@ -17,8 +17,8 @@ import './StudentProgress.css';
 // skills — so a 10-year-old instantly gets what the score is about.
 const SKILL_META = {
   understanding: { emoji: '🧠', name: 'Understanding', desc: 'How well you get the lessons' },
-  tests: { emoji: '📝', name: 'Tests & Quizzes', desc: 'How you do on tests' },
-  homework: { emoji: '📒', name: 'Homework', desc: 'Finishing your work on time' },
+  tests: { emoji: '📝', name: 'Tests & Quizzes', desc: 'Test completion rate multiplied by average marks' },
+  homework: { emoji: '📒', name: 'Homework', desc: 'Submitted homework out of assigned homework' },
   consistency: { emoji: '📅', name: 'Daily Habit', desc: 'Studying a little every day' },
   revision: { emoji: '🔁', name: 'Revision', desc: 'Going over things again to remember' },
   focus: { emoji: '🎯', name: 'Focus', desc: 'Concentrating while you study' },

@@ -4,6 +4,7 @@ import { AuthGuard } from '../auth/auth.guard';
 import { LocalFeedService } from '../shared/local-feed.service';
 import { StudentAuthService } from '../auth/student-auth.service';
 import { requireStudentIdentity } from '../auth/student-identity';
+import { latestCompletedTests, mergeTestAttempts, testPercentage } from '../progress/test-results.util';
 
 @Controller('tests')
 export class TestsController {
@@ -101,10 +102,8 @@ export class TestsController {
     const id = String(studentId || '').trim();
     if (!id || !rows.length) return rows.map((t: any) => ({ ...t, attempted: false, windowStatus: this.computeWindowStatus(t) }));
     try {
-      const testIds = rows.map((t: any) => String(t?.id || '')).filter(Boolean);
-      const res = await this.db.client.from('test_attempts').select('*').eq('student_id', id).in('test_id', testIds);
-      const attemptRows = Array.isArray((res as any)?.data) ? (res as any).data : [];
-      const latestByTest = new Map<string, any>();
+      const attemptRows = await this.studentAttempts(id);
+      const latestByTest = new Map(latestCompletedTests(attemptRows, Date.now()).map((row) => [row.test_id, row]));
       const inProgressByTest = new Map<string, any>();
       attemptRows.forEach((a: any) => {
         const key = String(a.test_id || '');
@@ -116,10 +115,6 @@ export class TestsController {
           if (!existing || time >= existingTime) inProgressByTest.set(key, a);
           return;
         }
-        const existing = latestByTest.get(key);
-        const time = new Date(a.submitted_at || a.finished_at || a.created_at || 0).getTime();
-        const existingTime = existing ? new Date(existing.submitted_at || existing.finished_at || existing.created_at || 0).getTime() : -1;
-        if (!existing || time >= existingTime) latestByTest.set(key, a);
       });
 
       const out = [];
@@ -128,10 +123,10 @@ export class TestsController {
         const windowStatus = this.computeWindowStatus(t);
         let attempt = latestByTest.get(testId);
         if (!attempt && windowStatus === 'expired' && inProgressByTest.has(testId)) {
-          // The window closed while this attempt was still open — auto-submit
-          // it now with whatever answers were saved (none, in this flow).
+          // Finalize only persisted answers; unsaved browser selections cannot
+          // be reconstructed after the window closes.
           const stale = inProgressByTest.get(testId);
-          attempt = await this.scoreAndFinalizeAttempt(stale, {}, id);
+          attempt = await this.scoreAndFinalizeAttempt(stale, stale.answers || {}, id);
         }
         out.push({
           ...t,
@@ -139,15 +134,28 @@ export class TestsController {
           startAt: t.start_at || t.startAt || null,
           endAt: t.end_at || t.endAt || null,
           attempted: !!attempt,
-          lastScore: attempt?.score ?? undefined,
+          lastScore: attempt ? testPercentage(attempt) : undefined,
           lastFeedback: attempt?.feedback ?? undefined,
           attemptId: attempt?.id ?? undefined
         });
       }
       return out;
-    } catch {
-      return rows.map((t: any) => ({ ...t, attempted: false, windowStatus: this.computeWindowStatus(t) }));
+    } catch (error) {
+      console.warn('Unable to retrieve test results', error);
+      throw new ServiceUnavailableException('Unable to retrieve test results');
     }
+  }
+
+  private async studentAttempts(studentId: string): Promise<any[]> {
+    const database: any[] = [];
+    for (let offset = 0; ; offset += 500) {
+      const res = await this.db.client.from('test_attempts').select('*').eq('student_id', studentId)
+        .order('id').range(offset, offset + 499);
+      if (res.error) throw new ServiceUnavailableException('Unable to retrieve saved test attempts');
+      database.push(...(res.data || []));
+      if ((res.data || []).length < 500) break;
+    }
+    return mergeTestAttempts(database, this.localFeed.listAttemptsForStudent(studentId));
   }
 
   // 'none' = no window configured (legacy tests — always open).
@@ -167,18 +175,44 @@ export class TestsController {
   // result onto the attempt. Shared by the normal submit flow and the
   // auto-finalize sweep for attempts whose window closed before submission.
   private async scoreAndFinalizeAttempt(attempt: any, answers: any, actorId: string) {
+    if (Number.isFinite(testPercentage(attempt))) {
+      const questions = await this.loadQuestions(attempt.test_id);
+      const { perQuestionFeedback } = this.computePerQuestionFeedback(questions, attempt.answers || {});
+      return { id: attempt.id, score: testPercentage(attempt), feedback: attempt.feedback || '', perQuestionFeedback };
+    }
     const questions = await this.loadQuestions(attempt.test_id);
     const { perQuestionFeedback, correctCount } = this.computePerQuestionFeedback(questions, answers);
 
     const total = questions.length;
+    if (!total) throw new ServiceUnavailableException('Unable to grade a test without questions');
     const score = total > 0 ? Math.round((correctCount / total) * 100) : 0;
     const feedback = score >= 80
       ? 'Great work. Keep consistency.'
       : score >= 50
         ? 'Good attempt. Focus on weak topics.'
         : 'Needs improvement. Revise and retry.';
-    await this.db.client.from('test_attempts').update({ finished_at: new Date().toISOString(), score, feedback, answers }).eq('id', attempt.id);
-    this.localFeed.finishAttempt(attempt.id, { score, feedback, finished_at: new Date().toISOString(), answers });
+    const patch = { finished_at: new Date().toISOString(), score, feedback, answers };
+    if (String(attempt.id).startsWith('local-attempt-')) {
+      if (!this.localFeed.finishAttempt(attempt.id, patch)) {
+        throw new ServiceUnavailableException('Unable to save test result');
+      }
+    } else {
+      const saved = await this.db.client.from('test_attempts').update(patch)
+        .eq('id', attempt.id).eq('student_id', actorId)
+        .is('score', null).select('*');
+      if (saved.error) {
+        console.warn('Unable to save test result', saved.error.message);
+        throw new ServiceUnavailableException('Unable to save test result. Please retry.');
+      }
+      if (!saved.data?.length) {
+        const existing = await this.loadStudentAttempt(attempt.id, actorId);
+        if (existing && Number.isFinite(testPercentage(existing))) {
+          return this.scoreAndFinalizeAttempt(existing, existing.answers || {}, actorId);
+        }
+        throw new ServiceUnavailableException('Unable to confirm saved test result. Please retry.');
+      }
+      this.localFeed.finishAttempt(attempt.id, patch);
+    }
     this.localFeed.logStudentActivity(actorId || attempt.student_id, {
       type: 'test',
       action: 'submitted',
@@ -190,7 +224,9 @@ export class TestsController {
   }
 
   private async loadQuestions(testId: string) {
+    if (testId.startsWith('local-test-')) return this.localFeed.listQuestions(testId);
     const questionsRes = await this.db.client.from('test_questions').select('*').eq('test_id', testId);
+    if (questionsRes.error) throw new ServiceUnavailableException('Unable to retrieve test questions');
     return Array.isArray((questionsRes as any)?.data) && (questionsRes as any).data.length
       ? (questionsRes as any).data
       : this.localFeed.listQuestions(testId);
@@ -234,17 +270,21 @@ export class TestsController {
   async list(@Req() req: any, @Query('studentId') studentId: string, @Query('filter') filter?: string) {
     const id = req.studentId || studentId;
     try {
-      const res = await this.db.client.from('tests').select('*');
-      let tests = (res && (res as any).data) || [];
-      if (!Array.isArray(tests) || !tests.length) tests = this.localFeed.listTests();
+      const byId = new Map<string, any>(this.localFeed.listTests().map((row) => [String(row.id), row]));
+      for (let offset = 0; ; offset += 500) {
+        const res = await this.db.client.from('tests').select('*').order('id').range(offset, offset + 499);
+        if (res.error) throw new ServiceUnavailableException('Unable to retrieve assigned tests');
+        for (const row of res.data || []) byId.set(String(row.id), row);
+        if ((res.data || []).length < 500) break;
+      }
+      let tests = [...byId.values()];
       tests = await this.filterTestsForRequest(await this.scopeTests(req, tests), filter, id);
       if (filter === 'upcoming') tests = await this.attachAttemptStatus(tests, id);
       return { success: true, tests: Array.isArray(tests) ? tests : [] };
     } catch (e) {
-      let tests = this.localFeed.listTests();
-      tests = await this.filterTestsForRequest(await this.scopeTests(req, tests), filter, id);
-      if (filter === 'upcoming') tests = await this.attachAttemptStatus(tests, id);
-      return { success: true, error: String((e as any)?.message || e || 'tests list fallback'), tests };
+      if (e instanceof ServiceUnavailableException || e instanceof ForbiddenException) throw e;
+      console.warn('Unable to retrieve assigned tests', e);
+      throw new ServiceUnavailableException('Unable to retrieve assigned tests');
     }
   }
 
@@ -642,9 +682,8 @@ export class TestsController {
       throw new ForbiddenException('Test not assigned to this student');
     }
     try {
-      const existingRes = await this.db.client.from('test_attempts').select('*').eq('test_id', testId).eq('student_id', sId);
-      const existingRows = Array.isArray((existingRes as any)?.data) ? (existingRes as any).data : [];
-      const alreadySubmitted = existingRows.some((a: any) => a.score !== null && a.score !== undefined);
+      const existingRows = await this.studentAttempts(sId);
+      const alreadySubmitted = latestCompletedTests(existingRows, Date.now()).some((row) => row.test_id === testId);
       if (alreadySubmitted) {
         return { success: false, error: 'You have already submitted this test.', attemptId: null, questions: [] };
       }
@@ -658,13 +697,19 @@ export class TestsController {
         return { success: false, error: "This test's time window has closed.", attemptId: null, questions: [] };
       }
 
-      const questionsRes = await this.db.client.from('test_questions').select('*').eq('test_id', testId);
-      const questions = ((questionsRes && (questionsRes as any).data) || []).length
-        ? (questionsRes as any).data
-        : this.localFeed.listQuestions(testId);
+      const questions = await this.loadQuestions(testId);
       const attempt = { test_id: testId, student_id: sId, started_at: new Date().toISOString() };
-      const ins = await this.db.client.from('test_attempts').insert([attempt]).select();
-      const attemptRow = (ins && (ins as any).data && (ins as any).data[0]) || this.localFeed.createAttempt(testId, sId);
+      let attemptRow;
+      if (testId.startsWith('local-test-')) {
+        attemptRow = this.localFeed.createAttempt(testId, sId);
+      } else {
+        const ins = await this.db.client.from('test_attempts').insert([attempt]).select();
+        if (ins.error || !ins.data?.length) {
+          console.warn('Unable to create database test attempt', ins.error?.message || 'No inserted row');
+          throw new ServiceUnavailableException('Unable to start test. Please retry.');
+        }
+        attemptRow = ins.data[0];
+      }
       const normalizedQuestions = (Array.isArray(questions) ? questions : []).map((q: any) => ({
         id: q.id,
         text: q.text || q.question || 'Question',
@@ -721,17 +766,14 @@ export class TestsController {
   async review(@Req() req: any, @Param('testId') testId: string, @Query('studentId') studentId: string) {
     const sId = requireStudentIdentity(req, studentId);
     try {
-      const attemptsRes = await this.db.client.from('test_attempts').select('*').eq('test_id', testId).eq('student_id', sId);
-      const attemptRows = Array.isArray((attemptsRes as any)?.data) ? (attemptsRes as any).data : [];
-      const submitted = attemptRows.filter((a: any) => a.score !== null && a.score !== undefined);
-      submitted.sort((a: any, b: any) => new Date(b.submitted_at || b.finished_at || b.created_at || 0).getTime() - new Date(a.submitted_at || a.finished_at || a.created_at || 0).getTime());
-      const attempt = submitted[0];
+      const attemptRows = await this.studentAttempts(sId);
+      const attempt = latestCompletedTests(attemptRows, Date.now()).find((row) => row.test_id === testId);
       if (!attempt) {
         return { success: false, error: 'No submitted attempt found for this test.', score: 0, feedback: '', perQuestionFeedback: [] };
       }
       const questions = await this.loadQuestions(testId);
       const { perQuestionFeedback } = this.computePerQuestionFeedback(questions, attempt.answers || {});
-      return { success: true, score: attempt.score, feedback: attempt.feedback || '', perQuestionFeedback };
+      return { success: true, score: testPercentage(attempt), feedback: attempt.feedback || '', perQuestionFeedback };
     } catch (e) {
       return { success: false, error: String((e as any)?.message || e || 'test review failed'), score: 0, feedback: '', perQuestionFeedback: [] };
     }

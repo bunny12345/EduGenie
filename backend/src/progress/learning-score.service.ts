@@ -4,6 +4,8 @@ import { OrchardService } from '../orchard/orchard.service';
 import { ACTIVITY_EFFECTS, computeStage, Milestones, normalizeSubjectKey, subjectEntryFor } from '../orchard/orchard.constants';
 import { metricAt, metricMinutes, metricScore } from './progress-metric.util';
 import { LocalFeedService } from '../shared/local-feed.service';
+import { StudentAuthService } from '../auth/student-auth.service';
+import { latestCompletedTests, mergeTestAttempts, testPercentage } from './test-results.util';
 
 /**
  * LearningScoreService — turns a student's raw activity across the whole portal
@@ -76,6 +78,7 @@ export class LearningScoreService {
     private readonly db: SupabaseService,
     private readonly orchard: OrchardService,
     private readonly localFeed: LocalFeedService,
+    private readonly studentAuth: StudentAuthService,
   ) {}
 
   // ── small helpers ──────────────────────────────────────────────────────────
@@ -107,7 +110,7 @@ export class LearningScoreService {
       this.logger.warn(`${unresolved.length} historical ${table} references have no local assignment metadata; retaining their activity without inventing a subject.`);
     }
     for (let i = 0; i < databaseIds.length; i += 100) {
-      const res = await this.db.client.from(table).select(table === 'orchard_chapters' ? 'id,class_name' : 'id,subject')
+      const res = await this.db.client.from(table).select(table === 'orchard_chapters' ? 'id,class_name' : '*')
         .in('id', databaseIds.slice(i, i + 100));
       if (res.error) {
         this.logger.error(`Unable to resolve ${table} subjects: ${res.error.message}`);
@@ -121,12 +124,35 @@ export class LearningScoreService {
   // The student's own account row (keyed by `id`, not `student_id`) — used to
   // find the real account-creation date so the graph starts the day they joined.
   private async studentRecord(studentId: string): Promise<any | null> {
-    const res = await this.db.client.from('students').select('id,created_at').eq('id', studentId).limit(1);
+    const res = await this.db.client.from('students').select('id,created_at,school_id').eq('id', studentId).limit(1);
     if (res.error) {
       this.logger.error(`Unable to read student tracking date: ${res.error.message}`);
       throw new ServiceUnavailableException('Unable to retrieve learning progress. Please try again.');
     }
     return res.data?.[0] || null;
+  }
+
+  private async studentTests(schoolId: string | undefined, className: string): Promise<any[]> {
+    if (!schoolId || !className) {
+      this.logger.error('Unable to resolve school/class for assigned test progress.');
+      throw new ServiceUnavailableException('Unable to retrieve assigned tests for learning progress.');
+    }
+    const tests = new Map<string, any>();
+    for (let offset = 0; ; offset += 500) {
+      const res = await this.db.client.from('tests').select('*').eq('school_id', schoolId)
+        .order('id').range(offset, offset + 499);
+      if (res.error) {
+        this.logger.error(`Unable to read assigned tests: ${res.error.message}`);
+        throw new ServiceUnavailableException('Unable to retrieve assigned tests for learning progress.');
+      }
+      for (const row of res.data || []) tests.set(String(row.id), row);
+      if ((res.data || []).length < 500) break;
+    }
+    for (const row of this.localFeed.listTests()) {
+      if (!tests.has(String(row.id))) tests.set(String(row.id), row);
+    }
+    return [...tests.values()].filter((row) => row.school_id === schoolId && row.status === 'assigned'
+      && (!row.class_name || String(row.class_name).trim().toLowerCase() === className.trim().toLowerCase()));
   }
 
   // Earliest timestamp across all of a student's activity (fallback start date).
@@ -181,16 +207,47 @@ export class LearningScoreService {
     return String(row.details?.source || row.source || row.metric_key || '').toLowerCase();
   }
 
-  private testScore(attempts: any[], metrics: any[]): number | null {
-    const legacyMetrics = metrics.filter((r) => ['test', 'mock_test'].includes(LearningScoreService.metricSource(r)))
-      .filter((metric) => !attempts.some((attempt) =>
-        normalizeSubjectKey(attempt.subject) === normalizeSubjectKey(metric.subject)
-        && LearningScoreService.percentage(attempt) === metricScore(metric)
-        && Math.abs(LearningScoreService.attemptAt(attempt) - LearningScoreService.ts(metricAt(metric))) <= 60000));
-    return LearningScoreService.avg([
-      ...attempts.map(LearningScoreService.percentage),
-      ...legacyMetrics.map(metricScore),
-    ]);
+  private testPerformance(attempts: any[], assignments: any[], cutoff: number) {
+    const evidence = attempts.filter((row) => Number.isFinite(testPercentage(row))).map((row) => ({
+      id: String(row.test_id), at: LearningScoreService.attemptAt(row),
+    }));
+    const knownIds = new Set(assignments.map((row) => String(row.id)));
+    const assigned = this.assignedIds(assignments, evidence, cutoff);
+    for (const id of assigned) if (!knownIds.has(id)) assigned.delete(id);
+    const completed = latestCompletedTests(attempts, cutoff)
+      .filter((row) => assigned.has(String(row.test_id)));
+    const averageMarks = LearningScoreService.avg(completed.map(testPercentage));
+    const completionRate = assigned.size ? completed.length / assigned.size * 100 : 0;
+    return {
+      assigned: assigned.size,
+      completed: completed.length,
+      averageMarks,
+      completionRate,
+      score: assigned.size ? completionRate / 100 * (averageMarks ?? 0) : null,
+    };
+  }
+
+  private assignedIds(assignments: any[], evidence: Array<{ id: string; at: number }>, cutoff: number): Set<string> {
+    const firstCompletion = new Map<string, number>();
+    for (const row of evidence) {
+      const previous = firstCompletion.get(row.id);
+      if (row.at > 0 && (!previous || row.at < previous)) firstCompletion.set(row.id, row.at);
+    }
+    const ids = new Set<string>();
+    for (const row of assignments) {
+      const id = String(row.id);
+      // Older records lack an assignment timestamp. Do not invent past
+      // obligations: use their first completion, otherwise today's snapshot.
+      const assignedAt = LearningScoreService.ts(row.assigned_at, row.start_at, row.created_at)
+        || firstCompletion.get(id) || row.observedAt;
+      if (assignedAt <= cutoff) ids.add(id);
+    }
+    // Keep dated legacy completions when their parent assignment was deleted.
+    const known = new Set(assignments.map((row) => String(row.id)));
+    for (const [id, at] of firstCompletion) {
+      if (!known.has(id) && at <= cutoff) ids.add(id);
+    }
+    return ids;
   }
 
   private homeworkEvidence(assignments: any[], attempts: any[], className: string): any[] {
@@ -292,18 +349,15 @@ export class LearningScoreService {
     };
   }
 
-  private homeworkScore(rows: any[], metrics: any[] = []): number | null {
-    const latest = new Map<string, any>();
-    for (const row of rows) {
-      const id = String(row.homework_id || row.id);
-      const previous = latest.get(id);
-      if (!previous || LearningScoreService.attemptAt(row) >= LearningScoreService.attemptAt(previous)) latest.set(id, row);
-    }
-    if (!latest.size) return LearningScoreService.avg(metrics.filter((r) =>
-      LearningScoreService.metricSource(r) === 'homework').map(metricScore));
-    const scores = [...latest.values()].map(LearningScoreService.percentage).filter(Number.isFinite);
-    const completion = Math.min(100, latest.size / 8 * 100);
-    return scores.length ? 0.6 * (LearningScoreService.avg(scores) || 0) + 0.4 * completion : completion;
+  private homeworkScore(rows: any[], assignments: any[], cutoff: number): number | null {
+    const evidence = rows.map((row) => ({
+      id: String(row.homework_id || row.id),
+      at: LearningScoreService.ts(row.submitted_at, row.created_at),
+    }));
+    const assigned = this.assignedIds(assignments, evidence, cutoff);
+    if (!assigned.size) return null;
+    const submitted = new Set(evidence.filter((row) => assigned.has(row.id)).map((row) => row.id));
+    return LearningScoreService.clamp(submitted.size / assigned.size * 100);
   }
 
   private practiceScore(games: any[], cards: any[], metrics: any[], activity: any[]): number | null {
@@ -401,8 +455,8 @@ export class LearningScoreService {
 
     const eventCount = attempts.length + hw.length + sessions.length + fc.length + msgs.length + rewards.length + activity.length + reviews.length + pmetrics.length;
 
-    // Tests: average percentage across graded attempts.
-    const testPct = this.testScore(attempts, pmetrics);
+    // Test completion rate multiplied by average marks on completed tests.
+    const testPct = this.testPerformance(attempts, ctx.testAssignments, asOf ?? ctx.now).score;
 
     // Game/flashcard accuracy across sessions.
     const gameAcc = LearningScoreService.avg(
@@ -421,8 +475,8 @@ export class LearningScoreService {
       reviewVol = totReview;
     }
 
-    // Homework: completion volume blended with graded score.
-    const hwValue = this.homeworkScore(hw, pmetrics);
+    // Homework counts unique submissions against actual assignments.
+    const hwValue = this.homeworkScore(hw, ctx.homeworkAssignments, asOf ?? ctx.now);
     const practiceValue = this.practiceScore(sessions, fc, pmetrics, activity);
     const orchard = this.orchardSnapshot(ctx, asOf);
     const rootsAvg = orchard.roots ?? 0;
@@ -544,9 +598,10 @@ export class LearningScoreService {
         this.orchard.resolveStudentClassName(studentId),
         this.rows('homework', studentId),
       ]);
-    const [tests, chapters] = await Promise.all([
-      this.assignmentRows('tests', rawAttempts.map((r) => r.test_id), this.localFeed.listTests()),
+    const schoolId = studentRow?.school_id || (await this.studentAuth.resolveStudentProfile(studentId)).schoolId;
+    const [chapters, assignedTests] = await Promise.all([
       this.assignmentRows('orchard_chapters', rawGrowth.map((r) => r.chapter_id)),
+      this.studentTests(schoolId, className),
     ]);
     const homeworkById = new Map(this.localFeed.listHomeworkForStudent(studentId).map((row) => [String(row.id), row]));
     for (const row of dbHomework) {
@@ -554,16 +609,23 @@ export class LearningScoreService {
       homeworkById.set(String(row.id), { ...local, ...row, subject: row.subject || local?.subject });
     }
     const homework = [...homeworkById.values()];
+    const observedAt = Date.now();
+    const homeworkAssignments = homework.filter((row) =>
+      (!row.class_name || String(row.class_name).trim().toLowerCase() === className.trim().toLowerCase())
+      && !['draft', 'cancelled', 'canceled'].includes(String(row.status || '').toLowerCase()))
+      .map((row) => ({ ...row, observedAt }));
+    const testAssignments = assignedTests.map((row) => ({ ...row, observedAt }));
     const currentChapters = new Set(chapters.filter((r) =>
       String(r.class_name || '').trim().toLowerCase() === className.trim().toLowerCase()).map((r) => r.id));
     const allowedSubjects = new Set(subjectKeys.map(normalizeSubjectKey));
     const trees = rawTrees.filter((r) => allowedSubjects.has(normalizeSubjectKey(r.subject_key)));
     const growth = rawGrowth.filter((r) => currentChapters.has(r.chapter_id)
       && allowedSubjects.has(normalizeSubjectKey(r.subject_key)));
-    const testSubjects = new Map(tests.map((r) => [r.id, r.subject]));
     const homeworkSubjects = new Map(homework.map((r) => [r.id, r.subject]));
-    const attempts = rawAttempts.filter((r) => r.score !== null && r.score !== undefined)
-      .map((r) => ({ ...r, subject: r.subject || testSubjects.get(r.test_id) }));
+    const testById = new Map(testAssignments.map((row) => [String(row.id), row]));
+    const attempts = mergeTestAttempts(rawAttempts, this.localFeed.listAttemptsForStudent(studentId))
+      .filter((row) => testById.has(String(row.test_id)) && Number.isFinite(testPercentage(row)))
+      .map((row) => ({ ...row, subject: testById.get(String(row.test_id))!.subject }));
     const hwAttempts = this.homeworkEvidence(homework,
       rawHwAttempts.map((r) => ({ ...r, subject: r.subject || homeworkSubjects.get(r.homework_id) })), className);
 
@@ -572,7 +634,7 @@ export class LearningScoreService {
       + reviews.filter((r) => r.passed === true && r.completed_at).length + pmetrics.length;
 
     const ctx: any = {
-      attempts, hwAttempts, fcProgress, sessions,
+      attempts, hwAttempts, fcProgress, sessions, homeworkAssignments, testAssignments,
       profile: (profileRows && profileRows[0]) || null,
       trees, growth, rewards, msgs, pmetrics, activity, reviews, totalEventCount, now: Date.now(),
     };
@@ -718,6 +780,8 @@ export class LearningScoreService {
     const sActivity = ctx.activity.filter((r: any) => matches(r) && currentEvent(LearningScoreService.ts(r.occurred_at, r.created_at)));
     const sReviews = ctx.reviews.filter(matches);
     const sMetrics = ctx.pmetrics.filter((r: any) => matches(r) && currentEvent(LearningScoreService.ts(metricAt(r))));
+    const testAssignments = ctx.testAssignments.filter(matches);
+    const homeworkAssignments = ctx.homeworkAssignments.filter(matches);
     const sTrees = ctx.trees.filter(matches);
     const sGrowth = ctx.growth.filter(matches);
     const snapshot = (asOf: number | null) => {
@@ -729,9 +793,9 @@ export class LearningScoreService {
       const hw = sHw.filter((r: any) => within(LearningScoreService.ts(r.submitted_at, r.created_at)));
       const activity = sActivity.filter((r: any) => within(LearningScoreService.ts(r.occurred_at, r.created_at)));
       const metrics = sMetrics.filter((r: any) => within(LearningScoreService.ts(metricAt(r))));
-      const testPct = this.testScore(tests, metrics);
+      const testPct = this.testPerformance(tests, testAssignments, cutoff).score;
       const practiceAcc = this.practiceScore(games, cards, metrics, activity);
-      const hwValue = this.homeworkScore(hw, metrics);
+      const hwValue = this.homeworkScore(hw, homeworkAssignments, cutoff);
       const orchard = this.orchardSnapshot({ growth: sGrowth, trees: sTrees, activity: sActivity, reviews: sReviews, now: ctx.now }, asOf);
       const parts: Array<[number | null, number]> = [
         [orchard.growth, 0.2], [orchard.roots, 0.2], [testPct, 0.25], [practiceAcc, 0.2], [hwValue, 0.15],
@@ -772,10 +836,10 @@ export class LearningScoreService {
     // to just this subject) so the detail window mirrors the main report. ──────
     const metrics = [
       { key: 'understanding', emoji: '🧠', label: 'Understanding', value: Math.round(LearningScoreService.clamp(rootsAvg ?? 0)), desc: 'How deeply you get this subject' },
-      { key: 'tests', emoji: '📝', label: 'Test Scores', value: Math.round(LearningScoreService.clamp(testPct ?? 0)), desc: 'How you did on tests and mock tests' },
+      { key: 'tests', emoji: '📝', label: 'Test Scores', value: Math.round(LearningScoreService.clamp(testPct ?? 0)), desc: 'Completed / assigned tests multiplied by average marks' },
       { key: 'practice', emoji: '🔁', label: 'Practice', value: Math.round(LearningScoreService.clamp(practiceAcc ?? 0)), desc: 'Practice accuracy, or revision task completion when unscored' },
       { key: 'growth', emoji: '🌳', label: 'Tree Growth', value: Math.round(LearningScoreService.clamp(treeProg ?? 0)), desc: 'How much your subject tree has grown' },
-      { key: 'homework', emoji: '📚', label: 'Homework', value: Math.round(LearningScoreService.clamp(hwValue ?? 0)), desc: 'Completed assignments and available graded scores' },
+      { key: 'homework', emoji: '📚', label: 'Homework', value: Math.round(LearningScoreService.clamp(hwValue ?? 0)), desc: 'Unique submitted assignments / assigned homework' },
     ];
 
     // Friendly raw counts for the detail window.
@@ -783,11 +847,15 @@ export class LearningScoreService {
     const distinctChapters = new Set(
       [...sTests, ...sSessions, ...sActivity, ...sFc, ...sGrowth.filter((g: any) => Number(g.stage_index || 0) > 0 || Number(g.roots_pct || 0) > 0)].map((r: any) => r.chapter_id).filter(Boolean).map(String),
     ).size;
-    const bestTest = sTests.length
-      ? Math.round(Math.max(...sTests.map(LearningScoreService.percentage).filter(Number.isFinite), 0))
+    const assignedTestsNow = this.assignedIds(testAssignments,
+      sTests.map((row: any) => ({ id: String(row.test_id), at: LearningScoreService.attemptAt(row) })), ctx.now);
+    const completedTests = latestCompletedTests(sTests, ctx.now)
+      .filter((row) => assignedTestsNow.has(String(row.test_id)));
+    const bestTest = completedTests.length
+      ? Math.round(Math.max(...completedTests.map(testPercentage), 0))
       : 0;
     const stats = [
-      { key: 'tests', emoji: '📝', label: 'Tests taken', value: sTests.length },
+      { key: 'tests', emoji: '📝', label: 'Tests taken', value: this.testPerformance(sTests, testAssignments, ctx.now).completed },
       { key: 'rounds', emoji: '🎮', label: 'Practice rounds', value: sSessions.length },
       { key: 'cards', emoji: '🃏', label: 'Cards reviewed', value: cardsReviewed },
       { key: 'chapters', emoji: '📖', label: 'Chapters touched', value: distinctChapters },
@@ -815,6 +883,7 @@ export class LearningScoreService {
       metrics,
       stats,
       bestTest,
+      testPerformance: this.testPerformance(sTests, testAssignments, ctx.now),
       strength: subjStrength ? { emoji: subjStrength.emoji, label: subjStrength.label, value: subjStrength.value } : null,
       focus: subjFocus ? { emoji: subjFocus.emoji, label: subjFocus.label, value: subjFocus.value } : null,
     };

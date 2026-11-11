@@ -3,9 +3,9 @@ import { SupabaseService } from '../supabase.service';
 import { AuthGuard } from '../auth/auth.guard';
 import { LearningScoreService } from '../progress/learning-score.service';
 import { OrchardService } from '../orchard/orchard.service';
-import { normalizeSubjectKey } from '../orchard/orchard.constants';
-import { METRIC_ORDER_COLUMN, metricMinutes, metricRow, metricScore } from '../progress/progress-metric.util';
+import { METRIC_ORDER_COLUMN, metricMinutes, metricRow } from '../progress/progress-metric.util';
 import { requireStudentIdentity } from '../auth/student-identity';
+import { normalizeSubjectKey } from '../orchard/orchard.constants';
 
 @Controller('progress')
 export class ProgressController {
@@ -32,36 +32,31 @@ export class ProgressController {
   @Get()
   @UseGuards(AuthGuard)
   async getProgress(@Req() req: any, @Query('studentId') studentId: string, @Query('period') period: string) {
-    const id = req.studentId || studentId;
+    const id = requireStudentIdentity(req, studentId);
     try {
-      const res = await this.db.client.from('progress_metrics').select('*').eq('student_id', id).order(METRIC_ORDER_COLUMN, { ascending: false }).limit(50);
+      const [report, res] = await Promise.all([
+        this.learningScore.getLearningScore(id),
+        this.db.client.from('progress_metrics').select('*').eq('student_id', id)
+          .order(METRIC_ORDER_COLUMN, { ascending: false }).limit(50),
+      ]);
       if ((res as any)?.error) throw new Error((res as any).error.message);
       const rows = (res && (res as any).data) || [];
 
-      // Only report subjects the student actually has — i.e. ones the school
-      // registered a teacher for in their class. Metrics left behind by a
-      // subject that no longer has a teacher must not reappear as a card.
-      const allowed = new Set(await this.orchard.resolveStudentSubjectKeys(id).catch(() => [] as string[]));
-
-      const bySubject = new Map<string, number[]>();
-      let timeSpent = 0;
-
-      for (const r of Array.isArray(rows) ? rows : []) {
-        const s = r.subject || r.metric_key || 'General';
-        if (!allowed.has(normalizeSubjectKey(s))) continue;
-        const score = metricScore(r);
-        timeSpent += metricMinutes(r);
-        if (!Number.isFinite(score)) continue;
-        const arr = bySubject.get(s) || [];
-        arr.push(score);
-        bySubject.set(s, arr);
-      }
-
-      const subjectScores = Array.from(bySubject.entries()).map(([subject, arr]) => {
-        const latest = arr[0] ?? 0;
-        const prev = arr[1] ?? latest;
-        return { subject, score: Math.round(latest), trend: Math.round(latest - prev) };
-      });
+      const allowed = new Set(report.subjects.map((subject: any) => subject.subjectKey));
+      const timeSpent = rows.reduce((sum: number, row: any) =>
+        sum + (allowed.has(normalizeSubjectKey(row.subject || row.metric_key || 'General')) ? metricMinutes(row) : 0), 0);
+      // The subject card shows actual average marks, not the latest generic
+      // activity metric or the completion-adjusted graph component.
+      const subjectScores = report.subjects
+        .filter((subject: any) => subject.testPerformance.completed > 0)
+        .map((subject: any) => ({
+          subject: subject.name,
+          score: Math.round(subject.testPerformance.averageMarks),
+          trend: 0,
+          completed: subject.testPerformance.completed,
+          assigned: subject.testPerformance.assigned,
+          testScore: subject.testPerformance.score,
+        }));
 
       const weakTopics = subjectScores
         .filter((s) => s.score < 70)

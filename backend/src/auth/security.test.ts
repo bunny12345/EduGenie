@@ -103,8 +103,10 @@ test('HTTP authorization isolates student data and teacher test authoring', asyn
       const query = {
         select: () => query,
         eq(key: string, value: unknown) { rows = rows.filter((row) => row[key] === value); return query; },
+        is(key: string, value: unknown) { rows = rows.filter((row) => (row[key] ?? null) === value); return query; },
         in(key: string, values: unknown[]) { rows = rows.filter((row) => values.includes(row[key])); return query; },
         limit(count: number) { rows = rows.slice(0, count); return query; },
+        range(start: number, end: number) { rows = rows.slice(start, end + 1); return query; },
         order: () => query,
         insert(value: Row[]) { insert = value; return query; },
         update(value: Row) { patch = value; return query; },

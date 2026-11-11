@@ -226,13 +226,55 @@ and mobile. Subject scores combine understanding (20%), tree growth (20%),
 tests/mock tests (25%), practice (20%) and homework (15%), renormalizing weights
 for components without evidence. Tree growth measures chapter stages from seed
 to mastery, not just the number of completed chapters. Only current-class chapter
-growth counts. Tests are graded percentages, linked to their parent assignment
-and dated by completion; started/unsubmitted attempts do not count.
+growth counts. Tests and homework now use actual assignment completion:
+
+- Homework = unique submitted homework / assigned homework × 100. Grades do not
+  affect this component; there is no fixed eight-submission target.
+- Tests/mock tests = unique completed tests / assigned tests × average percentage
+  marks on completed tests. For example, 35/100 completed with an 80% average
+  gives 28/100, while 35/100 homework submitted gives 35/100.
+- Retries count one test, using its latest graded result; homework resubmissions
+  count once. Started/ungraded tests earn no completion credit.
+- Only saved attempts linked to currently assigned tests count toward test marks
+  and completion. Old unlinked `progress_metrics` test records, mirrored metrics
+  and attempts whose tests are no longer in the assigned catalog are excluded.
+  Their stored history is not deleted or rewritten.
+- Both formulas apply to subject scores, overall dimensions and daily/monthly
+  graph points. The existing component weights are unchanged.
+
+`GET /progress` supplies the subject card's **Average Mock Test Score** from the
+same latest saved result per test used by the test list, review and graph. The
+card shows average marks only; the graph's **Test Scores** component additionally
+applies completion. For example, one of two assigned tests at 80% shows an 80%
+average card and a 40% graph component. No completed tests means no average card,
+but assigned unfinished tests still contribute zero to the graph component.
+General practice/activity metrics are not mock-test marks.
+
+Assigned tests are paginated and scoped to the student's school and class,
+matching the assigned test catalog (including school-wide tests without a class).
+Draft/cancelled tests and future scheduled tests do not enter the denominator.
+Homework uses the student's own current-class assignments, including pending work.
+Assignment dates use `assigned_at`, then test `start_at`, then `created_at`.
+Future assignments do not reduce older graph points. For legacy undated
+assignments, the first known completion is used; uncompleted undated assignments
+enter only the current snapshot. Deleted-parent homework completions are retained
+as inferred completed homework assignments. Tests require a surviving assigned
+parent and use its canonical subject, not a subject guessed from old metrics.
+Without surviving assignment history, past obligation counts cannot be fully
+reconstructed. No schema or RLS changes are made.
+
+Results are linked to their parent assignment and dated by completion.
 Legacy `local-test-*` IDs are resolved from the existing local
-assignment feed, never sent to Supabase UUID filters. If their assignment metadata
-has disappeared, the backend logs the unresolved references and keeps the original
-attempts in overall progress (and subject progress when the attempt itself names
-the subject). It does not invent subject assignments or suppress genuine DB errors.
+assignment feed, never sent to Supabase UUID filters. Database attempts take
+precedence over local duplicates. Missing test assignment metadata earns no
+academic test credit; database errors are surfaced, not presented as missing
+or unattempted results. Catalog and attempt reads are paginated in both reports
+and test listings.
+Submission reports success only after confirming the saved result, and a
+finalized result cannot be overwritten by resubmission. Expired attempts are
+finalized from their persisted answers; no saved answers means zero marks.
+Unsaved browser selections cannot be reconstructed, and no existing marks are
+automatically replaced with unrelated historical progress metrics.
 Homework assignments are read with `select('*')` and merged with the existing
 student-scoped persisted local feed, supporting legacy databases without a
 `homework.subject` column. Submitted/resubmitted/graded assignment records with
@@ -247,9 +289,8 @@ at their recorded dates; games are not needed to unlock a graph. Later game or
 test activity does not proportionally rescale past understanding/tree growth.
 Practice includes flashcards, revision/recall/application tasks and recorded
 practice metrics. Unscored practice uses completion volume (20 tasks = 100%);
-accuracy is used when available. Homework blends grades with unique completed
-assignments (eight = full completion credit); ungraded submissions earn completion
-credit, not a fabricated zero grade. Resubmissions count once.
+accuracy is used when available. Homework grades remain available in homework
+records, but do not increase the completion component of the learning score.
 
 The overall nine-dimension weights are unchanged. Understanding now explicitly
 includes tree growth, and revision/consistency include non-game learning records.
@@ -263,10 +304,8 @@ alongside Orchard activity. Historical sunlight is reconstructed from the same
 would otherwise hide it. Later watering does not erase prior confidence evidence.
 Assignment-level grades can complement an ungraded attempt at their recorded
 grading date, while completion counts stay unique and old-class homework is excluded.
-Mirrored test/homework metrics are not treated as practice. Historical test
-metrics remain part of the test average after newer real attempts arrive;
-same-subject, same-score metrics within 60 seconds of a completed attempt are
-excluded as mirrored writes.
+Mirrored test/homework metrics are not treated as practice. Historical generic
+test metrics do not enter the mock-test average or assignment completion score.
 Historical mutable snapshots (such as flashcard review totals or legacy growth
 without a complete activity ledger) only apply from their last recorded update;
 missing historical evidence is not invented. Future months remain null, and the

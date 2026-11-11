@@ -217,6 +217,12 @@ export class LocalFeedService implements OnModuleInit {
     return this.attempts.get(String(attemptId || '').trim()) || null;
   }
 
+  listAttemptsForStudent(studentId: string) {
+    return [...this.attempts.values()]
+      .filter((row) => row.student_id === studentId)
+      .map((row) => ({ ...row }));
+  }
+
   finishAttempt(attemptId: string, patch: any) {
     const id = String(attemptId || '').trim();
     const row = this.attempts.get(id);

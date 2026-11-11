@@ -14,8 +14,14 @@ class SkillMeta {
 
 const Map<String, SkillMeta> kSkillMeta = {
   'understanding': SkillMeta('🧠', 'Understanding', 'How well you get the lessons'),
-  'tests': SkillMeta('📝', 'Tests & Quizzes', 'How you do on tests'),
-  'homework': SkillMeta('📒', 'Homework', 'Finishing your work on time'),
+  'tests': SkillMeta(
+    '📝', 'Tests & Quizzes',
+    'Test completion rate multiplied by average marks',
+  ),
+  'homework': SkillMeta(
+    '📒', 'Homework',
+    'Submitted homework out of assigned homework',
+  ),
   'consistency': SkillMeta('📅', 'Daily Habit', 'Studying a little every day'),
   'revision': SkillMeta('🔁', 'Revision', 'Going over things again to remember'),
   'focus': SkillMeta('🎯', 'Focus', 'Concentrating while you study'),
