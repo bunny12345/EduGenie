@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { getLearningScore } from '../api';
 import { Skel } from './Skeleton';
+import ExamResultsJourney from './ExamResultsJourney';
 import './StudentProgress.css';
 
 /**
@@ -60,12 +61,13 @@ function valueColor(v) {
   return '#cbd5e1';
 }
 
-export default function StudentProgress({ studentId, greetingName, fetchFn }) {
+export default function StudentProgress({ studentId, greetingName, fetchFn, reportCardsFetchFn }) {
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
   const [trendView, setTrendView] = useState('daily'); // 'daily' | 'monthly'
   const [subjView, setSubjView] = useState('daily'); // 'daily' | 'monthly'
   const [openSubject, setOpenSubject] = useState(null); // subject object or null
+  const [examRefresh, setExamRefresh] = useState(0);
 
   // The report loads in the background: nothing on screen says "loading". The
   // page simply stays blank for the moment it takes to arrive, then fills in.
@@ -131,7 +133,7 @@ export default function StudentProgress({ studentId, greetingName, fetchFn }) {
           <h1>My Learning Report</h1>
           <p>A fun, simple picture of how {greetingName || 'you'} {greetingName ? 'is' : 'are'} growing — not just marks.</p>
         </div>
-        <button className="eg-pg-refresh" onClick={load} title="Update with your latest activity">↻ Refresh</button>
+        <button className="eg-pg-refresh" onClick={() => { load(); setExamRefresh((n) => n + 1); }} title="Update with your latest activity and exam results">↻ Refresh</button>
       </header>
 
       {/* ── Friendly alert / notification banner ─────────────────────────── */}
@@ -281,6 +283,9 @@ export default function StudentProgress({ studentId, greetingName, fetchFn }) {
             {subjects.map((s) => <SubjectCard key={s.subjectKey} subject={s} view={subjView} onOpen={() => setOpenSubject(s)} />)}
           </div>
         </section>
+        {(!fetchFn || reportCardsFetchFn) && (
+          <ExamResultsJourney key={studentId} studentId={studentId} fetchFn={reportCardsFetchFn} refreshKey={examRefresh} />
+        )}
       </div>
 
       {openSubject && (

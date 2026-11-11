@@ -22,7 +22,7 @@ test('school progress routes use verified school scope and the shared reports', 
       { id: 'unscoped', name: 'No School', class_name: 'Class 8' }
     ],
     report_exams: [
-      { id: 'exam-a', school_id: 'school-a', class_name: 'Class 8', name: 'Term 1', max_marks: 100 },
+      { id: 'exam-a', school_id: 'school-a', class_name: 'Class 8', name: 'Term 1', max_marks: 100, created_at: '2026-07-01T00:00:00Z' },
       { id: 'exam-pending', school_id: 'school-a', class_name: 'Class 8', name: 'Term 2', max_marks: 100 },
       { id: 'exam-other', school_id: 'school-b', class_name: 'Class 8', name: 'Other exam', max_marks: 100 }
     ],
@@ -116,7 +116,7 @@ test('school progress routes use verified school scope and the shared reports', 
   type RosterResponse = Awaited<ReturnType<SchoolController['progressStudents']>>;
   type CardsResponse = {
     success: boolean; studentName: string;
-    reportCards: Array<{ total: number; rank: number; classSize: number; celebrationPending: boolean }>;
+    reportCards: Array<{ examId: string; total: number; rank: number; classSize: number; celebrationPending: boolean; createdAt: string }>;
     pending: Array<{ examName: string; missingSubjects: string[] }>;
   };
 
@@ -167,6 +167,7 @@ test('school progress routes use verified school scope and the shared reports', 
     assert.equal(data.studentName, 'Asha');
     assert.equal(data.reportCards.length, 1);
     assert.equal(data.reportCards[0].total, 170);
+    assert.equal(data.reportCards[0].createdAt, '2026-07-01T00:00:00Z');
     assert.equal(data.reportCards[0].rank, 2);
     assert.equal(data.reportCards[0].classSize, 2);
     assert.equal(data.reportCards[0].celebrationPending, false);
@@ -188,6 +189,8 @@ test('school progress routes use verified school scope and the shared reports', 
     assert.equal(student.reportCards[0].rank, null);
     assert.equal(student.reportCards[0].total, school.reportCards[0].total);
     assert.equal(teacher.reportCards[0].total, school.reportCards[0].total);
+    assert.equal(student.reportCards[0].createdAt, school.reportCards[0].createdAt);
+    assert.equal(teacher.reportCards[0].createdAt, school.reportCards[0].createdAt);
     tables.students.splice(5);
     tables.report_exam_marks.splice(5);
   });
@@ -195,5 +198,14 @@ test('school progress routes use verified school scope and the shared reports', 
     rosterError = true;
     assert.equal((await request('/school/progress/students')).status, 503);
     rosterError = false;
+  });
+  await t.test('new exam only joins released results once the last subject mark is entered', async () => {
+    const before = await (await request('/progress/report-cards', 'student')).json() as CardsResponse;
+    assert.equal(before.reportCards.length, 1);
+    tables.report_exam_marks.push({ exam_id: 'exam-pending', student_id: 'student-a', subject: 'Science', marks: 75 });
+    const after = await (await request('/progress/report-cards', 'student')).json() as CardsResponse;
+    assert.equal(after.reportCards.length, 2);
+    assert.equal(after.reportCards.find((card) => card.examId === 'exam-pending')?.total, 160);
+    tables.report_exam_marks.pop();
   });
 });

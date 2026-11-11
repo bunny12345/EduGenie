@@ -6,6 +6,7 @@ import '../../state/student_providers.dart';
 import '../../widgets/section_card.dart';
 import '../../widgets/shimmer_wave.dart';
 import 'progress/progress_charts.dart';
+import 'progress/exam_results_journey.dart';
 import 'progress/progress_helpers.dart';
 import 'progress/subject_progress_detail_screen.dart';
 
@@ -36,13 +37,19 @@ class _StudentProgressScreenState extends ConsumerState<StudentProgressScreen> {
         actions: [
           IconButton(
             tooltip: 'Refresh',
-            onPressed: () => ref.invalidate(learningScoreProvider),
+            onPressed: () {
+              ref.invalidate(learningScoreProvider);
+              ref.invalidate(reportCardsProvider);
+            },
             icon: const Icon(Icons.refresh_rounded),
           ),
         ],
       ),
       body: RefreshIndicator(
-        onRefresh: () async => ref.invalidate(learningScoreProvider),
+        onRefresh: () async {
+          ref.invalidate(learningScoreProvider);
+          ref.invalidate(reportCardsProvider);
+        },
         child: dataAsync.when(
           loading: () => const _ProgressSkeleton(),
           error: (e, _) => ListView(
@@ -77,6 +84,7 @@ class _StudentProgressScreenState extends ConsumerState<StudentProgressScreen> {
               subjView: _subjView,
               onTrendViewChange: (v) => setState(() => _trendView = v),
               onSubjViewChange: (v) => setState(() => _subjView = v),
+              examResultsPanel: const ExamResultsJourneyPanel(),
             ),
           ),
         ),
@@ -95,6 +103,7 @@ class LearningReportBody extends StatelessWidget {
   final String subjView;
   final void Function(String) onTrendViewChange;
   final void Function(String) onSubjViewChange;
+  final Widget? examResultsPanel;
 
   const LearningReportBody({
     super.key,
@@ -104,6 +113,7 @@ class LearningReportBody extends StatelessWidget {
     required this.subjView,
     required this.onTrendViewChange,
     required this.onSubjViewChange,
+    this.examResultsPanel,
   });
 
   @override
@@ -350,6 +360,10 @@ class LearningReportBody extends StatelessWidget {
               ],
             ),
           ),
+          if (examResultsPanel != null) ...[
+            const SizedBox(height: 12),
+            examResultsPanel!,
+          ],
         ],
       ),
     );

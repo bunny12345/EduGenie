@@ -1376,6 +1376,7 @@ export default function SchoolDashboard({ session, onLogout }) {
                     studentId={selectedProgressStudent.id}
                     greetingName={selectedProgressStudent.name}
                     fetchFn={getSchoolStudentLearningScore}
+                    reportCardsFetchFn={getSchoolStudentReportCards}
                   />
                   <StudentReportCard
                     embedded

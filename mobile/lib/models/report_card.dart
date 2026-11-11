@@ -59,6 +59,7 @@ class ReportCard {
 
   /// True until the top-3 celebration has been shown for this exam.
   final bool celebrationPending;
+  final DateTime? createdAt;
 
   const ReportCard({
     required this.examId,
@@ -74,6 +75,7 @@ class ReportCard {
     this.classSize,
     this.toppers = const [],
     this.celebrationPending = false,
+    this.createdAt,
   });
 
   factory ReportCard.fromJson(Map<String, dynamic> json) => ReportCard(
@@ -97,6 +99,7 @@ class ReportCard {
             ))
         .toList(),
     celebrationPending: json['celebrationPending'] == true,
+    createdAt: DateTime.tryParse(json['createdAt']?.toString() ?? ''),
   );
 }
 

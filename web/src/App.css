@@ -17,6 +17,76 @@
   --lh-loose: 1.6;
 }
 
+.eg-exam-journey {
+  grid-column: 1 / -1;
+  min-width: 0;
+  padding: clamp(18px, 3vw, 30px);
+  border: 1px solid #e1def7;
+  border-radius: 24px;
+  background: linear-gradient(155deg, #f3f0ff 0%, #fff 36%, #f6fcfb 100%);
+  box-shadow: 0 12px 36px #3525770a;
+  color: #242342;
+}
+.eg-exam-head, .eg-exam-detail-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; }
+.eg-exam-eyebrow { color: #7562be; font-size: 10px; font-weight: 800; letter-spacing: 1.8px; }
+.eg-exam-head h3 { font-size: 24px; letter-spacing: -.6px; margin: 8px 0; }
+.eg-exam-head p, .eg-exam-detail p { color: #72728c; font-size: 13px; line-height: 1.6; margin: 0; }
+.eg-exam-count { flex-shrink: 0; border: 1px solid #ded8fa; border-radius: 20px; padding: 8px 12px; color: #6555a9; background: #ffffffb3; font-size: 11px; font-weight: 700; }
+.eg-exam-filters { display: flex; flex-wrap: wrap; gap: 8px; margin: 22px 0 18px; }
+.eg-exam-filters button { display: inline-flex; gap: 7px; align-items: center; border: 1px solid #e4e2ef; border-radius: 20px; padding: 8px 13px; color: #68677d; background: white; font: inherit; font-size: 12px; cursor: pointer; }
+.eg-exam-filters button[aria-pressed="true"] { border-color: #7564db; color: #5140bc; background: #eeebff; box-shadow: 0 2px 6px #6355dc12; font-weight: 700; }
+.eg-exam-filters i { height: 7px; width: 7px; border-radius: 50%; }
+.eg-exam-summary { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin: 18px 0 26px; }
+.eg-exam-summary > div { background: #ffffffcc; border: 1px solid #eae7f4; border-radius: 16px; padding: 18px; display: flex; align-items: flex-start; flex-direction: column; gap: 9px; }
+.eg-exam-summary small { color: #7a7894; font-size: 11px; }
+.eg-exam-summary strong { font-size: 27px; color: #5142aa; letter-spacing: -.7px; }
+.eg-exam-summary > div > span:last-child { color: #7a7894; font-size: 11px; line-height: 1.5; }
+.eg-exam-change { display: inline-flex; flex-direction: column; gap: 4px; padding: 8px 11px; border-radius: 10px; font-size: 14px; font-weight: 750; background: #f0eef9; color: #666080; }
+.eg-exam-change small { font-size: 10px; font-weight: 500; color: inherit; }
+.eg-exam-change.up { color: #087c5d; background: #e6f7ee; }
+.eg-exam-change.down { color: #a55316; background: #fff1e5; }
+.eg-exam-chart-heading { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 8px; font-size: 12px; margin-bottom: 8px; }
+.eg-exam-chart-heading span { font-size: 10px; color: #77738d; }
+.eg-exam-chart-scroll { overflow-x: auto; max-width: 100%; background: #ffffffb3; border: 1px solid #eeebf7; border-radius: 16px; }
+.eg-exam-chart-scroll svg { display: block; min-width: 100%; }
+.eg-exam-grid { stroke: #eceaf3; stroke-dasharray: 4 5; }
+.eg-exam-axis { fill: #868199; font-size: 10px; }
+.eg-exam-exam-label { fill: #58516f; font-size: 11px; font-weight: 650; }
+.eg-exam-point-label { fill: #514574; font-size: 12px; font-weight: 750; }
+.eg-exam-point { cursor: pointer; }
+.eg-exam-point:focus { outline: none; }
+.eg-exam-point:focus-visible circle { stroke: #211b57; stroke-width: 4px; }
+.eg-exam-journey button:focus-visible, .eg-exam-chart-scroll:focus-visible { outline: 3px solid #a798ff; outline-offset: 3px; }
+.eg-exam-help { color: #89839b; font-size: 11px; line-height: 1.6; margin: 10px 0 20px; }
+.eg-exam-detail { background: #fff; padding: 20px; border: 1px solid #e9e5f4; border-radius: 18px; }
+.eg-exam-detail-head small { font-size: 9px; color: #9389aa; font-weight: 750; letter-spacing: 1.3px; }
+.eg-exam-detail h4 { font-size: 19px; margin: 7px 0; }
+.eg-exam-subjects { display: grid; grid-template-columns: repeat(auto-fit, minmax(165px, 1fr)); gap: 18px; margin-top: 24px; }
+.eg-exam-subject > div:first-child { display: flex; justify-content: space-between; gap: 8px; font-size: 12px; }
+.eg-exam-subject strong { color: #3d3657; }
+.eg-exam-bar { height: 5px; background: #f0eef6; border-radius: 5px; margin: 9px 0; overflow: hidden; }
+.eg-exam-bar span { display: block; height: 100%; border-radius: inherit; }
+.eg-exam-subject > small { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 4px; font-size: 10px; color: #898198; }
+.eg-exam-subject em { font-style: normal; color: #675a81; }
+.eg-exam-note { color: #888097; font-size: 10px; line-height: 1.8; margin-top: 18px; }
+.eg-exam-note b { color: #625779; }
+.eg-exam-empty { padding: 34px 12px; text-align: center; max-width: 480px; margin: auto; }
+.eg-exam-empty > span { font-size: 36px; }
+.eg-exam-empty h4 { margin: 14px 0 8px; }
+.eg-exam-empty p { font-size: 13px; color: #827a95; line-height: 1.8; }
+.eg-exam-error { color: #a44230; padding: 14px; background: #fff1ec; border-radius: 12px; margin-top: 14px; font-size: 13px; }
+.eg-exam-error button { border: 0; background: transparent; color: inherit; font-weight: 700; text-decoration: underline; cursor: pointer; }
+.eg-exam-skeleton { height: 260px; margin-top: 20px; border-radius: 16px; background: linear-gradient(100deg, #f0edf8, #faf9ff, #f0edf8); }
+@media (max-width: 650px) {
+  .eg-exam-head { flex-direction: column; gap: 12px; }
+  .eg-exam-head h3 { font-size: 22px; }
+  .eg-exam-summary { grid-template-columns: 1fr; gap: 8px; }
+  .eg-exam-summary > div { padding: 12px 15px; gap: 6px; }
+  .eg-exam-summary strong { font-size: 24px; }
+  .eg-exam-detail { padding: 15px; }
+  .eg-exam-detail-head { flex-direction: column; }
+}
+
 * { box-sizing: border-box; }
 
 body {

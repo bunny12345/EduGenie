@@ -4003,6 +4003,7 @@ export default function TeacherDashboard({ session, onLogout }) {
                     studentId={selectedStudentId}
                     greetingName={selectedStudentName}
                     fetchFn={getTeacherStudentLearningScore}
+                    reportCardsFetchFn={getTeacherStudentReportCards}
                   />
                   <StudentReportCard
                     key={selectedStudentId}

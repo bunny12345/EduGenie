@@ -316,6 +316,40 @@ clients' calculations.
 Regression command:
 `node --test -r ts-node/register src/progress/learning-score.service.test.ts`
 
+Exam Results Journey
+--------------------
+
+The Progress page has one **Exam Results Journey** panel below **Each subject on
+its own**, on web and mobile. It uses released report cards, not mock tests or
+activity scores. Student, teacher and web school-admin progress views use their
+existing identity-scoped report-card endpoints. Incomplete exams never become
+graph points; a newly completed report appears on the next 60-second refresh
+(or manual Progress refresh on the student screen).
+
+Each exam contributes one point: total subject marks / total possible marks ×
+100. A subject filter instead plots that subject's marks / maximum × 100.
+This compares 25-, 50- and 100-mark exams fairly, and uses weighted totals rather
+than averaging percentages when maximum marks differ. A true zero is plotted;
+a subject absent from an exam is a gap, never a zero or an interpolated result.
+Invalid marks show an explicit error. The panel does not modify Learning Power
+or the homework/mock-test formulas.
+
+The additive `createdAt` report-card response field comes from the existing
+exam's `created_at`; no schema changes are required. Points run in exam creation
+order, not the most recently edited/released-mark order. Legacy responses without
+creation dates use the existing newest-first API order reversed. Changes to
+marks replace the same exam point, and new exams extend the line. Trend badges
+compare the latest two exams and first-to-latest, in **percentage points (pp)**.
+One exam establishes a baseline without inventing a trend. Selecting an exam
+shows its original subject marks, percentage bars and changes from the preceding
+exam. Charts scroll horizontally for longer histories and support keyboard
+selection on web.
+
+Regression commands:
+- Web: `CI=true npm test -- --watchAll=false --runInBand src/components/ExamResultsJourney.test.jsx`
+- Mobile: `flutter test --no-pub test/exam_results_journey_test.dart`
+- Backend release/scoping: `node --test -r ts-node/register src/controllers/school-progress.test.ts`
+
 Orchard school tree assignments
 -------------------------------
 

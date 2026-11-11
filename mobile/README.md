@@ -6,6 +6,19 @@ sessions show a web-only/unsupported notice and can sign out, never fall through
 to the student portal. Web school administration and existing API/session
 contracts remain unchanged.
 
+## Exam results in Progress
+
+The **Exam Results Journey** panel sits below the subject progress cards in
+student Progress and the teacher's selected-student report. It reads the same
+released report cards as web, compares all exams on a 0–100% scale, and lets the
+viewer filter by subject and tap an exam for its original marks. New released
+cards are checked every minute while the panel is open. Student Progress refresh
+also refreshes exam results. This panel is separate from Learning Power; missing
+subjects are gaps, and one exam does not imply a trend.
+
+Run `flutter test --no-pub test/exam_results_journey_test.dart test/subject_progress_test.dart`
+for normalization, trend, zero-mark and phone-layout coverage.
+
 ## Internal testing / TestFlight release preparation
 
 Both platforms use the owner-confirmed permanent identifier `now.academix.app`

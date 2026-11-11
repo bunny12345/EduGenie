@@ -558,6 +558,7 @@ export class ReportCardsController {
       reportCards.push({
         examId: String(exam.id),
         examName: exam.name,
+        createdAt: exam.created_at || null,
         className: exam.class_name,
         maxMarks,
         subjects: subjectRows,

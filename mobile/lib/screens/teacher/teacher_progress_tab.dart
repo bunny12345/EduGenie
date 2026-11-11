@@ -9,6 +9,7 @@ import '../../state/teacher_providers.dart';
 import '../../theme/app_colors.dart';
 import '../../widgets/section_card.dart';
 import '../student/student_progress_screen.dart';
+import '../student/progress/exam_results_journey.dart';
 import '../student/student_report_card_screen.dart' show ReportCardSheet;
 
 /// The site-wide "3D button/card" frame — duplicated per-file per this
@@ -397,6 +398,10 @@ class _TeacherProgressTabState extends ConsumerState<TeacherProgressTab> {
                       subjView: _subjView,
                       onTrendViewChange: (v) => setState(() => _trendView = v),
                       onSubjViewChange: (v) => setState(() => _subjView = v),
+                      examResultsPanel: ExamResultsJourneyPanel(
+                        key: ValueKey(_selectedStudentId),
+                        studentId: _selectedStudentId!,
+                      ),
                     ),
                   ),
           ),
