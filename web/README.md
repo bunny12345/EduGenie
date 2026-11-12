@@ -20,8 +20,11 @@ not update the production website.
 
 Teachers can enable **Strict exam** when assigning a scheduled test. The
 **Exam monitor** dropdown beside Assigned shows paused students, incident
-reasons/counts and individual Resume actions; it updates every five seconds.
-Only the assigning teacher can resume a student. Assigned strict exams are
+reasons/counts, individual Resume actions and **Resume all** for paused students
+in that exam; it updates every five seconds. At the scheduled closing time
+(for example, after a one-hour exam), the monitor and incidents disappear
+automatically, including when polling is offline. Saved results are retained.
+Only the assigning teacher can resume students. Assigned strict exams are
 locked against edits; use Reuse for a new draft.
 
 Students receive a warning before starting. Leaving the test, changing the

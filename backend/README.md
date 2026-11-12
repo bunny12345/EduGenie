@@ -48,9 +48,17 @@ deletion is blocked until the schedule ends and results have finalized.
   A 25-second heartbeat gap or another device also pauses the session when
   checked. Server-side compare-and-swap prevents races between saves, pauses,
   resumes and closing. Paused answers/submissions cannot bypass the lock.
-- `GET /tests/:id/exam-students` and
-  `POST /tests/:id/exam-students/:studentId/resume` require the assigning teacher
-  in the same school. Resuming never extends the original deadline.
+- `GET /tests/:id/exam-students`, individual
+  `POST /tests/:id/exam-students/:studentId/resume`, and bulk
+  `POST /tests/:id/exam-students/resume-all` require the assigning teacher
+  in the same school. Bulk resume returns `{success, resumedCount}` and only
+  resumes paused students in that exam; active/closed sessions stay unchanged.
+  Resuming never extends the original deadline.
+- The monitor response includes `ended`, `endAt`, `serverNow` and `students`.
+  At the scheduled end it returns an empty student list and `ended: true`;
+  web/mobile also hide the monitor and its incidents using server-relative time,
+  even if polling loses connection. Saved sessions, answers and results are
+  retained; hiding the incident panel does not delete database records.
 - At the deadline, only server-saved answers count. A 15-second sweep finalizes
   expired attempts even if both clients are closed, retries failed writes and
   recovers after backend restart. Client/teacher polling also finalizes them.

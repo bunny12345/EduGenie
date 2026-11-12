@@ -619,6 +619,15 @@ export async function resumeExamStudent(testId, studentId) {
   return data;
 }
 
+export async function resumeAllExamStudents(testId) {
+  const res = await fetch(`${API_BASE}/tests/${encodeURIComponent(testId)}/exam-students/resume-all`, {
+    method: 'POST', headers: await authHeaders(), body: '{}',
+  });
+  const data = await res.json();
+  if (!res.ok || data.success === false) throw new Error(data.error || data.message || 'Unable to resume all students');
+  return data;
+}
+
 export async function startTest(testId, studentId) {
   const headers = await authHeaders();
   const url = `${API_BASE}/tests/${encodeURIComponent(testId)}/start`;

@@ -570,7 +570,7 @@ class _AnnouncementTileState extends State<_AnnouncementTile> {
             ),
           ),
           IconButton(
-            icon: const Icon(Icons.edit_outlined, color: AppColors.brand, size: 20),
+            icon: Icon(Icons.edit_outlined, color: AppColors.of(context).accent, size: 20),
             tooltip: 'Edit',
             onPressed: widget.onEdit,
           ),
@@ -1018,7 +1018,7 @@ class _AssignHomeworkPanelState extends ConsumerState<_AssignHomeworkPanel> {
           ),
           if (_info != null) ...[
             const SizedBox(height: 8),
-            Text(_info!, style: TextStyle(fontSize: 12, color: _info!.startsWith('✅') ? AppColors.ok : AppColors.danger)),
+            Text(_info!, style: TextStyle(fontSize: 12, color: AppColors.readableAccent(_info!.startsWith('✅') ? AppColors.ok : AppColors.danger, dark: AppColors.of(context).isDark))),
           ],
           if (recentTop2.isNotEmpty) ...[
             const SizedBox(height: 14),
@@ -1147,7 +1147,7 @@ class _AssignHomeworkPanelState extends ConsumerState<_AssignHomeworkPanel> {
                   ),
                   if (_editingInfo != null) ...[
                     const SizedBox(height: 8),
-                    Text(_editingInfo!, style: TextStyle(fontSize: 12, color: _editingInfo!.startsWith('✅') ? AppColors.ok : AppColors.danger)),
+                    Text(_editingInfo!, style: TextStyle(fontSize: 12, color: AppColors.readableAccent(_editingInfo!.startsWith('✅') ? AppColors.ok : AppColors.danger, dark: AppColors.of(context).isDark))),
                   ],
                 ],
               ),
@@ -1180,7 +1180,7 @@ class _HomeworkTile extends StatelessWidget {
             child: Text('$subject: $title', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
           ),
           IconButton(
-            icon: const Icon(Icons.edit_outlined, color: AppColors.brand, size: 20),
+            icon: Icon(Icons.edit_outlined, color: AppColors.of(context).accent, size: 20),
             tooltip: 'Edit',
             onPressed: onEdit,
           ),
@@ -2166,12 +2166,15 @@ class _TestTile extends StatelessWidget {
           ],
           if (!isAssigned) ...[
             const SizedBox(height: 8),
-            CheckboxListTile(
-              contentPadding: EdgeInsets.zero,
-              title: const Text('Strict exam', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700)),
-              subtitle: const Text('Block AI Tutor; pause only students who leave the test. The timer continues.', style: TextStyle(fontSize: 11)),
-              value: strictMode,
-              onChanged: assigning ? null : (value) => onStrictChanged(value == true),
+            Material(
+              color: AppColors.of(context).background,
+              child: CheckboxListTile(
+                contentPadding: EdgeInsets.zero,
+                title: const Text('Strict exam', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700)),
+                subtitle: const Text('Block AI Tutor; pause only students who leave the test. The timer continues.', style: TextStyle(fontSize: 11)),
+                value: strictMode,
+                onChanged: assigning ? null : (value) => onStrictChanged(value == true),
+              ),
             ),
             Row(
               children: [
@@ -2211,7 +2214,7 @@ class _MiniActionButton extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
         decoration: BoxDecoration(
-          color: disabled ? AppColors.of(context).line.withValues(alpha: 0.4) : Colors.white,
+          color: disabled ? AppColors.of(context).line.withValues(alpha: 0.4) : AppColors.of(context).card,
           borderRadius: BorderRadius.circular(999),
           border: Border.all(color: AppColors.of(context).line),
         ),

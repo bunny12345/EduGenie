@@ -23,7 +23,7 @@ import 'api_client.dart';
 class StudentApiService {
   final ApiClient _client;
   final String _examClientId =
-      '${DateTime.now().microsecondsSinceEpoch}-${Random.secure().nextInt(1 << 32)}';
+      '${DateTime.now().microsecondsSinceEpoch}-${Random.secure().nextInt(0x100000000)}';
   final Map<String, String> pendingExamIncidents = {};
 
   StudentApiService(this._client);

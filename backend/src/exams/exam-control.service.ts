@@ -135,6 +135,17 @@ export class ExamControlService {
     return Promise.all((rows || []).map((row) => this.sync(test, row.student_id)));
   }
 
+  async resumeAll(test: any) {
+    if (Date.now() >= new Date(test.end_at || test.endAt).getTime()) throw new BadRequestException('This exam has ended.');
+    const rows = await this.roster(test);
+    let resumedCount = 0;
+    for (const row of rows.filter((item) => item.status === 'paused')) {
+      const resumed = await this.resume(test, row.student_id);
+      if (resumed.status === 'active') resumedCount++;
+    }
+    return resumedCount;
+  }
+
   async unfinished(): Promise<ExamSession[]> {
     const all: ExamSession[] = [];
     for (let offset = 0; ; offset += 500) {

@@ -18,7 +18,9 @@ class _StrictExamStudentsState extends ConsumerState<StrictExamStudents> {
   String? _resuming;
   bool _busy = false;
   bool _open = false;
+  bool _ended = false;
   Timer? _timer;
+  Timer? _expiryTimer;
   @override
   void initState() {
     super.initState();
@@ -29,23 +31,50 @@ class _StrictExamStudentsState extends ConsumerState<StrictExamStudents> {
   @override
   void dispose() {
     _timer?.cancel();
+    _expiryTimer?.cancel();
     super.dispose();
   }
 
   Future<void> _load() async {
-    if (_busy) return;
+    if (_busy || _ended) return;
     _busy = true;
     try {
       final data = await ref
           .read(teacherApiServiceProvider)
           .getExamStudents(widget.testId);
       if (mounted) {
+        _expiryTimer?.cancel();
+        final remaining = data['endAt'] != null && data['serverNow'] != null
+            ? DateTime.parse(
+                data['endAt'] as String,
+              ).difference(DateTime.parse(data['serverNow'] as String))
+            : null;
         setState(() {
-          _students = (data['students'] as List)
-              .map((row) => Map<String, dynamic>.from(row as Map))
-              .toList();
+          _ended =
+              _ended ||
+              data['ended'] == true ||
+              (remaining != null && remaining <= Duration.zero);
+          _students = _ended
+              ? []
+              : (data['students'] as List)
+                    .map((row) => Map<String, dynamic>.from(row as Map))
+                    .toList();
+          if (_ended) _open = false;
           _error = null;
         });
+        if (_ended) _timer?.cancel();
+        if (!_ended && remaining != null) {
+          _expiryTimer = Timer(remaining, () {
+            if (mounted) {
+              setState(() {
+                _ended = true;
+                _students = [];
+                _open = false;
+              });
+              _timer?.cancel();
+            }
+          });
+        }
       }
     } catch (error) {
       if (mounted) setState(() => _error = error.toString());
@@ -57,9 +86,12 @@ class _StrictExamStudentsState extends ConsumerState<StrictExamStudents> {
   Future<void> _resume(String id) async {
     setState(() => _resuming = id);
     try {
-      await ref
-          .read(teacherApiServiceProvider)
-          .resumeExamStudent(widget.testId, id);
+      final service = ref.read(teacherApiServiceProvider);
+      if (id == 'all') {
+        await service.resumeAllExamStudents(widget.testId);
+      } else {
+        await service.resumeExamStudent(widget.testId, id);
+      }
       await _load();
     } catch (error) {
       if (mounted) setState(() => _error = error.toString());
@@ -69,76 +101,91 @@ class _StrictExamStudentsState extends ConsumerState<StrictExamStudents> {
   }
 
   @override
-  Widget build(BuildContext context) => Column(
-    crossAxisAlignment: CrossAxisAlignment.start,
-    children: [
-      TextButton.icon(
-        onPressed: () => setState(() => _open = !_open),
-        icon: Icon(_open ? Icons.expand_less : Icons.expand_more),
-        label: Text(
-          'Exam monitor · ${_students.where((row) => row['status'] == 'paused').length} paused',
-        ),
-      ),
-      if (_error != null) ErrorInline(message: _error!),
-      if (_open) ...[
-        Text(
-          'Interruptions need review; they are not proof of cheating. Only the affected student is paused. The clock keeps running.',
-          style: TextStyle(fontSize: 12, color: AppColors.of(context).muted),
-        ),
-        if (_students.isEmpty)
-          const Padding(
-            padding: EdgeInsets.all(8),
-            child: Text('No students have started this test.'),
-          ),
-        for (final student in _students)
-          Padding(
-            padding: const EdgeInsets.symmetric(vertical: 8),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  student['name']?.toString() ?? 'Student',
-                  style: const TextStyle(fontWeight: FontWeight.w800),
-                ),
-                Text(
-                  '${student['status']} · ${student['incidentCount']} incident(s)',
-                  style: TextStyle(
-                    color: AppColors.of(context).muted,
-                    fontSize: 12,
-                  ),
-                ),
-                if (student['lastReason'] != null)
-                  Text(
-                    _reason(student['lastReason'].toString()),
-                    style: const TextStyle(fontSize: 12),
-                  ),
-                if (student['pausedAt'] != null)
-                  Text(
-                    DateTime.parse(
-                      student['pausedAt'].toString(),
-                    ).toLocal().toString(),
-                    style: TextStyle(
-                      fontSize: 11,
-                      color: AppColors.of(context).muted,
-                    ),
-                  ),
-                if (student['status'] == 'paused')
-                  OutlinedButton(
-                    onPressed: _resuming != null
-                        ? null
-                        : () => _resume(student['studentId'].toString()),
-                    child: Text(
-                      _resuming == student['studentId']
-                          ? 'Resuming…'
-                          : 'Resume ${student['name']}',
-                    ),
-                  ),
-              ],
+  Widget build(BuildContext context) => _ended
+      ? const SizedBox.shrink()
+      : Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            TextButton.icon(
+              onPressed: () => setState(() => _open = !_open),
+              icon: Icon(_open ? Icons.expand_less : Icons.expand_more),
+              label: Text(
+                'Exam monitor · ${_students.where((row) => row['status'] == 'paused').length} paused',
+              ),
             ),
-          ),
-      ],
-    ],
-  );
+            if (_error != null) ErrorInline(message: _error!),
+            if (_open) ...[
+              Text(
+                'Interruptions need review; they are not proof of cheating. Only the affected student is paused. The clock keeps running.',
+                style: TextStyle(
+                  fontSize: 12,
+                  color: AppColors.of(context).muted,
+                ),
+              ),
+              OutlinedButton(
+                onPressed:
+                    _resuming != null ||
+                        !_students.any((row) => row['status'] == 'paused')
+                    ? null
+                    : () => _resume('all'),
+                child: Text(
+                  _resuming == 'all' ? 'Resuming all…' : 'Resume all',
+                ),
+              ),
+              if (_students.isEmpty)
+                const Padding(
+                  padding: EdgeInsets.all(8),
+                  child: Text('No students have started this test.'),
+                ),
+              for (final student in _students)
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 8),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        student['name']?.toString() ?? 'Student',
+                        style: const TextStyle(fontWeight: FontWeight.w800),
+                      ),
+                      Text(
+                        '${student['status']} · ${student['incidentCount']} incident(s)',
+                        style: TextStyle(
+                          color: AppColors.of(context).muted,
+                          fontSize: 12,
+                        ),
+                      ),
+                      if (student['lastReason'] != null)
+                        Text(
+                          _reason(student['lastReason'].toString()),
+                          style: const TextStyle(fontSize: 12),
+                        ),
+                      if (student['pausedAt'] != null)
+                        Text(
+                          DateTime.parse(
+                            student['pausedAt'].toString(),
+                          ).toLocal().toString(),
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: AppColors.of(context).muted,
+                          ),
+                        ),
+                      if (student['status'] == 'paused')
+                        OutlinedButton(
+                          onPressed: _resuming != null
+                              ? null
+                              : () => _resume(student['studentId'].toString()),
+                          child: Text(
+                            _resuming == student['studentId']
+                                ? 'Resuming…'
+                                : 'Resume ${student['name']}',
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+            ],
+          ],
+        );
 }
 
 String _reason(String reason) => switch (reason) {

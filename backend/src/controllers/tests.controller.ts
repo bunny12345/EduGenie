@@ -888,10 +888,20 @@ export class TestsController {
       const attempt = await this.loadStudentAttempt(row.attempt_id, row.student_id);
       if (attempt) await this.scoreAndFinalizeAttempt(attempt, row.answers, row.student_id);
     }
-    return { success: true, students: rows.map((row) => ({
+    const endAt = test.end_at || test.endAt;
+    const ended = Date.now() >= new Date(endAt).getTime();
+    return { success: true, ended, endAt, serverNow: new Date().toISOString(), students: (ended ? [] : rows).map((row) => ({
       studentId: row.student_id, name: row.student_name, status: row.status, incidentCount: row.incident_count,
       lastReason: row.last_reason, pausedAt: row.paused_at, resumedAt: row.resumed_at,
     })) };
+  }
+
+  @Post(':testId/exam-students/resume-all')
+  @UseGuards(AuthGuard)
+  async resumeAllExams(@Req() req: any, @Param('testId') testId: string) {
+    const test = await this.requireOwnedTest(req, testId);
+    if (!await this.exams.enabled(test.id)) throw new BadRequestException('This test does not use strict mode');
+    return { success: true, resumedCount: await this.exams.resumeAll(test) };
   }
 
   @Post(':testId/exam-students/:studentId/resume')

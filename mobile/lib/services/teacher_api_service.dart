@@ -449,6 +449,9 @@ class TeacherApiService {
   Future<Map<String, dynamic>> getExamStudents(String testId) =>
       _get('/tests/${Uri.encodeComponent(testId)}/exam-students', {});
 
+  Future<Map<String, dynamic>> resumeAllExamStudents(String testId) =>
+      _post('/tests/${Uri.encodeComponent(testId)}/exam-students/resume-all', {});
+
   Future<Map<String, dynamic>> resumeExamStudent(
     String testId,
     String studentId,

@@ -867,7 +867,10 @@ class _HomeworkStatusTile extends StatelessWidget {
     final attemptCount = (homework['attemptCount'] as num?)?.toInt() ?? 0;
     final remark = homework['remark']?.toString();
     final canGrade = dueStatus == 'submitted' || dueStatus == 'overdue' || dueStatus == 'pending';
-    final badgeColor = dueStatus == 'submitted' ? AppColors.ok : (dueStatus == 'overdue' ? AppColors.danger : AppColors.warn);
+    final badgeColor = AppColors.readableAccent(
+      dueStatus == 'submitted' ? AppColors.ok : (dueStatus == 'overdue' ? AppColors.danger : AppColors.warn),
+      dark: AppColors.of(context).isDark,
+    );
     final hasSubmission = (homework['latestAnswerText']?.toString().trim().isNotEmpty ?? false)
         || (homework['latestAttachmentUrls'] is List && (homework['latestAttachmentUrls'] as List).isNotEmpty)
         || (homework['latestAttachmentUrl']?.toString().trim().isNotEmpty ?? false);
@@ -903,12 +906,13 @@ class _HomeworkStatusTile extends StatelessWidget {
             Text(remark, style: TextStyle(fontSize: 11, color: AppColors.of(context).muted)),
           ],
           const SizedBox(height: 6),
-          Row(
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            crossAxisAlignment: WrapCrossAlignment.center,
             children: [
               Text('Grade: ${grade != null ? '$grade/100' : '\u2014'}', style: TextStyle(fontSize: 11, color: AppColors.of(context).text)),
-              const SizedBox(width: 12),
               Text('Attempts: $attemptCount', style: TextStyle(fontSize: 11, color: AppColors.of(context).text)),
-              const Spacer(),
               if (canGrade && hasSubmission) ...[
                 _Frame3dButton(
                   onTap: aiBusy ? null : onAutoCorrect,
@@ -916,7 +920,6 @@ class _HomeworkStatusTile extends StatelessWidget {
                   foreground: Colors.white,
                   child: Text(aiBusy ? 'Reading…' : '✨ Autocorrect'),
                 ),
-                const SizedBox(width: 6),
               ],
               if (canGrade) _Frame3dButton(onTap: onToggleGrade, child: Text(expanded ? 'Cancel' : 'Grade')),
             ],
@@ -925,20 +928,24 @@ class _HomeworkStatusTile extends StatelessWidget {
             const SizedBox(height: 8),
             Container(
               padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(color: const Color(0xFFFEF3C7), border: Border.all(color: const Color(0xFFFCD34D)), borderRadius: BorderRadius.circular(8)),
+              decoration: BoxDecoration(
+                color: AppColors.of(context).isDark ? AppColors.of(context).brandSoft : const Color(0xFFFEF3C7),
+                border: Border.all(color: AppColors.of(context).isDark ? AppColors.of(context).line : const Color(0xFFFCD34D)),
+                borderRadius: BorderRadius.circular(8),
+              ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   TextField(
                     controller: gradeValueCtrl,
                     keyboardType: TextInputType.number,
-                    decoration: const InputDecoration(hintText: 'Score (0-100)', isDense: true, filled: true, fillColor: Colors.white),
+                    decoration: InputDecoration(hintText: 'Score (0-100)', isDense: true, filled: true, fillColor: AppColors.of(context).card),
                   ),
                   const SizedBox(height: 6),
                   TextField(
                     controller: gradeFeedbackCtrl,
                     maxLines: 2,
-                    decoration: const InputDecoration(hintText: 'Feedback for student', isDense: true, filled: true, fillColor: Colors.white),
+                    decoration: InputDecoration(hintText: 'Feedback for student', isDense: true, filled: true, fillColor: AppColors.of(context).card),
                   ),
                   const SizedBox(height: 8),
                   Row(

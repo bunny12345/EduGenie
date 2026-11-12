@@ -10,8 +10,16 @@ contracts remain unchanged.
 
 Teachers can enable Strict exam before assigning a scheduled mock test. Their
 assigned-test Exam monitor shows student statuses and interruption summaries,
-with an individual Resume action available only to the assigning teacher.
+with individual Resume and **Resume all** actions available only to the
+assigning teacher. Bulk resume affects paused students in that exam only and
+never changes the deadline. The monitor and incidents disappear automatically
+at the scheduled end, even offline; saved results and sessions are retained.
 Updates are polled every five seconds and support both themes.
+
+Exam client IDs use a literal random bound, not `1 << 32`: Dart's JavaScript
+bitwise shift makes that expression zero and prevents the student API service
+from initializing. Verify browser startup and ID stability with
+`flutter test --no-pub --platform chrome test/student_api_service_test.dart`.
 
 Students confirm the rules before starting. Moving the app out of the active
 foreground (including system interruptions) or attempting Back pauses only
@@ -35,6 +43,21 @@ camera, screen recording or clipboard surveillance is introduced.
 Run `flutter test --no-pub test/strict_exam_test.dart test/quick_sam_bubble_test.dart test/tasks_games_dark_test.dart test/teacher_theme_test.dart`
 and `flutter analyze --no-pub`. Native device verification is still required
 before a school rollout; this development machine has no Android/Xcode target.
+
+## Student Homework and Mock Tests
+
+The Homework screen has a persistent, raised **Homework / Mock Tests** switch.
+Both views keep the selected subject; homework drafts, filters and expanded
+instructions/feedback survive switching views. Subject badges count actionable
+items in the selected view, using the existing due/submission/test-window rules.
+The compact subject heading is separate from individual assignment cards.
+Raised, labelled actions distinguish instructions, saved submissions, history,
+feedback and the primary Submit button; static titles/statuses are not buttons.
+An explicit All filter resets the existing status filters. Light/dark surfaces,
+small screens and large text are covered by
+`flutter test --no-pub test/homework_layout_test.dart test/tasks_games_dark_test.dart`.
+Submission, uploads, the resubmission window, test start/review and strict-exam
+controls use their existing services and rules. No backend/schema change.
 
 ## Student Home design
 
@@ -95,6 +118,14 @@ to light on a fresh launch); student saved-preference behaviour is unchanged.
 Teacher panels and the floating bottom bar update in place without resetting
 the current tab or form state. Dark navigation uses the same surface, muted
 icons and highlighted accent as the student bar.
+
+Mock-test action buttons, manual grading fields and report-card entry panels
+use theme-aware surfaces and contrasting text, including live theme switches
+without losing drafts. Subject-coloured report-card controls use deeper shades
+in dark mode; the AI Assistant keeps its intentional dark palette and released
+report cards keep their contrasting paper-and-ink design.
+`flutter test --no-pub test/teacher_contrast_test.dart` checks action contrast
+(at least 4.5:1), light/dark switches, grading and saving report-card marks.
 
 Run `flutter test --no-pub test/teacher_theme_test.dart test/student_dark_theme_test.dart test/role_router_test.dart test/widget_test.dart`
 for role isolation, menu switching, navigation colours, retained state and logout.

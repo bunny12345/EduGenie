@@ -80,20 +80,30 @@ class _Api extends StudentApiService {
 class _TeacherApi extends TeacherApiService {
   _TeacherApi() : super(ApiClient());
   String? resumed;
+  bool resumedAll = false;
+  bool twoPaused = false;
+  bool ended = false;
+  bool failResumeAll = false;
+  Duration? remaining;
   @override
   Future<Map<String, dynamic>> getExamStudents(String testId) async => {
+    'ended': ended,
+    if (remaining != null) ...{
+      'endAt': DateTime.now().add(remaining!).toIso8601String(),
+      'serverNow': DateTime.now().toIso8601String(),
+    },
     'students': [
       {
         'studentId': 'a',
         'name': 'Asha',
-        'status': resumed == 'a' ? 'active' : 'paused',
+        'status': resumed == 'a' || resumedAll ? 'active' : 'paused',
         'incidentCount': 1,
         'lastReason': 'app_background',
       },
       {
         'studentId': 'b',
         'name': 'Banu',
-        'status': 'active',
+        'status': twoPaused && !resumedAll ? 'paused' : 'active',
         'incidentCount': 0,
       },
     ],
@@ -105,6 +115,13 @@ class _TeacherApi extends TeacherApiService {
   ) async {
     resumed = studentId;
     return {'success': true};
+  }
+
+  @override
+  Future<Map<String, dynamic>> resumeAllExamStudents(String testId) async {
+    if (failResumeAll) throw Exception('Unable to resume all students');
+    resumedAll = true;
+    return {'success': true, 'resumedCount': twoPaused ? 2 : 1};
   }
 }
 
@@ -168,6 +185,105 @@ void main() {
         expect(find.text('Three'), findsOneWidget);
         expect(api.answers, {'q': 0});
         expect(tester.takeException(), isNull);
+        await tester.pumpWidget(const SizedBox.shrink());
+      },
+    );
+
+    testWidgets(
+      'teacher can resume all while preserving individual Resume buttons ($dark)',
+      (tester) async {
+        final api = _TeacherApi()..twoPaused = true;
+        await tester.pumpWidget(
+          ProviderScope(
+            overrides: [teacherApiServiceProvider.overrideWithValue(api)],
+            child: MaterialApp(
+              theme: dark ? ThemeData.dark() : ThemeData.light(),
+              home: const Scaffold(
+                body: SingleChildScrollView(
+                  child: StrictExamStudents(testId: 'test-a'),
+                ),
+              ),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Exam monitor · 2 paused'));
+        await tester.pumpAndSettle();
+        expect(find.text('Resume Asha'), findsOneWidget);
+        expect(find.text('Resume Banu'), findsOneWidget);
+        await tester.tap(find.text('Resume all'));
+        await tester.pumpAndSettle();
+        expect(api.resumedAll, isTrue);
+        expect(api.resumed, isNull);
+        expect(find.text('Exam monitor · 0 paused'), findsOneWidget);
+        expect(
+          tester
+              .widget<OutlinedButton>(
+                find.widgetWithText(OutlinedButton, 'Resume all'),
+              )
+              .onPressed,
+          isNull,
+        );
+        await tester.pumpWidget(const SizedBox.shrink());
+      },
+    );
+
+    testWidgets(
+      'monitor and incidents vanish automatically at the server schedule end ($dark)',
+      (tester) async {
+        final api = _TeacherApi()..remaining = const Duration(seconds: 3);
+        await tester.pumpWidget(
+          ProviderScope(
+            overrides: [teacherApiServiceProvider.overrideWithValue(api)],
+            child: MaterialApp(
+              theme: dark ? ThemeData.dark() : ThemeData.light(),
+              home: const Scaffold(body: StrictExamStudents(testId: 'test-a')),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Exam monitor · 1 paused'));
+        await tester.pumpAndSettle();
+        expect(find.text('Asha'), findsOneWidget);
+        await tester.pump(const Duration(seconds: 3));
+        expect(find.textContaining('Exam monitor'), findsNothing);
+        expect(find.text('Asha'), findsNothing);
+        await tester.pumpWidget(const SizedBox.shrink());
+      },
+    );
+
+    testWidgets(
+      'an ended exam hides old incidents and bulk failures remain explicit ($dark)',
+      (tester) async {
+        final api = _TeacherApi()..failResumeAll = true;
+        await tester.pumpWidget(
+          ProviderScope(
+            overrides: [teacherApiServiceProvider.overrideWithValue(api)],
+            child: MaterialApp(
+              theme: dark ? ThemeData.dark() : ThemeData.light(),
+              home: const Scaffold(
+                body: SingleChildScrollView(
+                  child: StrictExamStudents(testId: 'test-a'),
+                ),
+              ),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Exam monitor · 1 paused'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Resume all'));
+        await tester.pumpAndSettle();
+        expect(
+          find.textContaining('Unable to resume all students'),
+          findsOneWidget,
+        );
+        expect(api.resumedAll, isFalse);
+        api.ended = true;
+        await tester.pump(const Duration(seconds: 5));
+        await tester.pump();
+        expect(find.textContaining('Exam monitor'), findsNothing);
+        expect(find.text('Asha'), findsNothing);
         await tester.pumpWidget(const SizedBox.shrink());
       },
     );

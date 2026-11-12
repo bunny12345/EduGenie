@@ -47,22 +47,35 @@ class _SubjectTheme {
 
 _SubjectTheme _subjectTheme(String subject) {
   final s = subject.toLowerCase();
-  if (s.contains('math')) return const _SubjectTheme(color: Color(0xFF7A6B1A), border: Color(0xFFE8D89A));
+  if (s.contains('math')) {
+    return const _SubjectTheme(color: Color(0xFF7A6B1A), border: Color(0xFFE8D89A));
+  }
   if (s.contains('science') || s.contains('physics') || s.contains('chemistry')) {
     return const _SubjectTheme(color: Color(0xFF0A7550), border: Color(0xFFA7F3D0));
   }
-  if (s.contains('bio')) return const _SubjectTheme(color: Color(0xFF166534), border: Color(0xFFBBF7D0));
+  if (s.contains('bio')) {
+    return const _SubjectTheme(color: Color(0xFF166534), border: Color(0xFFBBF7D0));
+  }
   if (s.contains('english') || s.contains('language') || s.contains('literature')) {
     return const _SubjectTheme(color: Color(0xFF9B1D5D), border: Color(0xFFF5C0D5));
   }
-  if (s.contains('history') || s.contains('social')) return const _SubjectTheme(color: Color(0xFF5B21B6), border: Color(0xFFDDD6FE));
-  if (s.contains('hindi') || s.contains('telugu') || s.contains('sanskrit') || s.contains('urdu') || s.contains('tamil') || s.contains('kannada')) {
+  if (s.contains('history') || s.contains('social')) {
+    return const _SubjectTheme(color: Color(0xFF5B21B6), border: Color(0xFFDDD6FE));
+  }
+  if (s.contains('hindi') ||
+      s.contains('telugu') ||
+      s.contains('sanskrit') ||
+      s.contains('urdu') ||
+      s.contains('tamil') ||
+      s.contains('kannada')) {
     final warm = s.contains('hindi') || s.contains('sanskrit') || s.contains('urdu');
     return warm
         ? const _SubjectTheme(color: Color(0xFF92400E), border: Color(0xFFE8C49E))
         : const _SubjectTheme(color: Color(0xFF065F46), border: Color(0xFFA7F3D0));
   }
-  if (s.contains('geo')) return const _SubjectTheme(color: Color(0xFF5B21B6), border: Color(0xFFD1C8F0));
+  if (s.contains('geo')) {
+    return const _SubjectTheme(color: Color(0xFF5B21B6), border: Color(0xFFD1C8F0));
+  }
   if (s.contains('computer') || s.contains('coding') || s.contains('programming')) {
     return const _SubjectTheme(color: Color(0xFF1E40AF), border: Color(0xFFBFDBFE));
   }
@@ -72,15 +85,28 @@ _SubjectTheme _subjectTheme(String subject) {
 IconData _subjectIconData(String subject) {
   final s = subject.toLowerCase();
   if (s.contains('math')) return Icons.calculate_rounded;
-  if (s.contains('science') || s.contains('physics') || s.contains('chemistry')) return Icons.science_rounded;
+  if (s.contains('science') || s.contains('physics') || s.contains('chemistry')) {
+    return Icons.science_rounded;
+  }
   if (s.contains('bio')) return Icons.eco_rounded;
-  if (s.contains('english') || s.contains('language') || s.contains('literature')) return Icons.menu_book_rounded;
-  if (s.contains('history') || s.contains('social')) return Icons.account_balance_rounded;
-  if (s.contains('hindi') || s.contains('telugu') || s.contains('sanskrit') || s.contains('urdu') || s.contains('tamil') || s.contains('kannada')) {
+  if (s.contains('english') || s.contains('language') || s.contains('literature')) {
+    return Icons.menu_book_rounded;
+  }
+  if (s.contains('history') || s.contains('social')) {
+    return Icons.account_balance_rounded;
+  }
+  if (s.contains('hindi') ||
+      s.contains('telugu') ||
+      s.contains('sanskrit') ||
+      s.contains('urdu') ||
+      s.contains('tamil') ||
+      s.contains('kannada')) {
     return Icons.translate_rounded;
   }
   if (s.contains('geo')) return Icons.public_rounded;
-  if (s.contains('computer') || s.contains('coding') || s.contains('programming')) return Icons.code_rounded;
+  if (s.contains('computer') || s.contains('coding') || s.contains('programming')) {
+    return Icons.code_rounded;
+  }
   if (s.contains('art') || s.contains('draw')) return Icons.palette_rounded;
   if (s.contains('music')) return Icons.music_note_rounded;
   return Icons.menu_book_rounded;
@@ -96,45 +122,112 @@ Color _subjectAccent(String subject) {
   if (s.contains('chemistry')) return const Color(0xFF3B82C4);
   if (s.contains('science')) return const Color(0xFF10B981);
   if (s.contains('bio')) return const Color(0xFF22C55E);
-  if (s.contains('english') || s.contains('language') || s.contains('literature')) return const Color(0xFFD63384);
-  if (s.contains('hindi') || s.contains('sanskrit') || s.contains('urdu')) return const Color(0xFFD97706);
-  if (s.contains('telugu') || s.contains('tamil') || s.contains('kannada')) return const Color(0xFF0D9E6B);
-  if (s.contains('history') || s.contains('social') || s.contains('geo')) return const Color(0xFF7C5BE6);
-  if (s.contains('computer') || s.contains('coding') || s.contains('programming')) return const Color(0xFF3B82F6);
+  if (s.contains('english') || s.contains('language') || s.contains('literature')) {
+    return const Color(0xFFD63384);
+  }
+  if (s.contains('hindi') || s.contains('sanskrit') || s.contains('urdu')) {
+    return const Color(0xFFD97706);
+  }
+  if (s.contains('telugu') || s.contains('tamil') || s.contains('kannada')) {
+    return const Color(0xFF0D9E6B);
+  }
+  if (s.contains('history') || s.contains('social') || s.contains('geo')) {
+    return const Color(0xFF7C5BE6);
+  }
+  if (s.contains('computer') || s.contains('coding') || s.contains('programming')) {
+    return const Color(0xFF3B82F6);
+  }
   return const Color(0xFF5B47FF);
 }
 
-/// The site-wide "3D button" frame — a light-black ring border + soft drop
-/// shadow, ported from `.eg-subject-hw-card button` in `App.css`. Layers on
-/// top of whatever fill color/shape a button already has.
-const Color _frame3dColor = Color(0xFF46464E);
+List<BoxShadow> _frame3dShadow({double alpha = 0.18, double blur = 10}) => [
+  BoxShadow(
+    color: Colors.black.withValues(alpha: alpha),
+    blurRadius: blur,
+    offset: const Offset(0, 4),
+  ),
+];
 
-Border _frame3dBorder({double alpha = 0.35, double width = 1.5}) => Border.all(color: _frame3dColor.withValues(alpha: alpha), width: width);
-
-List<BoxShadow> _frame3dShadow({double alpha = 0.18, double blur = 10}) => [BoxShadow(color: Colors.black.withValues(alpha: alpha), blurRadius: blur, offset: const Offset(0, 4))];
-
-/// Small text-link style button (e.g. "Open history", "Close") wrapped in the
-/// same 3D frame as every other button in the Homework panel.
+/// Raised secondary action, distinct from assignment headings and status badges.
 class _FramedTextButton extends StatelessWidget {
   final String label;
   final VoidCallback? onPressed;
-  const _FramedTextButton({required this.label, required this.onPressed});
+  final IconData icon;
+  const _FramedTextButton({required this.label, required this.onPressed, this.icon = Icons.expand_more_rounded});
 
   @override
   Widget build(BuildContext context) {
-    return PressableScale(
-      onTap: onPressed,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        decoration: BoxDecoration(color: AppColors.of(context).card, borderRadius: BorderRadius.circular(10), border: _frame3dBorder(), boxShadow: _frame3dShadow()),
-        child: Text(label, style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: HomeworkColors.of(context).accent(Color(0xFF5B47FF)))),
+    final palette = AppColors.of(context);
+    return ElevatedButton(
+      onPressed: onPressed,
+      style: ElevatedButton.styleFrom(
+        backgroundColor: palette.card,
+        foregroundColor: palette.accent,
+        elevation: 3,
+        shadowColor: Colors.black.withValues(alpha: palette.isDark ? 0.4 : 0.15),
+        minimumSize: const Size(0, 44),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+        side: BorderSide(color: palette.line),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 18),
+          const SizedBox(width: 8),
+          Flexible(
+            child: Text(label, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700)),
+          ),
+        ],
       ),
     );
   }
 }
 
-/// Homework — mirrors web's per-subject Homework tab in `StudentDashboard.jsx`
-/// exactly: subject switcher, submitted/not-submitted/overdue filter chips,
+class _TaskTab extends StatelessWidget {
+  final String label;
+  final IconData icon;
+  final bool selected;
+  final VoidCallback onPressed;
+  const _TaskTab({required this.label, required this.icon, required this.selected, required this.onPressed});
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = AppColors.of(context);
+    return Semantics(
+      selected: selected,
+      child: ElevatedButton(
+        onPressed: onPressed,
+        style: ElevatedButton.styleFrom(
+          elevation: selected ? 5 : 1,
+          backgroundColor: selected ? AppColors.brand : palette.card,
+          foregroundColor: selected ? Colors.white : palette.muted,
+          minimumSize: const Size.fromHeight(48),
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 12),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+          side: BorderSide(color: selected ? AppColors.brand : palette.line),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 20),
+            const SizedBox(width: 8),
+            Flexible(
+              child: Text(
+                label,
+                textAlign: TextAlign.center,
+                style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Student assignments and tests share subjects but have separate task views:
+/// subject switcher, submitted/not-submitted/overdue filter chips,
 /// "View history by date" mini calendar, expandable teacher instructions +
 /// attachments, submission form (text + images) with a resubmit window, and
 /// expandable teacher feedback.
@@ -149,6 +242,7 @@ class _HomeworkScreenState extends ConsumerState<HomeworkScreen> {
   String? _selectedSubject;
   _HwFilter _filter = _HwFilter.all;
   bool _showHistory = false;
+  bool _showTests = false;
   String? _historyFromDate;
   late int _historyYear;
   late int _historyMonth;
@@ -201,7 +295,9 @@ class _HomeworkScreenState extends ConsumerState<HomeworkScreen> {
         final bytes = await file.readAsBytes();
         final mimeType = file.mimeType ?? 'image/jpeg';
         final dataUrl = 'data:$mimeType;base64,${base64Encode(bytes)}';
-        final url = await ref.read(studentApiServiceProvider).uploadHomeworkImage(fileName: file.name, mimeType: mimeType, dataUrl: dataUrl);
+        final url = await ref
+            .read(studentApiServiceProvider)
+            .uploadHomeworkImage(fileName: file.name, mimeType: mimeType, dataUrl: dataUrl);
         if (url.isNotEmpty) urls.add(url);
       } catch (_) {
         // best-effort — keep going with remaining images
@@ -212,7 +308,9 @@ class _HomeworkScreenState extends ConsumerState<HomeworkScreen> {
       _uploading[h.id] = false;
       if (urls.isNotEmpty) {
         _attachmentsFor(h).addAll(urls);
-        _infoById[h.id] = urls.length == picked.length ? 'Uploaded ${urls.length} image${urls.length == 1 ? '' : 's'}.' : 'Uploaded ${urls.length}/${picked.length} image(s).';
+        _infoById[h.id] = urls.length == picked.length
+            ? 'Uploaded ${urls.length} image${urls.length == 1 ? '' : 's'}.'
+            : 'Uploaded ${urls.length}/${picked.length} image(s).';
       } else {
         _infoById[h.id] = 'Image upload failed. Please try again.';
       }
@@ -235,12 +333,9 @@ class _HomeworkScreenState extends ConsumerState<HomeworkScreen> {
       _infoById[h.id] = 'Submitting homework...';
     });
     try {
-      final res = await ref.read(studentApiServiceProvider).submitHomework(
-            h.id,
-            studentId,
-            answerText: _answerCtrlFor(h).text.trim(),
-            attachmentUrls: _attachmentsFor(h),
-          );
+      final res = await ref
+          .read(studentApiServiceProvider)
+          .submitHomework(h.id, studentId, answerText: _answerCtrlFor(h).text.trim(), attachmentUrls: _attachmentsFor(h));
       ref.invalidate(homeworkProvider);
       if (!mounted) return;
       setState(() {
@@ -267,301 +362,421 @@ class _HomeworkScreenState extends ConsumerState<HomeworkScreen> {
 
     return Scaffold(
       backgroundColor: HomeworkColors.of(context).background(const Color(0xFFF7F7FC)),
-      appBar: AppBar(title: const Text('Homework')),
-      body: RefreshIndicator(
-        onRefresh: () async {
-          ref.invalidate(homeworkProvider);
-          ref.invalidate(testsProvider);
-        },
-        child: subjects.isEmpty
-            ? ListView(padding: const EdgeInsets.all(16), children: [Text('No subjects yet.', style: TextStyle(color: HomeworkColors.of(context).muted(Color(0xFF6B7280)), fontSize: 13))])
-            : ListView(
-                padding: const EdgeInsets.all(16),
-                children: [
-                  SizedBox(
-                    height: 48,
-                    child: ListView.separated(
-                      scrollDirection: Axis.horizontal,
-                      itemCount: subjects.length,
-                      separatorBuilder: (_, _) => const SizedBox(width: 8),
-                      itemBuilder: (context, i) {
-                        final s = subjects[i];
-                        final active = s == _selectedSubject;
-                        final pendingHomework = homeworkAsync.value == null
-                            ? 0
-                            : homeworkAsync.value!.where((h) => h.subject == s && !homeworkState(h).submitted && !homeworkState(h).hide).length;
-                        // Mirrors web's getSubjectNotifications(): only tests the
-                        // student can still act on count — not ones already
-                        // completed, scheduled for later, or expired.
-                        final pendingTests = testsAsync.value == null
-                            ? 0
-                            : testsAsync.value!.where((t) => t.subject == s && !t.attempted && t.windowStatus != 'scheduled' && t.windowStatus != 'expired').length;
-                        final pendingCount = pendingHomework + pendingTests;
-                        return _SubjectPillChip(
-                          label: s,
-                          active: active,
-                          notifyCount: pendingCount,
-                          onTap: () => setState(() {
-                            _selectedSubject = s;
-                            _filter = _HwFilter.all;
-                            _showHistory = false;
-                            _historyFromDate = null;
-                          }),
-                        );
-                      },
-                    ),
+      appBar: AppBar(title: Text(_showTests ? 'Mock Tests' : 'Homework')),
+      body: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+            child: Row(
+              children: [
+                Expanded(
+                  child: _TaskTab(
+                    label: 'Homework',
+                    icon: Icons.edit_note_rounded,
+                    selected: !_showTests,
+                    onPressed: () => setState(() => _showTests = false),
                   ),
-                  const SizedBox(height: 14),
-                  Container(
-                    margin: const EdgeInsets.only(bottom: 12),
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-                    decoration: BoxDecoration(
-                      color: AppColors.of(context).card,
-                      borderRadius: BorderRadius.circular(16),
-                      border: Border.all(color: HomeworkColors.of(context).line(theme.border), width: 1.5),
-                      boxShadow: [BoxShadow(color: theme.color.withValues(alpha: 0.16), blurRadius: 14, offset: const Offset(0, 4))],
-                    ),
-                    child: Row(
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: _TaskTab(
+                    label: 'Mock Tests',
+                    icon: Icons.quiz_outlined,
+                    selected: _showTests,
+                    onPressed: () => setState(() => _showTests = true),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Expanded(
+            child: RefreshIndicator(
+              onRefresh: () async {
+                ref.invalidate(homeworkProvider);
+                ref.invalidate(testsProvider);
+              },
+              child: subjects.isEmpty
+                  ? ListView(
+                      padding: const EdgeInsets.all(16),
                       children: [
-                        Container(
-                          width: 48,
-                          height: 48,
-                          decoration: BoxDecoration(color: theme.color.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(14)),
-                          alignment: Alignment.center,
-                          child: Icon(_subjectIconData(_selectedSubject ?? ''), size: 26, color: HomeworkColors.of(context).accent(iconColor)),
-                        ),
-                        const SizedBox(width: 14),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Text(_selectedSubject ?? '', style: TextStyle(fontSize: 19, fontWeight: FontWeight.w800, color: HomeworkColors.of(context).accent(theme.color))),
-                              const SizedBox(height: 2),
-                              Text('Homework & Tests', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.of(context).isDark ? AppColors.of(context).muted : theme.color.withValues(alpha: 0.65))),
-                            ],
-                          ),
+                        Text(
+                          'No subjects yet.',
+                          style: TextStyle(color: HomeworkColors.of(context).muted(Color(0xFF6B7280)), fontSize: 13),
                         ),
                       ],
-                    ),
-                  ),
-                  homeworkAsync.when(
-                    loading: () => const SkeletonBox(height: 60),
-                    error: (e, _) => Text('Unable to load homework: $e', style: TextStyle(color: HomeworkColors.of(context).accent(Colors.red), fontSize: 12)),
-                    data: (all) {
-                      final subjectHomework = all.where((h) => h.subject == _selectedSubject).toList();
-                      final visible = subjectHomework.where((h) => !homeworkState(h).hide).toList();
-                      final latestFive = visible.take(5).toList();
-
-                      final submittedCount = visible.where((h) => homeworkState(h).submitted).length;
-                      final notSubmittedCount = visible.where((h) => !homeworkState(h).submitted).length;
-                      final overdueCount = visible.where((h) => homeworkState(h).overdue && !homeworkState(h).submitted).length;
-
-                      final filtered = visible.where((h) {
-                        final st = homeworkState(h);
-                        switch (_filter) {
-                          case _HwFilter.submitted:
-                            return st.submitted;
-                          case _HwFilter.notSubmitted:
-                            return !st.submitted;
-                          case _HwFilter.overdue:
-                            return st.overdue && !st.submitted;
-                          case _HwFilter.all:
-                            return true;
-                        }
-                      }).toList();
-                      final cardsToShow = _filter == _HwFilter.all ? latestFive : filtered;
-
-                      return Container(
-                        width: double.infinity,
-                        padding: const EdgeInsets.all(14),
-                        margin: const EdgeInsets.only(bottom: 12),
-                        decoration: BoxDecoration(
-                          color: AppColors.of(context).card,
-                          borderRadius: BorderRadius.circular(14),
-                          border: Border.all(color: HomeworkColors.of(context).line(theme.border), width: 1.5),
+                    )
+                  : ListView(
+                      padding: const EdgeInsets.all(16),
+                      children: [
+                        SingleChildScrollView(
+                          scrollDirection: Axis.horizontal,
+                          child: Row(
+                            children: subjects.map((s) {
+                              final active = s == _selectedSubject;
+                              final pendingHomework = homeworkAsync.value == null
+                                  ? 0
+                                  : homeworkAsync.value!
+                                        .where((h) => h.subject == s && !homeworkState(h).submitted && !homeworkState(h).hide)
+                                        .length;
+                              // Mirrors web's getSubjectNotifications(): only tests the
+                              // student can still act on count — not ones already
+                              // completed, scheduled for later, or expired.
+                              final pendingTests = testsAsync.value == null
+                                  ? 0
+                                  : testsAsync.value!
+                                        .where(
+                                          (t) =>
+                                              t.subject == s &&
+                                              !t.attempted &&
+                                              t.windowStatus != 'scheduled' &&
+                                              t.windowStatus != 'expired',
+                                        )
+                                        .length;
+                              final pendingCount = _showTests ? pendingTests : pendingHomework;
+                              return Padding(
+                                padding: const EdgeInsets.fromLTRB(0, 4, 8, 8),
+                                child: _SubjectPillChip(
+                                  label: s,
+                                  active: active,
+                                  notifyCount: pendingCount,
+                                  onTap: () => setState(() {
+                                    _selectedSubject = s;
+                                    _filter = _HwFilter.all;
+                                    _showHistory = false;
+                                    _historyFromDate = null;
+                                  }),
+                                ),
+                              );
+                            }).toList(),
+                          ),
                         ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Wrap(
-                              alignment: WrapAlignment.spaceBetween,
-                              crossAxisAlignment: WrapCrossAlignment.center,
-                              spacing: 12,
-                              runSpacing: 8,
-                              children: [
-                                Text('${_selectedSubject ?? ''} Homework', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800, color: HomeworkColors.of(context).text(Color(0xFF111827)))),
-                                _FramedTextButton(
-                                  label: _showHistory ? 'Hide history' : 'Open history',
-                                  onPressed: () => setState(() => _showHistory = !_showHistory),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 6),
-                            Wrap(
-                              spacing: 10,
-                              runSpacing: 8,
-                              children: [
-                                _FilterPill(
-                                  label: 'Submitted: $submittedCount',
-                                  active: _filter == _HwFilter.submitted,
-                                  activeColor: const Color(0xFF16A34A),
-                                  inactiveBg: HomeworkColors.of(context).surface(Color(0xFFDCFCE7)),
-                                  inactiveColor: const Color(0xFF166534),
-                                  onTap: () => setState(() => _filter = _filter == _HwFilter.submitted ? _HwFilter.all : _HwFilter.submitted),
-                                ),
-                                _FilterPill(
-                                  label: 'Not submitted: $notSubmittedCount',
-                                  active: _filter == _HwFilter.notSubmitted,
-                                  activeColor: const Color(0xFFDC2626),
-                                  inactiveBg: HomeworkColors.of(context).surface(Color(0xFFFEE2E2)),
-                                  inactiveColor: const Color(0xFF991B1B),
-                                  onTap: () => setState(() => _filter = _filter == _HwFilter.notSubmitted ? _HwFilter.all : _HwFilter.notSubmitted),
-                                ),
-                                _FilterPill(
-                                  label: 'Overdue: $overdueCount',
-                                  active: _filter == _HwFilter.overdue,
-                                  activeColor: const Color(0xFFC2410C),
-                                  inactiveBg: HomeworkColors.of(context).surface(Color(0xFFFFEDD5)),
-                                  inactiveColor: const Color(0xFF9A3412),
-                                  onTap: () => setState(() => _filter = _filter == _HwFilter.overdue ? _HwFilter.all : _HwFilter.overdue),
-                                ),
-                              ],
-                            ),
-                            if (_showHistory) ...[
-                              const SizedBox(height: 12),
+                        const SizedBox(height: 8),
+                        Container(
+                          margin: const EdgeInsets.only(bottom: 16),
+                          child: Row(
+                            children: [
                               Container(
-                                padding: const EdgeInsets.all(12),
-                                decoration: BoxDecoration(border: Border.all(color: HomeworkColors.of(context).line(Color(0xFFE5E7EB))), borderRadius: BorderRadius.circular(10), color: HomeworkColors.of(context).surface(Color(0xFFFAFAFA))),
+                                width: 48,
+                                height: 48,
+                                decoration: BoxDecoration(
+                                  color: theme.color.withValues(alpha: 0.1),
+                                  borderRadius: BorderRadius.circular(14),
+                                ),
+                                alignment: Alignment.center,
+                                child: Icon(
+                                  _subjectIconData(_selectedSubject ?? ''),
+                                  size: 26,
+                                  color: HomeworkColors.of(context).accent(iconColor),
+                                ),
+                              ),
+                              const SizedBox(width: 14),
+                              Expanded(
                                 child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
+                                  mainAxisSize: MainAxisSize.min,
                                   children: [
-                                    Row(
-                                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                      children: [
-                                        Text('📅 View history by date', style: TextStyle(fontWeight: FontWeight.w700, color: HomeworkColors.of(context).text(Color(0xFF334155)))),
-                                        _FramedTextButton(
-                                          label: 'Close',
-                                          onPressed: () => setState(() {
-                                            _showHistory = false;
-                                            _historyFromDate = null;
-                                          }),
-                                        ),
-                                      ],
+                                    Text(
+                                      _selectedSubject ?? '',
+                                      style: TextStyle(
+                                        fontSize: 19,
+                                        fontWeight: FontWeight.w800,
+                                        color: HomeworkColors.of(context).accent(theme.color),
+                                      ),
                                     ),
-                                    HomeworkHistoryCalendar(
-                                      allHomework: subjectHomework,
-                                      year: _historyYear,
-                                      month: _historyMonth,
-                                      selectedDate: _historyFromDate,
-                                      onPrevMonth: () => setState(() {
-                                        final d = DateTime(_historyYear, _historyMonth, 1);
-                                        _historyYear = d.year;
-                                        _historyMonth = d.month - 1;
-                                      }),
-                                      onNextMonth: () => setState(() {
-                                        final d = DateTime(_historyYear, _historyMonth + 2, 1);
-                                        _historyYear = d.year;
-                                        _historyMonth = d.month - 1;
-                                      }),
-                                      onSelectDate: (iso) => setState(() => _historyFromDate = _historyFromDate == iso ? null : iso),
+                                    const SizedBox(height: 2),
+                                    Text(
+                                      _showTests ? 'Scheduled tests and your results' : 'Assignments, submissions & feedback',
+                                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.of(context).muted),
                                     ),
-                                    const SizedBox(height: 10),
-                                    if (_historyFromDate == null)
-                                      Padding(
-                                        padding: EdgeInsets.symmetric(vertical: 12),
-                                        child: Center(child: Text('Pick a date above to see homework assigned on that day.', style: TextStyle(fontSize: 12, color: HomeworkColors.of(context).muted(Color(0xFF94A3B8))))),
-                                      )
-                                    else
-                                      ..._historyResultsFor(subjectHomework),
                                   ],
                                 ),
                               ),
                             ],
-                            const SizedBox(height: 12),
-                            if (cardsToShow.isEmpty)
-                              Padding(
-                                padding: const EdgeInsets.only(bottom: 4),
-                                child: Text(
-                                  switch (_filter) {
-                                    _HwFilter.submitted => 'No submitted homework in this panel.',
-                                    _HwFilter.notSubmitted => 'No not-submitted homework in this panel.',
-                                    _HwFilter.overdue => 'No overdue homework in this panel.',
-                                    _HwFilter.all => 'No homework in this panel.',
-                                  },
-                                  style: TextStyle(color: HomeworkColors.of(context).muted(Color(0xFF64748B)), fontSize: 12),
-                                ),
-                              )
-                            else
-                              for (final h in cardsToShow) _HomeworkCard(
-                                homework: h,
-                                expandedTeacherInfo: _expandedTeacherInfo.contains(h.id),
-                                expandedSubmission: _expandedSubmission.contains(h.id),
-                                expandedFeedback: _expandedFeedback.contains(h.id),
-                                editingResubmit: _editingResubmit.contains(h.id),
-                                answerCtrl: _answerCtrlFor(h),
-                                pendingAttachments: _attachmentsFor(h),
-                                uploading: _uploading[h.id] == true,
-                                submitting: _submitting[h.id] == true,
-                                info: _infoById[h.id],
-                                onToggleTeacherInfo: () => setState(() => _toggle(_expandedTeacherInfo, h.id)),
-                                onToggleSubmission: () => setState(() => _toggle(_expandedSubmission, h.id)),
-                                onToggleFeedback: () => setState(() => _toggle(_expandedFeedback, h.id)),
-                                onStartEditResubmit: () => setState(() => _editingResubmit.add(h.id)),
-                                onCancelEditResubmit: () => setState(() {
-                                  _editingResubmit.remove(h.id);
-                                  _attachmentUrls[h.id] = [];
-                                }),
-                                onPickImages: () => _pickAndUploadImages(h),
-                                onRemoveImage: (url) => _removeAttachment(h, url),
-                                onSubmit: () => _submit(h),
-                              ),
-                            if (visible.isEmpty)
-                              Padding(
-                                padding: const EdgeInsets.only(top: 8),
-                                child: Text('No homework assigned for this subject.', style: TextStyle(color: HomeworkColors.of(context).muted(Color(0xFF999999)), fontSize: 13)),
-                              ),
-                          ],
+                          ),
                         ),
-                      );
-                    },
-                  ),
-                  testsAsync.when(
-                    loading: () => const SkeletonBox(height: 50),
-                    error: (e, _) => Text('Unable to load tests: $e', style: TextStyle(color: HomeworkColors.of(context).accent(Colors.red), fontSize: 12)),
-                    data: (tests) {
-                      final subjectTests = tests.where((t) => t.subject == _selectedSubject).toList();
-                      return Container(
-                        width: double.infinity,
-                        padding: const EdgeInsets.all(14),
-                        decoration: BoxDecoration(
-                          color: AppColors.of(context).card,
-                          borderRadius: BorderRadius.circular(14),
-                          border: Border.all(color: HomeworkColors.of(context).line(theme.border), width: 1.5),
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(
-                              children: [
-                                Icon(Icons.assignment_turned_in_rounded, size: 18, color: HomeworkColors.of(context).accent(iconColor)),
-                                const SizedBox(width: 8),
-                                Expanded(child: Text('${_selectedSubject ?? ''} Mock Tests', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: HomeworkColors.of(context).text(Color(0xFF111827))))),
-                              ],
+                        if (!_showTests)
+                          homeworkAsync.when(
+                            loading: () => const SkeletonBox(height: 60),
+                            error: (e, _) => Text(
+                              'Unable to load homework: $e',
+                              style: TextStyle(color: HomeworkColors.of(context).accent(Colors.red), fontSize: 12),
                             ),
-                            const SizedBox(height: 10),
-                            if (subjectTests.isEmpty)
-                              Text('No tests available for this subject.', style: TextStyle(color: HomeworkColors.of(context).muted(Color(0xFF64748B)), fontSize: 13))
-                            else
-                              for (final t in subjectTests)
-                                _MockTestTile(test: t, accentColor: iconColor, theme: theme),
-                          ],
-                        ),
-                      );
-                    },
-                  ),
-                ],
-              ),
+                            data: (all) {
+                              final subjectHomework = all.where((h) => h.subject == _selectedSubject).toList();
+                              final visible = subjectHomework.where((h) => !homeworkState(h).hide).toList();
+                              final latestFive = visible.take(5).toList();
+
+                              final submittedCount = visible.where((h) => homeworkState(h).submitted).length;
+                              final notSubmittedCount = visible.where((h) => !homeworkState(h).submitted).length;
+                              final overdueCount = visible.where((h) => homeworkState(h).overdue && !homeworkState(h).submitted).length;
+
+                              final filtered = visible.where((h) {
+                                final st = homeworkState(h);
+                                switch (_filter) {
+                                  case _HwFilter.submitted:
+                                    return st.submitted;
+                                  case _HwFilter.notSubmitted:
+                                    return !st.submitted;
+                                  case _HwFilter.overdue:
+                                    return st.overdue && !st.submitted;
+                                  case _HwFilter.all:
+                                    return true;
+                                }
+                              }).toList();
+                              final cardsToShow = _filter == _HwFilter.all ? latestFive : filtered;
+
+                              return Container(
+                                width: double.infinity,
+                                padding: EdgeInsets.zero,
+                                margin: const EdgeInsets.only(bottom: 12),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Wrap(
+                                      alignment: WrapAlignment.spaceBetween,
+                                      crossAxisAlignment: WrapCrossAlignment.center,
+                                      spacing: 12,
+                                      runSpacing: 8,
+                                      children: [
+                                        Text(
+                                          '${_selectedSubject ?? ''} Homework',
+                                          style: TextStyle(
+                                            fontSize: 17,
+                                            fontWeight: FontWeight.w800,
+                                            color: HomeworkColors.of(context).text(Color(0xFF111827)),
+                                          ),
+                                        ),
+                                        _FramedTextButton(
+                                          label: _showHistory ? 'Hide history' : 'Open history',
+                                          icon: Icons.history_rounded,
+                                          onPressed: () => setState(() => _showHistory = !_showHistory),
+                                        ),
+                                      ],
+                                    ),
+                                    const SizedBox(height: 6),
+                                    Text('Filter assignments', style: TextStyle(fontSize: 12, color: AppColors.of(context).muted)),
+                                    const SizedBox(height: 8),
+                                    Wrap(
+                                      spacing: 10,
+                                      runSpacing: 8,
+                                      children: [
+                                        _FilterPill(
+                                          label: 'All: ${visible.length}',
+                                          active: _filter == _HwFilter.all,
+                                          activeColor: AppColors.brand,
+                                          inactiveBg: AppColors.of(context).card,
+                                          inactiveColor: AppColors.brand,
+                                          onTap: () => setState(() => _filter = _HwFilter.all),
+                                        ),
+                                        _FilterPill(
+                                          label: 'Submitted: $submittedCount',
+                                          active: _filter == _HwFilter.submitted,
+                                          activeColor: const Color(0xFF15803D),
+                                          inactiveBg: HomeworkColors.of(context).surface(Color(0xFFDCFCE7)),
+                                          inactiveColor: const Color(0xFF166534),
+                                          onTap: () => setState(
+                                            () => _filter = _filter == _HwFilter.submitted ? _HwFilter.all : _HwFilter.submitted,
+                                          ),
+                                        ),
+                                        _FilterPill(
+                                          label: 'Not submitted: $notSubmittedCount',
+                                          active: _filter == _HwFilter.notSubmitted,
+                                          activeColor: const Color(0xFFDC2626),
+                                          inactiveBg: HomeworkColors.of(context).surface(Color(0xFFFEE2E2)),
+                                          inactiveColor: const Color(0xFF991B1B),
+                                          onTap: () => setState(
+                                            () => _filter = _filter == _HwFilter.notSubmitted ? _HwFilter.all : _HwFilter.notSubmitted,
+                                          ),
+                                        ),
+                                        _FilterPill(
+                                          label: 'Overdue: $overdueCount',
+                                          active: _filter == _HwFilter.overdue,
+                                          activeColor: const Color(0xFFC2410C),
+                                          inactiveBg: HomeworkColors.of(context).surface(Color(0xFFFFEDD5)),
+                                          inactiveColor: const Color(0xFF9A3412),
+                                          onTap: () =>
+                                              setState(() => _filter = _filter == _HwFilter.overdue ? _HwFilter.all : _HwFilter.overdue),
+                                        ),
+                                      ],
+                                    ),
+                                    if (_showHistory) ...[
+                                      const SizedBox(height: 12),
+                                      Container(
+                                        padding: const EdgeInsets.all(12),
+                                        decoration: BoxDecoration(
+                                          border: Border.all(color: HomeworkColors.of(context).line(Color(0xFFE5E7EB))),
+                                          borderRadius: BorderRadius.circular(10),
+                                          color: HomeworkColors.of(context).surface(Color(0xFFFAFAFA)),
+                                        ),
+                                        child: Column(
+                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          children: [
+                                            Wrap(
+                                              alignment: WrapAlignment.spaceBetween,
+                                              crossAxisAlignment: WrapCrossAlignment.center,
+                                              spacing: 8,
+                                              children: [
+                                                Text(
+                                                  '📅 View history by date',
+                                                  style: TextStyle(
+                                                    fontWeight: FontWeight.w700,
+                                                    color: HomeworkColors.of(context).text(Color(0xFF334155)),
+                                                  ),
+                                                ),
+                                                _FramedTextButton(
+                                                  label: 'Close',
+                                                  onPressed: () => setState(() {
+                                                    _showHistory = false;
+                                                    _historyFromDate = null;
+                                                  }),
+                                                ),
+                                              ],
+                                            ),
+                                            HomeworkHistoryCalendar(
+                                              allHomework: subjectHomework,
+                                              year: _historyYear,
+                                              month: _historyMonth,
+                                              selectedDate: _historyFromDate,
+                                              onPrevMonth: () => setState(() {
+                                                final d = DateTime(_historyYear, _historyMonth, 1);
+                                                _historyYear = d.year;
+                                                _historyMonth = d.month - 1;
+                                              }),
+                                              onNextMonth: () => setState(() {
+                                                final d = DateTime(_historyYear, _historyMonth + 2, 1);
+                                                _historyYear = d.year;
+                                                _historyMonth = d.month - 1;
+                                              }),
+                                              onSelectDate: (iso) =>
+                                                  setState(() => _historyFromDate = _historyFromDate == iso ? null : iso),
+                                            ),
+                                            const SizedBox(height: 10),
+                                            if (_historyFromDate == null)
+                                              Padding(
+                                                padding: EdgeInsets.symmetric(vertical: 12),
+                                                child: Center(
+                                                  child: Text(
+                                                    'Pick a date above to see homework assigned on that day.',
+                                                    style: TextStyle(
+                                                      fontSize: 12,
+                                                      color: HomeworkColors.of(context).muted(Color(0xFF94A3B8)),
+                                                    ),
+                                                  ),
+                                                ),
+                                              )
+                                            else
+                                              ..._historyResultsFor(subjectHomework),
+                                          ],
+                                        ),
+                                      ),
+                                    ],
+                                    const SizedBox(height: 12),
+                                    if (cardsToShow.isEmpty)
+                                      Padding(
+                                        padding: const EdgeInsets.only(bottom: 4),
+                                        child: Text(switch (_filter) {
+                                          _HwFilter.submitted => 'No submitted homework in this panel.',
+                                          _HwFilter.notSubmitted => 'No not-submitted homework in this panel.',
+                                          _HwFilter.overdue => 'No overdue homework in this panel.',
+                                          _HwFilter.all => 'No homework in this panel.',
+                                        }, style: TextStyle(color: HomeworkColors.of(context).muted(Color(0xFF64748B)), fontSize: 12)),
+                                      )
+                                    else
+                                      for (final h in cardsToShow)
+                                        _HomeworkCard(
+                                          homework: h,
+                                          expandedTeacherInfo: _expandedTeacherInfo.contains(h.id),
+                                          expandedSubmission: _expandedSubmission.contains(h.id),
+                                          expandedFeedback: _expandedFeedback.contains(h.id),
+                                          editingResubmit: _editingResubmit.contains(h.id),
+                                          answerCtrl: _answerCtrlFor(h),
+                                          pendingAttachments: _attachmentsFor(h),
+                                          uploading: _uploading[h.id] == true,
+                                          submitting: _submitting[h.id] == true,
+                                          info: _infoById[h.id],
+                                          onToggleTeacherInfo: () => setState(() => _toggle(_expandedTeacherInfo, h.id)),
+                                          onToggleSubmission: () => setState(() => _toggle(_expandedSubmission, h.id)),
+                                          onToggleFeedback: () => setState(() => _toggle(_expandedFeedback, h.id)),
+                                          onStartEditResubmit: () => setState(() => _editingResubmit.add(h.id)),
+                                          onCancelEditResubmit: () => setState(() {
+                                            _editingResubmit.remove(h.id);
+                                            _attachmentUrls[h.id] = [];
+                                          }),
+                                          onPickImages: () => _pickAndUploadImages(h),
+                                          onRemoveImage: (url) => _removeAttachment(h, url),
+                                          onSubmit: () => _submit(h),
+                                        ),
+                                    if (visible.isEmpty)
+                                      Padding(
+                                        padding: const EdgeInsets.only(top: 8),
+                                        child: Text(
+                                          'No homework assigned for this subject.',
+                                          style: TextStyle(color: HomeworkColors.of(context).muted(Color(0xFF999999)), fontSize: 13),
+                                        ),
+                                      ),
+                                  ],
+                                ),
+                              );
+                            },
+                          ),
+                        if (_showTests)
+                          testsAsync.when(
+                            loading: () => const SkeletonBox(height: 50),
+                            error: (e, _) => Text(
+                              'Unable to load tests: $e',
+                              style: TextStyle(color: HomeworkColors.of(context).accent(Colors.red), fontSize: 12),
+                            ),
+                            data: (tests) {
+                              final subjectTests = tests.where((t) => t.subject == _selectedSubject).toList();
+                              return Container(
+                                width: double.infinity,
+                                padding: const EdgeInsets.all(14),
+                                decoration: BoxDecoration(
+                                  color: AppColors.of(context).card,
+                                  borderRadius: BorderRadius.circular(14),
+                                  border: Border.all(color: HomeworkColors.of(context).line(theme.border), width: 1.5),
+                                ),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Row(
+                                      children: [
+                                        Icon(
+                                          Icons.assignment_turned_in_rounded,
+                                          size: 18,
+                                          color: HomeworkColors.of(context).accent(iconColor),
+                                        ),
+                                        const SizedBox(width: 8),
+                                        Expanded(
+                                          child: Text(
+                                            '${_selectedSubject ?? ''} Mock Tests',
+                                            style: TextStyle(
+                                              fontSize: 15,
+                                              fontWeight: FontWeight.w800,
+                                              color: HomeworkColors.of(context).text(Color(0xFF111827)),
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                    const SizedBox(height: 10),
+                                    if (subjectTests.isEmpty)
+                                      Text(
+                                        'No tests available for this subject.',
+                                        style: TextStyle(color: HomeworkColors.of(context).muted(Color(0xFF64748B)), fontSize: 13),
+                                      )
+                                    else
+                                      for (final t in subjectTests) _MockTestTile(test: t, accentColor: iconColor, theme: theme),
+                                  ],
+                                ),
+                              );
+                            },
+                          ),
+                      ],
+                    ),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -583,7 +798,12 @@ class _HomeworkScreenState extends ConsumerState<HomeworkScreen> {
       return iso == _historyFromDate;
     }).toList();
     if (filtered.isEmpty) {
-      return [Text('No homework assigned on $_historyFromDate.', style: TextStyle(fontSize: 12, color: HomeworkColors.of(context).muted(Color(0xFF64748B))))];
+      return [
+        Text(
+          'No homework assigned on $_historyFromDate.',
+          style: TextStyle(fontSize: 12, color: HomeworkColors.of(context).muted(Color(0xFF64748B))),
+        ),
+      ];
     }
     return [for (final h in filtered) _HistoryResultCard(homework: h)];
   }
@@ -615,7 +835,9 @@ class _MockTestTileState extends ConsumerState<_MockTestTile> {
       return;
     }
     setState(() => _reviewOpen = true);
-    if (_perQuestionFeedback.isNotEmpty || _reviewError != null) return; // already cached
+    if (_perQuestionFeedback.isNotEmpty || _reviewError != null) {
+      return; // already cached
+    }
     final studentId = ref.read(sessionProvider).value?.userId ?? '';
     setState(() => _loadingReview = true);
     try {
@@ -635,29 +857,40 @@ class _MockTestTileState extends ConsumerState<_MockTestTile> {
   @override
   Widget build(BuildContext context) {
     final t = widget.test;
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 6),
+    return Container(
+      margin: const EdgeInsets.symmetric(vertical: 8),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: AppColors.of(context).background,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: AppColors.of(context).line),
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              Expanded(child: Text(t.title, style: TextStyle(fontSize: 13, color: HomeworkColors.of(context).text(Color(0xFF334155))))),
-              const SizedBox(width: 10),
-              _buildAction(context),
-            ],
+          Text(
+            t.title,
+            style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: AppColors.of(context).text),
           ),
+          const SizedBox(height: 8),
+          _buildAction(context),
           if (!t.attempted && t.windowStatus == 'open' && t.endAt != null)
             Padding(
               padding: const EdgeInsets.only(top: 2),
-              child: Text('Closes ${DateFormat('d MMM, h:mm a').format(t.endAt!.toLocal())}', style: TextStyle(fontSize: 10, color: AppColors.of(context).muted)),
+              child: Text(
+                'Closes ${DateFormat('d MMM, h:mm a').format(t.endAt!.toLocal())}',
+                style: TextStyle(fontSize: 10, color: AppColors.of(context).muted),
+              ),
             ),
           if (_reviewOpen) ...[
             const SizedBox(height: 6),
             if (_loadingReview)
               const Padding(padding: EdgeInsets.symmetric(vertical: 6), child: SkeletonBox(height: 40))
             else if (_reviewError != null)
-              Padding(padding: const EdgeInsets.only(bottom: 6), child: Text(_reviewError!, style: const TextStyle(fontSize: 11, color: AppColors.danger)))
+              Padding(
+                padding: const EdgeInsets.only(bottom: 6),
+                child: Text(_reviewError!, style: const TextStyle(fontSize: 11, color: AppColors.danger)),
+              )
             else
               for (var i = 0; i < _perQuestionFeedback.length; i++) _ReviewRow(index: i, feedback: _perQuestionFeedback[i]),
           ],
@@ -669,16 +902,10 @@ class _MockTestTileState extends ConsumerState<_MockTestTile> {
   Widget _buildAction(BuildContext context) {
     final t = widget.test;
     if (t.attempted) {
-      return PressableScale(
-        onTap: _toggleReview,
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-          decoration: BoxDecoration(color: HomeworkColors.of(context).surface(Color(0xFFDCFCE7)), borderRadius: BorderRadius.circular(999)),
-          child: Text(
-            'Completed (${t.lastScore ?? 0}%) ${_reviewOpen ? '\u25b4 Hide' : '\u25be Review'}',
-            style: TextStyle(color: HomeworkColors.of(context).accent(Color(0xFF166534)), fontSize: 11, fontWeight: FontWeight.w700),
-          ),
-        ),
+      return _FramedTextButton(
+        label: 'Completed (${t.lastScore ?? 0}%) ${_reviewOpen ? '\u25b4 Hide' : '\u25be Review'}',
+        icon: Icons.fact_check_outlined,
+        onPressed: _toggleReview,
       );
     }
     if (t.windowStatus == 'scheduled') {
@@ -695,16 +922,22 @@ class _MockTestTileState extends ConsumerState<_MockTestTile> {
       return Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
         decoration: BoxDecoration(color: HomeworkColors.of(context).surface(Color(0xFFFEE2E2)), borderRadius: BorderRadius.circular(999)),
-        child: Text('Expired', style: TextStyle(color: HomeworkColors.of(context).accent(Color(0xFFB91C1C)), fontSize: 11, fontWeight: FontWeight.w700)),
+        child: Text(
+          'Expired',
+          style: TextStyle(color: HomeworkColors.of(context).accent(Color(0xFFB91C1C)), fontSize: 11, fontWeight: FontWeight.w700),
+        ),
       );
     }
-    return PressableScale(
-      onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => TestTakingScreen(test: t))),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
-        decoration: BoxDecoration(color: widget.accentColor, borderRadius: BorderRadius.circular(999), border: _frame3dBorder(alpha: 0.3), boxShadow: _frame3dShadow()),
-        child: const Text('Start', style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w700)),
+    return ElevatedButton.icon(
+      onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => TestTakingScreen(test: t))),
+      style: ElevatedButton.styleFrom(
+        backgroundColor: AppColors.brand,
+        foregroundColor: Colors.white,
+        elevation: 4,
+        minimumSize: const Size(0, 44),
       ),
+      icon: const Icon(Icons.play_arrow_rounded, size: 20),
+      label: const Text('Start'),
     );
   }
 }
@@ -733,7 +966,10 @@ class _ReviewRow extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('${index + 1}. $text', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: HomeworkColors.of(context).text(Color(0xFF1F2347)))),
+          Text(
+            '${index + 1}. $text',
+            style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: HomeworkColors.of(context).text(Color(0xFF1F2347))),
+          ),
           const SizedBox(height: 4),
           Text(
             'Your answer: ${selected >= 0 && selected < options.length ? options[selected] : 'Not answered'} ${isCorrect ? '\u2713' : '\u2717'}',
@@ -767,45 +1003,63 @@ class _SubjectPillChip extends StatelessWidget {
     final accent = _subjectAccent(label);
     final iconColor = SubjectPalette.colorFor(label);
     final frameColor = active ? accent.withValues(alpha: 0.8) : const Color(0xFF46464E).withValues(alpha: 0.4);
-    return PressableScale(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.fromLTRB(6, 6, 14, 6),
-        decoration: BoxDecoration(
-          color: active ? Color.alphaBlend(theme.color.withValues(alpha: 0.08), AppColors.of(context).card) : AppColors.of(context).card,
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: frameColor, width: 1.5),
-          boxShadow: [
-            BoxShadow(color: Colors.black.withValues(alpha: active ? 0.1 : 0.16), blurRadius: 10, offset: const Offset(0, 4)),
-            if (active) BoxShadow(color: accent.withValues(alpha: 0.32), blurRadius: 8),
-          ],
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              width: 28,
-              height: 28,
-              decoration: BoxDecoration(
-                color: active ? theme.color.withValues(alpha: 0.1) : HomeworkColors.of(context).surface(Color(0xFFF3F4F6)),
-                borderRadius: BorderRadius.circular(8),
+    return Semantics(
+      button: true,
+      selected: active,
+      child: PressableScale(
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.fromLTRB(6, 6, 14, 6),
+          decoration: BoxDecoration(
+            color: active ? Color.alphaBlend(theme.color.withValues(alpha: 0.08), AppColors.of(context).card) : AppColors.of(context).card,
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: frameColor, width: 1.5),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: active ? 0.1 : 0.16),
+                blurRadius: 10,
+                offset: const Offset(0, 4),
               ),
-              alignment: Alignment.center,
-              child: Icon(_subjectIconData(label), size: 16, color: HomeworkColors.of(context).accent(iconColor)),
-            ),
-            const SizedBox(width: 8),
-            Text(label, style: TextStyle(fontSize: 13, fontWeight: active ? FontWeight.w700 : FontWeight.w600, color: active ? HomeworkColors.of(context).accent(theme.color) : HomeworkColors.of(context).text(Color(0xFF4B5563)))),
-            if (notifyCount > 0) ...[
-              const SizedBox(width: 6),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
-                decoration: const BoxDecoration(color: Color(0xFFEF4444), shape: BoxShape.circle),
-                constraints: const BoxConstraints(minWidth: 18),
-                alignment: Alignment.center,
-                child: Text('$notifyCount', style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w800, color: Colors.white)),
-              ),
+              if (active) BoxShadow(color: accent.withValues(alpha: 0.32), blurRadius: 8),
             ],
-          ],
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 28,
+                height: 28,
+                decoration: BoxDecoration(
+                  color: active ? theme.color.withValues(alpha: 0.1) : HomeworkColors.of(context).surface(Color(0xFFF3F4F6)),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                alignment: Alignment.center,
+                child: Icon(_subjectIconData(label), size: 16, color: HomeworkColors.of(context).accent(iconColor)),
+              ),
+              const SizedBox(width: 8),
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: active ? FontWeight.w700 : FontWeight.w600,
+                  color: active ? HomeworkColors.of(context).accent(theme.color) : HomeworkColors.of(context).text(Color(0xFF4B5563)),
+                ),
+              ),
+              if (notifyCount > 0) ...[
+                const SizedBox(width: 6),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                  decoration: const BoxDecoration(color: Color(0xFFEF4444), shape: BoxShape.circle),
+                  constraints: const BoxConstraints(minWidth: 18),
+                  alignment: Alignment.center,
+                  child: Text(
+                    '$notifyCount',
+                    style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w800, color: Colors.white),
+                  ),
+                ),
+              ],
+            ],
+          ),
         ),
       ),
     );
@@ -820,21 +1074,40 @@ class _FilterPill extends StatelessWidget {
   final Color inactiveColor;
   final VoidCallback onTap;
 
-  const _FilterPill({required this.label, required this.active, required this.activeColor, required this.inactiveBg, required this.inactiveColor, required this.onTap});
+  const _FilterPill({
+    required this.label,
+    required this.active,
+    required this.activeColor,
+    required this.inactiveBg,
+    required this.inactiveColor,
+    required this.onTap,
+  });
 
   @override
   Widget build(BuildContext context) {
-    return PressableScale(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
-        decoration: BoxDecoration(
-          color: active ? activeColor : HomeworkColors.of(context).surface(inactiveBg),
-          borderRadius: BorderRadius.circular(999),
-          border: _frame3dBorder(),
-          boxShadow: _frame3dShadow(),
+    return Semantics(
+      button: true,
+      selected: active,
+      child: PressableScale(
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+          decoration: BoxDecoration(
+            color: active ? activeColor : HomeworkColors.of(context).surface(inactiveBg),
+            borderRadius: BorderRadius.circular(999),
+            border: Border.all(color: active ? activeColor : AppColors.of(context).line),
+            boxShadow: active ? _frame3dShadow(alpha: 0.12, blur: 6) : [],
+          ),
+          constraints: const BoxConstraints(minHeight: 44),
+          child: Text(
+            label,
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
+              color: active ? Colors.white : HomeworkColors.of(context).accent(inactiveColor),
+            ),
+          ),
         ),
-        child: Text(label, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: active ? Colors.white : HomeworkColors.of(context).accent(inactiveColor))),
       ),
     );
   }
@@ -862,11 +1135,30 @@ class _HistoryResultCard extends StatelessWidget {
         children: [
           Row(
             children: [
-              Expanded(child: Text(homework.title, style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14, color: HomeworkColors.of(context).text(Color(0xFF111827))))),
+              Expanded(
+                child: Text(
+                  homework.title,
+                  style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14, color: HomeworkColors.of(context).text(Color(0xFF111827))),
+                ),
+              ),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
-                decoration: BoxDecoration(color: isSubmitted ? HomeworkColors.of(context).surface(Color(0xFFDCFCE7)) : HomeworkColors.of(context).surface(Color(0xFFFEE2E2)), borderRadius: BorderRadius.circular(999)),
-                child: Text(isSubmitted ? '✅ Submitted' : '❌ Not submitted', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: isSubmitted ? HomeworkColors.of(context).accent(Color(0xFF16A34A)) : HomeworkColors.of(context).accent(Color(0xFFDC2626)))),
+                decoration: BoxDecoration(
+                  color: isSubmitted
+                      ? HomeworkColors.of(context).surface(Color(0xFFDCFCE7))
+                      : HomeworkColors.of(context).surface(Color(0xFFFEE2E2)),
+                  borderRadius: BorderRadius.circular(999),
+                ),
+                child: Text(
+                  isSubmitted ? '✅ Submitted' : '❌ Not submitted',
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                    color: isSubmitted
+                        ? HomeworkColors.of(context).accent(Color(0xFF16A34A))
+                        : HomeworkColors.of(context).accent(Color(0xFFDC2626)),
+                  ),
+                ),
               ),
             ],
           ),
@@ -875,7 +1167,11 @@ class _HistoryResultCard extends StatelessWidget {
             Container(
               width: double.infinity,
               padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(color: AppColors.of(context).card, border: Border.all(color: HomeworkColors.of(context).line(Color(0xFFE5E7EB))), borderRadius: BorderRadius.circular(6)),
+              decoration: BoxDecoration(
+                color: AppColors.of(context).card,
+                border: Border.all(color: HomeworkColors.of(context).line(Color(0xFFE5E7EB))),
+                borderRadius: BorderRadius.circular(6),
+              ),
               child: Text(homework.note!, style: TextStyle(fontSize: 12, color: HomeworkColors.of(context).text(Color(0xFF374151)))),
             ),
           ],
@@ -931,7 +1227,9 @@ class _HomeworkCard extends StatelessWidget {
     final h = homework;
     final st = homeworkState(h);
 
-    DateTime? lastSubmittedAt = h.lastAttemptAt != null ? DateTime.tryParse(h.lastAttemptAt!) : (h.submittedAt != null ? DateTime.tryParse(h.submittedAt!) : null);
+    DateTime? lastSubmittedAt = h.lastAttemptAt != null
+        ? DateTime.tryParse(h.lastAttemptAt!)
+        : (h.submittedAt != null ? DateTime.tryParse(h.submittedAt!) : null);
     const resubmitWindow = Duration(hours: 1);
     final remainingResubmit = lastSubmittedAt != null
         ? (lastSubmittedAt.add(resubmitWindow).difference(DateTime.now()))
@@ -949,221 +1247,272 @@ class _HomeworkCard extends StatelessWidget {
       margin: const EdgeInsets.only(bottom: 12),
       clipBehavior: Clip.antiAlias,
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: HomeworkColors.of(context).line(Color(0xFFECE8FF))),
-        boxShadow: const [BoxShadow(color: Color(0x0F272D64), blurRadius: 12, offset: Offset(0, 4))],
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: AppColors.of(context).line),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: AppColors.of(context).isDark ? 0.2 : 0.06),
+            blurRadius: 14,
+            offset: const Offset(0, 5),
+          ),
+        ],
       ),
       child: Container(
-        padding: const EdgeInsets.fromLTRB(18, 14, 14, 14),
+        padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
-                color: st.overdue && !st.submitted ? HomeworkColors.of(context).surface(Color(0xFFFFF1F2)) : HomeworkColors.of(context).surface(Color(0xFFF8F8FF)),
-                border: Border(left: BorderSide(color: st.color, width: 4)),
-              ),
-                child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          InkWell(
-            borderRadius: BorderRadius.circular(10),
-            onTap: onToggleTeacherInfo,
-            child: Container(
-              decoration: BoxDecoration(color: AppColors.of(context).card, borderRadius: BorderRadius.circular(10), border: _frame3dBorder(alpha: 0.28), boxShadow: _frame3dShadow(alpha: 0.12, blur: 8)),
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-              child: Wrap(
-                crossAxisAlignment: WrapCrossAlignment.center,
-                spacing: 8,
-                runSpacing: 4,
-                children: [
-                  Text(h.title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
-                  for (final lt in h.lessonTitles)
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                      decoration: BoxDecoration(color: HomeworkColors.of(context).surface(Color(0xFFEEF2FF)), borderRadius: BorderRadius.circular(999)),
-                      child: Text('📖 $lt', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: HomeworkColors.of(context).accent(Color(0xFF4338CA)))),
-                    ),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                    decoration: BoxDecoration(color: HomeworkColors.of(context).surface(st.bg), borderRadius: BorderRadius.circular(999)),
-                    child: Text(st.label, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: HomeworkColors.of(context).accent(st.color))),
-                  ),
-                  Text(expandedTeacherInfo ? 'Hide homework instructions' : '...', style: TextStyle(fontSize: 11, color: HomeworkColors.of(context).muted(Color(0xFF64748B)), fontWeight: FontWeight.w600)),
-                ],
-              ),
+          color: AppColors.of(context).card,
+          border: Border(left: BorderSide(color: st.color, width: 4)),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              h.title,
+              style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16, color: AppColors.of(context).text),
             ),
-          ),
-          if (expandedTeacherInfo && h.note != null && h.note!.isNotEmpty) ...[
-            const SizedBox(height: 4),
-            Text(h.note!, style: TextStyle(color: HomeworkColors.of(context).text(Color(0xFF444444)), fontSize: 14, height: 1.5)),
-          ],
-          if (expandedTeacherInfo && h.attachmentUrls.isNotEmpty) ...[
-            const SizedBox(height: 10),
-            Text('📎 Teacher attachment:', style: TextStyle(fontSize: 11, color: HomeworkColors.of(context).muted(Color(0xFF888888)))),
-            const SizedBox(height: 4),
-            _ImageThumbRow(urls: h.attachmentUrls, borderColor: HomeworkColors.of(context).surface(Color(0xFFDDDDDD))),
-          ],
-          if (st.submitted && (h.latestAttachmentUrls.isNotEmpty || (h.latestAnswerText ?? '').isNotEmpty)) ...[
-            const SizedBox(height: 10),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-              decoration: BoxDecoration(color: HomeworkColors.of(context).surface(Color(0xFFF8FAFC)), border: Border.all(color: HomeworkColors.of(context).line(Color(0xFFE2E8F0))), borderRadius: BorderRadius.circular(8)),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  _FramedTextButton(
-                    label: expandedSubmission ? 'Hide your submission homework' : 'Show your submission homework',
-                    onPressed: onToggleSubmission,
-                  ),
-                  if (expandedSubmission) ...[
-                    if (h.latestAttachmentUrls.isNotEmpty) ...[
-                      Text('✅ Submitted images:', style: TextStyle(fontSize: 11, color: HomeworkColors.of(context).accent(Color(0xFF166534)))),
-                      const SizedBox(height: 6),
-                      _ImageThumbRow(urls: h.latestAttachmentUrls, borderColor: const Color(0xFF16A34A), borderWidth: 2),
-                    ],
-                    if ((h.latestAnswerText ?? '').isNotEmpty) ...[
-                      const SizedBox(height: 8),
-                      Text(h.latestAnswerText!, style: TextStyle(fontSize: 12, color: HomeworkColors.of(context).text(Color(0xFF334155)), height: 1.5)),
-                    ],
-                  ],
-                ],
-              ),
-            ),
-          ],
-          if (showForm) ...[
-            const SizedBox(height: 10),
-            Text('Your written answer', style: TextStyle(fontSize: 12, color: HomeworkColors.of(context).text(Color(0xFF475569)), fontWeight: FontWeight.w600)),
-            const SizedBox(height: 6),
-            TextField(
-              controller: answerCtrl,
-              maxLines: 3,
-              decoration: InputDecoration(
-                hintText: 'Write your answer here (this will be visible to your teacher).',
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-                filled: true,
-                fillColor: AppColors.of(context).card,
-              ),
-            ),
-            const SizedBox(height: 10),
-            PressableScale(
-              onTap: uploading ? null : onPickImages,
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                decoration: BoxDecoration(
-                  color: AppColors.of(context).card,
-                  borderRadius: BorderRadius.circular(999),
-                  border: _frame3dBorder(),
-                  boxShadow: _frame3dShadow(),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(Icons.add_photo_alternate_outlined, size: 18, color: HomeworkColors.of(context).accent(Color(0xFF5B47FF))),
-                    const SizedBox(width: 6),
-                    Text(uploading ? 'Uploading…' : 'Add photos', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: HomeworkColors.of(context).accent(Color(0xFF5B47FF)))),
-                  ],
-                ),
-              ),
-            ),
-            if (pendingAttachments.isNotEmpty) ...[
-              const SizedBox(height: 8),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text('${pendingAttachments.length} image(s) selected', style: TextStyle(fontSize: 12, color: HomeworkColors.of(context).text(Color(0xFF666666)))),
-                  _FramedTextButton(
-                    label: 'Remove all',
-                    onPressed: () {
-                      for (final u in List<String>.from(pendingAttachments)) {
-                        onRemoveImage(u);
-                      }
-                    },
-                  ),
-                ],
-              ),
-              _ImageThumbRow(urls: pendingAttachments, borderColor: const Color(0xFF7C3AED), borderWidth: 2, onRemove: onRemoveImage),
-            ],
-            if (canResubmitWindow && editingResubmit) ...[
-              const SizedBox(height: 6),
-              Align(alignment: Alignment.centerRight, child: _FramedTextButton(label: 'Cancel edit', onPressed: onCancelEditResubmit)),
-            ],
-            const SizedBox(height: 10),
-            PressableScale(
-              onTap: submitting ? null : onSubmit,
-              child: Container(
-                width: double.infinity,
-                padding: const EdgeInsets.symmetric(vertical: 13),
-                alignment: Alignment.center,
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(999),
-                  gradient: const LinearGradient(colors: [Color(0xFF6D5EFC), Color(0xFF4B3FB8)]),
-                  border: _frame3dBorder(alpha: 0.3),
-                  boxShadow: [..._frame3dShadow(), const BoxShadow(color: Color(0x3D5A46C8), blurRadius: 16, offset: Offset(0, 6))],
-                ),
-                child: submitting
-                    ? const SizedBox(height: 18, width: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                    : Text(canResubmit ? 'Resubmit' : 'Submit', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 14)),
-              ),
-            ),
-          ] else if (canResubmitWindow) ...[
-            const SizedBox(height: 10),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            const SizedBox(height: 8),
+            Wrap(
+              crossAxisAlignment: WrapCrossAlignment.center,
+              spacing: 8,
+              runSpacing: 4,
               children: [
-                Expanded(
+                for (final lt in h.lessonTitles)
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: HomeworkColors.of(context).surface(Color(0xFFEEF2FF)),
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                    child: Text(
+                      '📖 $lt',
+                      style: TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w600,
+                        color: HomeworkColors.of(context).accent(Color(0xFF4338CA)),
+                      ),
+                    ),
+                  ),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  decoration: BoxDecoration(color: HomeworkColors.of(context).surface(st.bg), borderRadius: BorderRadius.circular(999)),
                   child: Text(
-                    'Resubmit available for ${remainingResubmit.inMinutes} more minute${remainingResubmit.inMinutes == 1 ? '' : 's'}',
-                    style: TextStyle(fontSize: 12, color: HomeworkColors.of(context).accent(Color(0xFF1D4ED8)), fontWeight: FontWeight.w600),
+                    st.label,
+                    style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: HomeworkColors.of(context).accent(st.color)),
                   ),
                 ),
-                _FramedTextButton(label: 'Edit resubmission', onPressed: onStartEditResubmit),
               ],
             ),
-          ],
-          if (info != null && info!.isNotEmpty) ...[
-            const SizedBox(height: 8),
-            Text(info!, style: TextStyle(fontSize: 12, color: HomeworkColors.of(context).text(Color(0xFF475569)))),
-          ],
-          if ((h.grade != null || (h.feedback ?? '').isNotEmpty)) ...[
             const SizedBox(height: 10),
-            Container(
-              padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(color: HomeworkColors.of(context).surface(Color(0xFFEEF6FF)), border: Border.all(color: HomeworkColors.of(context).line(Color(0xFFCFE0FF))), borderRadius: BorderRadius.circular(8)),
-              child: Column(
+            SizedBox(
+              width: double.infinity,
+              child: _FramedTextButton(
+                label: expandedTeacherInfo ? 'Hide instructions' : 'View instructions',
+                icon: Icons.description_outlined,
+                onPressed: onToggleTeacherInfo,
+              ),
+            ),
+            if (expandedTeacherInfo && h.note != null && h.note!.isNotEmpty) ...[
+              const SizedBox(height: 4),
+              Text(h.note!, style: TextStyle(color: HomeworkColors.of(context).text(Color(0xFF444444)), fontSize: 14, height: 1.5)),
+            ],
+            if (expandedTeacherInfo && h.attachmentUrls.isNotEmpty) ...[
+              const SizedBox(height: 10),
+              Text('📎 Teacher attachment:', style: TextStyle(fontSize: 11, color: HomeworkColors.of(context).muted(Color(0xFF888888)))),
+              const SizedBox(height: 4),
+              _ImageThumbRow(urls: h.attachmentUrls, borderColor: HomeworkColors.of(context).surface(Color(0xFFDDDDDD))),
+            ],
+            if (st.submitted && (h.latestAttachmentUrls.isNotEmpty || (h.latestAnswerText ?? '').isNotEmpty)) ...[
+              const SizedBox(height: 10),
+              SizedBox(
+                width: double.infinity,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _FramedTextButton(
+                      label: expandedSubmission ? 'Hide submission' : 'View submission',
+                      icon: Icons.task_alt_rounded,
+                      onPressed: onToggleSubmission,
+                    ),
+                    if (expandedSubmission) ...[
+                      if (h.latestAttachmentUrls.isNotEmpty) ...[
+                        Text(
+                          '✅ Submitted images:',
+                          style: TextStyle(fontSize: 11, color: HomeworkColors.of(context).accent(Color(0xFF166534))),
+                        ),
+                        const SizedBox(height: 6),
+                        _ImageThumbRow(urls: h.latestAttachmentUrls, borderColor: const Color(0xFF16A34A), borderWidth: 2),
+                      ],
+                      if ((h.latestAnswerText ?? '').isNotEmpty) ...[
+                        const SizedBox(height: 8),
+                        Text(
+                          h.latestAnswerText!,
+                          style: TextStyle(fontSize: 12, color: HomeworkColors.of(context).text(Color(0xFF334155)), height: 1.5),
+                        ),
+                      ],
+                    ],
+                  ],
+                ),
+              ),
+            ],
+            if (showForm) ...[
+              const SizedBox(height: 10),
+              Text(
+                'Your written answer',
+                style: TextStyle(fontSize: 12, color: HomeworkColors.of(context).text(Color(0xFF475569)), fontWeight: FontWeight.w600),
+              ),
+              const SizedBox(height: 6),
+              TextField(
+                controller: answerCtrl,
+                maxLines: 3,
+                decoration: InputDecoration(
+                  hintText: 'Write your answer here (this will be visible to your teacher).',
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                  filled: true,
+                  fillColor: AppColors.of(context).card,
+                ),
+              ),
+              const SizedBox(height: 10),
+              _FramedTextButton(
+                label: uploading ? 'Uploading…' : 'Add photos',
+                icon: Icons.add_photo_alternate_outlined,
+                onPressed: uploading ? null : onPickImages,
+              ),
+              if (pendingAttachments.isNotEmpty) ...[
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  children: [
+                    Text(
+                      '${pendingAttachments.length} image(s) selected',
+                      style: TextStyle(fontSize: 12, color: HomeworkColors.of(context).text(Color(0xFF666666))),
+                    ),
+                    _FramedTextButton(
+                      label: 'Remove all',
+                      onPressed: () {
+                        for (final u in List<String>.from(pendingAttachments)) {
+                          onRemoveImage(u);
+                        }
+                      },
+                    ),
+                  ],
+                ),
+                _ImageThumbRow(urls: pendingAttachments, borderColor: const Color(0xFF7C3AED), borderWidth: 2, onRemove: onRemoveImage),
+              ],
+              if (canResubmitWindow && editingResubmit) ...[
+                const SizedBox(height: 6),
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: _FramedTextButton(label: 'Cancel edit', onPressed: onCancelEditResubmit),
+                ),
+              ],
+              const SizedBox(height: 10),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  onPressed: submitting ? null : onSubmit,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.brand,
+                    foregroundColor: Colors.white,
+                    elevation: 5,
+                    minimumSize: const Size.fromHeight(48),
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                  ),
+                  child: submitting
+                      ? const SizedBox(height: 18, width: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                      : Text(
+                          canResubmit ? 'Resubmit' : 'Submit',
+                          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 14),
+                        ),
+                ),
+              ),
+            ] else if (canResubmitWindow) ...[
+              const SizedBox(height: 10),
+              Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Wrap(
-                    alignment: WrapAlignment.spaceBetween,
-                    crossAxisAlignment: WrapCrossAlignment.center,
-                    spacing: 12,
-                    runSpacing: 8,
-                    children: [
-                      Text('Teacher feedback', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: HomeworkColors.of(context).accent(Color(0xFF1D4ED8)))),
-                      _FramedTextButton(label: expandedFeedback ? 'Hide feedback' : 'Show feedback', onPressed: onToggleFeedback),
-                    ],
+                  Text(
+                    'Resubmit available for ${remainingResubmit.inMinutes} more minute${remainingResubmit.inMinutes == 1 ? '' : 's'}',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: HomeworkColors.of(context).accent(Color(0xFF1D4ED8)),
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
-                  if (expandedFeedback) ...[
-                    if (h.grade != null) Text('Grade: ${h.grade}/100', style: TextStyle(fontSize: 12, color: HomeworkColors.of(context).text(Color(0xFF1F2937)))),
-                    if ((h.feedback ?? '').isNotEmpty) Text(h.feedback!, style: TextStyle(fontSize: 12, color: HomeworkColors.of(context).text(Color(0xFF374151)), height: 1.4)),
-                  ],
+                  const SizedBox(height: 8),
+                  _FramedTextButton(label: 'Edit resubmission', onPressed: onStartEditResubmit),
                 ],
               ),
-            ),
-          ],
-          const SizedBox(height: 8),
-          Text(
-            [
-              if (h.startAt != null) '📅 Start: ${_fmt(h.startAt)}',
-              if (h.dueAt != null) '⏰ Due: ${_fmt(h.dueAt)}',
-            ].join('   '),
-            style: TextStyle(fontSize: 11, color: HomeworkColors.of(context).muted(Color(0xFF888888))),
-          ),
-          if (!st.submitted && st.overdue) ...[
-            const SizedBox(height: 6),
-            Text(
-              '⚠ Not submitted yet — ${st.expired ? 'hidden after 3 overdue days' : 'submit before it disappears'}',
-              style: TextStyle(color: HomeworkColors.of(context).accent(Color(0xFFB91C1C)), fontSize: 12, fontWeight: FontWeight.w600),
-            ),
-          ],
-        ],
+            ],
+            if (info != null && info!.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              Text(info!, style: TextStyle(fontSize: 12, color: HomeworkColors.of(context).text(Color(0xFF475569)))),
+            ],
+            if ((h.grade != null || (h.feedback ?? '').isNotEmpty)) ...[
+              const SizedBox(height: 10),
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: HomeworkColors.of(context).surface(Color(0xFFEEF6FF)),
+                  border: Border.all(color: HomeworkColors.of(context).line(Color(0xFFCFE0FF))),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Wrap(
+                      alignment: WrapAlignment.spaceBetween,
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      spacing: 12,
+                      runSpacing: 8,
+                      children: [
+                        Text(
+                          'Teacher feedback',
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                            color: HomeworkColors.of(context).accent(Color(0xFF1D4ED8)),
+                          ),
+                        ),
+                        _FramedTextButton(
+                          label: expandedFeedback ? 'Hide feedback' : 'Show feedback',
+                          onPressed: onToggleFeedback,
+                          icon: Icons.chat_bubble_outline_rounded,
+                        ),
+                      ],
+                    ),
+                    if (expandedFeedback) ...[
+                      if (h.grade != null)
+                        Text(
+                          'Grade: ${h.grade}/100',
+                          style: TextStyle(fontSize: 12, color: HomeworkColors.of(context).text(Color(0xFF1F2937))),
+                        ),
+                      if ((h.feedback ?? '').isNotEmpty)
+                        Text(
+                          h.feedback!,
+                          style: TextStyle(fontSize: 12, color: HomeworkColors.of(context).text(Color(0xFF374151)), height: 1.4),
+                        ),
+                    ],
+                  ],
+                ),
               ),
+            ],
+            const SizedBox(height: 8),
+            Text(
+              [if (h.startAt != null) '📅 Start: ${_fmt(h.startAt)}', if (h.dueAt != null) '⏰ Due: ${_fmt(h.dueAt)}'].join('   '),
+              style: TextStyle(fontSize: 11, color: HomeworkColors.of(context).muted(Color(0xFF888888))),
+            ),
+            if (!st.submitted && st.overdue) ...[
+              const SizedBox(height: 6),
+              Text(
+                '⚠ Not submitted yet — ${st.expired ? 'hidden after 3 overdue days' : 'submit before it disappears'}',
+                style: TextStyle(color: HomeworkColors.of(context).accent(Color(0xFFB91C1C)), fontSize: 12, fontWeight: FontWeight.w600),
+              ),
+            ],
+          ],
+        ),
       ),
     );
   }
@@ -1199,13 +1548,16 @@ class _ImageThumbRow extends StatelessWidget {
                 child: ClipRRect(
                   borderRadius: BorderRadius.circular(6),
                   child: Container(
-                    decoration: BoxDecoration(border: Border.all(color: borderColor, width: borderWidth)),
+                    decoration: BoxDecoration(
+                      border: Border.all(color: borderColor, width: borderWidth),
+                    ),
                     child: Image.network(
                       resolvedUrls[i],
                       width: 64,
                       height: 64,
                       fit: BoxFit.cover,
-                      errorBuilder: (_, _, _) => Container(width: 64, height: 64, color: HomeworkColors.of(context).surface(Color(0xFFEEEEEE))),
+                      errorBuilder: (_, _, _) =>
+                          Container(width: 64, height: 64, color: HomeworkColors.of(context).surface(Color(0xFFEEEEEE))),
                     ),
                   ),
                 ),

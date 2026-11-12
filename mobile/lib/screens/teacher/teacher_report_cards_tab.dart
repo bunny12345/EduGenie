@@ -164,7 +164,7 @@ class _TeacherReportCardsTabState extends ConsumerState<TeacherReportCardsTab> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text('Every teacher of this class will use this same exam. Only you can rename it later.', style: TextStyle(fontSize: 12, color: Color(0xFF68709A))),
+              Text('Every teacher of this class will use this same exam. Only you can rename it later.', style: TextStyle(fontSize: 12, color: AppColors.of(ctx).muted)),
               const SizedBox(height: 12),
               TextField(controller: nameCtrl, autofocus: true, maxLength: 60, decoration: const InputDecoration(labelText: 'Exam name', hintText: 'e.g. Annual Exam')),
               TextField(controller: maxCtrl, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Maximum marks per subject')),
@@ -311,7 +311,7 @@ class _TeacherReportCardsTabState extends ConsumerState<TeacherReportCardsTab> {
                         ),
                       ),
                       const SizedBox(width: 10),
-                      _PlusButton(onTap: _className.isEmpty ? null : _openCreateDialog, color: theme.color),
+                      _PlusButton(onTap: _className.isEmpty ? null : _openCreateDialog, color: AppColors.of(context).isDark ? theme.dark : theme.color),
                     ],
                   ),
                   const SizedBox(height: 10),
@@ -332,10 +332,10 @@ class _TeacherReportCardsTabState extends ConsumerState<TeacherReportCardsTab> {
                     ChoiceChip(
                       label: Row(mainAxisSize: MainAxisSize.min, children: [
                         Text(e['name']?.toString() ?? ''),
-                        if (e['released'] == true) const Padding(padding: EdgeInsets.only(left: 4), child: Icon(Icons.check_circle, size: 14, color: Colors.white)),
+                        if (e['released'] == true) Padding(padding: const EdgeInsets.only(left: 4), child: Icon(Icons.check_circle, size: 14, color: e['id'] == _selectedExamId ? Colors.white : AppColors.of(context).accent)),
                       ]),
                       selected: e['id'] == _selectedExamId,
-                      selectedColor: theme.color,
+                      selectedColor: AppColors.of(context).isDark ? theme.dark : theme.color,
                       labelStyle: TextStyle(color: e['id'] == _selectedExamId ? Colors.white : AppColors.of(context).text, fontWeight: FontWeight.w700),
                       onSelected: (_) {
                         setState(() => _selectedExamId = e['id']?.toString());
@@ -370,10 +370,10 @@ class _TeacherReportCardsTabState extends ConsumerState<TeacherReportCardsTab> {
                     const SizedBox(height: 8),
                     Text('No exams for $_className yet', style: const TextStyle(fontWeight: FontWeight.w800)),
                     const SizedBox(height: 4),
-                    const Text(
+                    Text(
                       'Tap + to add an exam such as "Annual Exam". Every teacher of the class then adds marks for their own subject.',
                       textAlign: TextAlign.center,
-                      style: TextStyle(fontSize: 12, color: Color(0xFF68709A)),
+                      style: TextStyle(fontSize: 12, color: AppColors.of(context).muted),
                     ),
                   ],
                 ),
@@ -386,6 +386,7 @@ class _TeacherReportCardsTabState extends ConsumerState<TeacherReportCardsTab> {
   }
 
   List<Widget> _buildExamBody(ReportSubjectTheme theme) {
+    final palette = AppColors.of(context);
     final exam = _exam!;
     final subjects = (exam['subjects'] as List? ?? []).cast<Map<String, dynamic>>();
     final canEdit = _marksData?['canEdit'] == true;
@@ -409,7 +410,7 @@ class _TeacherReportCardsTabState extends ConsumerState<TeacherReportCardsTab> {
                   )
                 : Row(
                     children: [
-                      Flexible(child: Text(exam['name']?.toString() ?? '', style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w900, color: Color(0xFF23275C)))),
+                      Flexible(child: Text(exam['name']?.toString() ?? '', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900, color: palette.text))),
                       const SizedBox(width: 8),
                       if (isOwner)
                         TextButton(
@@ -424,7 +425,7 @@ class _TeacherReportCardsTabState extends ConsumerState<TeacherReportCardsTab> {
                         Flexible(
                           child: Text(
                             exam['createdByName'] != null ? '🔒 Created by ${exam['createdByName']}' : '🔒 Name locked',
-                            style: const TextStyle(fontSize: 11, color: Color(0xFF68709A)),
+                            style: TextStyle(fontSize: 11, color: palette.muted),
                           ),
                         ),
                     ],
@@ -433,13 +434,13 @@ class _TeacherReportCardsTabState extends ConsumerState<TeacherReportCardsTab> {
         ],
       ),
       if (_renameError.isNotEmpty) Text(_renameError, style: const TextStyle(color: AppColors.danger, fontSize: 12)),
-      Text('${exam['className']} · out of ${formatMarks(exam['maxMarks'] as num? ?? 100)} per subject', style: const TextStyle(fontSize: 12, color: Color(0xFF68709A))),
+      Text('${exam['className']} · out of ${formatMarks(exam['maxMarks'] as num? ?? 100)} per subject', style: TextStyle(fontSize: 12, color: palette.muted)),
       const SizedBox(height: 12),
 
       // Subject ownership banner
       Container(
         padding: const EdgeInsets.all(14),
-        decoration: BoxDecoration(gradient: theme.gradient, borderRadius: BorderRadius.circular(16)),
+        decoration: BoxDecoration(gradient: palette.isDark ? LinearGradient(colors: [theme.dark, palette.brandSoft]) : theme.gradient, borderRadius: BorderRadius.circular(16)),
         child: Row(
           children: [
             Container(
@@ -477,7 +478,7 @@ class _TeacherReportCardsTabState extends ConsumerState<TeacherReportCardsTab> {
             Text('Visible to students: ${exam['studentsReleased']} of ${exam['studentsTotal']}', style: const TextStyle(fontWeight: FontWeight.w800)),
             Text(
               exam['released'] == true ? 'All students can see this report card.' : 'A student sees it once every subject below has their marks.',
-              style: const TextStyle(fontSize: 12, color: Color(0xFF68709A)),
+              style: TextStyle(fontSize: 12, color: palette.muted),
             ),
             const SizedBox(height: 8),
             ClipRRect(
@@ -485,7 +486,7 @@ class _TeacherReportCardsTabState extends ConsumerState<TeacherReportCardsTab> {
               child: LinearProgressIndicator(
                 value: (exam['studentsTotal'] as num? ?? 0) > 0 ? (exam['studentsReleased'] as num) / (exam['studentsTotal'] as num) : 0,
                 minHeight: 8,
-                backgroundColor: const Color(0xFFEDF0FB),
+                backgroundColor: palette.line,
                 color: const Color(0xFF22C55E),
               ),
             ),
@@ -501,22 +502,22 @@ class _TeacherReportCardsTabState extends ConsumerState<TeacherReportCardsTab> {
                     return Container(
                       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
                       decoration: BoxDecoration(
-                        color: t.soft,
+                        color: palette.isDark ? palette.background : t.soft,
                         borderRadius: BorderRadius.circular(999),
                         border: Border.all(color: t.color, width: mine ? 2 : 1),
                       ),
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          Text('${t.emoji} ${s['subject']}', style: TextStyle(color: t.dark, fontWeight: FontWeight.w700, fontSize: 12)),
+                          Text('${t.emoji} ${s['subject']}', style: TextStyle(color: AppColors.readableAccent(t.dark, dark: palette.isDark), fontWeight: FontWeight.w700, fontSize: 12)),
                           const SizedBox(width: 4),
-                          Text('${s['entered']}/${s['total']}', style: TextStyle(color: t.dark, fontSize: 11, fontWeight: FontWeight.w800)),
+                          Text('${s['entered']}/${s['total']}', style: TextStyle(color: AppColors.readableAccent(t.dark, dark: palette.isDark), fontSize: 11, fontWeight: FontWeight.w800)),
                           if (s['done'] == true) const Icon(Icons.check_circle, size: 14, color: Color(0xFF22C55E)),
                         ],
                       ),
                     );
                   }),
-                if (subjects.isEmpty) const Text('No subject teachers are registered for this class yet.', style: TextStyle(fontSize: 12, color: Color(0xFF68709A))),
+                if (subjects.isEmpty) Text('No subject teachers are registered for this class yet.', style: TextStyle(fontSize: 12, color: palette.muted)),
               ],
             ),
           ],
@@ -539,9 +540,9 @@ class _TeacherReportCardsTabState extends ConsumerState<TeacherReportCardsTab> {
               final active = s['id'] == _selectedStudentId;
               return ChoiceChip(
                 label: Text(s['name']?.toString() ?? 'Student'),
-                avatar: done ? const Icon(Icons.check_circle, size: 16, color: Colors.white) : null,
+                avatar: done ? Icon(Icons.check_circle, size: 16, color: active ? Colors.white : palette.accent) : null,
                 selected: active,
-                selectedColor: theme.color,
+                selectedColor: palette.isDark ? theme.dark : theme.color,
                 labelStyle: TextStyle(color: active ? Colors.white : AppColors.of(context).text, fontWeight: FontWeight.w700),
                 onSelected: (_) {
                   setState(() {
@@ -556,14 +557,14 @@ class _TeacherReportCardsTabState extends ConsumerState<TeacherReportCardsTab> {
         const SizedBox(height: 12),
         if (_selectedStudentId != null)
           Container(
-            decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20), border: Border.all(color: theme.color, width: 2)),
+            decoration: BoxDecoration(color: palette.card, borderRadius: BorderRadius.circular(20), border: Border.all(color: theme.color, width: 2)),
             clipBehavior: Clip.antiAlias,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Container(
                   padding: const EdgeInsets.all(12),
-                  color: theme.color,
+                  color: palette.isDark ? theme.dark : theme.color,
                   child: Row(
                     children: [
                       Text(theme.emoji, style: const TextStyle(fontSize: 24)),
@@ -580,7 +581,7 @@ class _TeacherReportCardsTabState extends ConsumerState<TeacherReportCardsTab> {
                 ),
                 Container(
                   padding: const EdgeInsets.all(16),
-                  color: theme.soft,
+                  color: palette.isDark ? palette.background : theme.soft,
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -593,14 +594,14 @@ class _TeacherReportCardsTabState extends ConsumerState<TeacherReportCardsTab> {
                               controller: _marksCtrl,
                               keyboardType: const TextInputType.numberWithOptions(decimal: true),
                               textAlign: TextAlign.center,
-                              style: TextStyle(fontSize: 28, fontWeight: FontWeight.w900, color: theme.dark),
-                              decoration: InputDecoration(filled: true, fillColor: Colors.white, border: OutlineInputBorder(borderRadius: BorderRadius.circular(12))),
+                              style: TextStyle(fontSize: 28, fontWeight: FontWeight.w900, color: palette.isDark ? palette.text : theme.dark),
+                              decoration: InputDecoration(filled: true, fillColor: palette.card, border: OutlineInputBorder(borderRadius: BorderRadius.circular(12))),
                             ),
                           ),
                           const SizedBox(width: 10),
                           Padding(
                             padding: const EdgeInsets.only(bottom: 10),
-                            child: Text('/ ${formatMarks(exam['maxMarks'] as num? ?? 100)}', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: theme.dark)),
+                            child: Text('/ ${formatMarks(exam['maxMarks'] as num? ?? 100)}', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: palette.isDark ? palette.text : theme.dark)),
                           ),
                         ],
                       ),
@@ -608,17 +609,18 @@ class _TeacherReportCardsTabState extends ConsumerState<TeacherReportCardsTab> {
                       TextField(
                         controller: _remarksCtrl,
                         maxLength: 200,
-                        decoration: const InputDecoration(labelText: 'Remark (optional)', filled: true, fillColor: Colors.white),
+                        decoration: InputDecoration(labelText: 'Remark (optional)', filled: true, fillColor: palette.card),
                       ),
                       const SizedBox(height: 8),
-                      Row(
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
                         children: [
                           FilledButton(
-                            style: FilledButton.styleFrom(backgroundColor: theme.color),
+                            style: FilledButton.styleFrom(backgroundColor: palette.isDark ? theme.dark : theme.color, foregroundColor: Colors.white),
                             onPressed: _saving ? null : () => _save(goNext: false),
                             child: Text(_saving ? 'Saving…' : 'Save marks'),
                           ),
-                          const SizedBox(width: 8),
                           OutlinedButton(
                             onPressed: _saving ? null : () => _save(goNext: true),
                             child: const Text('Save & next →'),

@@ -38,8 +38,9 @@ function fixture() {
       then(resolve: (result: any) => void) {
         if (failures.has(table)) return resolve({ data: null, error: { message: 'fixture unavailable' } });
         const source = tables[table] ||= [];
-        if (insert) source.push(...insert.map((row) => ({ id: `row-${source.length}`, ...row })));
-        const rows = source.filter((row) => filters.every((filter) => filter(row))).slice(offset, end + 1);
+        const inserted = insert?.map((row, index) => ({ id: `row-${source.length + index}`, ...row }));
+        if (inserted) source.push(...inserted);
+        const rows = (inserted || source).filter((row) => filters.every((filter) => filter(row))).slice(offset, end + 1);
         if (patch) rows.forEach((row) => Object.assign(row, patch));
         resolve({ data: rows.map((row) => ({ ...row })), error: null });
       },
@@ -106,6 +107,11 @@ test('expiry freezes saved answers, finalizes a paused attempt and releases Tuto
   assert.ok((await f.service.session(f.exam.id, 'student-a'))?.finalized_at);
   assert.deepEqual(await f.service.restrictions('student-a'), []);
   await assert.rejects(f.controller.resumeExam(f.teacher, f.exam.id, 'student-a'), /ended/);
+  const monitor = await f.controller.examStudents(f.teacher, f.exam.id);
+  assert.equal(monitor.ended, true);
+  assert.deepEqual(monitor.students, []);
+  assert.equal((await f.service.session(f.exam.id, 'student-a'))?.incident_count, 1);
+  await assert.rejects(f.controller.resumeAllExams(f.teacher, f.exam.id), /ended/);
   const res = await f.controller.submit(f.req(), a.attemptId, { clientId: 'browser-client-a', answers: { q1: 1 } });
   assert.equal(res.score, 100);
 });
@@ -132,10 +138,59 @@ test('ownership, school scope, student identity and answer validation are enforc
   ]) {
     await assert.rejects(f.controller.examStudents(teacher, f.exam.id), ForbiddenException);
     await assert.rejects(f.controller.resumeExam(teacher, f.exam.id, 'student-a'), ForbiddenException);
+    await assert.rejects(f.controller.resumeAllExams(teacher, f.exam.id), ForbiddenException);
   }
   await assert.rejects(f.control(a.attemptId, 'save', { answers: { q1: 9 } }), /Invalid exam answer/);
   await assert.rejects(f.control(a.attemptId, 'save', { answers: { fake: 0 } }), /Invalid exam answer/);
   await assert.rejects(f.control(a.attemptId, 'pause', { reason: 'invented' }), /Invalid exam incident/);
+});
+
+test('resume all affects only paused students of this strict exam and preserves saved answers and deadline', async () => {
+  const f = fixture();
+  const a = await f.start(); const b = await f.start('student-b');
+  await f.start('student-active');
+  const closed = await f.start('student-closed');
+  await f.controller.submit(f.req('student-closed'), closed.attemptId, { clientId: 'browser-client-a', answers: { q1: 0 } });
+  await f.control(a.attemptId, 'save', { answers: { q1: 0 } });
+  await f.control(a.attemptId, 'pause', { reason: 'tab_hidden' });
+  await f.control(b.attemptId, 'pause', { reason: 'app_background' }, 'student-b');
+  const other = { ...f.exam, id: 'other-test', teacher_id: 'teacher-b' };
+  await f.service.open(other, 'student-a', 'other-attempt', 'browser-client-a');
+  await f.service.sync(other, 'student-a', 'browser-client-a', 'tab_hidden');
+  const deadline = f.exam.end_at;
+  const activeRevision = (await f.service.session(f.exam.id, 'student-active'))?.revision;
+  const result = await f.controller.resumeAllExams(f.teacher, f.exam.id);
+  assert.deepEqual(result, { success: true, resumedCount: 2 });
+  for (const id of ['student-a', 'student-b', 'student-active']) {
+    assert.equal((await f.service.session(f.exam.id, id))?.status, 'active');
+  }
+  assert.equal((await f.service.session(f.exam.id, 'student-active'))?.revision, activeRevision);
+  assert.equal((await f.service.session(f.exam.id, 'student-closed'))?.status, 'closed');
+  assert.equal((await f.service.session(other.id, 'student-a'))?.status, 'paused');
+  assert.deepEqual((await f.service.session(f.exam.id, 'student-a'))?.answers, { q1: 0 });
+  assert.equal(f.exam.end_at, deadline);
+  assert.equal((await f.controller.resumeAllExams(f.teacher, f.exam.id)).resumedCount, 0);
+});
+
+test('monitor clears at the exact scheduled end and finalizes saved results without deleting sessions', async () => {
+  const f = fixture();
+  const a = await f.start();
+  await f.control(a.attemptId, 'save', { answers: { q1: 0 } });
+  await f.control(a.attemptId, 'pause', { reason: 'tab_hidden' });
+  assert.equal((await f.controller.examStudents(f.teacher, f.exam.id)).students.length, 1);
+  const now = Date.now();
+  const clock = Date.now;
+  Date.now = () => now;
+  try {
+    f.exam.end_at = new Date(now).toISOString();
+    const monitor = await f.controller.examStudents(f.teacher, f.exam.id);
+    assert.equal(monitor.ended, true);
+    assert.equal(monitor.endAt, f.exam.end_at);
+    assert.deepEqual(monitor.students, []);
+    assert.equal(f.tables.test_attempts[0].score, 100);
+    assert.equal(f.tables.strict_exam_sessions.length, 1);
+    assert.equal(f.tables.strict_exam_sessions[0].status, 'closed');
+  } finally { Date.now = clock; }
 });
 
 test('Tutor is blocked before starting, released after submit, and unrelated school/class/draft tests do not block', async () => {

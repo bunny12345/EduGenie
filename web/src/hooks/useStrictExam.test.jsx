@@ -2,10 +2,10 @@ import React from 'react';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import useStrictExam, { useExamAccess } from './useStrictExam';
 import StrictExamStudents from '../components/StrictExamStudents';
-import { controlExam, getExamAccess, getExamStudents, resumeExamStudent } from '../api';
+import { controlExam, getExamAccess, getExamStudents, resumeAllExamStudents, resumeExamStudent } from '../api';
 
 jest.mock('../api', () => ({
-  controlExam: jest.fn(), getExamAccess: jest.fn(), getExamStudents: jest.fn(), resumeExamStudent: jest.fn(),
+  controlExam: jest.fn(), getExamAccess: jest.fn(), getExamStudents: jest.fn(), resumeAllExamStudents: jest.fn(), resumeExamStudent: jest.fn(),
 }));
 const exam = { attemptId: 'attempt-a', strictMode: true, control: { status: 'active' } };
 function Harness({ test = exam, done = false }) {
@@ -130,4 +130,62 @@ test('teacher monitor automatically shows paused students and resumes one accoun
   fireEvent.click(screen.getByRole('button', { name: 'Resume Asha' }));
   await waitFor(() => expect(resumeExamStudent).toHaveBeenCalledWith('test-a', 'a'));
   await screen.findByRole('button', { name: /0 paused/ });
+});
+
+test('teacher can resume all paused students with one action and individual controls remain available', async () => {
+  getExamStudents.mockResolvedValue({ students: [
+    { studentId: 'a', name: 'Asha', status: 'paused', incidentCount: 1 },
+    { studentId: 'b', name: 'Banu', status: 'paused', incidentCount: 2 },
+  ] });
+  resumeAllExamStudents.mockResolvedValue({ success: true, resumedCount: 2 });
+  render(<StrictExamStudents testId="test-a" />);
+  await act(async () => jest.advanceTimersByTime(0));
+  fireEvent.click(screen.getByRole('button', { name: /2 paused/ }));
+  expect(screen.getByRole('button', { name: 'Resume Asha' })).toBeEnabled();
+  expect(screen.getByRole('button', { name: 'Resume Banu' })).toBeEnabled();
+  getExamStudents.mockResolvedValue({ students: [
+    { studentId: 'a', name: 'Asha', status: 'active', incidentCount: 1 },
+    { studentId: 'b', name: 'Banu', status: 'active', incidentCount: 2 },
+  ] });
+  fireEvent.click(screen.getByRole('button', { name: 'Resume all' }));
+  await screen.findByRole('button', { name: /0 paused/ });
+  expect(screen.getByRole('button', { name: 'Resume all' })).toBeDisabled();
+  expect(resumeAllExamStudents).toHaveBeenCalledWith('test-a');
+  expect(resumeExamStudent).not.toHaveBeenCalled();
+  expect(screen.getByRole('button', { name: /0 paused/ })).toBeInTheDocument();
+});
+
+test('exam monitor and incidents disappear at the server deadline even if subsequent polls fail', async () => {
+  getExamStudents.mockResolvedValue({
+    ended: false, endAt: new Date(Date.now() + 10000).toISOString(), serverNow: new Date(Date.now() + 7000).toISOString(),
+    students: [{ studentId: 'a', name: 'Asha', status: 'closed', incidentCount: 3 }],
+  });
+  render(<StrictExamStudents testId="test-a" />);
+  await act(async () => jest.advanceTimersByTime(0));
+  fireEvent.click(screen.getByRole('button', { name: /Exam monitor/ }));
+  expect(screen.getByText('Asha')).toBeInTheDocument();
+  getExamStudents.mockRejectedValue(new Error('Offline'));
+  await act(async () => jest.advanceTimersByTime(3000));
+  expect(screen.queryByRole('button', { name: /Exam monitor/ })).not.toBeInTheDocument();
+  expect(screen.queryByText('Asha')).not.toBeInTheDocument();
+  await act(async () => jest.advanceTimersByTime(5000));
+  expect(screen.queryByRole('button', { name: /Exam monitor/ })).not.toBeInTheDocument();
+});
+
+test('an already-ended exam never shows its old incidents after loading', async () => {
+  getExamStudents.mockResolvedValue({ ended: true, students: [] });
+  render(<StrictExamStudents testId="test-a" />);
+  await act(async () => jest.advanceTimersByTime(0));
+  expect(screen.queryByRole('button', { name: /Exam monitor/ })).not.toBeInTheDocument();
+});
+
+test('a bulk resume failure is visible and does not report students as resumed', async () => {
+  getExamStudents.mockResolvedValue({ students: [{ studentId: 'a', name: 'Asha', status: 'paused', incidentCount: 1 }] });
+  resumeAllExamStudents.mockRejectedValue(new Error('Unable to resume all students'));
+  render(<StrictExamStudents testId="test-a" />);
+  await act(async () => jest.advanceTimersByTime(0));
+  fireEvent.click(screen.getByRole('button', { name: /1 paused/ }));
+  fireEvent.click(screen.getByRole('button', { name: 'Resume all' }));
+  expect(await screen.findByRole('alert')).toHaveTextContent('Unable to resume all students');
+  expect(screen.getByRole('button', { name: 'Resume Asha' })).toBeEnabled();
 });
