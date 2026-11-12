@@ -6,11 +6,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../services/support_api_service.dart';
 import '../../state/session_provider.dart';
+import '../../theme/app_colors.dart';
 import '../../widgets/section_card.dart';
 
 const _blue = Color(0xFF3946C5);
-const _ink = Color(0xFF202D50);
-const _soft = Color(0xFFF1F4FF);
 const _greeting = SupportMessage(
   'bot',
   'Hi! I’m the AcademiX Help Assistant. Ask me how to use the website or app. For a bug or a question I cannot solve, you can report an issue or connect to a technician. Never share passwords, verification codes or private records.',
@@ -385,15 +384,16 @@ class _SupportScreenState extends ConsumerState<SupportScreen>
           useMaterial3: true,
           colorScheme: ColorScheme.fromSeed(
             seedColor: _blue,
-            brightness: Brightness.light,
+            brightness: Theme.of(context).brightness,
+            surface: AppColors.of(context).card,
           ),
-          scaffoldBackgroundColor: _soft,
+          scaffoldBackgroundColor: AppColors.of(context).background,
           textTheme: Theme.of(
             context,
-          ).textTheme.apply(bodyColor: _ink, displayColor: _ink),
-          inputDecorationTheme: const InputDecorationTheme(
+          ).textTheme.apply(bodyColor: AppColors.of(context).text, displayColor: AppColors.of(context).text),
+          inputDecorationTheme: InputDecorationTheme(
             filled: true,
-            fillColor: Colors.white,
+            fillColor: AppColors.of(context).card,
             border: OutlineInputBorder(),
           ),
         ),
@@ -414,10 +414,10 @@ class _SupportScreenState extends ConsumerState<SupportScreen>
                   Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text(
+                      Text(
                         'WEBSITE & APP HELP',
                         style: TextStyle(
-                          color: _blue,
+                          color: AppColors.of(context).accent,
                           fontWeight: FontWeight.w800,
                           fontSize: 11,
                         ),
@@ -510,11 +510,11 @@ class _SupportScreenState extends ConsumerState<SupportScreen>
     margin: const EdgeInsets.only(bottom: 12),
     padding: const EdgeInsets.all(16),
     decoration: BoxDecoration(
-      color: Colors.white,
+      color: AppColors.of(context).card,
       borderRadius: BorderRadius.circular(18),
-      border: Border.all(color: const Color(0xFFD7DDF8)),
+      border: Border.all(color: AppColors.of(context).line),
     ),
-    child: Material(color: Colors.white, child: child),
+    child: Material(color: AppColors.of(context).card, child: child),
   );
 
   Widget _reportForm() => Form(
@@ -614,9 +614,9 @@ class _SupportScreenState extends ConsumerState<SupportScreen>
             padding: const EdgeInsets.all(12),
             child: Semantics(
               label: 'Assistant is replying',
-              child: const Text(
+              child: Text(
                 '•••',
-                style: TextStyle(color: _blue, fontSize: 22),
+                style: TextStyle(color: AppColors.of(context).accent, fontSize: 22),
               ),
             ),
           ),
@@ -721,8 +721,8 @@ class _SupportScreenState extends ConsumerState<SupportScreen>
           color: student
               ? _blue
               : owner
-              ? const Color(0xFFE7F7F0)
-              : _soft,
+              ? Color.alphaBlend(AppColors.ok.withValues(alpha: 0.12), AppColors.of(context).card)
+              : AppColors.of(context).brandSoft,
           borderRadius: BorderRadius.circular(14),
         ),
         child: Column(
@@ -738,7 +738,7 @@ class _SupportScreenState extends ConsumerState<SupportScreen>
                   ? 'Technician'
                   : 'Help Assistant',
               style: TextStyle(
-                color: student ? Colors.white : _ink,
+                color: student ? Colors.white : AppColors.of(context).text,
                 fontSize: 12,
                 fontWeight: FontWeight.w800,
               ),
@@ -746,7 +746,7 @@ class _SupportScreenState extends ConsumerState<SupportScreen>
             const SizedBox(height: 6),
             SelectableText(
               message.content,
-              style: TextStyle(color: student ? Colors.white : _ink),
+              style: TextStyle(color: student ? Colors.white : AppColors.of(context).text),
             ),
           ],
         ),

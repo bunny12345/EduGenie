@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
 import '../../../models/learning_score.dart';
+import 'progress_helpers.dart';
 
 /// Custom-painted charts ported 1:1 (same shapes/colors, scaled to fit a
 /// phone) from the SVGs in `web/src/components/StudentProgress.jsx`
@@ -30,7 +31,12 @@ class RingGauge extends StatelessWidget {
         children: [
           CustomPaint(
             size: Size(diameter, diameter),
-            painter: _RingGaugePainter(strokeWidth: strokeWidth, fraction: fraction, color: color),
+            painter: _RingGaugePainter(
+              strokeWidth: strokeWidth,
+              fraction: fraction,
+              color: color,
+              colors: ProgressColors.of(context),
+            ),
           ),
           ?child,
         ],
@@ -40,11 +46,17 @@ class RingGauge extends StatelessWidget {
 }
 
 class _RingGaugePainter extends CustomPainter {
+  final ProgressColors colors;
   final double strokeWidth;
   final double fraction;
   final Color color;
 
-  _RingGaugePainter({required this.strokeWidth, required this.fraction, required this.color});
+  _RingGaugePainter({
+    required this.strokeWidth,
+    required this.fraction,
+    required this.color,
+    required this.colors,
+  });
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -53,7 +65,7 @@ class _RingGaugePainter extends CustomPainter {
     final rect = Rect.fromCircle(center: center, radius: radius);
 
     final track = Paint()
-      ..color = const Color(0xFFEEF0FA)
+      ..color = colors.guide(const Color(0xFFEEF0FA))
       ..style = PaintingStyle.stroke
       ..strokeWidth = strokeWidth;
     canvas.drawCircle(center, radius, track);
@@ -72,7 +84,11 @@ class _RingGaugePainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(covariant _RingGaugePainter old) => old.fraction != fraction || old.color != color || old.strokeWidth != strokeWidth;
+  bool shouldRepaint(covariant _RingGaugePainter old) =>
+      old.fraction != fraction ||
+      old.color != color ||
+      old.strokeWidth != strokeWidth ||
+      old.colors.isDark != colors.isDark;
 }
 
 /// Growth line chart — area fill + line + dots, with grid/axis labels in
@@ -102,6 +118,7 @@ class GrowthLineChart extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = ProgressColors.of(context);
     final real = points.where((p) => p.value != null).toList();
     final active = real.any((p) => (p.value ?? 0) > 0);
     if (points.isEmpty || !active) {
@@ -109,9 +126,15 @@ class GrowthLineChart extends StatelessWidget {
         height: mini ? miniHeight : 170,
         child: Center(
           child: Text(
-            mini ? 'No activity yet — start to see the graph grow 🌱' : 'Your growth line shows up here as you learn.',
+            mini
+                ? 'No activity yet — start to see the graph grow 🌱'
+                : 'Your growth line shows up here as you learn.',
             textAlign: TextAlign.center,
-            style: TextStyle(fontSize: mini ? 9.5 : 12.5, color: const Color(0xFF8B90AD), height: 1.3),
+            style: TextStyle(
+              fontSize: mini ? 9.5 : 12.5,
+              color: colors.muted(const Color(0xFF8B90AD)),
+              height: 1.3,
+            ),
           ),
         ),
       );
@@ -128,6 +151,7 @@ class GrowthLineChart extends StatelessWidget {
           mode: mode,
           mini: mini,
           percentSuffix: percentSuffix,
+          colors: colors,
         ),
       ),
     );
@@ -135,6 +159,7 @@ class GrowthLineChart extends StatelessWidget {
 }
 
 class _GrowthLinePainter extends CustomPainter {
+  final ProgressColors colors;
   final List<ChartPoint> points;
   final double maxY;
   final List<double> gridVals;
@@ -151,6 +176,7 @@ class _GrowthLinePainter extends CustomPainter {
     required this.mode,
     required this.mini,
     required this.percentSuffix,
+    required this.colors,
   });
 
   @override
@@ -162,7 +188,8 @@ class _GrowthLinePainter extends CustomPainter {
     final innerW = size.width - padL - padR;
     final innerH = size.height - padT - padB;
 
-    double x(int i) => padL + (i / (points.length - 1).clamp(1, 1 << 30)) * innerW;
+    double x(int i) =>
+        padL + (i / (points.length - 1).clamp(1, 1 << 30)) * innerW;
     double y(double v) => padT + innerH - (v.clamp(0, maxY) / maxY) * innerH;
 
     final real = <MapEntry<int, ChartPoint>>[];
@@ -175,10 +202,22 @@ class _GrowthLinePainter extends CustomPainter {
     for (final g in gridVals) {
       final gy = y(g);
       final gridPaint = Paint()
-        ..color = const Color(0xFFEEF0FA)
+        ..color = colors.guide(const Color(0xFFEEF0FA))
         ..strokeWidth = 1;
-      canvas.drawLine(Offset(padL, gy), Offset(size.width - padR, gy), gridPaint);
-      _drawText(canvas, '${g.toInt()}${percentSuffix ? '%' : ''}', Offset(padL - 6, gy), fontSize: 9.5, color: const Color(0xFFB6BAD2), align: TextAlign.right, anchorRight: true);
+      canvas.drawLine(
+        Offset(padL, gy),
+        Offset(size.width - padR, gy),
+        gridPaint,
+      );
+      _drawText(
+        canvas,
+        '${g.toInt()}${percentSuffix ? '%' : ''}',
+        Offset(padL - 6, gy),
+        fontSize: 9.5,
+        color: colors.muted(const Color(0xFFB6BAD2)),
+        align: TextAlign.right,
+        anchorRight: true,
+      );
     }
 
     final lastRealIdx = real.last.key;
@@ -186,18 +225,44 @@ class _GrowthLinePainter extends CustomPainter {
 
     // "Road ahead" shading + goal dashed line (monthly mode with future buckets).
     if (hasFuture && !mini) {
-      final futureRect = Rect.fromLTRB(x(lastRealIdx), padT, x(points.length - 1), padT + innerH);
-      canvas.drawRect(futureRect, Paint()..color = const Color(0xFFF5F6FF));
+      final futureRect = Rect.fromLTRB(
+        x(lastRealIdx),
+        padT,
+        x(points.length - 1),
+        padT + innerH,
+      );
+      canvas.drawRect(
+        futureRect,
+        Paint()..color = colors.background(const Color(0xFFF5F6FF)),
+      );
       final nowLinePaint = Paint()
-        ..color = const Color(0xFFD7D9EE)
+        ..color = colors.muted(const Color(0xFFD7D9EE))
         ..strokeWidth = 1.5;
-      _drawDashedLine(canvas, Offset(x(lastRealIdx), padT), Offset(x(lastRealIdx), padT + innerH), nowLinePaint);
+      _drawDashedLine(
+        canvas,
+        Offset(x(lastRealIdx), padT),
+        Offset(x(lastRealIdx), padT + innerH),
+        nowLinePaint,
+      );
       final goalY = y(real.last.value.value!);
       final goalPaint = Paint()
         ..color = color.withValues(alpha: 0.45)
         ..strokeWidth = 2;
-      _drawDashedLine(canvas, Offset(x(lastRealIdx), goalY), Offset(x(points.length - 1), goalY), goalPaint);
-      _drawText(canvas, '🎯 keep going', Offset(x(points.length - 1), goalY - 14), fontSize: 10, color: const Color(0xFF9AA0BD), align: TextAlign.right, anchorRight: true);
+      _drawDashedLine(
+        canvas,
+        Offset(x(lastRealIdx), goalY),
+        Offset(x(points.length - 1), goalY),
+        goalPaint,
+      );
+      _drawText(
+        canvas,
+        '🎯 keep going',
+        Offset(x(points.length - 1), goalY - 14),
+        fontSize: 10,
+        color: colors.muted(const Color(0xFF9AA0BD)),
+        align: TextAlign.right,
+        anchorRight: true,
+      );
     }
 
     // Area fill.
@@ -210,12 +275,19 @@ class _GrowthLinePainter extends CustomPainter {
     canvas.drawPath(
       areaPath,
       Paint()
-        ..shader = LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [color.withValues(alpha: mini ? 0.28 : 0.34), color.withValues(alpha: 0)])
-            .createShader(Rect.fromLTWH(0, padT, size.width, innerH)),
+        ..shader = LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [
+            color.withValues(alpha: mini ? 0.28 : 0.34),
+            color.withValues(alpha: 0),
+          ],
+        ).createShader(Rect.fromLTWH(0, padT, size.width, innerH)),
     );
 
     // Line.
-    final linePath = Path()..moveTo(x(real.first.key), y(real.first.value.value!));
+    final linePath = Path()
+      ..moveTo(x(real.first.key), y(real.first.value.value!));
     for (final e in real.skip(1)) {
       linePath.lineTo(x(e.key), y(e.value.value!));
     }
@@ -237,13 +309,41 @@ class _GrowthLinePainter extends CustomPainter {
       final isFuture = p.value == null;
       final showLabel = i % labelEvery == 0 || i == last;
       if (!mini && showLabel) {
-        final text = mode == 'daily' && p.weekday != null ? p.weekday! : p.label;
-        _drawText(canvas, text, Offset(x(i), size.height - padB + 12), fontSize: 11, color: isFuture ? const Color(0xFFC2C6DC) : const Color(0xFF6B7194), align: TextAlign.center, bold: true);
+        final text = mode == 'daily' && p.weekday != null
+            ? p.weekday!
+            : p.label;
+        _drawText(
+          canvas,
+          text,
+          Offset(x(i), size.height - padB + 12),
+          fontSize: 11,
+          color: colors.muted(
+            isFuture ? const Color(0xFFC2C6DC) : const Color(0xFF6B7194),
+          ),
+          align: TextAlign.center,
+          bold: true,
+        );
         if (mode == 'daily') {
-          _drawText(canvas, p.label, Offset(x(i), size.height - padB + 24), fontSize: 9.5, color: const Color(0xFFB6BAD2), align: TextAlign.center);
+          _drawText(
+            canvas,
+            p.label,
+            Offset(x(i), size.height - padB + 24),
+            fontSize: 9.5,
+            color: colors.muted(const Color(0xFFB6BAD2)),
+            align: TextAlign.center,
+          );
         }
       } else if (mini && showLabel) {
-        _drawText(canvas, p.label, Offset(x(i), size.height - 4), fontSize: 8, color: isFuture ? const Color(0xFFC2C6DC) : const Color(0xFFB6BAD2), align: TextAlign.center);
+        _drawText(
+          canvas,
+          p.label,
+          Offset(x(i), size.height - 4),
+          fontSize: 8,
+          color: colors.muted(
+            isFuture ? const Color(0xFFC2C6DC) : const Color(0xFFB6BAD2),
+          ),
+          align: TextAlign.center,
+        );
       }
       if (!isFuture) {
         final isLastReal = i == lastRealIdx;
@@ -251,14 +351,36 @@ class _GrowthLinePainter extends CustomPainter {
         final dotPos = Offset(x(i), y(p.value!));
         if (mini) {
           // Compact mode only shows a single solid dot on the most recent point.
-          if (isLastReal) canvas.drawCircle(dotPos, dotRadius, Paint()..color = color);
+          if (isLastReal) {
+            canvas.drawCircle(dotPos, dotRadius, Paint()..color = color);
+          }
         } else if (showLabel || isLastReal) {
-          canvas.drawCircle(dotPos, dotRadius, Paint()..color = Colors.white);
-          canvas.drawCircle(dotPos, dotRadius, Paint()..color = color..style = PaintingStyle.stroke..strokeWidth = 3);
+          canvas.drawCircle(
+            dotPos,
+            dotRadius,
+            Paint()..color = colors.surface(Colors.white),
+          );
+          canvas.drawCircle(
+            dotPos,
+            dotRadius,
+            Paint()
+              ..color = color
+              ..style = PaintingStyle.stroke
+              ..strokeWidth = 3,
+          );
         }
-        final showVal = !mini && (isLastReal || (mode == 'monthly' && showLabel));
+        final showVal =
+            !mini && (isLastReal || (mode == 'monthly' && showLabel));
         if (showVal) {
-          _drawText(canvas, '${p.value!.round()}${percentSuffix ? '%' : ''}', Offset(x(i), y(p.value!) - 14), fontSize: 10.5, color: const Color(0xFF6B7194), align: TextAlign.center, bold: true);
+          _drawText(
+            canvas,
+            '${p.value!.round()}${percentSuffix ? '%' : ''}',
+            Offset(x(i), y(p.value!) - 14),
+            fontSize: 10.5,
+            color: colors.muted(const Color(0xFF6B7194)),
+            align: TextAlign.center,
+            bold: true,
+          );
         }
       }
     }
@@ -298,7 +420,15 @@ class _GrowthLinePainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(covariant _GrowthLinePainter old) => old.points != points || old.mode != mode || old.color != color;
+  bool shouldRepaint(covariant _GrowthLinePainter old) =>
+      old.points != points ||
+      old.mode != mode ||
+      old.color != color ||
+      old.colors.isDark != colors.isDark ||
+      old.maxY != maxY ||
+      old.gridVals != gridVals ||
+      old.mini != mini ||
+      old.percentSuffix != percentSuffix;
 }
 
 /// 9-axis radar/spider chart (rings + axis lines + emoji labels + filled
@@ -316,17 +446,30 @@ class RadarChart extends StatelessWidget {
     return SizedBox(
       width: diameter,
       height: diameter,
-      child: CustomPaint(painter: _RadarChartPainter(dimensions: dimensions, emojis: emojis, color: color)),
+      child: CustomPaint(
+        painter: _RadarChartPainter(
+          dimensions: dimensions,
+          emojis: emojis,
+          color: color,
+          colors: ProgressColors.of(context),
+        ),
+      ),
     );
   }
 }
 
 class _RadarChartPainter extends CustomPainter {
+  final ProgressColors colors;
   final List<ScoreDimension> dimensions;
   final List<String> emojis;
   final Color color;
 
-  _RadarChartPainter({required this.dimensions, required this.emojis, required this.color});
+  _RadarChartPainter({
+    required this.dimensions,
+    required this.emojis,
+    required this.color,
+    required this.colors,
+  });
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -340,7 +483,7 @@ class _RadarChartPainter extends CustomPainter {
     }
 
     final ringPaint = Paint()
-      ..color = const Color(0xFFEEF0FA)
+      ..color = colors.guide(const Color(0xFFEEF0FA))
       ..style = PaintingStyle.stroke
       ..strokeWidth = 1;
     for (final ring in [0.25, 0.5, 0.75, 1.0]) {
@@ -388,5 +531,9 @@ class _RadarChartPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(covariant _RadarChartPainter old) => old.dimensions != dimensions || old.color != color;
+  bool shouldRepaint(covariant _RadarChartPainter old) =>
+      old.dimensions != dimensions ||
+      old.color != color ||
+      old.emojis != emojis ||
+      old.colors.isDark != colors.isDark;
 }

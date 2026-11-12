@@ -41,16 +41,16 @@ String _weekdayDateLabel(DateTime d) {
   return '${wd[d.weekday - 1]}, ${mo[d.month - 1]} ${d.day}';
 }
 
-InputDecoration _fieldDecoration(String hint) => InputDecoration(
+InputDecoration _fieldDecoration(BuildContext context, String hint) => InputDecoration(
       hintText: hint,
       isDense: true,
-      hintStyle: const TextStyle(fontSize: 12, color: Color(0xFF9AA1C7)),
+      hintStyle: TextStyle(fontSize: 12, color: AppColors.of(context).muted),
       contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
       filled: true,
-      fillColor: const Color(0xFFF7F8FF),
-      border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: const BorderSide(color: Color(0xFFDFE5F7))),
-      enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: const BorderSide(color: Color(0xFFDFE5F7))),
-      focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: const BorderSide(color: AppColors.brand)),
+      fillColor: AppColors.of(context).background,
+      border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide(color: AppColors.of(context).line)),
+      enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide(color: AppColors.of(context).line)),
+      focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide(color: AppColors.of(context).accent)),
     );
 
 /// Calendar — mirrors the web app's month-grid Calendar page exactly
@@ -301,7 +301,7 @@ class _MonthCard extends StatelessWidget {
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(color: AppColors.card, borderRadius: BorderRadius.circular(14), border: Border.all(color: AppColors.line)),
+      decoration: BoxDecoration(color: AppColors.of(context).card, borderRadius: BorderRadius.circular(14), border: Border.all(color: AppColors.of(context).line)),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -309,12 +309,14 @@ class _MonthCard extends StatelessWidget {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               _NavButton(icon: Icons.chevron_left_rounded, onTap: onPrev),
-              Column(
-                children: [
-                  Text(_monthYearLabel(viewMonth), style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: Color(0xFF1F2340))),
-                  const SizedBox(height: 4),
-                  _TodayButton(onTap: onToday),
-                ],
+              Expanded(
+                child: Column(
+                  children: [
+                    Text(_monthYearLabel(viewMonth), textAlign: TextAlign.center, style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: AppColors.of(context).text)),
+                    const SizedBox(height: 4),
+                    _TodayButton(onTap: onToday),
+                  ],
+                ),
               ),
               _NavButton(icon: Icons.chevron_right_rounded, onTap: onNext),
             ],
@@ -323,7 +325,7 @@ class _MonthCard extends StatelessWidget {
           Row(
             children: [
               for (final l in dayLabels)
-                Expanded(child: Center(child: Text(l, style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: Color(0xFF8A8FAE))))),
+                Expanded(child: Center(child: Text(l, style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: AppColors.of(context).muted)))),
             ],
           ),
           const SizedBox(height: 4),
@@ -348,23 +350,23 @@ class _MonthCard extends StatelessWidget {
             },
           ),
           const SizedBox(height: 10),
-          Divider(height: 1, color: AppColors.line),
+          Divider(height: 1, color: AppColors.of(context).line),
           const SizedBox(height: 10),
           Text(
             isSelectedToday ? 'Today' : _weekdayDateLabel(DateTime.parse(selectedDate)),
-            style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: AppColors.text),
+            style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: AppColors.of(context).text),
           ),
           const SizedBox(height: 6),
           if (selectedEvents.isEmpty)
-            Text('No events on this day.', style: TextStyle(color: AppColors.muted, fontSize: 12))
+            Text('No events on this day.', style: TextStyle(color: AppColors.of(context).muted, fontSize: 12))
           else
             for (final e in selectedEvents)
               Padding(
                 padding: const EdgeInsets.symmetric(vertical: 2),
-                child: Text('• ${e.title}', style: const TextStyle(fontSize: 12, color: Color(0xFF374151))),
+                child: Text('• ${e.title}', style: TextStyle(fontSize: 12, color: AppColors.of(context).text)),
               ),
           const SizedBox(height: 12),
-          TextField(controller: titleCtrl, decoration: _fieldDecoration('Event title')),
+          TextField(controller: titleCtrl, decoration: _fieldDecoration(context, 'Event title')),
           const SizedBox(height: 6),
           InkWell(
             borderRadius: BorderRadius.circular(8),
@@ -372,16 +374,16 @@ class _MonthCard extends StatelessWidget {
             child: Container(
               width: double.infinity,
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
-              decoration: BoxDecoration(color: const Color(0xFFF7F8FF), borderRadius: BorderRadius.circular(8), border: Border.all(color: const Color(0xFFDFE5F7))),
+              decoration: BoxDecoration(color: AppColors.of(context).background, borderRadius: BorderRadius.circular(8), border: Border.all(color: AppColors.of(context).line)),
               child: Text(
                 newDate != null ? _slashDate(newDate!) : 'Select date',
-                style: const TextStyle(fontSize: 12, color: Color(0xFF42528A)),
+                style: TextStyle(fontSize: 12, color: AppColors.of(context).muted),
               ),
             ),
           ),
           const SizedBox(height: 8),
           _FramedButton(label: adding ? 'Adding...' : 'Add Event', onTap: adding ? null : onAdd, fullWidth: true),
-          if (note != null) Padding(padding: const EdgeInsets.only(top: 6), child: Text(note!, style: const TextStyle(fontSize: 10, color: Color(0xFF5F6790)))),
+          if (note != null) Padding(padding: const EdgeInsets.only(top: 6), child: Text(note!, style: TextStyle(fontSize: 10, color: AppColors.of(context).muted))),
         ],
       ),
     );
@@ -403,8 +405,8 @@ class _NavButton extends StatelessWidget {
         width: 32,
         height: 32,
         alignment: Alignment.center,
-        decoration: BoxDecoration(color: const Color(0xFFF5F3FF), borderRadius: BorderRadius.circular(10), border: _frame3dBorder(), boxShadow: _frame3dShadow()),
-        child: Icon(icon, size: 18, color: const Color(0xFF4B3FA8)),
+        decoration: BoxDecoration(color: AppColors.of(context).brandSoft, borderRadius: BorderRadius.circular(10), border: _frame3dBorder(), boxShadow: _frame3dShadow()),
+        child: Icon(icon, size: 18, color: AppColors.of(context).accent),
       ),
     );
   }
@@ -422,8 +424,8 @@ class _TodayButton extends StatelessWidget {
       onTap: onTap,
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-        decoration: BoxDecoration(color: const Color(0xFFF5F3FF), borderRadius: BorderRadius.circular(999), border: _frame3dBorder(), boxShadow: _frame3dShadow()),
-        child: const Text('Today', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: Color(0xFF4B3FA8))),
+        decoration: BoxDecoration(color: AppColors.of(context).brandSoft, borderRadius: BorderRadius.circular(999), border: _frame3dBorder(), boxShadow: _frame3dShadow()),
+        child: Text('Today', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: AppColors.of(context).accent)),
       ),
     );
   }
@@ -441,15 +443,15 @@ class _DayCell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    Color bg = const Color(0xFFF7F7FB);
-    Color fg = const Color(0xFF374151);
+    Color bg = AppColors.of(context).background;
+    Color fg = AppColors.of(context).text;
     FontWeight weight = FontWeight.w600;
     if (isSelected) {
       bg = AppColors.brand;
       fg = Colors.white;
     } else if (isToday) {
-      bg = const Color(0xFFEEF0FF);
-      fg = const Color(0xFF4338CA);
+      bg = AppColors.of(context).brandSoft;
+      fg = AppColors.of(context).accent;
       weight = FontWeight.w800;
     }
     return InkWell(
@@ -514,14 +516,14 @@ class _UpcomingEventsCard extends StatelessWidget {
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(color: AppColors.card, borderRadius: BorderRadius.circular(14), border: Border.all(color: AppColors.line)),
+      decoration: BoxDecoration(color: AppColors.of(context).card, borderRadius: BorderRadius.circular(14), border: Border.all(color: AppColors.of(context).line)),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Text('📌 Upcoming Events', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700)),
           const SizedBox(height: 10),
           if (upcoming.isEmpty)
-            Text('No upcoming events. Add one from the calendar!', style: TextStyle(color: AppColors.muted, fontSize: 12))
+            Text('No upcoming events. Add one from the calendar!', style: TextStyle(color: AppColors.of(context).muted, fontSize: 12))
           else
             for (final e in upcoming) ...[
               _UpcomingEventRow(
@@ -575,19 +577,19 @@ class _UpcomingEventRow extends StatelessWidget {
       return Container(
         width: double.infinity,
         padding: const EdgeInsets.all(10),
-        decoration: BoxDecoration(color: const Color(0xFFF0EDFF), borderRadius: BorderRadius.circular(12)),
+        decoration: BoxDecoration(color: AppColors.of(context).brandSoft, borderRadius: BorderRadius.circular(12)),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            TextField(controller: editTitleCtrl, decoration: _fieldDecoration('Event title')),
+            TextField(controller: editTitleCtrl, decoration: _fieldDecoration(context, 'Event title')),
             const SizedBox(height: 6),
             InkWell(
               borderRadius: BorderRadius.circular(8),
               onTap: onPickDate,
               child: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
-                decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(8), border: Border.all(color: const Color(0xFFDFE5F7))),
-                child: Text(editDate != null ? _slashDate(editDate!) : 'Select date', style: const TextStyle(fontSize: 12, color: Color(0xFF42528A))),
+                decoration: BoxDecoration(color: AppColors.of(context).card, borderRadius: BorderRadius.circular(8), border: Border.all(color: AppColors.of(context).line)),
+                child: Text(editDate != null ? _slashDate(editDate!) : 'Select date', style: TextStyle(fontSize: 12, color: AppColors.of(context).muted)),
               ),
             ),
             const SizedBox(height: 8),
@@ -609,20 +611,20 @@ class _UpcomingEventRow extends StatelessWidget {
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-      decoration: BoxDecoration(color: const Color(0xFFF7F7FB), borderRadius: BorderRadius.circular(12)),
+      decoration: BoxDecoration(color: AppColors.of(context).background, borderRadius: BorderRadius.circular(12)),
       child: Row(
         children: [
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(event.title, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: Color(0xFF1F2340))),
+                Text(event.title, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: AppColors.of(context).text)),
                 const SizedBox(height: 2),
                 Text(
                   isToday ? 'Today' : (d != null ? _weekdayShortLabel(d) : ''),
                   style: TextStyle(
                     fontSize: 11,
-                    color: isToday ? const Color(0xFF4338CA) : const Color(0xFF8A8FAE),
+                    color: isToday ? AppColors.of(context).accent : AppColors.of(context).muted,
                     fontWeight: isToday ? FontWeight.w700 : FontWeight.normal,
                   ),
                 ),
@@ -657,12 +659,12 @@ class _FramedButton extends StatelessWidget {
         alignment: Alignment.center,
         padding: const EdgeInsets.symmetric(vertical: 10),
         decoration: BoxDecoration(
-          color: const Color(0xFFECEBFF),
+          color: AppColors.of(context).brandSoft,
           borderRadius: BorderRadius.circular(8),
           border: _frame3dBorder(),
           boxShadow: onTap == null ? null : _frame3dShadow(),
         ),
-        child: Text(label, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Color(0xFF3F41A8))),
+        child: Text(label, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: AppColors.of(context).accent)),
       ),
     );
   }
@@ -686,14 +688,14 @@ class _FramedIconButton extends StatelessWidget {
         height: 32,
         alignment: Alignment.center,
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: AppColors.of(context).card,
           borderRadius: BorderRadius.circular(9),
           border: _frame3dBorder(),
           boxShadow: onTap == null ? null : _frame3dShadow(),
         ),
         child: busy
             ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2))
-            : Icon(icon, size: 15, color: const Color(0xFF3F41A8)),
+            : Icon(icon, size: 15, color: AppColors.of(context).accent),
       ),
     );
   }

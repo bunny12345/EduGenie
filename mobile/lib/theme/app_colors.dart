@@ -3,12 +3,20 @@ import 'package:flutter/material.dart';
 /// Design tokens ported from `web/src/App.css` (`:root` custom properties).
 /// Keep these in sync with the web palette — do not invent new brand colors.
 ///
-/// Surface/text tokens (`background`/`text`/`muted`/`card`/`line`/`brandSoft`)
-/// are dynamic — they flip when [AppColors.isDark] changes (set by
-/// `themeModeProvider`, driven by the student app's Settings > Toggle Theme).
-/// Brand/status accent colors stay the same in both modes, same as web.
+/// Widgets resolve surface/text tokens through [AppColors.of] so inherited
+/// theme changes rebuild them. Legacy static getters remain for compatibility.
+/// Brand/status fill colors stay the same in both modes, same as web.
 class AppColors {
   AppColors._();
+
+  static AppPalette of(BuildContext context) =>
+      AppPalette(Theme.of(context).brightness == Brightness.dark);
+
+  static Color readableAccent(Color color, {required bool dark}) {
+    if (!dark) return color;
+    final hsl = HSLColor.fromColor(color);
+    return hsl.withLightness(hsl.lightness.clamp(0.72, 1.0)).toColor();
+  }
 
   /// Kept in sync with `themeModeProvider` — do not set directly, use
   /// `ref.read(themeModeProvider.notifier).set(...)` instead so the rest of
@@ -56,6 +64,22 @@ class AppColors {
   static const Color danger = Color(0xFFFF5D6C);
 }
 
+/// Resolves colors from the inherited theme and rebuilds const consumers on toggle.
+class AppPalette {
+  final bool isDark;
+  const AppPalette(this.isDark);
+
+  Color get background =>
+      isDark ? AppColors.backgroundDark : AppColors.backgroundLight;
+  Color get text => isDark ? AppColors.textDark : AppColors.textLight;
+  Color get muted => isDark ? AppColors.mutedDark : AppColors.mutedLight;
+  Color get card => isDark ? AppColors.cardDark : AppColors.cardLight;
+  Color get line => isDark ? AppColors.lineDark : AppColors.lineLight;
+  Color get brandSoft =>
+      isDark ? AppColors.brandSoftDark : AppColors.brandSoftLight;
+  Color get accent => isDark ? const Color(0xFFB7ABFF) : AppColors.brand;
+}
+
 /// Per-subject accent colors — mirrors the `SubjectIcon` stroke colors in
 /// `web/src/components/StudentDashboard.jsx`. Keep subject → color mapping
 /// identical to web so a subject looks the same on both platforms.
@@ -67,14 +91,20 @@ class SubjectPalette {
   static Color colorFor(String subject) {
     final s = subject.trim().toLowerCase();
     if (s.contains('math')) return const Color(0xFF5B47FF);
-    if (s.contains('science') || s.contains('physics') || s.contains('chemistry')) {
+    if (s.contains('science') ||
+        s.contains('physics') ||
+        s.contains('chemistry')) {
       return const Color(0xFF10B981);
     }
     if (s.contains('bio')) return const Color(0xFF22C55E);
-    if (s.contains('english') || s.contains('language') || s.contains('literature')) {
+    if (s.contains('english') ||
+        s.contains('language') ||
+        s.contains('literature')) {
       return const Color(0xFFF59E0B);
     }
-    if (s.contains('history') || s.contains('social')) return const Color(0xFF8B5CF6);
+    if (s.contains('history') || s.contains('social')) {
+      return const Color(0xFF8B5CF6);
+    }
     if (s.contains('hindi') ||
         s.contains('telugu') ||
         s.contains('sanskrit') ||
@@ -84,7 +114,9 @@ class SubjectPalette {
       return const Color(0xFFEC4899);
     }
     if (s.contains('geo')) return const Color(0xFF06B6D4);
-    if (s.contains('computer') || s.contains('coding') || s.contains('programming')) {
+    if (s.contains('computer') ||
+        s.contains('coding') ||
+        s.contains('programming')) {
       return const Color(0xFF3B82F6);
     }
     if (s.contains('art') || s.contains('draw')) return const Color(0xFFF97316);

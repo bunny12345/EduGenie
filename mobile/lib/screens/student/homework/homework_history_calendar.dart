@@ -1,7 +1,23 @@
 import 'package:flutter/material.dart';
 
 import '../../../models/homework_item.dart';
+import '../../../theme/app_colors.dart';
 import 'homework_state.dart';
+
+class HomeworkColors {
+  final AppPalette palette;
+  HomeworkColors.of(BuildContext context) : palette = AppColors.of(context);
+
+  Color text(Color light) => palette.isDark ? palette.text : light;
+  Color muted(Color light) => palette.isDark ? palette.muted : light;
+  Color background(Color light) => palette.isDark ? palette.background : light;
+  Color surface(Color light) => palette.isDark
+      ? Color.alphaBlend(light.withValues(alpha: 0.06), palette.card)
+      : light;
+  Color line(Color light) => palette.isDark ? palette.line : light;
+  Color accent(Color light) =>
+      AppColors.readableAccent(light, dark: palette.isDark);
+}
 
 class DayStatus {
   int all = 0;
@@ -69,15 +85,15 @@ class HomeworkHistoryCalendar extends StatelessWidget {
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            IconButton(onPressed: onPrevMonth, icon: const Icon(Icons.chevron_left_rounded), color: const Color(0xFF475569), visualDensity: VisualDensity.compact),
-            Text(monthLabel, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: Color(0xFF334155))),
-            IconButton(onPressed: onNextMonth, icon: const Icon(Icons.chevron_right_rounded), color: const Color(0xFF475569), visualDensity: VisualDensity.compact),
+            IconButton(onPressed: onPrevMonth, icon: const Icon(Icons.chevron_left_rounded), color: HomeworkColors.of(context).muted(const Color(0xFF475569)), visualDensity: VisualDensity.compact),
+            Text(monthLabel, style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: HomeworkColors.of(context).text(Color(0xFF334155)))),
+            IconButton(onPressed: onNextMonth, icon: const Icon(Icons.chevron_right_rounded), color: HomeworkColors.of(context).muted(const Color(0xFF475569)), visualDensity: VisualDensity.compact),
           ],
         ),
         Row(
           children: [
             for (final l in dayLabels)
-              Expanded(child: Center(child: Text(l, style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: Color(0xFF94A3B8))))),
+              Expanded(child: Center(child: Text(l, style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: HomeworkColors.of(context).muted(Color(0xFF94A3B8)))))),
           ],
         ),
         const SizedBox(height: 2),
@@ -93,15 +109,15 @@ class HomeworkHistoryCalendar extends StatelessWidget {
             final info = dateStatusMap[iso];
             final isSelected = selectedDate == iso;
             Color bg = Colors.transparent;
-            Color color = const Color(0xFF374151);
+            Color color = HomeworkColors.of(context).text(const Color(0xFF374151));
             FontWeight weight = FontWeight.normal;
             if (info != null) {
               if (info.submitted == info.all) {
-                bg = isSelected ? const Color(0xFF15803D) : const Color(0xFFDCFCE7);
-                color = isSelected ? Colors.white : const Color(0xFF15803D);
+                bg = isSelected ? const Color(0xFF15803D) : HomeworkColors.of(context).surface(Color(0xFFDCFCE7));
+                color = isSelected ? Colors.white : HomeworkColors.of(context).accent(const Color(0xFF15803D));
               } else {
-                bg = isSelected ? const Color(0xFFB91C1C) : const Color(0xFFFEE2E2);
-                color = isSelected ? Colors.white : const Color(0xFFB91C1C);
+                bg = isSelected ? const Color(0xFFB91C1C) : HomeworkColors.of(context).surface(Color(0xFFFEE2E2));
+                color = isSelected ? Colors.white : HomeworkColors.of(context).accent(const Color(0xFFB91C1C));
               }
               weight = FontWeight.w700;
             } else if (isSelected) {
@@ -125,9 +141,9 @@ class HomeworkHistoryCalendar extends StatelessWidget {
           spacing: 12,
           runSpacing: 4,
           children: [
-            _legendDot(const Color(0xFFDCFCE7), const Color(0xFF15803D), 'All submitted'),
-            _legendDot(const Color(0xFFFEE2E2), const Color(0xFFB91C1C), 'Not submitted'),
-            _legendDot(const Color(0xFFF3F4F6), const Color(0xFF374151), 'No homework'),
+            _legendDot(HomeworkColors.of(context).surface(const Color(0xFFDCFCE7)), HomeworkColors.of(context).accent(const Color(0xFF15803D)), 'All submitted'),
+            _legendDot(HomeworkColors.of(context).surface(const Color(0xFFFEE2E2)), HomeworkColors.of(context).accent(const Color(0xFFB91C1C)), 'Not submitted'),
+            _legendDot(HomeworkColors.of(context).surface(const Color(0xFFF3F4F6)), HomeworkColors.of(context).text(const Color(0xFF374151)), 'No homework'),
           ],
         ),
       ],

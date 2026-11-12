@@ -35,7 +35,7 @@ class StudentAnnouncementsScreen extends ConsumerWidget {
               return ListView(
                 padding: const EdgeInsets.all(16),
                 children: [
-                  SectionCard(child: Text('No announcements yet.', style: TextStyle(color: AppColors.muted, fontSize: 13))),
+                  SectionCard(child: Text('No announcements yet.', style: TextStyle(color: AppColors.of(context).muted, fontSize: 13))),
                 ],
               );
             }
@@ -63,19 +63,19 @@ class _AnnouncementCard extends StatelessWidget {
       margin: const EdgeInsets.only(bottom: 10),
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: AppColors.card,
+        color: AppColors.of(context).card,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppColors.line),
+        border: Border.all(color: AppColors.of(context).line),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(item.title, style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: AppColors.text)),
+          Text(item.title, style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: AppColors.of(context).text)),
           const SizedBox(height: 6),
-          Text(item.message, style: TextStyle(fontSize: 12, color: AppColors.muted, height: 1.4)),
+          Text(item.message, style: TextStyle(fontSize: 12, color: AppColors.of(context).muted, height: 1.4)),
           if (item.createdAt != null && item.createdAt!.isNotEmpty) ...[
             const SizedBox(height: 6),
-            Text(item.createdAt!, style: const TextStyle(fontSize: 10, color: Color(0xFF9AA1C7))),
+            Text(item.createdAt!, style: TextStyle(fontSize: 10, color: AppColors.of(context).muted)),
           ],
         ],
       ),

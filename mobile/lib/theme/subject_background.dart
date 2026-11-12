@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'app_colors.dart';
 
 /// Per-subject page-background theme — ported 1:1 from the `PALETTES` map and
 /// `getPalette()` in `web/src/components/SubjectBackground.jsx`, so the
@@ -125,9 +126,21 @@ class SubjectBackground extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final palette = subjectBgPalette(subject);
-    return IgnorePointer(
-      child: Positioned.fill(
+    final light = subjectBgPalette(subject);
+    final colors = AppColors.of(context);
+    final palette = colors.isDark
+        ? SubjectBgPalette(
+            bg: Color.alphaBlend(
+              light.accent.withValues(alpha: 0.06),
+              colors.background,
+            ),
+            fill: light.accent.withValues(alpha: 0.2),
+            stroke: light.stroke,
+            accent: light.accent,
+          )
+        : light;
+    return Positioned.fill(
+      child: IgnorePointer(
         child: CustomPaint(painter: _SubjectBackgroundPainter(palette)),
       ),
     );
@@ -166,5 +179,5 @@ class _SubjectBackgroundPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant _SubjectBackgroundPainter old) =>
-      old.palette != palette;
+      old.palette.bg != palette.bg || old.palette.fill != palette.fill;
 }

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../theme/app_colors.dart';
 
 /// Provides one shared, looping animation to every [SkeletonBlock] beneath
 /// it, so each placeholder card/panel shimmers independently but perfectly
@@ -66,7 +67,9 @@ class SkeletonBlock extends StatelessWidget {
             return LinearGradient(
               begin: Alignment(-1, sweep - 0.5),
               end: Alignment(1, sweep + 0.5),
-              colors: const [Color(0xFFE2E2EE), Color(0xFFF8F8FC), Color(0xFFE2E2EE)],
+              colors: AppColors.of(context).isDark
+                  ? [AppColors.lineDark, AppColors.cardDark, AppColors.lineDark]
+                  : const [Color(0xFFE2E2EE), Color(0xFFF8F8FC), Color(0xFFE2E2EE)],
               stops: const [0.35, 0.5, 0.65],
             ).createShader(bounds);
           },
@@ -76,7 +79,7 @@ class SkeletonBlock extends StatelessWidget {
       child: Container(
         width: width,
         height: height,
-        decoration: BoxDecoration(color: const Color(0xFFE2E2EE), borderRadius: BorderRadius.circular(radius)),
+        decoration: BoxDecoration(color: AppColors.of(context).isDark ? AppColors.lineDark : const Color(0xFFE2E2EE), borderRadius: BorderRadius.circular(radius)),
       ),
     );
   }
@@ -97,7 +100,7 @@ class SkeletonCard extends StatelessWidget {
     return Container(
       width: double.infinity,
       padding: padding,
-      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(18), boxShadow: const [
+      decoration: BoxDecoration(color: AppColors.of(context).card, borderRadius: BorderRadius.circular(18), boxShadow: const [
         BoxShadow(color: Color(0x0F1F2340), blurRadius: 14, offset: Offset(0, 4)),
       ]),
       child: child,

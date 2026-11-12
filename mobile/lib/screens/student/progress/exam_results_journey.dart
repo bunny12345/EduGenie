@@ -10,6 +10,7 @@ import '../../../state/teacher_providers.dart';
 import '../../../theme/report_card_theme.dart';
 import '../../../widgets/section_card.dart';
 import 'exam_journey_data.dart';
+import 'progress_helpers.dart';
 
 class ExamResultsJourneyPanel extends ConsumerStatefulWidget {
   final String? studentId;
@@ -91,7 +92,8 @@ class _ExamResultsJourneyState extends State<ExamResultsJourney> {
   String _subject = '';
   String? _selectedId;
   static const _purple = Color(0xFF6355DC);
-  static const _muted = Color(0xFF827A95);
+  ProgressColors get _colors => ProgressColors.of(context);
+  Color get _muted => _colors.muted(const Color(0xFF827A95));
 
   @override
   Widget build(BuildContext context) {
@@ -127,61 +129,65 @@ class _ExamResultsJourneyState extends State<ExamResultsJourney> {
     return Container(
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
-        gradient: const LinearGradient(
+        gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: [Color(0xFFF3F0FF), Colors.white, Color(0xFFF4FCF9)],
+          colors: [
+            _colors.tint(const Color(0xFFF3F0FF)),
+            _colors.surface(Colors.white),
+            _colors.tint(const Color(0xFFF4FCF9)),
+          ],
         ),
-        border: Border.all(color: const Color(0xFFE1DEF7)),
+        border: Border.all(color: _colors.line(const Color(0xFFE1DEF7))),
         borderRadius: BorderRadius.circular(22),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          const Text(
+          Text(
             'YOUR REPORT-CARD STORY',
             style: TextStyle(
               fontSize: 9,
               letterSpacing: 1.6,
               fontWeight: FontWeight.w800,
-              color: Color(0xFF7562BE),
+              color: _colors.accent(const Color(0xFF7562BE)),
             ),
           ),
           const SizedBox(height: 8),
-          const Text(
+          Text(
             'Exam Results Journey',
             style: TextStyle(
               fontSize: 21,
               fontWeight: FontWeight.w800,
-              color: Color(0xFF242342),
+              color: _colors.text(const Color(0xFF242342)),
             ),
           ),
           const SizedBox(height: 6),
-          const Text(
+          Text(
             'From one exam to the next — see what is improving and what needs a little practice.',
             style: TextStyle(fontSize: 12, color: _muted, height: 1.6),
           ),
           const SizedBox(height: 10),
           Text(
             '${points.length} released ${points.length == 1 ? 'exam' : 'exams'}',
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 11,
-              color: _purple,
+              color: _colors.accent(_purple),
               fontWeight: FontWeight.w700,
             ),
           ),
           if (points.isEmpty)
-            const Padding(
-              padding: EdgeInsets.symmetric(vertical: 30),
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 30),
               child: Column(
                 children: [
-                  Text('📈', style: TextStyle(fontSize: 36)),
-                  SizedBox(height: 12),
-                  Text(
+                  const Text('📈', style: TextStyle(fontSize: 36)),
+                  const SizedBox(height: 12),
+                  const Text(
                     'Your exam story starts here',
                     style: TextStyle(fontWeight: FontWeight.w800),
                   ),
-                  SizedBox(height: 8),
+                  const SizedBox(height: 8),
                   Text(
                     'When all subject marks are ready and your report card is released, your first exam appears here. Each new exam adds a point.',
                     textAlign: TextAlign.center,
@@ -250,7 +256,7 @@ class _ExamResultsJourneyState extends State<ExamResultsJourney> {
               style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800),
             ),
             const SizedBox(height: 5),
-            const Text(
+            Text(
               '↑ Higher · ↓ Lower · → Same · Swipe to see every exam',
               style: TextStyle(fontSize: 10, color: _muted),
             ),
@@ -264,7 +270,7 @@ class _ExamResultsJourneyState extends State<ExamResultsJourney> {
                   setState(() => _selectedId = points[i].card.examId),
             ),
             const SizedBox(height: 10),
-            const Text(
+            Text(
               'Tap an exam to explore its marks. Oldest to newest, in exam creation order. New released results are checked every minute.',
               style: TextStyle(fontSize: 10, color: _muted, height: 1.6),
             ),
@@ -272,16 +278,18 @@ class _ExamResultsJourneyState extends State<ExamResultsJourney> {
             Container(
               padding: const EdgeInsets.all(14),
               decoration: BoxDecoration(
-                color: Colors.white,
+                color: _colors.surface(Colors.white),
                 borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: const Color(0xFFE9E5F4)),
+                border: Border.all(
+                  color: _colors.line(const Color(0xFFE9E5F4)),
+                ),
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   Text(
                     'EXAM ${index + 1} · SELECTED REPORT CARD',
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 9,
                       color: _muted,
                       letterSpacing: 1,
@@ -302,7 +310,7 @@ class _ExamResultsJourneyState extends State<ExamResultsJourney> {
                         : selectedSubject == null
                         ? '$name · Subject not included'
                         : '$name · ${formatMarks(selectedSubject.marks)}/${formatMarks(selectedSubject.maxMarks)} marks',
-                    style: const TextStyle(fontSize: 11, color: _muted),
+                    style: TextStyle(fontSize: 11, color: _muted),
                   ),
                   const SizedBox(height: 8),
                   Text(
@@ -313,9 +321,9 @@ class _ExamResultsJourneyState extends State<ExamResultsJourney> {
                       ),
                       missing: values[index] == null,
                     ),
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 12,
-                      color: _purple,
+                      color: _colors.accent(_purple),
                       fontWeight: FontWeight.w700,
                     ),
                   ),
@@ -332,7 +340,7 @@ class _ExamResultsJourneyState extends State<ExamResultsJourney> {
               ),
             ),
             const SizedBox(height: 14),
-            const Text(
+            Text(
               'Fair comparisons: 20/25 = 40/50 = 80/100 = 80%. Overall = total marks earned ÷ total possible × 100. “pp” means percentage points. Missing subjects are gaps, never zero marks. This is separate from Learning Power.',
               style: TextStyle(fontSize: 10, color: _muted, height: 1.7),
             ),
@@ -350,25 +358,25 @@ class _ExamResultsJourneyState extends State<ExamResultsJourney> {
   }) => Container(
     padding: const EdgeInsets.all(14),
     decoration: BoxDecoration(
-      color: Colors.white,
+      color: _colors.surface(Colors.white),
       borderRadius: BorderRadius.circular(14),
-      border: Border.all(color: const Color(0xFFEAE7F4)),
+      border: Border.all(color: _colors.line(const Color(0xFFEAE7F4))),
     ),
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(label, style: const TextStyle(fontSize: 10, color: _muted)),
+        Text(label, style: TextStyle(fontSize: 10, color: _muted)),
         const SizedBox(height: 6),
         Text(
           value,
           style: TextStyle(
             fontSize: 22,
-            color: tone,
+            color: _colors.accent(tone),
             fontWeight: FontWeight.w800,
           ),
         ),
         const SizedBox(height: 5),
-        Text(detail, style: const TextStyle(fontSize: 10, color: _muted)),
+        Text(detail, style: TextStyle(fontSize: 10, color: _muted)),
       ],
     ),
   );
@@ -386,7 +394,7 @@ class _ExamResultsJourneyState extends State<ExamResultsJourney> {
                 row.subject,
                 style: TextStyle(
                   fontSize: 12,
-                  color: theme.dark,
+                  color: _colors.accent(theme.dark),
                   fontWeight: FontWeight.w700,
                 ),
               ),
@@ -404,13 +412,13 @@ class _ExamResultsJourneyState extends State<ExamResultsJourney> {
             value: value / 100,
             minHeight: 5,
             color: theme.color,
-            backgroundColor: const Color(0xFFF0EEF6),
+            backgroundColor: _colors.line(const Color(0xFFF0EEF6)),
           ),
         ),
         const SizedBox(height: 6),
         Text(
           '${formatMarks(row.marks)}/${formatMarks(row.maxMarks)} marks · ${_changeLabel(examChange(value, previous))}',
-          style: const TextStyle(fontSize: 10, color: _muted),
+          style: TextStyle(fontSize: 10, color: _muted),
         ),
       ],
     );
@@ -443,6 +451,7 @@ class ExamJourneyChart extends StatelessWidget {
   @override
   Widget build(BuildContext context) => LayoutBuilder(
     builder: (context, constraints) {
+      final colors = ProgressColors.of(context);
       final width = math.max(constraints.maxWidth, points.length * 130.0 + 80);
       final values = points.map((point) => point.value(subject)).toList();
       double x(int index) => points.length == 1
@@ -457,7 +466,7 @@ class ExamJourneyChart extends StatelessWidget {
             children: [
               Positioned.fill(
                 child: CustomPaint(
-                  painter: _ExamPainter(values, selectedIndex, color),
+                  painter: _ExamPainter(values, selectedIndex, color, colors),
                 ),
               ),
               for (var i = 0; i < points.length; i++)
@@ -487,8 +496,8 @@ class ExamJourneyChart extends StatelessWidget {
                               style: TextStyle(
                                 fontSize: 10,
                                 color: selectedIndex == i
-                                    ? color
-                                    : const Color(0xFF777087),
+                                    ? colors.accent(color)
+                                    : colors.muted(const Color(0xFF777087)),
                                 fontWeight: FontWeight.w700,
                               ),
                             ),
@@ -507,11 +516,12 @@ class ExamJourneyChart extends StatelessWidget {
 }
 
 class _ExamPainter extends CustomPainter {
+  final ProgressColors colors;
   final List<double?> values;
   final int selectedIndex;
   final Color color;
 
-  _ExamPainter(this.values, this.selectedIndex, this.color);
+  _ExamPainter(this.values, this.selectedIndex, this.color, this.colors);
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -525,7 +535,9 @@ class _ExamPainter extends CustomPainter {
           text: text,
           style: TextStyle(
             fontSize: 10,
-            color: tone ?? const Color(0xFF827A95),
+            color: tone == null
+                ? colors.muted(const Color(0xFF827A95))
+                : colors.accent(tone),
           ),
         ),
         textDirection: TextDirection.ltr,
@@ -537,7 +549,7 @@ class _ExamPainter extends CustomPainter {
       canvas.drawLine(
         Offset(40, y(value)),
         Offset(size.width - 20, y(value)),
-        Paint()..color = const Color(0xFFECEAF3),
+        Paint()..color = colors.guide(const Color(0xFFECEAF3)),
       );
       label('${value.toInt()}%', 18, y(value) - 6);
     }
@@ -567,13 +579,13 @@ class _ExamPainter extends CustomPainter {
         canvas.drawLine(
           Offset(x(i), 40),
           Offset(x(i), 230),
-          Paint()..color = color.withValues(alpha: .15),
+          Paint()..color = color.withValues(alpha: colors.isDark ? .4 : .15),
         );
       }
       canvas.drawCircle(
         Offset(x(i), y(value)),
         i == selectedIndex ? 7 : 5,
-        Paint()..color = Colors.white,
+        Paint()..color = colors.surface(Colors.white),
       );
       canvas.drawCircle(
         Offset(x(i), y(value)),

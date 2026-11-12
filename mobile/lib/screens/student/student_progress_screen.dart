@@ -44,11 +44,12 @@ class _StudentProgressScreenState extends ConsumerState<StudentProgressScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final colors = ProgressColors.of(context);
     final dataAsync = ref.watch(learningScoreProvider);
     final greetingName = ref.watch(dashboardProvider).value?.greetingName;
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF7F7FC),
+      backgroundColor: colors.background(const Color(0xFFF7F7FC)),
       appBar: AppBar(
         title: const Text('My Learning Report'),
         actions: [
@@ -76,10 +77,10 @@ class _StudentProgressScreenState extends ConsumerState<StudentProgressScreen> {
                 padding: const EdgeInsets.symmetric(vertical: 40),
                 child: Column(
                   children: [
-                    const Text(
+                    Text(
                       'Could not load your progress right now.',
                       style: TextStyle(
-                        color: Color(0xFF6B7194),
+                        color: colors.muted(const Color(0xFF6B7194)),
                         fontWeight: FontWeight.w600,
                       ),
                     ),
@@ -135,6 +136,7 @@ class LearningReportBody extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = ProgressColors.of(context);
     final level = levelFace(data.score);
     final activeTrend = trendView == 'daily' ? data.dailyTrend : data.trend;
 
@@ -145,7 +147,10 @@ class LearningReportBody extends StatelessWidget {
         children: [
           Text(
             'A fun, simple picture of how ${greetingName ?? 'you'} ${greetingName != null ? 'is' : 'are'} growing — not just marks.',
-            style: const TextStyle(fontSize: 12.5, color: Color(0xFF6B7194)),
+            style: TextStyle(
+              fontSize: 12.5,
+              color: colors.muted(const Color(0xFF6B7194)),
+            ),
           ),
           const SizedBox(height: 14),
           if (data.alert != null) _AlertBanner(alert: data.alert!),
@@ -186,17 +191,20 @@ class LearningReportBody extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text(
+                Text(
                   '🌟 What makes up my score',
                   style: TextStyle(
                     fontSize: 15.5,
                     fontWeight: FontWeight.w800,
-                    color: Color(0xFF1E2140),
+                    color: colors.text(const Color(0xFF1E2140)),
                   ),
                 ),
-                const Text(
+                Text(
                   'Nine skills that show real learning',
-                  style: TextStyle(fontSize: 11.5, color: Color(0xFF8B90AD)),
+                  style: TextStyle(
+                    fontSize: 11.5,
+                    color: colors.muted(const Color(0xFF8B90AD)),
+                  ),
                 ),
                 const SizedBox(height: 12),
                 Center(
@@ -212,12 +220,12 @@ class LearningReportBody extends StatelessWidget {
                         diameter: 220,
                       ),
                       const SizedBox(height: 6),
-                      const Text(
+                      Text(
                         'The bigger the shape, the stronger you are all-round.',
                         textAlign: TextAlign.center,
                         style: TextStyle(
                           fontSize: 11.5,
-                          color: Color(0xFF8B90AD),
+                          color: colors.muted(const Color(0xFF8B90AD)),
                         ),
                       ),
                     ],
@@ -247,19 +255,22 @@ class LearningReportBody extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text(
+                Text(
                   '⭐ You\'re great at',
                   style: TextStyle(
                     fontSize: 14,
                     fontWeight: FontWeight.w800,
-                    color: Color(0xFF1E2140),
+                    color: colors.text(const Color(0xFF1E2140)),
                   ),
                 ),
                 const SizedBox(height: 6),
                 if (data.strengths.isEmpty)
-                  const Text(
+                  Text(
                     'Keep studying to reveal your superpowers!',
-                    style: TextStyle(fontSize: 12.5, color: Color(0xFF9AA0BD)),
+                    style: TextStyle(
+                      fontSize: 12.5,
+                      color: colors.muted(const Color(0xFF9AA0BD)),
+                    ),
                   )
                 else
                   Wrap(
@@ -276,19 +287,22 @@ class LearningReportBody extends StatelessWidget {
                     ],
                   ),
                 const SizedBox(height: 14),
-                const Text(
+                Text(
                   '🎯 Practise next',
                   style: TextStyle(
                     fontSize: 14,
                     fontWeight: FontWeight.w800,
-                    color: Color(0xFF1E2140),
+                    color: colors.text(const Color(0xFF1E2140)),
                   ),
                 ),
                 const SizedBox(height: 6),
                 if (data.focusAreas.isEmpty)
-                  const Text(
+                  Text(
                     'You\'re nicely balanced right now!',
-                    style: TextStyle(fontSize: 12.5, color: Color(0xFF9AA0BD)),
+                    style: TextStyle(
+                      fontSize: 12.5,
+                      color: colors.muted(const Color(0xFF9AA0BD)),
+                    ),
                   )
                 else
                   Wrap(
@@ -313,17 +327,20 @@ class LearningReportBody extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text(
+                  Text(
                     '🚀 Your next steps',
                     style: TextStyle(
                       fontSize: 15.5,
                       fontWeight: FontWeight.w800,
-                      color: Color(0xFF1E2140),
+                      color: colors.text(const Color(0xFF1E2140)),
                     ),
                   ),
-                  const Text(
+                  Text(
                     'Small steps, big wins',
-                    style: TextStyle(fontSize: 11.5, color: Color(0xFF8B90AD)),
+                    style: TextStyle(
+                      fontSize: 11.5,
+                      color: colors.muted(const Color(0xFF8B90AD)),
+                    ),
                   ),
                   const SizedBox(height: 10),
                   for (var i = 0; i < data.improvements.length; i++)
@@ -334,19 +351,19 @@ class LearningReportBody extends StatelessWidget {
                         children: [
                           Text(
                             '${i + 1}.',
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontSize: 13,
                               fontWeight: FontWeight.w800,
-                              color: Color(0xFF6D5EFC),
+                              color: colors.accent(const Color(0xFF6D5EFC)),
                             ),
                           ),
                           const SizedBox(width: 8),
                           Expanded(
                             child: Text(
                               data.improvements[i],
-                              style: const TextStyle(
+                              style: TextStyle(
                                 fontSize: 13,
-                                color: Color(0xFF4A4F70),
+                                color: colors.text(const Color(0xFF4A4F70)),
                                 height: 1.5,
                               ),
                             ),
@@ -413,13 +430,16 @@ class _AlertBanner extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colors = _bg[alert.level] ?? _bg['info']!;
+    final palette = ProgressColors.of(context);
+    final colors = (_bg[alert.level] ?? _bg['info']!)
+        .map(palette.tint)
+        .toList();
     final icon = alert.level == 'alert'
         ? '⚠️'
         : (alert.level == 'warn'
               ? '🔔'
               : (alert.level == 'good' ? '🎉' : '🚀'));
-    final textColor = _text[alert.level] ?? _text['info']!;
+    final textColor = palette.accent(_text[alert.level] ?? _text['info']!);
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(14),
@@ -429,7 +449,9 @@ class _AlertBanner extends StatelessWidget {
           end: Alignment.bottomRight,
           colors: colors,
         ),
-        border: Border.all(color: _border[alert.level] ?? _border['info']!),
+        border: Border.all(
+          color: palette.line(_border[alert.level] ?? _border['info']!),
+        ),
         borderRadius: BorderRadius.circular(16),
       ),
       child: Row(
@@ -471,15 +493,17 @@ class _AlertBanner extends StatelessWidget {
                             vertical: 3,
                           ),
                           decoration: BoxDecoration(
-                            color: Colors.white.withValues(alpha: 0.7),
+                            color: palette.surface(
+                              Colors.white.withValues(alpha: 0.7),
+                            ),
                             borderRadius: BorderRadius.circular(999),
                           ),
                           child: Text(
                             '${skillMetaFor(d.key, d.label).emoji} ${skillMetaFor(d.key, d.label).name} ${d.delta > 0 ? '+' : ''}${d.delta}%',
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontSize: 11,
                               fontWeight: FontWeight.w700,
-                              color: Color(0xFFDC2626),
+                              color: palette.accent(const Color(0xFFDC2626)),
                             ),
                           ),
                         ),
@@ -512,6 +536,7 @@ class _ScoreCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = ProgressColors.of(context);
     final momentumUp = momentumDelta > 0;
     final momentumDown = momentumDelta < 0;
     final momentumBg = momentumUp
@@ -527,7 +552,7 @@ class _ScoreCard extends StatelessWidget {
             diameter: 160,
             strokeWidth: 13,
             fraction: maxScore > 0 ? score / maxScore : 0,
-            color: color,
+            color: colors.accent(color),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
@@ -541,25 +566,25 @@ class _ScoreCard extends StatelessWidget {
                     letterSpacing: -0.5,
                   ),
                 ),
-                const Text(
+                Text(
                   'out of 1000',
                   style: TextStyle(
                     fontSize: 11,
                     fontWeight: FontWeight.w700,
-                    color: Color(0xFF9AA0BD),
+                    color: colors.muted(const Color(0xFF9AA0BD)),
                   ),
                 ),
               ],
             ),
           ),
           const SizedBox(height: 10),
-          const Text(
+          Text(
             'YOUR LEARNING POWER',
             style: TextStyle(
               fontSize: 10.5,
               fontWeight: FontWeight.w800,
               letterSpacing: 0.6,
-              color: Color(0xFF9AA0BD),
+              color: colors.muted(const Color(0xFF9AA0BD)),
             ),
           ),
           const SizedBox(height: 6),
@@ -568,15 +593,19 @@ class _ScoreCard extends StatelessWidget {
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(999),
               gradient: LinearGradient(
-                colors: kToneGradients[level.tone] ?? kToneGradients['none']!,
+                colors: (kToneGradients[level.tone] ?? kToneGradients['none']!)
+                    .map(colors.tint)
+                    .toList(),
               ),
             ),
             child: Text(
               '${level.face} ${level.word}',
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 14,
                 fontWeight: FontWeight.w900,
-                color: Colors.white,
+                color: colors.isDark
+                    ? colors.accent(kToneColors[level.tone]!)
+                    : Colors.white,
               ),
             ),
           ),
@@ -584,7 +613,7 @@ class _ScoreCard extends StatelessWidget {
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
             decoration: BoxDecoration(
-              color: momentumBg,
+              color: colors.tint(momentumBg),
               borderRadius: BorderRadius.circular(999),
             ),
             child: Text(
@@ -592,17 +621,17 @@ class _ScoreCard extends StatelessWidget {
               style: TextStyle(
                 fontSize: 12.5,
                 fontWeight: FontWeight.w800,
-                color: momentumColor,
+                color: colors.accent(momentumColor),
               ),
             ),
           ),
           const SizedBox(height: 10),
-          const Text(
+          Text(
             'This ONE big score adds up all subjects — tests, homework, reading, practice and asking questions. Do a little every day and watch it grow! 🌱',
             textAlign: TextAlign.center,
             style: TextStyle(
               fontSize: 12,
-              color: Color(0xFF8B90AD),
+              color: colors.muted(const Color(0xFF8B90AD)),
               height: 1.5,
             ),
           ),
@@ -627,27 +656,31 @@ class _CardHead extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = ProgressColors.of(context);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
           title,
-          style: const TextStyle(
+          style: TextStyle(
             fontSize: 15.5,
             fontWeight: FontWeight.w800,
-            color: Color(0xFF1E2140),
+            color: colors.text(const Color(0xFF1E2140)),
           ),
         ),
         const SizedBox(height: 2),
         Text(
           sub,
-          style: const TextStyle(fontSize: 11.5, color: Color(0xFF8B90AD)),
+          style: TextStyle(
+            fontSize: 11.5,
+            color: colors.muted(const Color(0xFF8B90AD)),
+          ),
         ),
         const SizedBox(height: 8),
         Container(
           padding: const EdgeInsets.all(3),
           decoration: BoxDecoration(
-            color: const Color(0xFFF1F2FB),
+            color: colors.line(const Color(0xFFF1F2FB)),
             borderRadius: BorderRadius.circular(999),
           ),
           child: Row(
@@ -684,8 +717,9 @@ class _ToggleBtn extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = ProgressColors.of(context);
     return Material(
-      color: active ? Colors.white : Colors.transparent,
+      color: active ? colors.surface(Colors.white) : Colors.transparent,
       borderRadius: BorderRadius.circular(999),
       elevation: active ? 2 : 0,
       child: InkWell(
@@ -698,7 +732,9 @@ class _ToggleBtn extends StatelessWidget {
             style: TextStyle(
               fontSize: 11,
               fontWeight: FontWeight.w800,
-              color: active ? const Color(0xFF5B47FF) : const Color(0xFF6B7194),
+              color: active
+                  ? colors.accent(const Color(0xFF5B47FF))
+                  : colors.muted(const Color(0xFF6B7194)),
             ),
           ),
         ),
@@ -715,12 +751,13 @@ class _SkillCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = ProgressColors.of(context);
     final lw = levelWord(value);
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
       decoration: BoxDecoration(
-        color: const Color(0xFFFBFBFF),
-        border: Border.all(color: const Color(0xFFEEF0FA)),
+        color: colors.surface(const Color(0xFFFBFBFF)),
+        border: Border.all(color: colors.line(const Color(0xFFEEF0FA))),
         borderRadius: BorderRadius.circular(11),
       ),
       child: Column(
@@ -737,19 +774,19 @@ class _SkillCard extends StatelessWidget {
                   meta.name,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 10.5,
                     fontWeight: FontWeight.w800,
-                    color: Color(0xFF3A3F5E),
+                    color: colors.text(const Color(0xFF3A3F5E)),
                   ),
                 ),
               ),
               Text(
                 '$value%',
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 11,
                   fontWeight: FontWeight.w900,
-                  color: Color(0xFF2B2F4E),
+                  color: colors.text(const Color(0xFF2B2F4E)),
                 ),
               ),
             ],
@@ -759,7 +796,7 @@ class _SkillCard extends StatelessWidget {
             borderRadius: BorderRadius.circular(999),
             child: Container(
               height: 5,
-              color: const Color(0xFFEEF0FA),
+              color: colors.line(const Color(0xFFEEF0FA)),
               child: FractionallySizedBox(
                 alignment: Alignment.centerLeft,
                 widthFactor: (value.clamp(2, 100)) / 100,
@@ -773,7 +810,7 @@ class _SkillCard extends StatelessWidget {
             style: TextStyle(
               fontSize: 9,
               fontWeight: FontWeight.w800,
-              color: kSkillWordColors[lw.klass],
+              color: colors.accent(kSkillWordColors[lw.klass]!),
             ),
           ),
         ],
@@ -791,10 +828,11 @@ class _Tag extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = ProgressColors.of(context);
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       decoration: BoxDecoration(
-        color: bg,
+        color: colors.tint(bg),
         borderRadius: BorderRadius.circular(10),
       ),
       child: Text(
@@ -802,7 +840,7 @@ class _Tag extends StatelessWidget {
         style: TextStyle(
           fontSize: 12,
           fontWeight: FontWeight.w700,
-          color: color,
+          color: colors.accent(color),
         ),
       ),
     );
@@ -817,9 +855,10 @@ class _SubjectCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = ProgressColors.of(context);
     final series = view == 'daily' ? subject.daily : subject.monthly;
     return Material(
-      color: Colors.white,
+      color: colors.surface(Colors.white),
       borderRadius: BorderRadius.circular(16),
       child: InkWell(
         borderRadius: BorderRadius.circular(16),
@@ -833,7 +872,7 @@ class _SubjectCard extends StatelessWidget {
           padding: const EdgeInsets.all(10),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: const Color(0xFFEEF0FA)),
+            border: Border.all(color: colors.line(const Color(0xFFEEF0FA))),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -858,17 +897,17 @@ class _SubjectCard extends StatelessWidget {
                         children: [
                           TextSpan(
                             text: '${subject.score}',
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontSize: 11,
                               fontWeight: FontWeight.w900,
-                              color: Color(0xFF2B2F4E),
+                              color: colors.text(const Color(0xFF2B2F4E)),
                             ),
                           ),
-                          const TextSpan(
+                          TextSpan(
                             text: '%',
                             style: TextStyle(
                               fontSize: 7,
-                              color: Color(0xFF9AA0BD),
+                              color: colors.muted(const Color(0xFF9AA0BD)),
                             ),
                           ),
                         ],
@@ -884,10 +923,10 @@ class _SubjectCard extends StatelessWidget {
                           '${subject.emoji} ${subject.name}',
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontSize: 12.5,
                             fontWeight: FontWeight.w800,
-                            color: Color(0xFF1E2140),
+                            color: colors.text(const Color(0xFF1E2140)),
                           ),
                         ),
                         const SizedBox(height: 2),
@@ -905,9 +944,11 @@ class _SubjectCard extends StatelessWidget {
                                 style: TextStyle(
                                   fontSize: 9.5,
                                   fontWeight: FontWeight.w800,
-                                  color: subject.trend > 0
-                                      ? const Color(0xFF16A34A)
-                                      : const Color(0xFFDC2626),
+                                  color: colors.accent(
+                                    subject.trend > 0
+                                        ? const Color(0xFF16A34A)
+                                        : const Color(0xFFDC2626),
+                                  ),
                                 ),
                               ),
                             ],
@@ -933,9 +974,9 @@ class _SubjectCard extends StatelessWidget {
                 subject.tip,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 10.5,
-                  color: Color(0xFF6B7194),
+                  color: colors.muted(const Color(0xFF6B7194)),
                   height: 1.3,
                 ),
               ),
@@ -945,7 +986,7 @@ class _SubjectCard extends StatelessWidget {
                 style: TextStyle(
                   fontSize: 10,
                   fontWeight: FontWeight.w800,
-                  color: subject.accent,
+                  color: colors.accent(subject.accent),
                 ),
               ),
             ],
@@ -964,10 +1005,11 @@ class _StatusChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = ProgressColors.of(context);
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 2),
       decoration: BoxDecoration(
-        color: kStatusChipBg[status] ?? const Color(0xFFEEF0FA),
+        color: colors.tint(kStatusChipBg[status] ?? const Color(0xFFEEF0FA)),
         borderRadius: BorderRadius.circular(999),
       ),
       child: Text(
@@ -975,7 +1017,9 @@ class _StatusChip extends StatelessWidget {
         style: TextStyle(
           fontSize: 10,
           fontWeight: FontWeight.w800,
-          color: kStatusChipText[status] ?? const Color(0xFF6B7194),
+          color: colors.accent(
+            kStatusChipText[status] ?? const Color(0xFF6B7194),
+          ),
         ),
       ),
     );

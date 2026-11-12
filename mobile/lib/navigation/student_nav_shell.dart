@@ -197,7 +197,7 @@ class _FloatingNavBar extends StatelessWidget {
       height: compact ? 56 : 76,
       padding: EdgeInsets.symmetric(horizontal: compact ? 10 : 16),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: AppColors.of(context).card,
         borderRadius: BorderRadius.circular(999),
         border: _frame3dBorder(),
         boxShadow: _frame3dShadow(),
@@ -244,7 +244,7 @@ class _NavIconButtonState extends State<_NavIconButton> {
   Widget build(BuildContext context) {
     final size = widget.compact ? 36.0 : 44.0;
     final iconSize = widget.compact ? 20.0 : 22.0;
-    final color = widget.selected ? AppColors.brand : AppColors.muted;
+    final color = widget.selected ? AppColors.of(context).accent : AppColors.of(context).muted;
 
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
@@ -267,7 +267,7 @@ class _NavIconButtonState extends State<_NavIconButton> {
               height: size,
               decoration: BoxDecoration(
                 color: widget.selected
-                    ? AppColors.brandSoft
+                    ? AppColors.of(context).brandSoft
                     : Colors.transparent,
                 shape: BoxShape.circle,
                 border: _pressed ? _frame3dBorder(alpha: 0.4) : null,

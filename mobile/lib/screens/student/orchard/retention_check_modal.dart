@@ -6,6 +6,7 @@ import '../../../models/orchard_data.dart';
 import '../../../state/student_providers.dart';
 import '../../../state/tutor_providers.dart';
 import '../../../theme/app_colors.dart';
+import '../../../widgets/orchard/orchard_colors.dart';
 
 /// Blossom/Fruit retention check — mirrors
 /// `web/src/components/orchard/RetentionCheckModal.jsx`: a quick 3-question
@@ -133,7 +134,7 @@ class _RetentionCheckDialogState extends ConsumerState<_RetentionCheckDialog> {
       child: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 480, maxHeight: 560),
         child: Container(
-          decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20)),
+          decoration: BoxDecoration(color: AppColors.of(context).card, borderRadius: BorderRadius.circular(20)),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -156,15 +157,19 @@ class _RetentionCheckDialogState extends ConsumerState<_RetentionCheckDialog> {
                   child: _loading
                       ? Padding(
                           padding: const EdgeInsets.symmetric(vertical: 24),
-                          child: Center(child: Text('Preparing your memory check…', style: TextStyle(color: AppColors.muted))),
+                          child: Center(child: CircularProgressIndicator(
+                              semanticsLabel: 'Preparing your memory check',
+                            ),
+                          ),
                         )
                       : _error.isNotEmpty && _result == null
-                          ? Text(_error, style: const TextStyle(color: AppColors.danger))
+                          ? Text(_error, style: TextStyle(color: OrchardColors(context).accentText(AppColors.danger)))
                           : _result != null
                               ? Container(
                                   padding: const EdgeInsets.all(14),
                                   decoration: BoxDecoration(
-                                    color: _result!.passed ? const Color(0xFFECFDF3) : const Color(0xFFFFF7ED),
+                                    color: _result!.passed ? OrchardColors(context).positive
+                                : OrchardColors(context).caution,
                                     borderRadius: BorderRadius.circular(12),
                                   ),
                                   child: Text(
@@ -208,6 +213,11 @@ class _RetentionCheckDialogState extends ConsumerState<_RetentionCheckDialog> {
                     else ...[
                       TextButton(
                         onPressed: _submitting ? null : () => Navigator.of(context).pop(),
+                        style: TextButton.styleFrom(
+                          foregroundColor: OrchardColors(
+                            context,
+                          ).accentText(AppColors.brand),
+                        ),
                         child: const Text('Cancel'),
                       ),
                       const SizedBox(width: 8),
@@ -243,7 +253,7 @@ class _QuestionBlock extends StatelessWidget {
       children: [
         RichText(
           text: TextSpan(
-            style: TextStyle(color: AppColors.text, fontSize: 13.5),
+            style: TextStyle(color: AppColors.of(context).text, fontSize: 13.5),
             children: [
               TextSpan(text: 'Q${index + 1}. ', style: const TextStyle(fontWeight: FontWeight.w800)),
               TextSpan(text: question.question),
@@ -261,13 +271,20 @@ class _QuestionBlock extends StatelessWidget {
                 width: double.infinity,
                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                 decoration: BoxDecoration(
-                  color: selected == i ? AppColors.brandSoft : const Color(0xFFF7F7FB),
+                  color: selected == i ? AppColors.of(context).brandSoft : OrchardColors(context).inset,
                   border: Border.all(color: selected == i ? AppColors.brand : Colors.transparent),
                   borderRadius: BorderRadius.circular(10),
                 ),
                 child: Row(
                   children: [
-                    Text(selected == i ? '●' : '○', style: const TextStyle(color: AppColors.brand)),
+                    Text(selected == i ? '●' : '○', style: TextStyle(color: OrchardColors(context).accentText(
+                          AppColors.brand,
+                          surface: selected == i
+                              ? AppColors.of(context).brandSoft
+                              : OrchardColors(context).inset,
+                        ),
+                      ),
+                    ),
                     const SizedBox(width: 8),
                     Expanded(child: Text(question.options[i], style: const TextStyle(fontSize: 13))),
                   ],

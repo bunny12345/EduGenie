@@ -49,7 +49,7 @@ class StudentLearnScreen extends ConsumerWidget {
                 padding: const EdgeInsets.all(16),
                 children: [
                   Text("No subjects yet — your school hasn't registered a teacher for your class.",
-                      style: TextStyle(color: AppColors.muted, fontSize: 13)),
+                      style: TextStyle(color: AppColors.of(context).muted, fontSize: 13)),
                 ],
               );
             }
@@ -111,7 +111,7 @@ class _SubjectCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final color = SubjectPalette.colorFor(subject);
+    final color = AppColors.readableAccent(SubjectPalette.colorFor(subject), dark: AppColors.of(context).isDark);
     return InkWell(
       borderRadius: BorderRadius.circular(14),
       onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => SubjectDetailScreen(subject: subject))),

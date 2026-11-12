@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import '../../../theme/app_colors.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../models/flashcard_models.dart';
@@ -242,7 +243,7 @@ class _FlashcardsScreenState extends ConsumerState<FlashcardsScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF7F7FC),
+      backgroundColor: GameColors.of(context).background(const Color(0xFFF7F7FC)),
       appBar: AppBar(title: const Text('AI Flashcards')),
       body: SafeArea(
         child: Padding(padding: const EdgeInsets.all(16), child: _buildPhase()),
@@ -325,12 +326,12 @@ class _EmptyView extends StatelessWidget {
           children: [
             const Text('🃏', style: TextStyle(fontSize: 52)),
             const SizedBox(height: 8),
-            const Text(
+            Text(
               'No flashcards yet',
               style: TextStyle(
                 fontSize: 20,
                 fontWeight: FontWeight.w800,
-                color: Color(0xFF2A2652),
+                color: GameColors.of(context).text(Color(0xFF2A2652)),
               ),
             ),
             const SizedBox(height: 4),
@@ -338,9 +339,9 @@ class _EmptyView extends StatelessWidget {
               message ??
                   "Flashcards appear automatically once your teacher uploads chapter content. Check back soon!",
               textAlign: TextAlign.center,
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 13,
-                color: Color(0xFF6D739C),
+                color: GameColors.of(context).muted(Color(0xFF6D739C)),
                 height: 1.5,
               ),
             ),
@@ -389,7 +390,7 @@ class _PickerView extends StatelessWidget {
         Row(
           crossAxisAlignment: CrossAxisAlignment.end,
           children: [
-            const Expanded(
+            Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -398,13 +399,13 @@ class _PickerView extends StatelessWidget {
                     style: TextStyle(
                       fontSize: 18,
                       fontWeight: FontWeight.w900,
-                      color: Color(0xFF2A2652),
+                      color: GameColors.of(context).text(Color(0xFF2A2652)),
                     ),
                   ),
                   SizedBox(height: 2),
                   Text(
                     "Cards are built from your teacher's uploaded chapters.",
-                    style: TextStyle(fontSize: 12, color: Color(0xFF7B81A6)),
+                    style: TextStyle(fontSize: 12, color: GameColors.of(context).muted(Color(0xFF7B81A6))),
                   ),
                 ],
               ),
@@ -415,7 +416,7 @@ class _PickerView extends StatelessWidget {
         Container(
           padding: const EdgeInsets.all(3),
           decoration: BoxDecoration(
-            color: const Color(0xFFF0F1FB),
+            color: GameColors.of(context).surface(Color(0xFFF0F1FB)),
             borderRadius: BorderRadius.circular(999),
           ),
           child: Wrap(
@@ -441,13 +442,13 @@ class _PickerView extends StatelessWidget {
             margin: const EdgeInsets.only(bottom: 12),
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
             decoration: BoxDecoration(
-              color: const Color(0xFFFFF6E6),
-              border: Border.all(color: const Color(0xFFFFE2B0)),
+              color: GameColors.of(context).surface(Color(0xFFFFF6E6)),
+              border: Border.all(color: GameColors.of(context).line(Color(0xFFFFE2B0))),
               borderRadius: BorderRadius.circular(10),
             ),
             child: Text(
               error!,
-              style: const TextStyle(color: Color(0xFF9A6A12), fontSize: 12),
+              style: TextStyle(color: GameColors.of(context).accent(Color(0xFF9A6A12)), fontSize: 12),
             ),
           ),
         SingleChildScrollView(
@@ -476,9 +477,9 @@ class _PickerView extends StatelessWidget {
                 const SizedBox(height: 10),
                 Text(
                   'No ${active.displayName} chapters yet',
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 16,
-                    color: Color(0xFF2A2652),
+                    color: GameColors.of(context).text(Color(0xFF2A2652)),
                     fontWeight: FontWeight.w700,
                   ),
                 ),
@@ -486,9 +487,9 @@ class _PickerView extends StatelessWidget {
                 Text(
                   "Flashcards are created automatically as soon as your teacher uploads ${active.displayName} chapter content — just like Mathematics.",
                   textAlign: TextAlign.center,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 12.5,
-                    color: Color(0xFF6D739C),
+                    color: GameColors.of(context).muted(Color(0xFF6D739C)),
                     height: 1.5,
                   ),
                 ),
@@ -503,10 +504,10 @@ class _PickerView extends StatelessWidget {
             children: [
               Text(
                 '${active.treeEmoji} ${active.displayName} chapters',
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 15,
                   fontWeight: FontWeight.w900,
-                  color: Color(0xFF2A2652),
+                  color: GameColors.of(context).text(Color(0xFF2A2652)),
                 ),
               ),
               Text(
@@ -514,7 +515,7 @@ class _PickerView extends StatelessWidget {
                 style: TextStyle(
                   fontSize: 11,
                   fontWeight: FontWeight.w700,
-                  color: active.accent,
+                  color: GameColors.of(context).accent(active.accent),
                 ),
               ),
             ],
@@ -569,7 +570,7 @@ class _ModeOption extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Material(
-      color: active ? Colors.white : Colors.transparent,
+      color: active ? AppColors.of(context).card : Colors.transparent,
       borderRadius: BorderRadius.circular(999),
       elevation: active ? 2 : 0,
       shadowColor: const Color(0x24463C96),
@@ -583,7 +584,7 @@ class _ModeOption extends StatelessWidget {
             style: TextStyle(
               fontSize: 12,
               fontWeight: FontWeight.w700,
-              color: active ? const Color(0xFF4B3FD6) : const Color(0xFF6D739C),
+              color: active ? GameColors.of(context).accent(Color(0xFF4B3FD6)) : GameColors.of(context).muted(Color(0xFF6D739C)),
             ),
           ),
         ),
@@ -615,12 +616,12 @@ class _SubjectTab extends StatelessWidget {
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(16),
           border: Border.all(
-            color: active ? accent : const Color(0xFFE8E9F5),
+            color: active ? accent : GameColors.of(context).line(Color(0xFFE8E9F5)),
             width: active ? 2 : 1,
           ),
           color: active
-              ? Color.alphaBlend(accent.withValues(alpha: 0.12), Colors.white)
-              : Colors.white,
+              ? Color.alphaBlend(accent.withValues(alpha: 0.12), AppColors.of(context).card)
+              : AppColors.of(context).card,
         ),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -635,10 +636,10 @@ class _SubjectTab extends StatelessWidget {
                     subject.displayName,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 14,
                       fontWeight: FontWeight.w800,
-                      color: Color(0xFF2A2652),
+                      color: GameColors.of(context).text(Color(0xFF2A2652)),
                     ),
                   ),
                   const SizedBox(height: 2),
@@ -650,9 +651,9 @@ class _SubjectTab extends StatelessWidget {
                         subject.empty
                             ? 'Coming soon'
                             : '${subject.totalCards} cards',
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: 11,
-                          color: Color(0xFF7B81A6),
+                          color: GameColors.of(context).muted(Color(0xFF7B81A6)),
                         ),
                       ),
                       if (subject.dueCount > 0) ...[
@@ -663,15 +664,15 @@ class _SubjectTab extends StatelessWidget {
                             vertical: 1,
                           ),
                           decoration: BoxDecoration(
-                            color: const Color(0xFFFFE9E7),
+                            color: GameColors.of(context).surface(Color(0xFFFFE9E7)),
                             borderRadius: BorderRadius.circular(999),
                           ),
                           child: Text(
                             '${subject.dueCount} due',
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontSize: 10,
                               fontWeight: FontWeight.w800,
-                              color: Color(0xFFD9534F),
+                              color: GameColors.of(context).accent(Color(0xFFD9534F)),
                             ),
                           ),
                         ),
@@ -720,8 +721,8 @@ class _ChapterRow extends StatelessWidget {
   Widget build(BuildContext context) {
     return Material(
       color: highlight
-          ? Color.alphaBlend(accent.withValues(alpha: 0.08), Colors.white)
-          : Colors.white,
+          ? Color.alphaBlend(accent.withValues(alpha: 0.08), AppColors.of(context).card)
+          : AppColors.of(context).card,
       borderRadius: BorderRadius.circular(14),
       child: InkWell(
         borderRadius: BorderRadius.circular(14),
@@ -734,9 +735,9 @@ class _ChapterRow extends StatelessWidget {
               color: highlight
                   ? Color.alphaBlend(
                       accent.withValues(alpha: 0.3),
-                      Colors.white,
+                      AppColors.of(context).card,
                     )
-                  : const Color(0xFFE8E9F5),
+                  : GameColors.of(context).surface(Color(0xFFE8E9F5)),
             ),
           ),
           child: Column(
@@ -752,7 +753,7 @@ class _ChapterRow extends StatelessWidget {
                       decoration: BoxDecoration(
                         color: Color.alphaBlend(
                           accent.withValues(alpha: 0.14),
-                          Colors.white,
+                          AppColors.of(context).card,
                         ),
                         borderRadius: BorderRadius.circular(6),
                       ),
@@ -761,7 +762,7 @@ class _ChapterRow extends StatelessWidget {
                         style: TextStyle(
                           fontSize: 11,
                           fontWeight: FontWeight.w800,
-                          color: accent,
+                          color: GameColors.of(context).accent(accent),
                         ),
                       ),
                     ),
@@ -770,10 +771,10 @@ class _ChapterRow extends StatelessWidget {
                   Expanded(
                     child: Text(
                       title,
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 13.5,
                         fontWeight: FontWeight.w800,
-                        color: Color(0xFF2A2652),
+                        color: GameColors.of(context).text(Color(0xFF2A2652)),
                       ),
                     ),
                   ),
@@ -783,9 +784,9 @@ class _ChapterRow extends StatelessWidget {
                 const SizedBox(height: 4),
                 Text(
                   sub!,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 11,
-                    color: Color(0xFF7B81A6),
+                    color: GameColors.of(context).muted(Color(0xFF7B81A6)),
                   ),
                 ),
               ],
@@ -802,10 +803,10 @@ class _ChapterRow extends StatelessWidget {
                       ),
                       decoration: BoxDecoration(
                         color: b.kind == _BadgeKind.due
-                            ? const Color(0xFFFFE9E7)
+                            ? GameColors.of(context).surface(Color(0xFFFFE9E7))
                             : b.kind == _BadgeKind.newCard
-                            ? const Color(0xFFE7F6EC)
-                            : const Color(0xFFF1F2F8),
+                            ? GameColors.of(context).surface(Color(0xFFE7F6EC))
+                            : GameColors.of(context).surface(Color(0xFFF1F2F8)),
                         borderRadius: BorderRadius.circular(999),
                       ),
                       child: Text(
@@ -814,10 +815,10 @@ class _ChapterRow extends StatelessWidget {
                           fontSize: 10,
                           fontWeight: FontWeight.w700,
                           color: b.kind == _BadgeKind.due
-                              ? const Color(0xFFD9534F)
+                              ? GameColors.of(context).accent(Color(0xFFD9534F))
                               : b.kind == _BadgeKind.newCard
-                              ? const Color(0xFF22A05A)
-                              : const Color(0xFF6A7099),
+                              ? GameColors.of(context).accent(Color(0xFF22A05A))
+                              : GameColors.of(context).muted(Color(0xFF6A7099)),
                         ),
                       ),
                     ),
@@ -884,7 +885,7 @@ class _PlayingView extends StatelessWidget {
           borderRadius: BorderRadius.circular(999),
           child: Container(
             height: 8,
-            color: const Color(0xFFECEEF7),
+            color: GameColors.of(context).surface(Color(0xFFECEEF7)),
             child: FractionallySizedBox(
               alignment: Alignment.centerLeft,
               widthFactor: progressPct,
@@ -895,7 +896,7 @@ class _PlayingView extends StatelessWidget {
                       accent,
                       Color.alphaBlend(
                         accent.withValues(alpha: 0.55),
-                        Colors.white,
+                        AppColors.of(context).card,
                       ),
                     ],
                   ),
@@ -909,7 +910,7 @@ class _PlayingView extends StatelessWidget {
           child: Text(
             '$done / $totalToStudy mastered · $queueLength left',
             textAlign: TextAlign.right,
-            style: const TextStyle(fontSize: 11, color: Color(0xFF8B90B3)),
+            style: TextStyle(fontSize: 11, color: GameColors.of(context).muted(Color(0xFF8B90B3))),
           ),
         ),
         if (current != null)
@@ -1001,15 +1002,15 @@ class _PlayingView extends StatelessWidget {
               margin: const EdgeInsets.only(top: 14),
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
               decoration: BoxDecoration(
-                color: const Color(0xFFEFECFF),
+                color: GameColors.of(context).surface(Color(0xFFEFECFF)),
                 borderRadius: BorderRadius.circular(999),
               ),
               child: Text(
                 '🗓️ Next review ${lastSchedule!.label}',
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 12,
                   fontWeight: FontWeight.w700,
-                  color: Color(0xFF4B3FD6),
+                  color: GameColors.of(context).accent(Color(0xFF4B3FD6)),
                 ),
               ),
             ),
@@ -1103,9 +1104,9 @@ class _FlipCardState extends State<_FlipCard>
   Widget _front() {
     final card = widget.card;
     final diffColors = {
-      'easy': (const Color(0xFF22A05A), const Color(0xFFE7F6EC)),
-      'medium': (const Color(0xFFD98A10), const Color(0xFFFFF3DC)),
-      'hard': (const Color(0xFFD9534F), const Color(0xFFFFE9E7)),
+      'easy': (const Color(0xFF22A05A), GameColors.of(context).surface(Color(0xFFE7F6EC))),
+      'medium': (const Color(0xFFD98A10), GameColors.of(context).surface(Color(0xFFFFF3DC))),
+      'hard': (const Color(0xFFD9534F), GameColors.of(context).surface(Color(0xFFFFE9E7))),
     };
     final diff = diffColors[card.difficulty];
     return Container(
@@ -1114,11 +1115,11 @@ class _FlipCardState extends State<_FlipCard>
       padding: const EdgeInsets.all(26),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: const Color(0xFFE8E9F5)),
-        gradient: const LinearGradient(
+        border: Border.all(color: GameColors.of(context).line(Color(0xFFE8E9F5))),
+        gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: [Colors.white, Color(0xFFF7F6FF)],
+          colors: [AppColors.of(context).card, GameColors.of(context).surface(Color(0xFFF7F6FF))],
         ),
         boxShadow: const [
           BoxShadow(
@@ -1146,7 +1147,7 @@ class _FlipCardState extends State<_FlipCard>
                     fontSize: 9.5,
                     fontWeight: FontWeight.w800,
                     letterSpacing: 0.5,
-                    color: diff.$1,
+                    color: GameColors.of(context).accent(diff.$1),
                   ),
                 ),
               ),
@@ -1164,16 +1165,16 @@ class _FlipCardState extends State<_FlipCard>
                       vertical: 4,
                     ),
                     decoration: BoxDecoration(
-                      color: const Color(0xFFF1F2F8),
+                      color: GameColors.of(context).surface(Color(0xFFF1F2F8)),
                       borderRadius: BorderRadius.circular(999),
                     ),
-                    child: const Text(
+                    child: Text(
                       'QUESTION',
                       style: TextStyle(
                         fontSize: 10,
                         fontWeight: FontWeight.w800,
                         letterSpacing: 1,
-                        color: Color(0xFF9096B6),
+                        color: GameColors.of(context).muted(Color(0xFF9096B6)),
                       ),
                     ),
                   ),
@@ -1181,10 +1182,10 @@ class _FlipCardState extends State<_FlipCard>
                   Text(
                     card.front,
                     textAlign: TextAlign.center,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 19,
                       fontWeight: FontWeight.w700,
-                      color: Color(0xFF26224F),
+                      color: GameColors.of(context).text(Color(0xFF26224F)),
                       height: 1.4,
                     ),
                   ),
@@ -1193,9 +1194,9 @@ class _FlipCardState extends State<_FlipCard>
                     Text(
                       '💡 ${card.hint}',
                       textAlign: TextAlign.center,
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 12,
-                        color: Color(0xFF8A70C0),
+                        color: GameColors.of(context).accent(Color(0xFF8A70C0)),
                       ),
                     ),
                   ],
@@ -1203,14 +1204,14 @@ class _FlipCardState extends State<_FlipCard>
               ),
             ),
           ),
-          const Positioned(
+          Positioned(
             bottom: 4,
             left: 0,
             right: 0,
             child: Center(
               child: Text(
                 'Tap to reveal',
-                style: TextStyle(fontSize: 10.5, color: Color(0xFFB3B7D0)),
+                style: TextStyle(fontSize: 10.5, color: GameColors.of(context).muted(Color(0xFFB3B7D0))),
               ),
             ),
           ),
@@ -1229,14 +1230,14 @@ class _FlipCardState extends State<_FlipCard>
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(20),
         border: Border.all(
-          color: Color.alphaBlend(accent.withValues(alpha: 0.3), Colors.white),
+          color: Color.alphaBlend(accent.withValues(alpha: 0.3), AppColors.of(context).card),
         ),
         gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
           colors: [
-            Color.alphaBlend(accent.withValues(alpha: 0.12), Colors.white),
-            Colors.white,
+            Color.alphaBlend(accent.withValues(alpha: 0.12), AppColors.of(context).card),
+            AppColors.of(context).card,
           ],
         ),
         boxShadow: const [
@@ -1262,7 +1263,7 @@ class _FlipCardState extends State<_FlipCard>
                     decoration: BoxDecoration(
                       color: Color.alphaBlend(
                         accent.withValues(alpha: 0.14),
-                        Colors.white,
+                        AppColors.of(context).card,
                       ),
                       borderRadius: BorderRadius.circular(999),
                     ),
@@ -1272,7 +1273,7 @@ class _FlipCardState extends State<_FlipCard>
                         fontSize: 10,
                         fontWeight: FontWeight.w800,
                         letterSpacing: 1,
-                        color: accent,
+                        color: GameColors.of(context).accent(accent),
                       ),
                     ),
                   ),
@@ -1280,10 +1281,10 @@ class _FlipCardState extends State<_FlipCard>
                   Text(
                     card.back,
                     textAlign: TextAlign.center,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 19,
                       fontWeight: FontWeight.w700,
-                      color: Color(0xFF26224F),
+                      color: GameColors.of(context).text(Color(0xFF26224F)),
                       height: 1.4,
                     ),
                   ),
@@ -1294,7 +1295,7 @@ class _FlipCardState extends State<_FlipCard>
           const SizedBox(height: 10),
           Center(
             child: Material(
-              color: Colors.white,
+              color: AppColors.of(context).card,
               borderRadius: BorderRadius.circular(999),
               child: InkWell(
                 borderRadius: BorderRadius.circular(999),
@@ -1309,7 +1310,7 @@ class _FlipCardState extends State<_FlipCard>
                     border: Border.all(
                       color: Color.alphaBlend(
                         accent.withValues(alpha: 0.35),
-                        Colors.white,
+                        AppColors.of(context).card,
                       ),
                     ),
                   ),
@@ -1318,7 +1319,7 @@ class _FlipCardState extends State<_FlipCard>
                     style: TextStyle(
                       fontSize: 11.5,
                       fontWeight: FontWeight.w800,
-                      color: accent,
+                      color: GameColors.of(context).accent(accent),
                     ),
                   ),
                 ),
@@ -1347,7 +1348,7 @@ class _RateButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Material(
-      color: Colors.white,
+      color: AppColors.of(context).card,
       borderRadius: BorderRadius.circular(14),
       child: InkWell(
         borderRadius: BorderRadius.circular(14),
@@ -1356,7 +1357,7 @@ class _RateButton extends StatelessWidget {
           padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: const Color(0xFFE8E9F5)),
+            border: Border.all(color: GameColors.of(context).line(Color(0xFFE8E9F5))),
           ),
           child: Column(
             children: [
@@ -1367,7 +1368,7 @@ class _RateButton extends StatelessWidget {
                 style: TextStyle(
                   fontSize: 12,
                   fontWeight: FontWeight.w800,
-                  color: color,
+                  color: GameColors.of(context).accent(color),
                 ),
               ),
             ],
@@ -1414,13 +1415,13 @@ class _SummaryView extends StatelessWidget {
         const SizedBox(height: 8),
         Center(child: Text(emoji, style: const TextStyle(fontSize: 52))),
         const SizedBox(height: 8),
-        const Center(
+        Center(
           child: Text(
             'Session complete!',
             style: TextStyle(
               fontSize: 20,
               fontWeight: FontWeight.w800,
-              color: Color(0xFF2A2652),
+              color: GameColors.of(context).text(Color(0xFF2A2652)),
             ),
           ),
         ),
@@ -1429,7 +1430,7 @@ class _SummaryView extends StatelessWidget {
           Center(
             child: Text(
               '$subjectName · $chapterTitle',
-              style: const TextStyle(fontSize: 12, color: Color(0xFF7B81A6)),
+              style: TextStyle(fontSize: 12, color: GameColors.of(context).muted(Color(0xFF7B81A6))),
             ),
           ),
         const SizedBox(height: 16),
@@ -1452,8 +1453,8 @@ class _SummaryView extends StatelessWidget {
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(16),
                 border: Border.all(color: const Color(0xFFF4D780)),
-                gradient: const LinearGradient(
-                  colors: [Color(0xFFFFF5D6), Color(0xFFFFE9A8)],
+                gradient: LinearGradient(
+                  colors: [GameColors.of(context).surface(const Color(0xFFFFF5D6)), GameColors.of(context).surface(const Color(0xFFFFE9A8))],
                 ),
               ),
               child: Row(
@@ -1466,17 +1467,17 @@ class _SummaryView extends StatelessWidget {
                     children: [
                       Text(
                         '+$awarded coins!',
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: 17,
                           fontWeight: FontWeight.w800,
-                          color: Color(0xFFA06A00),
+                          color: GameColors.of(context).accent(Color(0xFFA06A00)),
                         ),
                       ),
                       Text(
                         'Chapter complete — balance ${coinAward?['coins'] ?? 0}',
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: 11.5,
-                          color: Color(0xFFB07F1A),
+                          color: GameColors.of(context).accent(Color(0xFFB07F1A)),
                         ),
                       ),
                     ],
@@ -1486,12 +1487,12 @@ class _SummaryView extends StatelessWidget {
             ),
           )
         else if (awarded == 0 && alreadyEarned)
-          const Center(
+          Center(
             child: Padding(
               padding: EdgeInsets.only(bottom: 14),
               child: Text(
                 '🪙 Chapter bonus already collected — nice revision!',
-                style: TextStyle(fontSize: 12, color: Color(0xFFA07F2A)),
+                style: TextStyle(fontSize: 12, color: GameColors.of(context).accent(Color(0xFFA07F2A))),
               ),
             ),
           ),
@@ -1500,7 +1501,7 @@ class _SummaryView extends StatelessWidget {
             saving
                 ? 'Saving your progress…'
                 : '✅ Progress saved — cards will return on their own schedule.',
-            style: const TextStyle(fontSize: 12, color: Color(0xFF6A7099)),
+            style: TextStyle(fontSize: 12, color: GameColors.of(context).muted(Color(0xFF6A7099))),
           ),
         ),
         const SizedBox(height: 16),
@@ -1531,15 +1532,15 @@ class _StatBlock extends StatelessWidget {
       children: [
         Text(
           value,
-          style: const TextStyle(
+          style: TextStyle(
             fontSize: 26,
             fontWeight: FontWeight.w800,
-            color: Color(0xFF4B3FD6),
+            color: GameColors.of(context).accent(Color(0xFF4B3FD6)),
           ),
         ),
         Text(
           label,
-          style: const TextStyle(fontSize: 11, color: Color(0xFF8B90B3)),
+          style: TextStyle(fontSize: 11, color: GameColors.of(context).muted(Color(0xFF8B90B3))),
         ),
       ],
     );
@@ -1598,7 +1599,7 @@ class _GhostButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Material(
-      color: Colors.white,
+      color: AppColors.of(context).card,
       borderRadius: BorderRadius.circular(999),
       child: InkWell(
         borderRadius: BorderRadius.circular(999),
@@ -1607,12 +1608,12 @@ class _GhostButton extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 10),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(999),
-            border: Border.all(color: const Color(0xFFE4E5F3)),
+            border: Border.all(color: GameColors.of(context).line(Color(0xFFE4E5F3))),
           ),
           child: Text(
             label,
-            style: const TextStyle(
-              color: Color(0xFF4A4F7A),
+            style: TextStyle(
+              color: GameColors.of(context).muted(Color(0xFF4A4F7A)),
               fontWeight: FontWeight.w700,
               fontSize: 13,
             ),

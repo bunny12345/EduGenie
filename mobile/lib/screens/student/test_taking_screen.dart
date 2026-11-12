@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'homework/homework_history_calendar.dart';
 import '../../models/test_item.dart';
 import '../../models/test_question.dart';
 import '../../state/session_provider.dart';
@@ -142,7 +143,7 @@ class _TestTakingScreenState extends ConsumerState<TestTakingScreen> {
     }
     if (_result != null) return _ResultView(result: _result!, onDone: () => Navigator.of(context).pop());
     if (_questions.isEmpty) {
-      return Center(child: Text('No questions available for this test.', style: TextStyle(color: AppColors.muted)));
+      return Center(child: Text('No questions available for this test.', style: TextStyle(color: AppColors.of(context).muted)));
     }
 
     final question = _questions[_index];
@@ -150,10 +151,10 @@ class _TestTakingScreenState extends ConsumerState<TestTakingScreen> {
 
     return Column(
       children: [
-        LinearProgressIndicator(value: (_index + 1) / _questions.length, backgroundColor: AppColors.line),
+        LinearProgressIndicator(value: (_index + 1) / _questions.length, backgroundColor: AppColors.of(context).line),
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-          child: Text('Question ${_index + 1} of ${_questions.length}', style: TextStyle(color: AppColors.muted, fontSize: 12)),
+          child: Text('Question ${_index + 1} of ${_questions.length}', style: TextStyle(color: AppColors.of(context).muted, fontSize: 12)),
         ),
         Expanded(
           child: ListView(
@@ -220,15 +221,15 @@ class _ResultView extends StatelessWidget {
           Center(
             child: Column(
               children: [
-                Text('$score%', style: const TextStyle(fontSize: 40, fontWeight: FontWeight.w800, color: AppColors.brand)),
+                Text('$score%', style: TextStyle(fontSize: 40, fontWeight: FontWeight.w800, color: AppColors.of(context).accent)),
                 const SizedBox(height: 8),
-                Text(feedback, textAlign: TextAlign.center, style: TextStyle(color: AppColors.muted, fontSize: 14)),
+                Text(feedback, textAlign: TextAlign.center, style: TextStyle(color: AppColors.of(context).muted, fontSize: 14)),
               ],
             ),
           ),
           if (perQuestionFeedback.isNotEmpty) ...[
             const SizedBox(height: 20),
-            const Text('Question breakdown', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: Color(0xFF1F2347))),
+            Text('Question breakdown', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: HomeworkColors.of(context).text(Color(0xFF1F2347)))),
             const SizedBox(height: 8),
             for (var i = 0; i < perQuestionFeedback.length; i++) _QuestionFeedbackCard(index: i, feedback: perQuestionFeedback[i]),
           ],
@@ -264,18 +265,18 @@ class _QuestionFeedbackCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('${index + 1}. $text', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: Color(0xFF1F2347))),
+          Text('${index + 1}. $text', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: HomeworkColors.of(context).text(Color(0xFF1F2347)))),
           const SizedBox(height: 4),
           Text(
             'Your answer: ${selected >= 0 && selected < options.length ? options[selected] : 'Not answered'} ${isCorrect ? '\u2713' : '\u2717'}',
-            style: const TextStyle(fontSize: 12, color: Color(0xFF374151)),
+            style: TextStyle(fontSize: 12, color: HomeworkColors.of(context).text(Color(0xFF374151))),
           ),
           if (!isCorrect)
             Padding(
               padding: const EdgeInsets.only(top: 2),
               child: Text(
                 'Correct answer: ${correct >= 0 && correct < options.length ? options[correct] : '\u2014'}',
-                style: const TextStyle(fontSize: 12, color: Color(0xFF047857)),
+                style: TextStyle(fontSize: 12, color: HomeworkColors.of(context).accent(Color(0xFF047857))),
               ),
             ),
         ],

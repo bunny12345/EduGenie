@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import '../theme/app_colors.dart';
 
 /// Shows a "Take Photo" / "Choose from Gallery" action sheet and returns the
 /// picked image(s) — shared by homework submission (student) and homework
@@ -17,11 +18,11 @@ Future<List<XFile>> pickImagesWithSourceChoice(
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const Padding(
-            padding: EdgeInsets.fromLTRB(16, 14, 16, 4),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 14, 16, 4),
             child: Align(
               alignment: Alignment.centerLeft,
-              child: Text('Add a photo', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: Color(0xFF6B7280))),
+              child: Text('Add a photo', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: AppColors.of(ctx).muted)),
             ),
           ),
           ListTile(

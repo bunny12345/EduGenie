@@ -12,6 +12,7 @@ import 'package:mobile/widgets/teacher_support_bubble.dart';
 import 'package:mobile/services/api_client.dart';
 import 'package:mobile/services/support_api_service.dart';
 import 'package:mobile/state/session_provider.dart';
+import 'package:mobile/theme/app_colors.dart';
 
 const _id = '11111111-1111-4111-8111-111111111111';
 Map<String, dynamic> _ticketJson = {
@@ -145,6 +146,7 @@ Future<void> _mount(
   bool services = false,
   bool teacher = false,
   bool teacherBubble = false,
+  bool dark = false,
 }) async {
   tester.view.physicalSize = const Size(390, 844);
   tester.view.devicePixelRatio = 1;
@@ -157,6 +159,7 @@ Future<void> _mount(
         sessionProvider.overrideWith(_Session.new),
       ],
       child: MaterialApp(
+        theme: ThemeData(brightness: dark ? Brightness.dark : Brightness.light),
         builder: (context, child) => MediaQuery(
           data: MediaQuery.of(
             context,
@@ -189,6 +192,24 @@ Future<void> _dispose(WidgetTester tester) async {
 }
 
 void main() {
+  testWidgets('support keeps dark surfaces and readable technician messages', (tester) async {
+    final api = _SupportStub()
+      ..saved = true
+      ..ownerReplied = true;
+    await _mount(tester, api, dark: true);
+    final scaffoldContext = tester.element(find.byType(Scaffold).first);
+    expect(Theme.of(scaffoldContext).brightness, Brightness.dark);
+    expect(Theme.of(scaffoldContext).scaffoldBackgroundColor, AppColors.backgroundDark);
+    expect(tester.widget<Text>(find.text('WEBSITE & APP HELP')).style?.color, const AppPalette(true).accent);
+    await _tap(tester, find.text('Upload problem'));
+    final technician = tester.widget<SelectableText>(find.byWidgetPredicate(
+      (widget) => widget is SelectableText && widget.data == 'Please try uploading again.',
+    ));
+    expect(technician.style?.color, AppColors.textDark);
+    expect(tester.takeException(), isNull);
+    await _dispose(tester);
+  });
+
   for (final teacher in [false, true]) {
     testWidgets(
       'resolved thread retention and expired message removal ($teacher)',

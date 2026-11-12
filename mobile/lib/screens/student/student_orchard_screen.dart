@@ -5,6 +5,7 @@ import '../../models/orchard_data.dart';
 import '../../state/session_provider.dart';
 import '../../state/student_providers.dart';
 import '../../theme/app_colors.dart';
+import '../../widgets/orchard/orchard_colors.dart';
 import '../../widgets/orchard/orchard_ambience.dart';
 import '../../widgets/orchard/orchard_skeleton.dart';
 import '../../widgets/orchard/tree_sprite.dart';
@@ -60,7 +61,7 @@ class _StudentOrchardScreenState extends ConsumerState<StudentOrchardScreen> {
     final greetingName = ref.watch(dashboardProvider).value?.greetingName?.trim();
 
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: AppColors.of(context).background,
       appBar: AppBar(title: const Text('My Orchard')),
       body: RefreshIndicator(
         onRefresh: () async => ref.invalidate(orchardProvider),
@@ -69,7 +70,7 @@ class _StudentOrchardScreenState extends ConsumerState<StudentOrchardScreen> {
           error: (e, _) => ListView(
             padding: const EdgeInsets.all(24),
             children: [
-              Text('Unable to load orchard: $e', textAlign: TextAlign.center, style: const TextStyle(color: AppColors.danger)),
+              Text('Unable to load orchard: $e', textAlign: TextAlign.center, style: TextStyle(color: OrchardColors(context).accentText(AppColors.danger, surface: AppColors.of(context).background))),
               const SizedBox(height: 12),
               Center(child: OutlinedButton(onPressed: () => ref.invalidate(orchardProvider), child: const Text('Retry'))),
             ],
@@ -107,10 +108,12 @@ class _StudentOrchardScreenState extends ConsumerState<StudentOrchardScreen> {
           children: [
             // Header
             Text('Good day, $greetingName! 👋',
-                style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800, color: night ? const Color(0xFFF4F6FF) : AppColors.text)),
+                style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800, color: night ? const Color(0xFFF4F6FF) : AppColors.textLight,
+              )),
             const SizedBox(height: 4),
             Text('Water your trees daily, and success will be yours.',
-                style: TextStyle(fontSize: 13, color: night ? const Color(0xFFC3CBEF) : AppColors.muted)),
+                style: TextStyle(fontSize: 13, color: night ? const Color(0xFFC3CBEF) : AppColors.textLight,
+              )),
             const SizedBox(height: 14),
 
             // Currency counters
@@ -133,7 +136,7 @@ class _StudentOrchardScreenState extends ConsumerState<StudentOrchardScreen> {
             Container(
               padding: const EdgeInsets.all(18),
               decoration: BoxDecoration(
-                gradient: const LinearGradient(colors: [Color(0xFFF4F0FF), Color(0xFFEEFAF1)]),
+                gradient: LinearGradient(colors: OrchardColors(context).hero),
                 borderRadius: BorderRadius.circular(20),
               ),
               child: Column(
@@ -147,7 +150,7 @@ class _StudentOrchardScreenState extends ConsumerState<StudentOrchardScreen> {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             const Text('Your Learning Orchard', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
-                            Text('Each tree represents your growth in a subject.', style: TextStyle(fontSize: 12, color: AppColors.muted)),
+                            Text('Each tree represents your growth in a subject.', style: TextStyle(fontSize: 12, color: OrchardColors(context).accentText(AppColors.of(context).muted, surface: OrchardColors(context).hero.first))),
                           ],
                         ),
                       ),
@@ -177,7 +180,7 @@ class _StudentOrchardScreenState extends ConsumerState<StudentOrchardScreen> {
                       Column(
                         crossAxisAlignment: CrossAxisAlignment.end,
                         children: [
-                          Text('Overall Progress', style: TextStyle(fontSize: 11, color: AppColors.muted)),
+                          Text('Overall Progress', style: TextStyle(fontSize: 11, color: OrchardColors(context).accentText(AppColors.of(context).muted, surface: OrchardColors(context).hero.first))),
                           Text('${data.overallProgress}%', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
                         ],
                       ),
@@ -192,7 +195,10 @@ class _StudentOrchardScreenState extends ConsumerState<StudentOrchardScreen> {
             if (trees.isEmpty)
               Padding(
                 padding: const EdgeInsets.symmetric(vertical: 24),
-                child: Text('No orchard trees yet — start learning to grow one!', textAlign: TextAlign.center, style: TextStyle(color: AppColors.muted)),
+                child: Text('No orchard trees yet — start learning to grow one!', textAlign: TextAlign.center, style: TextStyle(color: night
+                        ? const Color(0xFFF4F6FF)
+                        : AppColors.textLight,
+                  )),
               )
             else
               GridView.builder(
@@ -245,8 +251,12 @@ class _CounterCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
       decoration: BoxDecoration(
-        gradient: highlighted ? const LinearGradient(colors: [Color(0xFFFFFBE6), Color(0xFFFFF2C7)]) : null,
-        color: highlighted ? null : Colors.white,
+        gradient: highlighted && !AppColors.of(context).isDark
+            ? const LinearGradient(colors: [Color(0xFFFFFBE6), Color(0xFFFFF2C7)]) : null,
+        color: highlighted ? (AppColors.of(context).isDark
+                  ? OrchardColors(context).golden
+                  : null)
+            : AppColors.of(context).card,
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(color: (highlighted ? const Color(0xFFEAB308) : const Color(0xFF1F2340)).withValues(alpha: highlighted ? 0.28 : 0.06), blurRadius: 14, offset: const Offset(0, 4)),
@@ -257,7 +267,9 @@ class _CounterCard extends StatelessWidget {
           Text(icon, style: const TextStyle(fontSize: 20)),
           const SizedBox(height: 4),
           Text('$value', style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14)),
-          Text(label, style: TextStyle(fontSize: 9.5, color: AppColors.muted), textAlign: TextAlign.center, maxLines: 1, overflow: TextOverflow.ellipsis),
+          Text(label, style: TextStyle(fontSize: 9.5, color: highlighted
+              ? OrchardColors(context).accentText(AppColors.of(context).muted, surface: AppColors.of(context).isDark ? OrchardColors(context).golden : const Color(0xFFFFF2C7))
+              : AppColors.of(context).muted), textAlign: TextAlign.center, maxLines: 1, overflow: TextOverflow.ellipsis),
         ],
       ),
     );
@@ -280,7 +292,8 @@ class _TreeCard extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
-          color: tree.health == 'wilting' ? const Color(0xFFFBFAF6) : Colors.white,
+          color: tree.health == 'wilting' && !AppColors.of(context).isDark
+              ? const Color(0xFFFBFAF6) : AppColors.of(context).card,
           border: Border.all(color: selected ? accent : Colors.transparent, width: 2),
           borderRadius: BorderRadius.circular(18),
           boxShadow: const [BoxShadow(color: Color(0x0F1F2340), blurRadius: 14, offset: Offset(0, 4))],
@@ -324,7 +337,9 @@ class _TreeCard extends StatelessWidget {
                       child: Container(
                         padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                         decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.92), borderRadius: BorderRadius.circular(10)),
-                        child: Text(tree.health == 'thirsty' ? '💧 Thirsty' : '🍂 Needs care', style: const TextStyle(fontSize: 8.5)),
+                        child: Text(tree.health == 'thirsty' ? '💧 Thirsty' : '🍂 Needs care', style: const TextStyle(fontSize: 8.5,
+                            color: AppColors.textLight,
+                          )),
                       ),
                     ),
                   if (tree.dueReviewCount > 0)
@@ -346,13 +361,15 @@ class _TreeCard extends StatelessWidget {
                 Expanded(child: Text(treeArt(tree.treeType) != null && tree.masteredChapters != null && tree.masteredChapters! > 0
                     ? '${tree.masteredChapters} ${treeArt(tree.treeType)!.fruitPlural}' : tree.stageLabel,
                     maxLines: 1, overflow: TextOverflow.ellipsis,
-                    style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700, color: accent))),
+                    style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700, color: OrchardColors(context).accentText(accent)),
+                  ),
+                ),
                 const SizedBox(width: 4),
                 Flexible(
                   child: Text(
                     tree.totalChapters > 0 ? '${tree.completedChapters} / ${tree.totalChapters} Lessons' : 'No lessons yet',
                     maxLines: 2, overflow: TextOverflow.ellipsis, textAlign: TextAlign.end,
-                    style: TextStyle(fontSize: 9.5, color: AppColors.muted),
+                    style: TextStyle(fontSize: 9.5, color: AppColors.of(context).muted),
                   ),
                 ),
               ],
@@ -367,7 +384,9 @@ class _TreeCard extends StatelessWidget {
               alignment: Alignment.centerRight,
               child: GestureDetector(
                 onTap: onExplore,
-                child: Text('Explore tree →', style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700, color: accent)),
+                child: Text('Explore tree →', style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700, color: OrchardColors(context).accentText(accent),
+                  ),
+                ),
               ),
             ),
           ],
@@ -388,7 +407,7 @@ class _DetailPanel extends StatelessWidget {
     final accent = tree.accentColor;
     return Container(
       padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20), boxShadow: const [
+      decoration: BoxDecoration(color: AppColors.of(context).card, borderRadius: BorderRadius.circular(20), boxShadow: const [
         BoxShadow(color: Color(0x0F1F2340), blurRadius: 18, offset: Offset(0, 6)),
       ]),
       child: Column(
@@ -404,8 +423,11 @@ class _DetailPanel extends StatelessWidget {
                   width: 30,
                   height: 30,
                   alignment: Alignment.center,
-                  decoration: BoxDecoration(color: const Color(0xFFF0ECFF), borderRadius: BorderRadius.circular(10)),
-                  child: Text('↗', style: TextStyle(color: accent, fontSize: 16)),
+                  decoration: BoxDecoration(color: AppColors.of(context).brandSoft, borderRadius: BorderRadius.circular(10)),
+                  child: Text('↗', style: TextStyle(color: OrchardColors(context).accentText(
+                        accent,
+                        surface: AppColors.of(context).brandSoft,
+                      ), fontSize: 16)),
                 ),
               ),
             ],
@@ -415,25 +437,37 @@ class _DetailPanel extends StatelessWidget {
           const SizedBox(height: 10),
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-            decoration: BoxDecoration(color: const Color(0xFFF5F3FF), borderRadius: BorderRadius.circular(12)),
+            decoration: BoxDecoration(color: AppColors.of(context).isDark
+                  ? AppColors.of(context).brandSoft
+                  : const Color(0xFFF5F3FF), borderRadius: BorderRadius.circular(12)),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Expanded(child: Text(masteryStageLabel(tree.treeType, tree.stageLabel, tree.masteredChapters),
                     maxLines: 1, overflow: TextOverflow.ellipsis,
-                    style: TextStyle(fontWeight: FontWeight.w700, color: accent))),
+                    style: TextStyle(fontWeight: FontWeight.w700, color: OrchardColors(context).accentText(
+                        accent,
+                        surface: AppColors.of(context).isDark
+                            ? AppColors.of(context).brandSoft
+                            : const Color(0xFFF5F3FF),
+                      ),
+                    ),
+                  ),
+                ),
                 const SizedBox(width: 6),
-                Text('Level ${tree.level} of ${tree.maxLevel}', style: TextStyle(fontSize: 12, color: AppColors.muted)),
+                Text('Level ${tree.level} of ${tree.maxLevel}', style: TextStyle(fontSize: 12, color: OrchardColors(context).accentText(AppColors.of(context).muted, surface: AppColors.of(context).isDark ? AppColors.of(context).brandSoft : const Color(0xFFF5F3FF)))),
               ],
             ),
           ),
           const SizedBox(height: 8),
           if (treeArt(tree.treeType) != null && tree.masteredChapters != null)
             Text('${tree.masteredChapters} ${treeArt(tree.treeType)!.fruitPlural} earned · One per fully mastered lesson',
-                style: TextStyle(fontSize: 12, color: accent)),
+                style: TextStyle(fontSize: 12, color: OrchardColors(context).accentText(accent),
+              ),
+            ),
           Text(
             tree.totalChapters > 0 ? '${tree.completedChapters} / ${tree.totalChapters} Lessons Completed' : 'No lessons uploaded for your class yet',
-            style: TextStyle(fontSize: 12.5, color: AppColors.muted),
+            style: TextStyle(fontSize: 12.5, color: AppColors.of(context).muted),
           ),
           const SizedBox(height: 14),
           const Text('Tree Needs', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
@@ -488,7 +522,7 @@ class _NeedBar extends StatelessWidget {
         children: [
           Text(icon, style: const TextStyle(fontSize: 13)),
           const SizedBox(width: 6),
-          SizedBox(width: 58, child: Text(label, style: TextStyle(fontSize: 11.5, color: AppColors.muted))),
+          SizedBox(width: 58, child: Text(label, style: TextStyle(fontSize: 11.5, color: AppColors.of(context).muted))),
           Expanded(
             child: ClipRRect(
               borderRadius: BorderRadius.circular(8),
@@ -496,7 +530,7 @@ class _NeedBar extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 8),
-          SizedBox(width: 32, child: Text('$value%', textAlign: TextAlign.right, style: TextStyle(fontSize: 11.5, color: AppColors.muted))),
+          SizedBox(width: 32, child: Text('$value%', textAlign: TextAlign.right, style: TextStyle(fontSize: 11.5, color: AppColors.of(context).muted))),
         ],
       ),
     );
@@ -513,7 +547,7 @@ class _BottomPanel extends StatelessWidget {
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(18), boxShadow: const [
+      decoration: BoxDecoration(color: AppColors.of(context).card, borderRadius: BorderRadius.circular(18), boxShadow: const [
         BoxShadow(color: Color(0x0F1F2340), blurRadius: 18, offset: Offset(0, 6)),
       ]),
       child: Column(
@@ -564,10 +598,10 @@ class _WeekStrip extends StatelessWidget {
               child: Container(
                 margin: const EdgeInsets.symmetric(horizontal: 2),
                 padding: const EdgeInsets.symmetric(vertical: 6),
-                decoration: BoxDecoration(color: isToday ? const Color(0xFFF0ECFF) : null, borderRadius: BorderRadius.circular(10)),
+                decoration: BoxDecoration(color: isToday ? AppColors.of(context).brandSoft : null, borderRadius: BorderRadius.circular(10)),
                 child: Column(
                   children: [
-                    Text(labels[i], style: TextStyle(fontSize: 10, color: AppColors.muted)),
+                    Text(labels[i], style: TextStyle(fontSize: 10, color: OrchardColors(context).accentText(AppColors.of(context).muted, surface: isToday ? AppColors.of(context).brandSoft : AppColors.of(context).card))),
                     Text('${d.day}', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
                     Text(mark, style: const TextStyle(fontSize: 12)),
                   ],
@@ -579,7 +613,7 @@ class _WeekStrip extends StatelessWidget {
         const SizedBox(height: 10),
         Align(
           alignment: Alignment.centerLeft,
-          child: Text('🔥 $dayStreak day streak — keep it going!', style: TextStyle(fontSize: 12, color: AppColors.muted)),
+          child: Text('🔥 $dayStreak day streak — keep it going!', style: TextStyle(fontSize: 12, color: AppColors.of(context).muted)),
         ),
       ],
     );
@@ -610,12 +644,17 @@ class _Missions extends StatelessWidget {
           Container(
             margin: const EdgeInsets.only(bottom: 8),
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-            decoration: BoxDecoration(color: const Color(0xFFF7F7FB), borderRadius: BorderRadius.circular(12)),
+            decoration: BoxDecoration(color: OrchardColors(context).inset, borderRadius: BorderRadius.circular(12)),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Expanded(child: Text('${m['icon']} ${m['label']}', style: const TextStyle(fontSize: 12.5))),
-                Text(m['reward'] ?? '', style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12.5, color: Color(0xFF16A34A))),
+                Text(m['reward'] ?? '', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 12.5, color: OrchardColors(context).accentText(
+                      const Color(0xFF16A34A),
+                      surface: OrchardColors(context).inset,
+                    ),
+                  ),
+                ),
               ],
             ),
           ),
@@ -633,7 +672,7 @@ class _GrowthChart extends StatelessWidget {
     if (trees.isEmpty) {
       return Padding(
         padding: const EdgeInsets.symmetric(vertical: 24),
-        child: Text('No growth yet', style: TextStyle(color: AppColors.muted, fontSize: 13)),
+        child: Text('No growth yet', style: TextStyle(color: AppColors.of(context).muted, fontSize: 13)),
       );
     }
     return Column(
@@ -644,7 +683,9 @@ class _GrowthChart extends StatelessWidget {
         Wrap(
           spacing: 10,
           runSpacing: 6,
-          children: trees.map((t) => Text('● ${t.subject.split(' ').first}', style: TextStyle(fontSize: 11, color: t.accentColor))).toList(),
+          children: trees.map((t) => Text('● ${t.subject.split(' ').first}', style: TextStyle(fontSize: 11, color: OrchardColors(context).accentText(t.accentColor)),
+                ),
+              ).toList(),
         ),
       ],
     );

@@ -81,9 +81,9 @@ class _StudentServicesScreenState extends State<StudentServicesScreen> {
             width: double.infinity,
             padding: const EdgeInsets.all(18),
             decoration: BoxDecoration(
-              color: AppColors.card,
+              color: AppColors.of(context).card,
               borderRadius: BorderRadius.circular(26),
-              border: Border.all(color: AppColors.line),
+              border: Border.all(color: AppColors.of(context).line),
               boxShadow: [
                 BoxShadow(
                   color: AppColors.sidebar.withValues(alpha: 0.04),
@@ -100,12 +100,12 @@ class _StudentServicesScreenState extends State<StudentServicesScreen> {
                     Container(
                       padding: const EdgeInsets.all(8),
                       decoration: BoxDecoration(
-                        color: AppColors.brandSoft,
+                        color: AppColors.of(context).brandSoft,
                         borderRadius: BorderRadius.circular(11),
                       ),
-                      child: const Icon(
+                      child: Icon(
                         Icons.widgets_rounded,
-                        color: AppColors.brand,
+                        color: AppColors.of(context).accent,
                         size: 19,
                       ),
                     ),
@@ -116,7 +116,7 @@ class _StudentServicesScreenState extends State<StudentServicesScreen> {
                         style: TextStyle(
                           fontSize: 18,
                           fontWeight: FontWeight.w800,
-                          color: AppColors.text,
+                          color: AppColors.of(context).text,
                         ),
                       ),
                     ),
@@ -125,7 +125,7 @@ class _StudentServicesScreenState extends State<StudentServicesScreen> {
                 const SizedBox(height: 2),
                 Text(
                   'Helpful school tools, customizable to your school',
-                  style: TextStyle(fontSize: 11, color: AppColors.muted),
+                  style: TextStyle(fontSize: 11, color: AppColors.of(context).muted),
                 ),
                 const SizedBox(height: 12),
                 LayoutBuilder(
@@ -200,7 +200,7 @@ class _ServiceDemoPanel extends StatelessWidget {
       width: double.infinity,
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: AppColors.background,
+        color: AppColors.of(context).background,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: item.color.withValues(alpha: 0.27)),
       ),
@@ -216,17 +216,17 @@ class _ServiceDemoPanel extends StatelessWidget {
                   style: TextStyle(
                     fontSize: 12,
                     fontWeight: FontWeight.w700,
-                    color: AppColors.text,
+                    color: AppColors.of(context).text,
                   ),
                 ),
               ),
               IconButton(
                 tooltip: 'Close service preview',
                 onPressed: onClose,
-                icon: const Icon(
+                icon: Icon(
                   Icons.close_rounded,
                   size: 20,
-                  color: AppColors.brand,
+                  color: AppColors.of(context).accent,
                 ),
               ),
             ],
@@ -234,12 +234,12 @@ class _ServiceDemoPanel extends StatelessWidget {
           const SizedBox(height: 4),
           Text(
             'This school service is ready to be customized for your school requirements.',
-            style: TextStyle(fontSize: 11, color: AppColors.text),
+            style: TextStyle(fontSize: 11, color: AppColors.of(context).text),
           ),
           const SizedBox(height: 4),
           Text(
             'For now, this is a client demo preview. Your school can define the fields, approvals, notifications, and workflows.',
-            style: TextStyle(fontSize: 10, color: AppColors.muted),
+            style: TextStyle(fontSize: 10, color: AppColors.of(context).muted),
           ),
         ],
       ),

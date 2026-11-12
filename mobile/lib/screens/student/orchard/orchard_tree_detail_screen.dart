@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../models/orchard_data.dart';
 import '../../../state/student_providers.dart';
 import '../../../theme/app_colors.dart';
+import '../../../widgets/orchard/orchard_colors.dart';
 import '../../../widgets/orchard/orchard_skeleton.dart';
 import '../../../widgets/orchard/tree_sprite.dart';
 import '../../../widgets/orchard/tree_art.dart';
@@ -138,7 +139,9 @@ class _OrchardTreeDetailScreenState extends ConsumerState<OrchardTreeDetailScree
         Container(
           padding: const EdgeInsets.all(18),
           decoration: BoxDecoration(
-            gradient: const LinearGradient(colors: [Color(0xFFF7F4FF), Color(0xFFEEFAF1)]),
+            gradient: LinearGradient(colors: AppColors.of(context).isDark
+                  ? OrchardColors(context).hero
+                  : const [Color(0xFFF7F4FF), Color(0xFFEEFAF1)]),
             borderRadius: BorderRadius.circular(22),
           ),
           child: Column(
@@ -188,11 +191,13 @@ class _OrchardTreeDetailScreenState extends ConsumerState<OrchardTreeDetailScree
               const SizedBox(height: 10),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(14)),
+                decoration: BoxDecoration(color: AppColors.of(context).card, borderRadius: BorderRadius.circular(14)),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text('🫚 Roots — how deeply you understand', style: TextStyle(fontSize: 12, color: Color(0xFF4A4F70))),
+                    Text('🫚 Roots — how deeply you understand', style: TextStyle(fontSize: 12, color: AppColors.of(context).isDark
+                            ? AppColors.of(context).text
+                            : const Color(0xFF4A4F70))),
                     const SizedBox(height: 6),
                     ClipRRect(
                       borderRadius: BorderRadius.circular(8),
@@ -206,7 +211,7 @@ class _OrchardTreeDetailScreenState extends ConsumerState<OrchardTreeDetailScree
                     const SizedBox(height: 4),
                     Text(
                       tree.rootsPct >= 90 ? 'Deep roots — golden fruit ready!' : 'Deeper roots grow taller trees.',
-                      style: TextStyle(fontSize: 11, color: AppColors.muted),
+                      style: TextStyle(fontSize: 11, color: AppColors.of(context).muted),
                     ),
                   ],
                 ),
@@ -219,7 +224,7 @@ class _OrchardTreeDetailScreenState extends ConsumerState<OrchardTreeDetailScree
         // Chapters — seedbed
         Container(
           padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20), boxShadow: const [
+          decoration: BoxDecoration(color: AppColors.of(context).card, borderRadius: BorderRadius.circular(20), boxShadow: const [
             BoxShadow(color: Color(0x0F1F2340), blurRadius: 18, offset: Offset(0, 6)),
           ]),
           child: Column(
@@ -228,16 +233,20 @@ class _OrchardTreeDetailScreenState extends ConsumerState<OrchardTreeDetailScree
               Text('${detail.subject} lessons — every seed becomes a fruit', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
               const SizedBox(height: 4),
               Text('Each uploaded lesson grows on its own. Care for it and it ripens over weeks.',
-                  style: TextStyle(fontSize: 12.5, color: AppColors.muted)),
+                  style: TextStyle(fontSize: 12.5, color: AppColors.of(context).muted)),
               const SizedBox(height: 14),
               if (chapters.isEmpty)
                 Container(
                   width: double.infinity,
                   padding: const EdgeInsets.symmetric(vertical: 28, horizontal: 16),
                   decoration: BoxDecoration(
-                    border: Border.all(color: const Color(0xFFD7D4E8), style: BorderStyle.solid),
+                    border: Border.all(color: AppColors.of(context).isDark
+                          ? AppColors.of(context).line
+                          : const Color(0xFFD7D4E8), style: BorderStyle.solid),
                     borderRadius: BorderRadius.circular(18),
-                    color: const Color(0xFFFBFAFF),
+                    color: AppColors.of(context).isDark
+                        ? OrchardColors(context).inset
+                        : const Color(0xFFFBFAFF),
                   ),
                   child: Column(
                     children: [
@@ -248,7 +257,7 @@ class _OrchardTreeDetailScreenState extends ConsumerState<OrchardTreeDetailScree
                       Text(
                         'Your school hasn\u2019t uploaded any ${detail.subject} lessons for your class yet. As soon as they do, each lesson appears here as a seed you can grow.',
                         textAlign: TextAlign.center,
-                        style: TextStyle(fontSize: 12.5, color: AppColors.muted),
+                        style: TextStyle(fontSize: 12.5, color: AppColors.of(context).muted),
                       ),
                     ],
                   ),
@@ -267,7 +276,11 @@ class _OrchardTreeDetailScreenState extends ConsumerState<OrchardTreeDetailScree
                       child: Container(
                         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
                         decoration: BoxDecoration(
-                          color: ch.isGolden ? const Color(0xFFFEF3C7) : (active ? const Color(0xFFF5F3FF) : const Color(0xFFF7F7FB)),
+                          color: ch.isGolden ? OrchardColors(context).golden
+                              : (active ? (AppColors.of(context).isDark
+                                          ? AppColors.of(context).brandSoft
+                                          : const Color(0xFFF5F3FF))
+                                    : OrchardColors(context).inset),
                           border: Border.all(color: active ? accent : Colors.transparent, width: 2),
                           borderRadius: BorderRadius.circular(16),
                         ),
@@ -283,7 +296,9 @@ class _OrchardTreeDetailScreenState extends ConsumerState<OrchardTreeDetailScree
                               overflow: TextOverflow.ellipsis,
                               style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, height: 1.15),
                             ),
-                            Text(ch.stageLabel, style: TextStyle(fontSize: 9.5, color: AppColors.muted, height: 1)),
+                            Text(ch.stageLabel, style: TextStyle(fontSize: 9.5, color: ch.isGolden
+                                ? OrchardColors(context).accentText(AppColors.of(context).muted, surface: OrchardColors(context).golden)
+                                : OrchardColors(context).accentText(AppColors.of(context).muted, surface: active ? (AppColors.of(context).isDark ? AppColors.of(context).brandSoft : const Color(0xFFF5F3FF)) : OrchardColors(context).inset), height: 1)),
                             ClipRRect(
                               borderRadius: BorderRadius.circular(5),
                               child: LinearProgressIndicator(
@@ -326,22 +341,26 @@ class _OrchardTreeDetailScreenState extends ConsumerState<OrchardTreeDetailScree
   Widget _chip(String text, {Color? color, bool bold = false}) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(14)),
-      child: Text(text, style: TextStyle(fontSize: 12, color: color ?? const Color(0xFF4A4F70), fontWeight: bold ? FontWeight.w800 : FontWeight.w500)),
+      decoration: BoxDecoration(color: AppColors.of(context).card, borderRadius: BorderRadius.circular(14)),
+      child: Text(text, style: TextStyle(fontSize: 12, color: color != null
+              ? OrchardColors(context).accentText(color)
+              : (AppColors.of(context).isDark
+                    ? AppColors.of(context).text
+                    : const Color(0xFF4A4F70)), fontWeight: bold ? FontWeight.w800 : FontWeight.w500)),
     );
   }
 
   Widget _stat(String label, String value, {String? icon}) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(14)),
+      decoration: BoxDecoration(color: AppColors.of(context).card, borderRadius: BorderRadius.circular(14)),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisAlignment: MainAxisAlignment.center,
         mainAxisSize: MainAxisSize.min,
         children: [
           Text('${icon != null ? '$icon ' : ''}$value', style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800)),
-          Text(label, style: TextStyle(fontSize: 10.5, color: AppColors.muted)),
+          Text(label, style: TextStyle(fontSize: 10.5, color: AppColors.of(context).muted)),
         ],
       ),
     );
@@ -371,7 +390,7 @@ class _ChapterMilestonePanel extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20), boxShadow: const [
+      decoration: BoxDecoration(color: AppColors.of(context).card, borderRadius: BorderRadius.circular(20), boxShadow: const [
         BoxShadow(color: Color(0x0F1F2340), blurRadius: 18, offset: Offset(0, 6)),
       ]),
       child: Column(
@@ -386,7 +405,7 @@ class _ChapterMilestonePanel extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(chapter.title, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14)),
-                    Text('${chapter.stageLabel} · Roots ${chapter.rootsPct}%', style: TextStyle(fontSize: 11.5, color: AppColors.muted)),
+                    Text('${chapter.stageLabel} · Roots ${chapter.rootsPct}%', style: TextStyle(fontSize: 11.5, color: AppColors.of(context).muted)),
                   ],
                 ),
               ),
@@ -407,8 +426,11 @@ class _ChapterMilestonePanel extends StatelessWidget {
       margin: const EdgeInsets.only(bottom: 10),
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: complete ? const Color(0xFFECFDF3) : const Color(0xFFF7F7FB),
-        border: Border.all(color: complete ? const Color(0xFFBBF7D0) : Colors.transparent),
+        color: complete ? OrchardColors(context).positive
+            : OrchardColors(context).inset,
+        border: Border.all(color: complete ? (AppColors.of(context).isDark
+                    ? const Color(0xFF2D7050)
+                    : const Color(0xFFBBF7D0)) : Colors.transparent),
         borderRadius: BorderRadius.circular(14),
       ),
       child: Column(
@@ -418,7 +440,7 @@ class _ChapterMilestonePanel extends StatelessWidget {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Text('${group.emoji} ${group.title}', style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700)),
-              Text('$done/${group.items.length}', style: TextStyle(fontSize: 12, color: AppColors.muted)),
+              Text('$done/${group.items.length}', style: TextStyle(fontSize: 12, color: OrchardColors(context).accentText(AppColors.of(context).muted, surface: complete ? OrchardColors(context).positive : OrchardColors(context).inset))),
             ],
           ),
           const SizedBox(height: 8),
@@ -439,7 +461,7 @@ class _ChapterMilestonePanel extends StatelessWidget {
           Text(checked ? '✅' : '⭕️', style: const TextStyle(fontSize: 13)),
           const SizedBox(width: 8),
           Expanded(
-            child: Text(label, style: TextStyle(fontSize: 12, color: checked ? AppColors.text : AppColors.muted)),
+            child: Text(label, style: TextStyle(fontSize: 12, color: checked ? AppColors.of(context).text : OrchardColors(context).accentText(AppColors.of(context).muted, surface: OrchardColors(context).inset))),
           ),
           if (canTakeCheck)
             PressableScale(
@@ -456,10 +478,19 @@ class _ChapterMilestonePanel extends StatelessWidget {
                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                 decoration: BoxDecoration(
                   border: Border.all(color: AppColors.brand),
-                  color: const Color(0xFFF5F0FF),
+                  color: AppColors.of(context).isDark
+                      ? AppColors.of(context).brandSoft
+                      : const Color(0xFFF5F0FF),
                   borderRadius: BorderRadius.circular(999),
                 ),
-                child: const Text('Take the check →', style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700, color: AppColors.brand)),
+                child: Text('Take the check →', style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700, color: OrchardColors(context).accentText(
+                      AppColors.brand,
+                      surface: AppColors.of(context).isDark
+                          ? AppColors.of(context).brandSoft
+                          : const Color(0xFFF5F0FF),
+                    ),
+                  ),
+                ),
               ),
             ),
         ],

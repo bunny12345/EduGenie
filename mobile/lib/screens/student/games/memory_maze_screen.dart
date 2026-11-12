@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:math';
 
 import 'package:flutter/material.dart';
+import '../../../theme/app_colors.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../models/flashcard_models.dart';
@@ -254,7 +255,7 @@ class _MemoryMazeScreenState extends ConsumerState<MemoryMazeScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF7F7FC),
+      backgroundColor: GameColors.of(context).background(const Color(0xFFF7F7FC)),
       appBar: AppBar(title: const Text('Memory Maze')),
       body: SafeArea(
         child: Padding(padding: const EdgeInsets.all(16), child: _buildPhase()),
@@ -319,12 +320,12 @@ class _MemoryMazeScreenState extends ConsumerState<MemoryMazeScreen> {
               children: [
                 Text(active.treeEmoji, style: const TextStyle(fontSize: 46)),
                 const SizedBox(height: 10),
-                Text('No ${active.displayName} chapters yet', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: Color(0xFF2A2652))),
+                Text('No ${active.displayName} chapters yet', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: GameColors.of(context).text(Color(0xFF2A2652)))),
                 const SizedBox(height: 6),
                 Text(
                   'Memory Maze appears automatically once flashcards exist for ${active.displayName}.',
                   textAlign: TextAlign.center,
-                  style: const TextStyle(fontSize: 12.5, color: Color(0xFF6D739C), height: 1.5),
+                  style: TextStyle(fontSize: 12.5, color: GameColors.of(context).muted(Color(0xFF6D739C)), height: 1.5),
                 ),
               ],
             ),
@@ -333,8 +334,8 @@ class _MemoryMazeScreenState extends ConsumerState<MemoryMazeScreen> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text('${active.treeEmoji} ${active.displayName} chapters', style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w900, color: Color(0xFF2A2652))),
-              Text('${active.chapters.length} uploaded', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: active.accent)),
+              Text('${active.treeEmoji} ${active.displayName} chapters', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w900, color: GameColors.of(context).text(Color(0xFF2A2652)))),
+              Text('${active.chapters.length} uploaded', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: GameColors.of(context).accent(active.accent))),
             ],
           ),
           const SizedBox(height: 8),
@@ -378,8 +379,8 @@ class _MemoryMazeScreenState extends ConsumerState<MemoryMazeScreen> {
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Text('${_matchedPairIds.length} / $_totalPairs pairs', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Color(0xFF8B90B3))),
-            Text('$_moves flips', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Color(0xFF8B90B3))),
+            Text('${_matchedPairIds.length} / $_totalPairs pairs', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: GameColors.of(context).muted(Color(0xFF8B90B3)))),
+            Text('$_moves flips', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: GameColors.of(context).muted(Color(0xFF8B90B3)))),
           ],
         ),
         const SizedBox(height: 14),
@@ -412,10 +413,10 @@ class _MemoryMazeScreenState extends ConsumerState<MemoryMazeScreen> {
         const SizedBox(height: 8),
         Center(child: GameSummaryEmoji(pct: pct)),
         const SizedBox(height: 8),
-        const Center(child: Text('Maze cleared!', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800, color: Color(0xFF2A2652)))),
+        Center(child: Text('Maze cleared!', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800, color: GameColors.of(context).text(Color(0xFF2A2652))))),
         const SizedBox(height: 4),
         if (_sessionSubjectName != null)
-          Center(child: Text('$_sessionSubjectName · $_sessionChapterTitle', style: const TextStyle(fontSize: 12, color: Color(0xFF7B81A6)))),
+          Center(child: Text('$_sessionSubjectName · $_sessionChapterTitle', style: TextStyle(fontSize: 12, color: GameColors.of(context).muted(Color(0xFF7B81A6))))),
         const SizedBox(height: 16),
         Row(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -431,7 +432,7 @@ class _MemoryMazeScreenState extends ConsumerState<MemoryMazeScreen> {
         Center(
           child: Text(
             _saving ? 'Saving your progress…' : '✅ Progress saved to your Orchard tree.',
-            style: const TextStyle(fontSize: 12, color: Color(0xFF6A7099)),
+            style: TextStyle(fontSize: 12, color: GameColors.of(context).muted(Color(0xFF6A7099))),
           ),
         ),
         const SizedBox(height: 16),
@@ -474,14 +475,14 @@ class _MazeTileView extends StatelessWidget {
             alignment: Alignment.center,
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: revealed ? Color.alphaBlend(accent.withValues(alpha: 0.3), Colors.white) : const Color(0xFFE8E9F5)),
+              border: Border.all(color: revealed ? Color.alphaBlend(accent.withValues(alpha: 0.3), AppColors.of(context).card) : GameColors.of(context).surface(Color(0xFFE8E9F5))),
               gradient: revealed
                   ? LinearGradient(
                       begin: Alignment.topLeft,
                       end: Alignment.bottomRight,
                       colors: isQuestionSide
-                          ? [Color.alphaBlend(accent.withValues(alpha: 0.12), Colors.white), Colors.white]
-                          : [Colors.white, const Color(0xFFF7F6FF)],
+                          ? [Color.alphaBlend(accent.withValues(alpha: 0.12), AppColors.of(context).card), AppColors.of(context).card]
+                          : [AppColors.of(context).card, GameColors.of(context).surface(Color(0xFFF7F6FF))],
                     )
                   : LinearGradient(
                       begin: Alignment.topLeft,
@@ -496,7 +497,7 @@ class _MazeTileView extends StatelessWidget {
                     textAlign: TextAlign.center,
                     maxLines: 5,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: Color(0xFF2A2652), height: 1.3),
+                    style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: GameColors.of(context).text(Color(0xFF2A2652)), height: 1.3),
                   )
                 : const Text('🌀', style: TextStyle(fontSize: 24)),
           ),

@@ -320,9 +320,9 @@ class _AnnouncementBell extends ConsumerWidget {
           height: 44,
           alignment: Alignment.center,
           decoration: BoxDecoration(
-            color: AppColors.card,
+            color: AppColors.of(context).card,
             borderRadius: BorderRadius.circular(15),
-            border: Border.all(color: AppColors.line),
+            border: Border.all(color: AppColors.of(context).line),
           ),
           child: Stack(
             clipBehavior: Clip.none,
@@ -330,7 +330,7 @@ class _AnnouncementBell extends ConsumerWidget {
               Icon(
                 Icons.notifications_none_rounded,
                 size: 22,
-                color: AppColors.text,
+                color: AppColors.of(context).text,
               ),
               if (count > 0)
                 Positioned(
@@ -418,19 +418,19 @@ class _ProfileChipState extends ConsumerState<_ProfileChip> {
         children: [
           Text(
             label,
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 11,
               fontWeight: FontWeight.w700,
-              color: Color(0xFF1F2340),
+              color: AppColors.of(context).text,
             ),
           ),
           const SizedBox(width: 4),
           Expanded(
             child: Text(
               value,
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 11,
-                color: Color(0xFF475569),
+                color: AppColors.of(context).muted,
                 fontWeight: FontWeight.w500,
               ),
             ),
@@ -473,9 +473,9 @@ class _ProfileChipState extends ConsumerState<_ProfileChip> {
                 width: 230,
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
-                  color: Colors.white,
+                  color: AppColors.of(context).card,
                   borderRadius: BorderRadius.circular(14),
-                  border: Border.all(color: const Color(0xFFE4E8F8)),
+                  border: Border.all(color: AppColors.of(context).line),
                   boxShadow: const [
                     BoxShadow(
                       color: Color(0x29272D64),
@@ -502,9 +502,9 @@ class _ProfileChipState extends ConsumerState<_ProfileChip> {
                     const SizedBox(height: 8),
                     Text(
                       name,
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 14,
-                        color: Color(0xFF1E293B),
+                        color: AppColors.of(context).text,
                         fontWeight: FontWeight.w700,
                       ),
                     ),
@@ -516,15 +516,15 @@ class _ProfileChipState extends ConsumerState<_ProfileChip> {
                           vertical: 3,
                         ),
                         decoration: BoxDecoration(
-                          color: const Color(0xFFEEF0FF),
+                          color: AppColors.of(context).brandSoft,
                           borderRadius: BorderRadius.circular(999),
                         ),
                         child: Text(
                           '🏫 $schoolName',
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontSize: 11,
                             fontWeight: FontWeight.w600,
-                            color: Color(0xFF6366F1),
+                            color: AppColors.of(context).accent,
                           ),
                         ),
                       ),
@@ -568,9 +568,9 @@ class _ProfileChipState extends ConsumerState<_ProfileChip> {
                       Container(
                         width: double.infinity,
                         padding: const EdgeInsets.only(top: 8),
-                        decoration: const BoxDecoration(
+                        decoration: BoxDecoration(
                           border: Border(
-                            top: BorderSide(color: Color(0xFFF0F2FF)),
+                            top: BorderSide(color: AppColors.of(context).line),
                           ),
                         ),
                         child: Column(
@@ -666,7 +666,7 @@ class _ProfileChipState extends ConsumerState<_ProfileChip> {
                           fontSize: 14,
                           fontWeight: FontWeight.w800,
                           height: 1.3,
-                          color: AppColors.text,
+                          color: AppColors.of(context).text,
                         ),
                       ),
                       Text(
@@ -677,7 +677,7 @@ class _ProfileChipState extends ConsumerState<_ProfileChip> {
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
                           fontSize: 11,
-                          color: AppColors.muted,
+                          color: AppColors.of(context).muted,
                           height: 1.3,
                         ),
                       ),
@@ -685,9 +685,9 @@ class _ProfileChipState extends ConsumerState<_ProfileChip> {
                   ),
                 ),
                 const SizedBox(width: 6),
-                const Text(
+                Text(
                   '▾',
-                  style: TextStyle(fontSize: 10, color: Color(0xFF7C82A7)),
+                  style: TextStyle(fontSize: 10, color: AppColors.of(context).muted),
                 ),
               ],
             ),
@@ -725,9 +725,9 @@ class _StreakCardState extends State<_StreakCard> {
       key: const ValueKey('student-home-streak'),
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: AppColors.card,
+        color: AppColors.of(context).card,
         borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: AppColors.line),
+        border: Border.all(color: AppColors.of(context).line),
         boxShadow: [
           BoxShadow(
             color: AppColors.sidebar.withValues(alpha: 0.04),
@@ -764,7 +764,7 @@ class _StreakCardState extends State<_StreakCard> {
                       style: TextStyle(
                         fontSize: 12,
                         fontWeight: FontWeight.w600,
-                        color: AppColors.muted,
+                        color: AppColors.of(context).muted,
                       ),
                     ),
                     Text(
@@ -772,7 +772,7 @@ class _StreakCardState extends State<_StreakCard> {
                       style: TextStyle(
                         fontSize: 23,
                         fontWeight: FontWeight.w800,
-                        color: AppColors.text,
+                        color: AppColors.of(context).text,
                         height: 1.2,
                       ),
                     ),
@@ -797,7 +797,7 @@ class _StreakCardState extends State<_StreakCard> {
                   _expanded
                       ? Icons.expand_less_rounded
                       : Icons.expand_more_rounded,
-                  color: AppColors.muted,
+                  color: AppColors.of(context).muted,
                 ),
               ),
             ],
@@ -810,7 +810,7 @@ class _StreakCardState extends State<_StreakCard> {
                 child: LinearProgressIndicator(
                   value: (days / next).clamp(0, 1),
                   minHeight: 5,
-                  backgroundColor: AppColors.line,
+                  backgroundColor: AppColors.of(context).line,
                   color: accent,
                   semanticsLabel: 'Progress to $next-day badge',
                 ),
@@ -830,7 +830,7 @@ class _StreakCardState extends State<_StreakCard> {
               style: TextStyle(
                 fontSize: 11,
                 height: 1.3,
-                color: AppColors.muted,
+                color: AppColors.of(context).muted,
               ),
             ),
           ],
@@ -844,7 +844,7 @@ class _StreakCardState extends State<_StreakCard> {
                 style: TextStyle(
                   fontSize: 12,
                   height: 1.5,
-                  color: AppColors.muted,
+                  color: AppColors.of(context).muted,
                 ),
               ),
             ],
@@ -867,7 +867,7 @@ class _StreakCardState extends State<_StreakCard> {
                   style: TextStyle(
                     fontSize: 12,
                     fontWeight: FontWeight.w600,
-                    color: AppColors.isDark
+                    color: AppColors.of(context).isDark
                         ? const Color(0xFFFFBB9D)
                         : const Color(0xFF9B401B),
                     height: 1.4,
@@ -884,7 +884,7 @@ class _StreakCardState extends State<_StreakCard> {
                 style: TextStyle(
                   fontSize: 11,
                   fontWeight: FontWeight.w600,
-                  color: AppColors.muted,
+                  color: AppColors.of(context).muted,
                 ),
               ),
             ],
@@ -906,11 +906,11 @@ class _StreakCardState extends State<_StreakCard> {
                         borderRadius: BorderRadius.circular(10),
                         color: m.earned
                             ? accent.withValues(alpha: 0.12)
-                            : AppColors.background,
+                            : AppColors.of(context).background,
                         border: Border.all(
                           color: m.earned
                               ? accent.withValues(alpha: 0.25)
-                              : AppColors.line,
+                              : AppColors.of(context).line,
                         ),
                       ),
                       child: ExcludeSemantics(
@@ -922,7 +922,7 @@ class _StreakCardState extends State<_StreakCard> {
                                   ? Icons.workspace_premium_rounded
                                   : Icons.lock_outline_rounded,
                               size: 14,
-                              color: m.earned ? accent : AppColors.muted,
+                              color: m.earned ? accent : AppColors.of(context).muted,
                             ),
                             const SizedBox(width: 4),
                             Text(
@@ -930,7 +930,7 @@ class _StreakCardState extends State<_StreakCard> {
                               style: TextStyle(
                                 fontSize: 11,
                                 fontWeight: FontWeight.w700,
-                                color: AppColors.text,
+                                color: AppColors.of(context).text,
                               ),
                             ),
                           ],
@@ -948,7 +948,7 @@ class _StreakCardState extends State<_StreakCard> {
                 child: LinearProgressIndicator(
                   value: (days / next).clamp(0, 1),
                   minHeight: 6,
-                  backgroundColor: AppColors.line,
+                  backgroundColor: AppColors.of(context).line,
                   color: accent,
                   semanticsLabel: 'Progress to $next-day badge',
                 ),
@@ -959,7 +959,7 @@ class _StreakCardState extends State<_StreakCard> {
                 style: TextStyle(
                   fontSize: 11,
                   fontWeight: FontWeight.w500,
-                  color: AppColors.muted,
+                  color: AppColors.of(context).muted,
                 ),
               ),
             ],
@@ -970,7 +970,7 @@ class _StreakCardState extends State<_StreakCard> {
                 style: TextStyle(
                   fontSize: 11,
                   fontWeight: FontWeight.w600,
-                  color: AppColors.muted,
+                  color: AppColors.of(context).muted,
                 ),
               ),
             ],
@@ -1074,9 +1074,9 @@ class _AcademicsGrid extends StatelessWidget {
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
-        color: AppColors.card,
+        color: AppColors.of(context).card,
         borderRadius: BorderRadius.circular(26),
-        border: Border.all(color: AppColors.line),
+        border: Border.all(color: AppColors.of(context).line),
         boxShadow: [
           BoxShadow(
             color: AppColors.sidebar.withValues(alpha: 0.04),
@@ -1093,12 +1093,12 @@ class _AcademicsGrid extends StatelessWidget {
               Container(
                 padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
-                  color: AppColors.brandSoft,
+                  color: AppColors.of(context).brandSoft,
                   borderRadius: BorderRadius.circular(11),
                 ),
-                child: const Icon(
+                child: Icon(
                   Icons.grid_view_rounded,
-                  color: AppColors.brand,
+                  color: AppColors.of(context).accent,
                   size: 19,
                 ),
               ),
@@ -1110,14 +1110,14 @@ class _AcademicsGrid extends StatelessWidget {
                     Text(
                       'Academics',
                       style: TextStyle(
-                        color: AppColors.text,
+                        color: AppColors.of(context).text,
                         fontSize: 18,
                         fontWeight: FontWeight.w800,
                       ),
                     ),
                     Text(
                       'Your world of learning',
-                      style: TextStyle(color: AppColors.muted, fontSize: 11),
+                      style: TextStyle(color: AppColors.of(context).muted, fontSize: 11),
                     ),
                   ],
                 ),

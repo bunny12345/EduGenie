@@ -65,7 +65,7 @@ class _StudentReportCardScreenState extends ConsumerState<StudentReportCardScree
     final studentName = session?.name.isNotEmpty == true ? session!.name : 'Student';
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF7F7FC),
+      backgroundColor: AppColors.of(context).background,
       appBar: AppBar(title: const Text('Report Card')),
       body: RefreshIndicator(
         onRefresh: () async => ref.invalidate(reportCardsProvider),
@@ -85,8 +85,8 @@ class _StudentReportCardScreenState extends ConsumerState<StudentReportCardScree
                   const SizedBox(height: 60),
                   const Center(child: Text('📝', style: TextStyle(fontSize: 44))),
                   const SizedBox(height: 10),
-                  const Center(
-                    child: Text('No report card yet', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: Color(0xFF1F2347))),
+                  Center(
+                    child: Text('No report card yet', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: AppColors.of(context).text)),
                   ),
                   const SizedBox(height: 6),
                   Center(
@@ -95,7 +95,7 @@ class _StudentReportCardScreenState extends ConsumerState<StudentReportCardScree
                       child: Text(
                         'Your results appear here as soon as every subject teacher has added their marks.',
                         textAlign: TextAlign.center,
-                        style: TextStyle(fontSize: 13, color: AppColors.muted),
+                        style: TextStyle(fontSize: 13, color: AppColors.of(context).muted),
                       ),
                     ),
                   ),
@@ -121,7 +121,7 @@ class _StudentReportCardScreenState extends ConsumerState<StudentReportCardScree
                           selected: active,
                           onSelected: (_) => setState(() => _selectedExamId = c.examId),
                           selectedColor: AppColors.brand,
-                          labelStyle: TextStyle(color: active ? Colors.white : AppColors.text, fontWeight: FontWeight.w700),
+                          labelStyle: TextStyle(color: active ? Colors.white : AppColors.of(context).text, fontWeight: FontWeight.w700),
                         );
                       },
                     ),

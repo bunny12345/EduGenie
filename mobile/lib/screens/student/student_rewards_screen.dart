@@ -58,7 +58,7 @@ class _StudentRewardsScreenState extends ConsumerState<StudentRewardsScreen> {
                   children: [
                     const Text('⭐', style: TextStyle(fontSize: 36)),
                     Text('${rewards.coins} Coins', style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w800)),
-                    Text('${rewards.badges.length} badges earned', style: TextStyle(color: AppColors.muted, fontSize: 13)),
+                    Text('${rewards.badges.length} badges earned', style: TextStyle(color: AppColors.of(context).muted, fontSize: 13)),
                     const SizedBox(height: 14),
                     ElevatedButton(
                       onPressed: _checkingIn ? null : _checkIn,
@@ -77,7 +77,7 @@ class _StudentRewardsScreenState extends ConsumerState<StudentRewardsScreen> {
                     spacing: 8,
                     runSpacing: 8,
                     children: rewards.badges
-                        .map((b) => Chip(label: Text(b), backgroundColor: AppColors.brandSoft))
+                        .map((b) => Chip(label: Text(b), backgroundColor: AppColors.of(context).brandSoft))
                         .toList(),
                   ),
                 ),

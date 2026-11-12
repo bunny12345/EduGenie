@@ -31,10 +31,10 @@ class StudentMoreScreen extends ConsumerWidget {
               child: Row(
                 children: [
                   CircleAvatar(
-                    backgroundColor: AppColors.brandSoft,
+                    backgroundColor: AppColors.of(context).brandSoft,
                     child: Text(
                       session.name.isNotEmpty ? session.name[0].toUpperCase() : '?',
-                      style: const TextStyle(color: AppColors.brand, fontWeight: FontWeight.w700),
+                      style: TextStyle(color: AppColors.of(context).accent, fontWeight: FontWeight.w700),
                     ),
                   ),
                   const SizedBox(width: 12),
@@ -43,7 +43,7 @@ class StudentMoreScreen extends ConsumerWidget {
                     children: [
                       Text(session.name, style: const TextStyle(fontWeight: FontWeight.w700)),
                       if (session.className.isNotEmpty)
-                        Text(session.className, style: TextStyle(color: AppColors.muted, fontSize: 12)),
+                        Text(session.className, style: TextStyle(color: AppColors.of(context).muted, fontSize: 12)),
                     ],
                   ),
                 ],
@@ -54,7 +54,7 @@ class StudentMoreScreen extends ConsumerWidget {
             ListTile(
               leading: Icon(item.icon, color: AppColors.brand),
               title: Text(item.label),
-              trailing: Icon(Icons.chevron_right_rounded, color: AppColors.muted),
+              trailing: Icon(Icons.chevron_right_rounded, color: AppColors.of(context).muted),
               onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: item.builder)),
             ),
           const Divider(height: 1),

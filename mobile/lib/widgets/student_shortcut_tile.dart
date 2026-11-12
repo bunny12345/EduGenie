@@ -40,8 +40,8 @@ class StudentShortcutTile extends StatelessWidget {
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
                 colors: [
-                  accent.withValues(alpha: AppColors.isDark ? 0.14 : 0.055),
-                  AppColors.card,
+                  accent.withValues(alpha: AppColors.of(context).isDark ? 0.14 : 0.055),
+                  AppColors.of(context).card,
                 ],
               ),
               borderRadius: BorderRadius.circular(19),
@@ -65,18 +65,18 @@ class StudentShortcutTile extends StatelessWidget {
                       colors: [
                         Color.alphaBlend(
                           accent.withValues(alpha: 0.08),
-                          AppColors.card,
+                          AppColors.of(context).card,
                         ),
                         Color.alphaBlend(
                           accent.withValues(alpha: 0.24),
-                          AppColors.card,
+                          AppColors.of(context).card,
                         ),
                       ],
                     ),
                     borderRadius: BorderRadius.circular(18),
                     border: Border.all(
                       color: Colors.white.withValues(
-                        alpha: AppColors.isDark ? 0.15 : 0.9,
+                        alpha: AppColors.of(context).isDark ? 0.15 : 0.9,
                       ),
                       width: 1.5,
                     ),
@@ -109,7 +109,7 @@ class StudentShortcutTile extends StatelessWidget {
                   style: TextStyle(
                     fontSize: 12,
                     fontWeight: FontWeight.w700,
-                    color: AppColors.text,
+                    color: AppColors.of(context).text,
                     height: 1.2,
                   ),
                 ),

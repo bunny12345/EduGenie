@@ -19,8 +19,8 @@ details and personal best. Raised illustrated icon tiles use tighter spacing.
 At least 70% of Academics is visible on a 390 × 844 phone at default text size,
 including space for bottom navigation and safe areas. Smaller screens and larger
 accessibility text remain scrollable rather than shrinking their text.
-This is a Home-only visual update: shared theme tokens, web and teacher screens
-are unchanged. Existing bundled artwork is reused; no new dependencies or assets.
+This layout update is student-mobile-only; web and teacher layouts are unchanged.
+Existing bundled artwork is reused; no new dependencies or assets.
 
 Run `flutter test --no-pub test/student_home_test.dart test/student_nav_shell_test.dart`
 for phone/tablet layout, larger-text, streak-state and navigation checks.
@@ -33,6 +33,27 @@ All eight services are retained; demo previews and Technical Query navigation
 are unchanged. Grids switch to two columns for narrow screens or larger text.
 Run `flutter test --no-pub test/student_services_layout_test.dart test/student_support_screen_test.dart`
 for responsive layouts, preview selection/closing and support navigation.
+
+## Student dark theme
+
+Student surfaces and foregrounds resolve through `AppColors.of(context)`, which
+depends on the inherited Material theme. This also updates already-mounted
+constant widgets when Settings changes the theme, without resetting navigation
+or screen state. Prefer this contextual palette in widgets over the legacy
+global `AppColors.isDark` getters. Use its brighter accent for foregrounds on
+dark panels, not as a replacement for brand button fills.
+
+Home/profile, Services, bottom navigation, Orchard/detail/retention, Progress and
+charts, Homework, Games, Calendar, Library, Rewards, announcements, support and
+parental controls follow the selected theme. AI Tutor/Quick Sam retain their
+intentional dark design; the decorative report-card paper retains explicit
+contrasting ink while its surrounding page follows the theme.
+
+`flutter test --no-pub test/student_dark_theme_test.dart` checks live theme
+changes without remounting, dark text contrast (at least 4.5:1), saved-preference
+precedence and Calendar readability at larger text sizes. Page-specific theme
+regressions are covered by `orchard_dark_theme_test.dart`,
+`progress_dark_theme_test.dart` and `tasks_games_dark_test.dart`.
 
 ## School-controlled learning calendar
 

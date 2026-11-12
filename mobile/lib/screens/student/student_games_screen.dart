@@ -5,6 +5,8 @@ import '../../models/game_catalog_entry.dart';
 import '../../state/student_providers.dart';
 import '../../widgets/coming_soon_view.dart';
 import '../../widgets/section_card.dart';
+import '../../theme/app_colors.dart';
+import 'games/game_widgets.dart';
 import 'games/flashcards_screen.dart';
 import 'games/memory_maze_screen.dart';
 import 'games/quiz_rush_screen.dart';
@@ -22,7 +24,7 @@ class StudentGamesScreen extends ConsumerWidget {
     final greetingName = ref.watch(dashboardProvider).value?.greetingName;
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF7F7FC),
+      backgroundColor: GameColors.of(context).background(const Color(0xFFF7F7FC)),
       appBar: AppBar(title: const Text('Games')),
       body: RefreshIndicator(
         onRefresh: () async => ref.invalidate(gamesCatalogProvider),
@@ -56,11 +58,11 @@ class _ArcadeHero extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(24, 22, 24, 22),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: const Color(0xFFE7E3FF)),
-        gradient: const LinearGradient(
+        border: Border.all(color: GameColors.of(context).line(Color(0xFFE7E3FF))),
+        gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: [Color(0xFFEFEAFF), Color(0xFFF7F2FF), Color(0xFFEAF4FF)],
+          colors: [GameColors.of(context).surface(Color(0xFFEFEAFF)), GameColors.of(context).surface(Color(0xFFF7F2FF)), GameColors.of(context).surface(Color(0xFFEAF4FF))],
           stops: [0.0, 0.5, 1.0],
         ),
       ),
@@ -83,12 +85,12 @@ class _ArcadeHero extends StatelessWidget {
           Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text(
+              Text(
                 'Learning Arcade 🎮',
                 style: TextStyle(
                   fontSize: 22,
                   fontWeight: FontWeight.w800,
-                  color: Color(0xFF2A2360),
+                  color: GameColors.of(context).text(Color(0xFF2A2360)),
                 ),
               ),
               const SizedBox(height: 4),
@@ -96,7 +98,7 @@ class _ArcadeHero extends StatelessWidget {
                 greetingName != null && greetingName!.isNotEmpty
                     ? '$greetingName, pick a game and turn study time into play time.'
                     : 'Pick a game and turn study time into play time.',
-                style: const TextStyle(fontSize: 13, color: Color(0xFF6A6A9A)),
+                style: TextStyle(fontSize: 13, color: GameColors.of(context).muted(Color(0xFF6A6A9A))),
               ),
             ],
           ),
@@ -114,9 +116,9 @@ class _GamesGrid extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (games.isEmpty) {
-      return const Text(
+      return Text(
         'No games available yet.',
-        style: TextStyle(color: Color(0xFF9096B6), fontSize: 13),
+        style: TextStyle(color: GameColors.of(context).muted(Color(0xFF9096B6)), fontSize: 13),
       );
     }
     return Column(
@@ -153,17 +155,19 @@ class _GameCard extends StatelessWidget {
     final accent = game.accent;
     final iconBg = Color.alphaBlend(
       accent.withValues(alpha: 0.14),
-      Colors.white,
+      AppColors.of(context).card,
     );
     final statusBg = game.isLive
-        ? Color.alphaBlend(accent.withValues(alpha: 0.16), Colors.white)
-        : const Color(0xFFF1F2F8);
-    final statusText = game.isLive ? accent : const Color(0xFF9096B6);
+        ? Color.alphaBlend(accent.withValues(alpha: 0.16), AppColors.of(context).card)
+        : GameColors.of(context).surface(Color(0xFFF1F2F8));
+    final statusText = game.isLive
+        ? GameColors.of(context).accent(accent)
+        : GameColors.of(context).muted(const Color(0xFF9096B6));
 
     return Opacity(
       opacity: game.isLive ? 1 : 0.6,
       child: Material(
-        color: Colors.white,
+        color: AppColors.of(context).card,
         borderRadius: BorderRadius.circular(16),
         child: InkWell(
           borderRadius: BorderRadius.circular(16),
@@ -192,7 +196,7 @@ class _GameCard extends StatelessWidget {
             padding: const EdgeInsets.fromLTRB(16, 18, 16, 14),
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: const Color(0xFFE8E9F5)),
+              border: Border.all(color: GameColors.of(context).line(Color(0xFFE8E9F5))),
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -217,10 +221,10 @@ class _GameCard extends StatelessWidget {
                 const SizedBox(height: 6),
                 Text(
                   game.title,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 15,
                     fontWeight: FontWeight.w800,
-                    color: Color(0xFF26224F),
+                    color: GameColors.of(context).text(Color(0xFF26224F)),
                   ),
                 ),
                 const SizedBox(height: 6),
@@ -228,9 +232,9 @@ class _GameCard extends StatelessWidget {
                   game.tagline,
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 11.5,
-                    color: Color(0xFF6D739C),
+                    color: GameColors.of(context).muted(Color(0xFF6D739C)),
                     height: 1.35,
                   ),
                 ),

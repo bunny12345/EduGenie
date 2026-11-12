@@ -55,7 +55,7 @@ class _ExplainerCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(color: AppColors.brandSoft, borderRadius: BorderRadius.circular(14)),
+      decoration: BoxDecoration(color: AppColors.of(context).brandSoft, borderRadius: BorderRadius.circular(14)),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -64,7 +64,7 @@ class _ExplainerCard extends StatelessWidget {
           Text(
             'Pins AcademiX to the screen so your child can\'t switch to other apps — '
             'the Home and Recent Apps buttons stop working while it\'s on.',
-            style: TextStyle(fontSize: 12.5, color: AppColors.text),
+            style: TextStyle(fontSize: 12.5, color: AppColors.of(context).text),
           ),
           SizedBox(height: 8),
           Text(
@@ -72,7 +72,7 @@ class _ExplainerCard extends StatelessWidget {
             'device management. A tech-savvy kid holding Back + Recent Apps together can '
             'reach Android\'s own unpin screen — but that asks for the PHONE\'s screen lock, '
             'not this PIN. Set here is still a strong, real deterrent for everyday use.',
-            style: TextStyle(fontSize: 11.5, color: AppColors.muted),
+            style: TextStyle(fontSize: 11.5, color: AppColors.of(context).muted),
           ),
         ],
       ),
@@ -120,13 +120,13 @@ class _CreatePinCardState extends ConsumerState<_CreatePinCard> {
   Widget build(BuildContext context) {
     return Container(
       padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(14), border: Border.all(color: AppColors.line)),
+      decoration: BoxDecoration(color: AppColors.of(context).card, borderRadius: BorderRadius.circular(14), border: Border.all(color: AppColors.of(context).line)),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Text('Create a parent PIN', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14)),
           const SizedBox(height: 4),
-          Text('Only you should know this — it\'s required to turn Focus Mode off.', style: TextStyle(fontSize: 12, color: AppColors.muted)),
+          Text('Only you should know this — it\'s required to turn Focus Mode off.', style: TextStyle(fontSize: 12, color: AppColors.of(context).muted)),
           const SizedBox(height: 14),
           _PinField(controller: _pinController, label: '6-digit PIN'),
           const SizedBox(height: 10),
@@ -205,7 +205,7 @@ class _ManageLockCardState extends ConsumerState<_ManageLockCard> {
             Text(
               'AcademiX will pin to the screen for the chosen time. Home and Recent Apps '
               'stop working until it unlocks — either automatically, or earlier with your PIN.',
-              style: TextStyle(fontSize: 12.5, color: AppColors.muted),
+              style: TextStyle(fontSize: 12.5, color: AppColors.of(context).muted),
             ),
             const SizedBox(height: 14),
             for (final d in options)
@@ -283,7 +283,7 @@ class _ManageLockCardState extends ConsumerState<_ManageLockCard> {
   @override
   Widget build(BuildContext context) {
     return Container(
-      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(14), border: Border.all(color: AppColors.line)),
+      decoration: BoxDecoration(color: AppColors.of(context).card, borderRadius: BorderRadius.circular(14), border: Border.all(color: AppColors.of(context).line)),
       child: Column(
         children: [
           SwitchListTile(
@@ -300,8 +300,8 @@ class _ManageLockCardState extends ConsumerState<_ManageLockCard> {
           ),
           const Divider(height: 1),
           ListTile(
-            leading: Icon(Icons.lock_open_rounded, color: state.enabled ? AppColors.muted : AppColors.danger),
-            title: Text('Remove Focus Mode', style: TextStyle(color: state.enabled ? AppColors.muted : AppColors.danger)),
+            leading: Icon(Icons.lock_open_rounded, color: state.enabled ? AppColors.of(context).muted : AppColors.danger),
+            title: Text('Remove Focus Mode', style: TextStyle(color: state.enabled ? AppColors.of(context).muted : AppColors.danger)),
             subtitle: state.enabled ? const Text('Turn off Focus Mode first.') : null,
             enabled: !state.enabled,
             onTap: () => _removeLock(context, ref),
@@ -353,7 +353,7 @@ class _IosInstructionsView extends StatelessWidget {
       children: [
         Container(
           padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(color: AppColors.brandSoft, borderRadius: BorderRadius.circular(14)),
+          decoration: BoxDecoration(color: AppColors.of(context).brandSoft, borderRadius: BorderRadius.circular(14)),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -362,7 +362,7 @@ class _IosInstructionsView extends StatelessWidget {
               Text(
                 'Apple doesn\'t let any app lock the device into itself — this has to be turned '
                 'on by you, the parent, using Apple\'s own built-in tools.',
-                style: TextStyle(fontSize: 12.5, color: AppColors.text),
+                style: TextStyle(fontSize: 12.5, color: AppColors.of(context).text),
               ),
             ],
           ),
@@ -400,7 +400,7 @@ class _IosStepCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(14), border: Border.all(color: AppColors.line)),
+      decoration: BoxDecoration(color: AppColors.of(context).card, borderRadius: BorderRadius.circular(14), border: Border.all(color: AppColors.of(context).line)),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -412,7 +412,7 @@ class _IosStepCard extends StatelessWidget {
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text('${i + 1}. ', style: const TextStyle(fontWeight: FontWeight.w700, color: AppColors.brand, fontSize: 12.5)),
+                  Text('${i + 1}. ', style: TextStyle(fontWeight: FontWeight.w700, color: AppColors.of(context).accent, fontSize: 12.5)),
                   Expanded(child: Text(steps[i], style: const TextStyle(fontSize: 12.5))),
                 ],
               ),

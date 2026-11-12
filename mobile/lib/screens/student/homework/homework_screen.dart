@@ -126,8 +126,8 @@ class _FramedTextButton extends StatelessWidget {
       onTap: onPressed,
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(10), border: _frame3dBorder(), boxShadow: _frame3dShadow()),
-        child: Text(label, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: Color(0xFF5B47FF))),
+        decoration: BoxDecoration(color: AppColors.of(context).card, borderRadius: BorderRadius.circular(10), border: _frame3dBorder(), boxShadow: _frame3dShadow()),
+        child: Text(label, style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: HomeworkColors.of(context).accent(Color(0xFF5B47FF)))),
       ),
     );
   }
@@ -266,7 +266,7 @@ class _HomeworkScreenState extends ConsumerState<HomeworkScreen> {
     final iconColor = SubjectPalette.colorFor(_selectedSubject ?? '');
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF7F7FC),
+      backgroundColor: HomeworkColors.of(context).background(const Color(0xFFF7F7FC)),
       appBar: AppBar(title: const Text('Homework')),
       body: RefreshIndicator(
         onRefresh: () async {
@@ -274,7 +274,7 @@ class _HomeworkScreenState extends ConsumerState<HomeworkScreen> {
           ref.invalidate(testsProvider);
         },
         child: subjects.isEmpty
-            ? ListView(padding: const EdgeInsets.all(16), children: const [Text('No subjects yet.', style: TextStyle(color: Color(0xFF6B7280), fontSize: 13))])
+            ? ListView(padding: const EdgeInsets.all(16), children: [Text('No subjects yet.', style: TextStyle(color: HomeworkColors.of(context).muted(Color(0xFF6B7280)), fontSize: 13))])
             : ListView(
                 padding: const EdgeInsets.all(16),
                 children: [
@@ -316,9 +316,9 @@ class _HomeworkScreenState extends ConsumerState<HomeworkScreen> {
                     margin: const EdgeInsets.only(bottom: 12),
                     padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
                     decoration: BoxDecoration(
-                      color: Colors.white,
+                      color: AppColors.of(context).card,
                       borderRadius: BorderRadius.circular(16),
-                      border: Border.all(color: theme.border, width: 1.5),
+                      border: Border.all(color: HomeworkColors.of(context).line(theme.border), width: 1.5),
                       boxShadow: [BoxShadow(color: theme.color.withValues(alpha: 0.16), blurRadius: 14, offset: const Offset(0, 4))],
                     ),
                     child: Row(
@@ -328,7 +328,7 @@ class _HomeworkScreenState extends ConsumerState<HomeworkScreen> {
                           height: 48,
                           decoration: BoxDecoration(color: theme.color.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(14)),
                           alignment: Alignment.center,
-                          child: Icon(_subjectIconData(_selectedSubject ?? ''), size: 26, color: iconColor),
+                          child: Icon(_subjectIconData(_selectedSubject ?? ''), size: 26, color: HomeworkColors.of(context).accent(iconColor)),
                         ),
                         const SizedBox(width: 14),
                         Expanded(
@@ -336,9 +336,9 @@ class _HomeworkScreenState extends ConsumerState<HomeworkScreen> {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              Text(_selectedSubject ?? '', style: TextStyle(fontSize: 19, fontWeight: FontWeight.w800, color: theme.color)),
+                              Text(_selectedSubject ?? '', style: TextStyle(fontSize: 19, fontWeight: FontWeight.w800, color: HomeworkColors.of(context).accent(theme.color))),
                               const SizedBox(height: 2),
-                              Text('Homework & Tests', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: theme.color.withValues(alpha: 0.65))),
+                              Text('Homework & Tests', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.of(context).isDark ? AppColors.of(context).muted : theme.color.withValues(alpha: 0.65))),
                             ],
                           ),
                         ),
@@ -347,7 +347,7 @@ class _HomeworkScreenState extends ConsumerState<HomeworkScreen> {
                   ),
                   homeworkAsync.when(
                     loading: () => const SkeletonBox(height: 60),
-                    error: (e, _) => Text('Unable to load homework: $e', style: const TextStyle(color: Colors.red, fontSize: 12)),
+                    error: (e, _) => Text('Unable to load homework: $e', style: TextStyle(color: HomeworkColors.of(context).accent(Colors.red), fontSize: 12)),
                     data: (all) {
                       final subjectHomework = all.where((h) => h.subject == _selectedSubject).toList();
                       final visible = subjectHomework.where((h) => !homeworkState(h).hide).toList();
@@ -377,9 +377,9 @@ class _HomeworkScreenState extends ConsumerState<HomeworkScreen> {
                         padding: const EdgeInsets.all(14),
                         margin: const EdgeInsets.only(bottom: 12),
                         decoration: BoxDecoration(
-                          color: Colors.white,
+                          color: AppColors.of(context).card,
                           borderRadius: BorderRadius.circular(14),
-                          border: Border.all(color: theme.border, width: 1.5),
+                          border: Border.all(color: HomeworkColors.of(context).line(theme.border), width: 1.5),
                         ),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
@@ -390,7 +390,7 @@ class _HomeworkScreenState extends ConsumerState<HomeworkScreen> {
                               spacing: 12,
                               runSpacing: 8,
                               children: [
-                                Text('${_selectedSubject ?? ''} Homework', style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800, color: Color(0xFF111827))),
+                                Text('${_selectedSubject ?? ''} Homework', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800, color: HomeworkColors.of(context).text(Color(0xFF111827)))),
                                 _FramedTextButton(
                                   label: _showHistory ? 'Hide history' : 'Open history',
                                   onPressed: () => setState(() => _showHistory = !_showHistory),
@@ -406,7 +406,7 @@ class _HomeworkScreenState extends ConsumerState<HomeworkScreen> {
                                   label: 'Submitted: $submittedCount',
                                   active: _filter == _HwFilter.submitted,
                                   activeColor: const Color(0xFF16A34A),
-                                  inactiveBg: const Color(0xFFDCFCE7),
+                                  inactiveBg: HomeworkColors.of(context).surface(Color(0xFFDCFCE7)),
                                   inactiveColor: const Color(0xFF166534),
                                   onTap: () => setState(() => _filter = _filter == _HwFilter.submitted ? _HwFilter.all : _HwFilter.submitted),
                                 ),
@@ -414,7 +414,7 @@ class _HomeworkScreenState extends ConsumerState<HomeworkScreen> {
                                   label: 'Not submitted: $notSubmittedCount',
                                   active: _filter == _HwFilter.notSubmitted,
                                   activeColor: const Color(0xFFDC2626),
-                                  inactiveBg: const Color(0xFFFEE2E2),
+                                  inactiveBg: HomeworkColors.of(context).surface(Color(0xFFFEE2E2)),
                                   inactiveColor: const Color(0xFF991B1B),
                                   onTap: () => setState(() => _filter = _filter == _HwFilter.notSubmitted ? _HwFilter.all : _HwFilter.notSubmitted),
                                 ),
@@ -422,7 +422,7 @@ class _HomeworkScreenState extends ConsumerState<HomeworkScreen> {
                                   label: 'Overdue: $overdueCount',
                                   active: _filter == _HwFilter.overdue,
                                   activeColor: const Color(0xFFC2410C),
-                                  inactiveBg: const Color(0xFFFFEDD5),
+                                  inactiveBg: HomeworkColors.of(context).surface(Color(0xFFFFEDD5)),
                                   inactiveColor: const Color(0xFF9A3412),
                                   onTap: () => setState(() => _filter = _filter == _HwFilter.overdue ? _HwFilter.all : _HwFilter.overdue),
                                 ),
@@ -432,14 +432,14 @@ class _HomeworkScreenState extends ConsumerState<HomeworkScreen> {
                               const SizedBox(height: 12),
                               Container(
                                 padding: const EdgeInsets.all(12),
-                                decoration: BoxDecoration(border: Border.all(color: const Color(0xFFE5E7EB)), borderRadius: BorderRadius.circular(10), color: const Color(0xFFFAFAFA)),
+                                decoration: BoxDecoration(border: Border.all(color: HomeworkColors.of(context).line(Color(0xFFE5E7EB))), borderRadius: BorderRadius.circular(10), color: HomeworkColors.of(context).surface(Color(0xFFFAFAFA))),
                                 child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
                                     Row(
                                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                       children: [
-                                        const Text('📅 View history by date', style: TextStyle(fontWeight: FontWeight.w700, color: Color(0xFF334155))),
+                                        Text('📅 View history by date', style: TextStyle(fontWeight: FontWeight.w700, color: HomeworkColors.of(context).text(Color(0xFF334155)))),
                                         _FramedTextButton(
                                           label: 'Close',
                                           onPressed: () => setState(() {
@@ -468,9 +468,9 @@ class _HomeworkScreenState extends ConsumerState<HomeworkScreen> {
                                     ),
                                     const SizedBox(height: 10),
                                     if (_historyFromDate == null)
-                                      const Padding(
+                                      Padding(
                                         padding: EdgeInsets.symmetric(vertical: 12),
-                                        child: Center(child: Text('Pick a date above to see homework assigned on that day.', style: TextStyle(fontSize: 12, color: Color(0xFF94A3B8)))),
+                                        child: Center(child: Text('Pick a date above to see homework assigned on that day.', style: TextStyle(fontSize: 12, color: HomeworkColors.of(context).muted(Color(0xFF94A3B8))))),
                                       )
                                     else
                                       ..._historyResultsFor(subjectHomework),
@@ -489,7 +489,7 @@ class _HomeworkScreenState extends ConsumerState<HomeworkScreen> {
                                     _HwFilter.overdue => 'No overdue homework in this panel.',
                                     _HwFilter.all => 'No homework in this panel.',
                                   },
-                                  style: const TextStyle(color: Color(0xFF64748B), fontSize: 12),
+                                  style: TextStyle(color: HomeworkColors.of(context).muted(Color(0xFF64748B)), fontSize: 12),
                                 ),
                               )
                             else
@@ -519,7 +519,7 @@ class _HomeworkScreenState extends ConsumerState<HomeworkScreen> {
                             if (visible.isEmpty)
                               Padding(
                                 padding: const EdgeInsets.only(top: 8),
-                                child: Text('No homework assigned for this subject.', style: const TextStyle(color: Color(0xFF999999), fontSize: 13)),
+                                child: Text('No homework assigned for this subject.', style: TextStyle(color: HomeworkColors.of(context).muted(Color(0xFF999999)), fontSize: 13)),
                               ),
                           ],
                         ),
@@ -528,30 +528,30 @@ class _HomeworkScreenState extends ConsumerState<HomeworkScreen> {
                   ),
                   testsAsync.when(
                     loading: () => const SkeletonBox(height: 50),
-                    error: (e, _) => Text('Unable to load tests: $e', style: const TextStyle(color: Colors.red, fontSize: 12)),
+                    error: (e, _) => Text('Unable to load tests: $e', style: TextStyle(color: HomeworkColors.of(context).accent(Colors.red), fontSize: 12)),
                     data: (tests) {
                       final subjectTests = tests.where((t) => t.subject == _selectedSubject).toList();
                       return Container(
                         width: double.infinity,
                         padding: const EdgeInsets.all(14),
                         decoration: BoxDecoration(
-                          color: Colors.white,
+                          color: AppColors.of(context).card,
                           borderRadius: BorderRadius.circular(14),
-                          border: Border.all(color: theme.border, width: 1.5),
+                          border: Border.all(color: HomeworkColors.of(context).line(theme.border), width: 1.5),
                         ),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Row(
                               children: [
-                                Icon(Icons.assignment_turned_in_rounded, size: 18, color: iconColor),
+                                Icon(Icons.assignment_turned_in_rounded, size: 18, color: HomeworkColors.of(context).accent(iconColor)),
                                 const SizedBox(width: 8),
-                                Expanded(child: Text('${_selectedSubject ?? ''} Mock Tests', style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: Color(0xFF111827)))),
+                                Expanded(child: Text('${_selectedSubject ?? ''} Mock Tests', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: HomeworkColors.of(context).text(Color(0xFF111827))))),
                               ],
                             ),
                             const SizedBox(height: 10),
                             if (subjectTests.isEmpty)
-                              const Text('No tests available for this subject.', style: TextStyle(color: Color(0xFF64748B), fontSize: 13))
+                              Text('No tests available for this subject.', style: TextStyle(color: HomeworkColors.of(context).muted(Color(0xFF64748B)), fontSize: 13))
                             else
                               for (final t in subjectTests)
                                 _MockTestTile(test: t, accentColor: iconColor, theme: theme),
@@ -583,7 +583,7 @@ class _HomeworkScreenState extends ConsumerState<HomeworkScreen> {
       return iso == _historyFromDate;
     }).toList();
     if (filtered.isEmpty) {
-      return [Text('No homework assigned on $_historyFromDate.', style: const TextStyle(fontSize: 12, color: Color(0xFF64748B)))];
+      return [Text('No homework assigned on $_historyFromDate.', style: TextStyle(fontSize: 12, color: HomeworkColors.of(context).muted(Color(0xFF64748B))))];
     }
     return [for (final h in filtered) _HistoryResultCard(homework: h)];
   }
@@ -642,7 +642,7 @@ class _MockTestTileState extends ConsumerState<_MockTestTile> {
         children: [
           Row(
             children: [
-              Expanded(child: Text(t.title, style: const TextStyle(fontSize: 13, color: Color(0xFF334155)))),
+              Expanded(child: Text(t.title, style: TextStyle(fontSize: 13, color: HomeworkColors.of(context).text(Color(0xFF334155))))),
               const SizedBox(width: 10),
               _buildAction(context),
             ],
@@ -650,7 +650,7 @@ class _MockTestTileState extends ConsumerState<_MockTestTile> {
           if (!t.attempted && t.windowStatus == 'open' && t.endAt != null)
             Padding(
               padding: const EdgeInsets.only(top: 2),
-              child: Text('Closes ${DateFormat('d MMM, h:mm a').format(t.endAt!.toLocal())}', style: TextStyle(fontSize: 10, color: AppColors.muted)),
+              child: Text('Closes ${DateFormat('d MMM, h:mm a').format(t.endAt!.toLocal())}', style: TextStyle(fontSize: 10, color: AppColors.of(context).muted)),
             ),
           if (_reviewOpen) ...[
             const SizedBox(height: 6),
@@ -673,10 +673,10 @@ class _MockTestTileState extends ConsumerState<_MockTestTile> {
         onTap: _toggleReview,
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-          decoration: BoxDecoration(color: const Color(0xFFDCFCE7), borderRadius: BorderRadius.circular(999)),
+          decoration: BoxDecoration(color: HomeworkColors.of(context).surface(Color(0xFFDCFCE7)), borderRadius: BorderRadius.circular(999)),
           child: Text(
             'Completed (${t.lastScore ?? 0}%) ${_reviewOpen ? '\u25b4 Hide' : '\u25be Review'}',
-            style: const TextStyle(color: Color(0xFF166534), fontSize: 11, fontWeight: FontWeight.w700),
+            style: TextStyle(color: HomeworkColors.of(context).accent(Color(0xFF166534)), fontSize: 11, fontWeight: FontWeight.w700),
           ),
         ),
       );
@@ -684,18 +684,18 @@ class _MockTestTileState extends ConsumerState<_MockTestTile> {
     if (t.windowStatus == 'scheduled') {
       return Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-        decoration: BoxDecoration(color: const Color(0xFFFEF3C7), borderRadius: BorderRadius.circular(999)),
+        decoration: BoxDecoration(color: HomeworkColors.of(context).surface(Color(0xFFFEF3C7)), borderRadius: BorderRadius.circular(999)),
         child: Text(
           t.startAt != null ? 'Opens ${DateFormat('d MMM, h:mm a').format(t.startAt!.toLocal())}' : 'Opens soon',
-          style: const TextStyle(color: Color(0xFF92400E), fontSize: 11, fontWeight: FontWeight.w700),
+          style: TextStyle(color: HomeworkColors.of(context).accent(Color(0xFF92400E)), fontSize: 11, fontWeight: FontWeight.w700),
         ),
       );
     }
     if (t.windowStatus == 'expired') {
       return Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-        decoration: BoxDecoration(color: const Color(0xFFFEE2E2), borderRadius: BorderRadius.circular(999)),
-        child: const Text('Expired', style: TextStyle(color: Color(0xFFB91C1C), fontSize: 11, fontWeight: FontWeight.w700)),
+        decoration: BoxDecoration(color: HomeworkColors.of(context).surface(Color(0xFFFEE2E2)), borderRadius: BorderRadius.circular(999)),
+        child: Text('Expired', style: TextStyle(color: HomeworkColors.of(context).accent(Color(0xFFB91C1C)), fontSize: 11, fontWeight: FontWeight.w700)),
       );
     }
     return PressableScale(
@@ -733,18 +733,18 @@ class _ReviewRow extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('${index + 1}. $text', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Color(0xFF1F2347))),
+          Text('${index + 1}. $text', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: HomeworkColors.of(context).text(Color(0xFF1F2347)))),
           const SizedBox(height: 4),
           Text(
             'Your answer: ${selected >= 0 && selected < options.length ? options[selected] : 'Not answered'} ${isCorrect ? '\u2713' : '\u2717'}',
-            style: const TextStyle(fontSize: 11, color: Color(0xFF374151)),
+            style: TextStyle(fontSize: 11, color: HomeworkColors.of(context).text(Color(0xFF374151))),
           ),
           if (!isCorrect)
             Padding(
               padding: const EdgeInsets.only(top: 2),
               child: Text(
                 'Correct answer: ${correct >= 0 && correct < options.length ? options[correct] : '\u2014'}',
-                style: const TextStyle(fontSize: 11, color: Color(0xFF047857)),
+                style: TextStyle(fontSize: 11, color: HomeworkColors.of(context).accent(Color(0xFF047857))),
               ),
             ),
         ],
@@ -772,7 +772,7 @@ class _SubjectPillChip extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.fromLTRB(6, 6, 14, 6),
         decoration: BoxDecoration(
-          color: active ? Color.alphaBlend(theme.color.withValues(alpha: 0.08), Colors.white) : Colors.white,
+          color: active ? Color.alphaBlend(theme.color.withValues(alpha: 0.08), AppColors.of(context).card) : AppColors.of(context).card,
           borderRadius: BorderRadius.circular(14),
           border: Border.all(color: frameColor, width: 1.5),
           boxShadow: [
@@ -787,14 +787,14 @@ class _SubjectPillChip extends StatelessWidget {
               width: 28,
               height: 28,
               decoration: BoxDecoration(
-                color: active ? theme.color.withValues(alpha: 0.1) : const Color(0xFFF3F4F6),
+                color: active ? theme.color.withValues(alpha: 0.1) : HomeworkColors.of(context).surface(Color(0xFFF3F4F6)),
                 borderRadius: BorderRadius.circular(8),
               ),
               alignment: Alignment.center,
-              child: Icon(_subjectIconData(label), size: 16, color: iconColor),
+              child: Icon(_subjectIconData(label), size: 16, color: HomeworkColors.of(context).accent(iconColor)),
             ),
             const SizedBox(width: 8),
-            Text(label, style: TextStyle(fontSize: 13, fontWeight: active ? FontWeight.w700 : FontWeight.w600, color: active ? theme.color : const Color(0xFF4B5563))),
+            Text(label, style: TextStyle(fontSize: 13, fontWeight: active ? FontWeight.w700 : FontWeight.w600, color: active ? HomeworkColors.of(context).accent(theme.color) : HomeworkColors.of(context).text(Color(0xFF4B5563)))),
             if (notifyCount > 0) ...[
               const SizedBox(width: 6),
               Container(
@@ -829,12 +829,12 @@ class _FilterPill extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
         decoration: BoxDecoration(
-          color: active ? activeColor : inactiveBg,
+          color: active ? activeColor : HomeworkColors.of(context).surface(inactiveBg),
           borderRadius: BorderRadius.circular(999),
           border: _frame3dBorder(),
           boxShadow: _frame3dShadow(),
         ),
-        child: Text(label, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: active ? Colors.white : inactiveColor)),
+        child: Text(label, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: active ? Colors.white : HomeworkColors.of(context).accent(inactiveColor))),
       ),
     );
   }
@@ -853,7 +853,7 @@ class _HistoryResultCard extends StatelessWidget {
       margin: const EdgeInsets.only(bottom: 8),
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: isSubmitted ? const Color(0xFFF0FDF4) : const Color(0xFFFFF1F2),
+        color: isSubmitted ? HomeworkColors.of(context).surface(Color(0xFFF0FDF4)) : HomeworkColors.of(context).surface(Color(0xFFFFF1F2)),
         border: Border.all(color: isSubmitted ? const Color(0xFF16A34A) : const Color(0xFFDC2626), width: 2),
         borderRadius: BorderRadius.circular(10),
       ),
@@ -862,11 +862,11 @@ class _HistoryResultCard extends StatelessWidget {
         children: [
           Row(
             children: [
-              Expanded(child: Text(homework.title, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14, color: Color(0xFF111827)))),
+              Expanded(child: Text(homework.title, style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14, color: HomeworkColors.of(context).text(Color(0xFF111827))))),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
-                decoration: BoxDecoration(color: isSubmitted ? const Color(0xFFDCFCE7) : const Color(0xFFFEE2E2), borderRadius: BorderRadius.circular(999)),
-                child: Text(isSubmitted ? '✅ Submitted' : '❌ Not submitted', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: isSubmitted ? const Color(0xFF16A34A) : const Color(0xFFDC2626))),
+                decoration: BoxDecoration(color: isSubmitted ? HomeworkColors.of(context).surface(Color(0xFFDCFCE7)) : HomeworkColors.of(context).surface(Color(0xFFFEE2E2)), borderRadius: BorderRadius.circular(999)),
+                child: Text(isSubmitted ? '✅ Submitted' : '❌ Not submitted', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: isSubmitted ? HomeworkColors.of(context).accent(Color(0xFF16A34A)) : HomeworkColors.of(context).accent(Color(0xFFDC2626)))),
               ),
             ],
           ),
@@ -875,8 +875,8 @@ class _HistoryResultCard extends StatelessWidget {
             Container(
               width: double.infinity,
               padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(color: Colors.white, border: Border.all(color: const Color(0xFFE5E7EB)), borderRadius: BorderRadius.circular(6)),
-              child: Text(homework.note!, style: const TextStyle(fontSize: 12, color: Color(0xFF374151))),
+              decoration: BoxDecoration(color: AppColors.of(context).card, border: Border.all(color: HomeworkColors.of(context).line(Color(0xFFE5E7EB))), borderRadius: BorderRadius.circular(6)),
+              child: Text(homework.note!, style: TextStyle(fontSize: 12, color: HomeworkColors.of(context).text(Color(0xFF374151)))),
             ),
           ],
         ],
@@ -950,13 +950,13 @@ class _HomeworkCard extends StatelessWidget {
       clipBehavior: Clip.antiAlias,
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: const Color(0xFFECE8FF)),
+        border: Border.all(color: HomeworkColors.of(context).line(Color(0xFFECE8FF))),
         boxShadow: const [BoxShadow(color: Color(0x0F272D64), blurRadius: 12, offset: Offset(0, 4))],
       ),
       child: Container(
         padding: const EdgeInsets.fromLTRB(18, 14, 14, 14),
         decoration: BoxDecoration(
-                color: st.overdue && !st.submitted ? const Color(0xFFFFF1F2) : const Color(0xFFF8F8FF),
+                color: st.overdue && !st.submitted ? HomeworkColors.of(context).surface(Color(0xFFFFF1F2)) : HomeworkColors.of(context).surface(Color(0xFFF8F8FF)),
                 border: Border(left: BorderSide(color: st.color, width: 4)),
               ),
                 child: Column(
@@ -966,7 +966,7 @@ class _HomeworkCard extends StatelessWidget {
             borderRadius: BorderRadius.circular(10),
             onTap: onToggleTeacherInfo,
             child: Container(
-              decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(10), border: _frame3dBorder(alpha: 0.28), boxShadow: _frame3dShadow(alpha: 0.12, blur: 8)),
+              decoration: BoxDecoration(color: AppColors.of(context).card, borderRadius: BorderRadius.circular(10), border: _frame3dBorder(alpha: 0.28), boxShadow: _frame3dShadow(alpha: 0.12, blur: 8)),
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
               child: Wrap(
                 crossAxisAlignment: WrapCrossAlignment.center,
@@ -977,34 +977,34 @@ class _HomeworkCard extends StatelessWidget {
                   for (final lt in h.lessonTitles)
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                      decoration: BoxDecoration(color: const Color(0xFFEEF2FF), borderRadius: BorderRadius.circular(999)),
-                      child: Text('📖 $lt', style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: Color(0xFF4338CA))),
+                      decoration: BoxDecoration(color: HomeworkColors.of(context).surface(Color(0xFFEEF2FF)), borderRadius: BorderRadius.circular(999)),
+                      child: Text('📖 $lt', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: HomeworkColors.of(context).accent(Color(0xFF4338CA)))),
                     ),
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                    decoration: BoxDecoration(color: st.bg, borderRadius: BorderRadius.circular(999)),
-                    child: Text(st.label, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: st.color)),
+                    decoration: BoxDecoration(color: HomeworkColors.of(context).surface(st.bg), borderRadius: BorderRadius.circular(999)),
+                    child: Text(st.label, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: HomeworkColors.of(context).accent(st.color))),
                   ),
-                  Text(expandedTeacherInfo ? 'Hide homework instructions' : '...', style: const TextStyle(fontSize: 11, color: Color(0xFF64748B), fontWeight: FontWeight.w600)),
+                  Text(expandedTeacherInfo ? 'Hide homework instructions' : '...', style: TextStyle(fontSize: 11, color: HomeworkColors.of(context).muted(Color(0xFF64748B)), fontWeight: FontWeight.w600)),
                 ],
               ),
             ),
           ),
           if (expandedTeacherInfo && h.note != null && h.note!.isNotEmpty) ...[
             const SizedBox(height: 4),
-            Text(h.note!, style: const TextStyle(color: Color(0xFF444444), fontSize: 14, height: 1.5)),
+            Text(h.note!, style: TextStyle(color: HomeworkColors.of(context).text(Color(0xFF444444)), fontSize: 14, height: 1.5)),
           ],
           if (expandedTeacherInfo && h.attachmentUrls.isNotEmpty) ...[
             const SizedBox(height: 10),
-            const Text('📎 Teacher attachment:', style: TextStyle(fontSize: 11, color: Color(0xFF888888))),
+            Text('📎 Teacher attachment:', style: TextStyle(fontSize: 11, color: HomeworkColors.of(context).muted(Color(0xFF888888)))),
             const SizedBox(height: 4),
-            _ImageThumbRow(urls: h.attachmentUrls, borderColor: const Color(0xFFDDDDDD)),
+            _ImageThumbRow(urls: h.attachmentUrls, borderColor: HomeworkColors.of(context).surface(Color(0xFFDDDDDD))),
           ],
           if (st.submitted && (h.latestAttachmentUrls.isNotEmpty || (h.latestAnswerText ?? '').isNotEmpty)) ...[
             const SizedBox(height: 10),
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-              decoration: BoxDecoration(color: const Color(0xFFF8FAFC), border: Border.all(color: const Color(0xFFE2E8F0)), borderRadius: BorderRadius.circular(8)),
+              decoration: BoxDecoration(color: HomeworkColors.of(context).surface(Color(0xFFF8FAFC)), border: Border.all(color: HomeworkColors.of(context).line(Color(0xFFE2E8F0))), borderRadius: BorderRadius.circular(8)),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -1014,13 +1014,13 @@ class _HomeworkCard extends StatelessWidget {
                   ),
                   if (expandedSubmission) ...[
                     if (h.latestAttachmentUrls.isNotEmpty) ...[
-                      const Text('✅ Submitted images:', style: TextStyle(fontSize: 11, color: Color(0xFF166534))),
+                      Text('✅ Submitted images:', style: TextStyle(fontSize: 11, color: HomeworkColors.of(context).accent(Color(0xFF166534)))),
                       const SizedBox(height: 6),
                       _ImageThumbRow(urls: h.latestAttachmentUrls, borderColor: const Color(0xFF16A34A), borderWidth: 2),
                     ],
                     if ((h.latestAnswerText ?? '').isNotEmpty) ...[
                       const SizedBox(height: 8),
-                      Text(h.latestAnswerText!, style: const TextStyle(fontSize: 12, color: Color(0xFF334155), height: 1.5)),
+                      Text(h.latestAnswerText!, style: TextStyle(fontSize: 12, color: HomeworkColors.of(context).text(Color(0xFF334155)), height: 1.5)),
                     ],
                   ],
                 ],
@@ -1029,7 +1029,7 @@ class _HomeworkCard extends StatelessWidget {
           ],
           if (showForm) ...[
             const SizedBox(height: 10),
-            const Text('Your written answer', style: TextStyle(fontSize: 12, color: Color(0xFF475569), fontWeight: FontWeight.w600)),
+            Text('Your written answer', style: TextStyle(fontSize: 12, color: HomeworkColors.of(context).text(Color(0xFF475569)), fontWeight: FontWeight.w600)),
             const SizedBox(height: 6),
             TextField(
               controller: answerCtrl,
@@ -1038,7 +1038,7 @@ class _HomeworkCard extends StatelessWidget {
                 hintText: 'Write your answer here (this will be visible to your teacher).',
                 border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
                 filled: true,
-                fillColor: Colors.white,
+                fillColor: AppColors.of(context).card,
               ),
             ),
             const SizedBox(height: 10),
@@ -1047,7 +1047,7 @@ class _HomeworkCard extends StatelessWidget {
               child: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                 decoration: BoxDecoration(
-                  color: Colors.white,
+                  color: AppColors.of(context).card,
                   borderRadius: BorderRadius.circular(999),
                   border: _frame3dBorder(),
                   boxShadow: _frame3dShadow(),
@@ -1055,9 +1055,9 @@ class _HomeworkCard extends StatelessWidget {
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    const Icon(Icons.add_photo_alternate_outlined, size: 18, color: Color(0xFF5B47FF)),
+                    Icon(Icons.add_photo_alternate_outlined, size: 18, color: HomeworkColors.of(context).accent(Color(0xFF5B47FF))),
                     const SizedBox(width: 6),
-                    Text(uploading ? 'Uploading…' : 'Add photos', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: Color(0xFF5B47FF))),
+                    Text(uploading ? 'Uploading…' : 'Add photos', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: HomeworkColors.of(context).accent(Color(0xFF5B47FF)))),
                   ],
                 ),
               ),
@@ -1067,7 +1067,7 @@ class _HomeworkCard extends StatelessWidget {
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Text('${pendingAttachments.length} image(s) selected', style: const TextStyle(fontSize: 12, color: Color(0xFF666666))),
+                  Text('${pendingAttachments.length} image(s) selected', style: TextStyle(fontSize: 12, color: HomeworkColors.of(context).text(Color(0xFF666666)))),
                   _FramedTextButton(
                     label: 'Remove all',
                     onPressed: () {
@@ -1110,7 +1110,7 @@ class _HomeworkCard extends StatelessWidget {
                 Expanded(
                   child: Text(
                     'Resubmit available for ${remainingResubmit.inMinutes} more minute${remainingResubmit.inMinutes == 1 ? '' : 's'}',
-                    style: const TextStyle(fontSize: 12, color: Color(0xFF1D4ED8), fontWeight: FontWeight.w600),
+                    style: TextStyle(fontSize: 12, color: HomeworkColors.of(context).accent(Color(0xFF1D4ED8)), fontWeight: FontWeight.w600),
                   ),
                 ),
                 _FramedTextButton(label: 'Edit resubmission', onPressed: onStartEditResubmit),
@@ -1119,13 +1119,13 @@ class _HomeworkCard extends StatelessWidget {
           ],
           if (info != null && info!.isNotEmpty) ...[
             const SizedBox(height: 8),
-            Text(info!, style: const TextStyle(fontSize: 12, color: Color(0xFF475569))),
+            Text(info!, style: TextStyle(fontSize: 12, color: HomeworkColors.of(context).text(Color(0xFF475569)))),
           ],
           if ((h.grade != null || (h.feedback ?? '').isNotEmpty)) ...[
             const SizedBox(height: 10),
             Container(
               padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(color: const Color(0xFFEEF6FF), border: Border.all(color: const Color(0xFFCFE0FF)), borderRadius: BorderRadius.circular(8)),
+              decoration: BoxDecoration(color: HomeworkColors.of(context).surface(Color(0xFFEEF6FF)), border: Border.all(color: HomeworkColors.of(context).line(Color(0xFFCFE0FF))), borderRadius: BorderRadius.circular(8)),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -1135,13 +1135,13 @@ class _HomeworkCard extends StatelessWidget {
                     spacing: 12,
                     runSpacing: 8,
                     children: [
-                      const Text('Teacher feedback', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Color(0xFF1D4ED8))),
+                      Text('Teacher feedback', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: HomeworkColors.of(context).accent(Color(0xFF1D4ED8)))),
                       _FramedTextButton(label: expandedFeedback ? 'Hide feedback' : 'Show feedback', onPressed: onToggleFeedback),
                     ],
                   ),
                   if (expandedFeedback) ...[
-                    if (h.grade != null) Text('Grade: ${h.grade}/100', style: const TextStyle(fontSize: 12, color: Color(0xFF1F2937))),
-                    if ((h.feedback ?? '').isNotEmpty) Text(h.feedback!, style: const TextStyle(fontSize: 12, color: Color(0xFF374151), height: 1.4)),
+                    if (h.grade != null) Text('Grade: ${h.grade}/100', style: TextStyle(fontSize: 12, color: HomeworkColors.of(context).text(Color(0xFF1F2937)))),
+                    if ((h.feedback ?? '').isNotEmpty) Text(h.feedback!, style: TextStyle(fontSize: 12, color: HomeworkColors.of(context).text(Color(0xFF374151)), height: 1.4)),
                   ],
                 ],
               ),
@@ -1153,13 +1153,13 @@ class _HomeworkCard extends StatelessWidget {
               if (h.startAt != null) '📅 Start: ${_fmt(h.startAt)}',
               if (h.dueAt != null) '⏰ Due: ${_fmt(h.dueAt)}',
             ].join('   '),
-            style: const TextStyle(fontSize: 11, color: Color(0xFF888888)),
+            style: TextStyle(fontSize: 11, color: HomeworkColors.of(context).muted(Color(0xFF888888))),
           ),
           if (!st.submitted && st.overdue) ...[
             const SizedBox(height: 6),
             Text(
               '⚠ Not submitted yet — ${st.expired ? 'hidden after 3 overdue days' : 'submit before it disappears'}',
-              style: const TextStyle(color: Color(0xFFB91C1C), fontSize: 12, fontWeight: FontWeight.w600),
+              style: TextStyle(color: HomeworkColors.of(context).accent(Color(0xFFB91C1C)), fontSize: 12, fontWeight: FontWeight.w600),
             ),
           ],
         ],
@@ -1205,7 +1205,7 @@ class _ImageThumbRow extends StatelessWidget {
                       width: 64,
                       height: 64,
                       fit: BoxFit.cover,
-                      errorBuilder: (_, _, _) => Container(width: 64, height: 64, color: const Color(0xFFEEEEEE)),
+                      errorBuilder: (_, _, _) => Container(width: 64, height: 64, color: HomeworkColors.of(context).surface(Color(0xFFEEEEEE))),
                     ),
                   ),
                 ),

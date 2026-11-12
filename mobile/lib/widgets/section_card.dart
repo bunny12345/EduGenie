@@ -17,9 +17,9 @@ class SectionCard extends StatelessWidget {
       margin: const EdgeInsets.only(bottom: 12),
       padding: padding,
       decoration: BoxDecoration(
-        color: AppColors.card,
+        color: AppColors.of(context).card,
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: AppColors.line),
+        border: Border.all(color: AppColors.of(context).line),
         boxShadow: const [BoxShadow(color: Color(0x12272D64), blurRadius: 16, offset: Offset(0, 6))],
       ),
       child: Column(
@@ -80,14 +80,16 @@ class _SkeletonBoxState extends State<SkeletonBox> with SingleTickerProviderStat
               return LinearGradient(
                 begin: Alignment(-1, sweep - 0.5),
                 end: Alignment(1, sweep + 0.5),
-                colors: const [Color(0xFFE2E2EE), Color(0xFFF8F8FC), Color(0xFFE2E2EE)],
+                colors: AppColors.of(context).isDark
+                    ? [AppColors.lineDark, AppColors.cardDark, AppColors.lineDark]
+                    : const [Color(0xFFE2E2EE), Color(0xFFF8F8FC), Color(0xFFE2E2EE)],
                 stops: const [0.35, 0.5, 0.65],
               ).createShader(bounds);
             },
             child: child,
           );
         },
-        child: DecoratedBox(decoration: BoxDecoration(color: AppColors.line, borderRadius: BorderRadius.circular(6))),
+        child: DecoratedBox(decoration: BoxDecoration(color: AppColors.of(context).line, borderRadius: BorderRadius.circular(6))),
       ),
     );
   }

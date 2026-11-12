@@ -1,5 +1,42 @@
 import 'package:flutter/material.dart';
 
+import '../../../theme/app_colors.dart';
+
+/// Report-only palette: preserve the web-inspired light colors, but pair
+/// dark surfaces with readable text instead of reusing light-mode ink.
+class ProgressColors {
+  final AppPalette palette;
+  ProgressColors.of(BuildContext context) : palette = AppColors.of(context);
+  bool get isDark => palette.isDark;
+
+  Color surface(Color light) => isDark ? palette.card : light;
+  Color background(Color light) => isDark ? palette.background : light;
+  Color line(Color light) => isDark ? palette.line : light;
+  Color guide(Color light) =>
+      isDark ? Color.lerp(palette.card, palette.muted, 0.65)! : light;
+  Color text(Color light) => isDark ? palette.text : light;
+  Color muted(Color light) => isDark ? palette.muted : light;
+  Color tint(Color light) => isDark
+      ? Color.alphaBlend(light.withValues(alpha: 0.12), palette.card)
+      : light;
+
+  /// Chart strokes keep their semantic colors; only their text is lifted.
+  Color accent(Color light) {
+    if (!isDark) return light;
+    var color = light;
+    final brightestPanel = Color.alphaBlend(
+      Colors.white.withValues(alpha: 0.12),
+      palette.card,
+    );
+    while ((color.computeLuminance() + 0.05) /
+            (brightestPanel.computeLuminance() + 0.05) <
+        4.5) {
+      color = Color.lerp(color, Colors.white, 0.12)!;
+    }
+    return color;
+  }
+}
+
 /// Small pure helpers ported from `StudentProgress.jsx` (`SKILL_META`,
 /// `levelFace`, `levelWord`, `valueColor`) — shared by the report screen and
 /// the subject detail screen.

@@ -37,14 +37,16 @@ class AppTheme {
     required Color brandSoft,
     required Brightness brightness,
   }) {
+    final accent = AppPalette(brightness == Brightness.dark).accent;
     final base = ThemeData(
       useMaterial3: true,
       brightness: brightness,
       colorScheme: ColorScheme.fromSeed(
         seedColor: AppColors.brand,
         brightness: brightness,
-        primary: AppColors.brand,
-        secondary: AppColors.brand2,
+        primary: accent,
+        onPrimary: brightness == Brightness.dark ? AppColors.textLight : Colors.white,
+        secondary: brightness == Brightness.dark ? accent : AppColors.brand2,
         surface: card,
         error: AppColors.danger,
       ),
@@ -85,7 +87,7 @@ class AppTheme {
           return GoogleFonts.poppins(
             fontSize: 11,
             fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
-            color: selected ? AppColors.brand : muted,
+            color: selected ? accent : muted,
           );
         }),
       ),
@@ -101,6 +103,8 @@ class AppTheme {
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
         fillColor: card,
+        hintStyle: TextStyle(color: muted),
+        labelStyle: TextStyle(color: muted),
         contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(10),
@@ -112,7 +116,7 @@ class AppTheme {
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(10),
-          borderSide: const BorderSide(color: AppColors.brand, width: 1.5),
+          borderSide: BorderSide(color: accent, width: 1.5),
         ),
       ),
     );

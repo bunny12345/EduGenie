@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import '../../../theme/app_colors.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../models/quiz_rush_models.dart';
@@ -223,7 +224,7 @@ class _QuizRushScreenState extends ConsumerState<QuizRushScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF7F7FC),
+      backgroundColor: GameColors.of(context).background(const Color(0xFFF7F7FC)),
       appBar: AppBar(title: const Text('Quiz Rush')),
       body: SafeArea(
         child: Padding(padding: const EdgeInsets.all(16), child: _buildPhase()),
@@ -295,12 +296,12 @@ class _QuizRushScreenState extends ConsumerState<QuizRushScreen> {
               children: [
                 Text(active.treeEmoji, style: const TextStyle(fontSize: 46)),
                 const SizedBox(height: 10),
-                Text('No ${active.displayName} chapters yet', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: Color(0xFF2A2652))),
+                Text('No ${active.displayName} chapters yet', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: GameColors.of(context).text(Color(0xFF2A2652)))),
                 const SizedBox(height: 6),
                 Text(
                   'Quiz Rush appears automatically once questions are generated for ${active.displayName}.',
                   textAlign: TextAlign.center,
-                  style: const TextStyle(fontSize: 12.5, color: Color(0xFF6D739C), height: 1.5),
+                  style: TextStyle(fontSize: 12.5, color: GameColors.of(context).muted(Color(0xFF6D739C)), height: 1.5),
                 ),
               ],
             ),
@@ -309,8 +310,8 @@ class _QuizRushScreenState extends ConsumerState<QuizRushScreen> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text('${active.treeEmoji} ${active.displayName} chapters', style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w900, color: Color(0xFF2A2652))),
-              Text('${active.chapters.length} uploaded', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: active.accent)),
+              Text('${active.treeEmoji} ${active.displayName} chapters', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w900, color: GameColors.of(context).text(Color(0xFF2A2652)))),
+              Text('${active.chapters.length} uploaded', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: GameColors.of(context).accent(active.accent))),
             ],
           ),
           const SizedBox(height: 8),
@@ -342,9 +343,9 @@ class _QuizRushScreenState extends ConsumerState<QuizRushScreen> {
     final current = _questions[_currentIndex];
     final timerPct = (_timeLeft / _timePerQuestion).clamp(0.0, 1.0);
     final diffColors = {
-      'easy': (const Color(0xFF22A05A), const Color(0xFFE7F6EC)),
-      'medium': (const Color(0xFFD98A10), const Color(0xFFFFF3DC)),
-      'hard': (const Color(0xFFD9534F), const Color(0xFFFFE9E7)),
+      'easy': (const Color(0xFF22A05A), GameColors.of(context).surface(Color(0xFFE7F6EC))),
+      'medium': (const Color(0xFFD98A10), GameColors.of(context).surface(Color(0xFFFFF3DC))),
+      'hard': (const Color(0xFFD9534F), GameColors.of(context).surface(Color(0xFFFFE9E7))),
     };
     final diff = diffColors[current.difficulty];
     return ListView(
@@ -363,8 +364,8 @@ class _QuizRushScreenState extends ConsumerState<QuizRushScreen> {
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Text('Question ${_currentIndex + 1} of ${_questions.length}', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Color(0xFF8B90B3))),
-            Text('$_score correct', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Color(0xFF8B90B3))),
+            Text('Question ${_currentIndex + 1} of ${_questions.length}', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: GameColors.of(context).muted(Color(0xFF8B90B3)))),
+            Text('$_score correct', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: GameColors.of(context).muted(Color(0xFF8B90B3)))),
           ],
         ),
         const SizedBox(height: 8),
@@ -372,7 +373,7 @@ class _QuizRushScreenState extends ConsumerState<QuizRushScreen> {
           borderRadius: BorderRadius.circular(999),
           child: Container(
             height: 6,
-            color: const Color(0xFFF1F2F8),
+            color: GameColors.of(context).surface(Color(0xFFF1F2F8)),
             child: FractionallySizedBox(
               alignment: Alignment.centerLeft,
               widthFactor: timerPct,
@@ -385,8 +386,8 @@ class _QuizRushScreenState extends ConsumerState<QuizRushScreen> {
           padding: const EdgeInsets.fromLTRB(22, 26, 22, 22),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(20),
-            border: Border.all(color: const Color(0xFFE8E9F5)),
-            gradient: const LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [Colors.white, Color(0xFFF7F6FF)]),
+            border: Border.all(color: GameColors.of(context).line(Color(0xFFE8E9F5))),
+            gradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [AppColors.of(context).card, GameColors.of(context).surface(Color(0xFFF7F6FF))]),
             boxShadow: const [BoxShadow(color: Color(0x1E3C3282), blurRadius: 36, offset: Offset(0, 16))],
           ),
           child: Column(
@@ -398,11 +399,11 @@ class _QuizRushScreenState extends ConsumerState<QuizRushScreen> {
                   child: Container(
                     padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
                     decoration: BoxDecoration(color: diff.$2, borderRadius: BorderRadius.circular(999)),
-                    child: Text(current.difficulty.toUpperCase(), style: TextStyle(fontSize: 9.5, fontWeight: FontWeight.w800, letterSpacing: 0.5, color: diff.$1)),
+                    child: Text(current.difficulty.toUpperCase(), style: TextStyle(fontSize: 9.5, fontWeight: FontWeight.w800, letterSpacing: 0.5, color: GameColors.of(context).accent(diff.$1))),
                   ),
                 ),
               const SizedBox(height: 8),
-              Text(current.question, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: Color(0xFF26224F), height: 1.4)),
+              Text(current.question, style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: GameColors.of(context).text(Color(0xFF26224F)), height: 1.4)),
               const SizedBox(height: 20),
               for (var i = 0; i < current.options.length; i++) ...[
                 _QuizOption(
@@ -418,7 +419,7 @@ class _QuizRushScreenState extends ConsumerState<QuizRushScreen> {
               ],
               if (_revealed && current.explanation.isNotEmpty) ...[
                 const SizedBox(height: 16),
-                Text('💡 ${current.explanation}', style: const TextStyle(fontSize: 12.5, color: Color(0xFF6D739C), height: 1.5)),
+                Text('💡 ${current.explanation}', style: TextStyle(fontSize: 12.5, color: GameColors.of(context).muted(Color(0xFF6D739C)), height: 1.5)),
               ],
             ],
           ),
@@ -435,10 +436,10 @@ class _QuizRushScreenState extends ConsumerState<QuizRushScreen> {
         const SizedBox(height: 8),
         Center(child: GameSummaryEmoji(pct: pct)),
         const SizedBox(height: 8),
-        const Center(child: Text('Rush complete!', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800, color: Color(0xFF2A2652)))),
+        Center(child: Text('Rush complete!', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800, color: GameColors.of(context).text(Color(0xFF2A2652))))),
         const SizedBox(height: 4),
         if (_sessionSubjectName != null)
-          Center(child: Text('$_sessionSubjectName · $_sessionChapterTitle', style: const TextStyle(fontSize: 12, color: Color(0xFF7B81A6)))),
+          Center(child: Text('$_sessionSubjectName · $_sessionChapterTitle', style: TextStyle(fontSize: 12, color: GameColors.of(context).muted(Color(0xFF7B81A6))))),
         const SizedBox(height: 16),
         Row(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -454,7 +455,7 @@ class _QuizRushScreenState extends ConsumerState<QuizRushScreen> {
         Center(
           child: Text(
             _saving ? 'Saving your progress…' : '✅ Progress saved to your Orchard tree.',
-            style: const TextStyle(fontSize: 12, color: Color(0xFF6A7099)),
+            style: TextStyle(fontSize: 12, color: GameColors.of(context).muted(Color(0xFF6A7099))),
           ),
         ),
         const SizedBox(height: 16),
@@ -485,22 +486,22 @@ class _QuizOption extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    Color border = const Color(0xFFE8E9F5);
-    Color bg = Colors.white;
-    Color textColor = const Color(0xFF2A2652);
+    Color border = GameColors.of(context).line(const Color(0xFFE8E9F5));
+    Color bg = AppColors.of(context).card;
+    Color textColor = GameColors.of(context).text(const Color(0xFF2A2652));
     double opacity = 1;
     switch (state) {
       case _QrOptionState.idle:
         break;
       case _QrOptionState.correct:
         border = const Color(0xFF2A9D5C);
-        bg = const Color(0xFFEEFAF1);
-        textColor = const Color(0xFF1F7A45);
+        bg = GameColors.of(context).surface(Color(0xFFEEFAF1));
+        textColor = GameColors.of(context).accent(const Color(0xFF1F7A45));
         break;
       case _QrOptionState.wrong:
         border = const Color(0xFFD9534F);
-        bg = const Color(0xFFFFF0EF);
-        textColor = const Color(0xFFB33A32);
+        bg = GameColors.of(context).surface(Color(0xFFFFF0EF));
+        textColor = GameColors.of(context).accent(const Color(0xFFB33A32));
         break;
       case _QrOptionState.dim:
         opacity = 0.55;

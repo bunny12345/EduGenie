@@ -14,6 +14,7 @@ class ThemeModeNotifier extends Notifier<ThemeMode> {
   ThemeMode build() => ThemeMode.light;
 
   void setDark(bool dark) {
+    _hydratedFromPrefs = true;
     AppColors.isDark = dark;
     state = dark ? ThemeMode.dark : ThemeMode.light;
   }
