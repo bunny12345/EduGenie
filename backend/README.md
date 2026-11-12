@@ -20,6 +20,63 @@ npm run start:dev
 
 The server starts on `PORT` from `.env` (default 3000) and exposes `POST /chat`.
 
+### Optional strict mock exams
+
+Install `db/migrations/20261112_strict_mock_exams.sql` before deploying this
+backend, then deploy the updated web/mobile clients. It creates two new
+service-role-only tables with RLS enabled; existing tables and policies are
+unchanged. No migration or production deployment is performed by tests.
+The file-backed development database remains supported.
+
+Teachers opt in with `strictMode: true` on `POST /tests/:testId/assign`, alongside
+the required `startAt`/`endAt`. Existing assignments remain non-strict.
+Assigned strict exams cannot be edited or rescheduled (Reuse creates a draft);
+deletion is blocked until the schedule ends and results have finalized.
+
+- `GET /tests/exam-access/current`: authenticated student's `{success, exams}`
+  restrictions, scoped to their school/class. AI Tutor, Quick Sam, voice and
+  game assistance are blocked server-side from scheduled start until submission
+  or schedule end, including before opening the test. HTTP 423 represents an
+  exam lock, not expired authentication. Student profile and support stay usable.
+- Start/submit requests include `clientId`. Strict start restores the one
+  authoritative session and answers rather than reopening an unpaused attempt.
+- `POST /tests/attempts/:id/control`: `{clientId, action}` with `heartbeat`,
+  `save` (+ `{answers: {questionId: optionIndex}}`), or `pause` (+ `reason`).
+  Response: `{success, control, result}`; control includes status, revision,
+  saved answers, deadline, server time and incident summary.
+- Clients heartbeat every 5 seconds. An interruption pauses that student only.
+  A 25-second heartbeat gap or another device also pauses the session when
+  checked. Server-side compare-and-swap prevents races between saves, pauses,
+  resumes and closing. Paused answers/submissions cannot bypass the lock.
+- `GET /tests/:id/exam-students` and
+  `POST /tests/:id/exam-students/:studentId/resume` require the assigning teacher
+  in the same school. Resuming never extends the original deadline.
+- At the deadline, only server-saved answers count. A 15-second sweep finalizes
+  expired attempts even if both clients are closed, retries failed writes and
+  recovers after backend restart. Client/teacher polling also finalizes them.
+
+This is interruption monitoring, not OS-level lockdown or proof of cheating.
+Network failures, system dialogs, calls and notification overlays can produce
+incidents. Browsers/normal apps cannot prevent all app switches, external
+devices, modified clients or screenshots. No camera, microphone surveillance,
+clipboard contents or screen recordings are collected.
+
+Validate with `npx tsc --noEmit` and
+`node --test -r ts-node/register src/exams/exam-control.test.ts src/progress/learning-score.service.test.ts src/auth/security.test.ts`.
+
+### Teacher account profile
+
+The authenticated `GET /teacher/profile` response retains its existing envelope
+and includes `gender`, `loginId` and normalized assigned `grades` for the mobile
+profile dropdown. Grades use `resolveTeacherGrades`, including its local-account
+fallback, rather than deriving assignments from student enrolment. Missing
+gender/login ID are null; no password fields are returned. Existing database
+schemas, RLS and account fallback behaviour are unchanged.
+
+Validate without database access using
+`node -r ts-node/register/transpile-only scripts/teacher_profile_test.js`
+and `npx tsc --noEmit`.
+
 ### AI Tutor reply latency
 
 `POST /chat` starts independent profile, message embedding, memory, history,

@@ -136,6 +136,20 @@ export default function TechnicalSupport({ ownerToken, onAuthError, requesterRol
           {nextOffset !== null ? <button type="button" onClick={loadMore}>Show more requests</button> : null}
         </aside>
         <div className="eg-support-main">
+          {school && !owner && category && !selected ? (
+            <section className="eg-support-direct" aria-label="School administrator direct support">
+              <div>
+                <strong>Contact technical support directly</strong>
+                <p>School administrators can call or message us on WhatsApp.</p>
+                <a className="eg-support-phone" href="tel:+917993846579">+91 79938 46579</a>
+              </div>
+              <div className="eg-support-actions">
+                <a href="tel:+917993846579">Call support</a>
+                <a className="eg-support-whatsapp" href={`https://wa.me/917993846579?text=${encodeURIComponent(category === 'glitch' ? 'Hello, I am a school administrator using AcademiX. I would like to report an issue.' : 'Hello, I am a school administrator using AcademiX. I need technical support.')}`} target="_blank" rel="noopener noreferrer">WhatsApp support</a>
+              </div>
+              <small>WhatsApp opens an external service. Messages are not saved in Your requests. Never share passwords, verification codes or private student records. You can also submit the form below for a tracked request.</small>
+            </section>
+          ) : null}
           {selected ? <SupportThread key={selected} id={selected} token={ownerToken} requesterRole={requesterRole} onError={handleError} onChanged={refresh} initialWarning={warning} /> :
             category ? <SupportReport key={category} category={category} history={messages} onCancel={() => setCategory('')} onCreated={(data) => {
               setWarning(data.notificationWarning || '');

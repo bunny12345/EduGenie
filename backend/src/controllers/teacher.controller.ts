@@ -139,6 +139,7 @@ export class TeacherController {
     // Locally-stored account (covers teachers whose DB row is missing, e.g. the
     // grades column has not been migrated so the insert fell back or failed).
     const local = teacherId ? this.studentAuth.getLocalTeacher(teacherId) : null;
+    const grades = await this.studentAuth.resolveTeacherGrades(teacherId);
 
     try {
       const row = teacherId
@@ -157,6 +158,9 @@ export class TeacherController {
           name: teacher?.name || local?.name || req?.user?.name || 'Teacher',
           email: teacher?.email || local?.email || req?.user?.email || null,
           subject: teacher?.subject || local?.subject || req?.user?.subject || 'General',
+          gender: teacher?.gender || local?.gender || null,
+          loginId: teacher?.login_id || local?.loginId || null,
+          grades,
           schoolId: teacher?.school_id || local?.schoolId || schoolId || null,
           schoolName: school?.name || null,
           schoolLogo: school?.logo_url || null,
@@ -172,6 +176,9 @@ export class TeacherController {
           name: local?.name || req?.user?.name || 'Teacher',
           email: local?.email || req?.user?.email || null,
           subject: local?.subject || req?.user?.subject || 'General',
+          gender: local?.gender || null,
+          loginId: local?.loginId || null,
+          grades,
           schoolId: local?.schoolId || schoolId || null,
           schoolName: null,
           schoolLogo: null,

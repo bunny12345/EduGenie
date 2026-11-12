@@ -104,11 +104,11 @@ class _StudentOrchardScreenState extends ConsumerState<StudentOrchardScreen> {
           child: OrchardAmbience(season: season, night: night, vibrancy: vibrancy, golden: goldenCount, treehouse: hasMature),
         ),
         ListView(
-          padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
+          padding: const EdgeInsets.fromLTRB(16, 10, 16, 24),
           children: [
             // Header
             Text('Good day, $greetingName! 👋',
-                style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800, color: night ? const Color(0xFFF4F6FF) : AppColors.textLight,
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: night ? const Color(0xFFF4F6FF) : AppColors.textLight,
               )),
             const SizedBox(height: 4),
             Text('Water your trees daily, and success will be yours.',
@@ -134,7 +134,7 @@ class _StudentOrchardScreenState extends ConsumerState<StudentOrchardScreen> {
 
             // Banner
             Container(
-              padding: const EdgeInsets.all(18),
+              padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
                 gradient: LinearGradient(colors: OrchardColors(context).hero),
                 borderRadius: BorderRadius.circular(20),

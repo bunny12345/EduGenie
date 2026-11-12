@@ -105,6 +105,8 @@ export default function RoleGateway({ onLogin }) {
         token: res.token,
         schoolId: res?.school?.id || '',
         schoolName: res?.school?.schoolName || 'School',
+        branch: res?.school?.branch || '',
+        location: res?.school?.location || '',
         email: res?.school?.email || schoolEmail
       });
     } catch (e) {

@@ -15,6 +15,7 @@ class TestItem {
   final bool attempted;
   final int? lastScore;
   final String? attemptId;
+  final bool strictMode;
 
   const TestItem({
     required this.id,
@@ -28,19 +29,25 @@ class TestItem {
     this.attempted = false,
     this.lastScore,
     this.attemptId,
+    this.strictMode = false,
   });
 
   factory TestItem.fromJson(Map<String, dynamic> json) => TestItem(
-        id: json['id']?.toString() ?? '',
-        title: json['title'] as String? ?? 'Mock Test',
-        subject: json['subject'] as String? ?? 'General',
-        status: json['status'] as String? ?? 'upcoming',
-        durationMinutes: (json['duration_minutes'] as num?)?.toInt() ?? 30,
-        windowStatus: json['windowStatus']?.toString() ?? 'none',
-        startAt: DateTime.tryParse((json['startAt'] ?? json['start_at'])?.toString() ?? ''),
-        endAt: DateTime.tryParse((json['endAt'] ?? json['end_at'])?.toString() ?? ''),
-        attempted: json['attempted'] == true,
-        lastScore: (json['lastScore'] as num?)?.toInt(),
-        attemptId: json['attemptId']?.toString(),
-      );
+    id: json['id']?.toString() ?? '',
+    title: json['title'] as String? ?? 'Mock Test',
+    subject: json['subject'] as String? ?? 'General',
+    status: json['status'] as String? ?? 'upcoming',
+    durationMinutes: (json['duration_minutes'] as num?)?.toInt() ?? 30,
+    windowStatus: json['windowStatus']?.toString() ?? 'none',
+    startAt: DateTime.tryParse(
+      (json['startAt'] ?? json['start_at'])?.toString() ?? '',
+    ),
+    endAt: DateTime.tryParse(
+      (json['endAt'] ?? json['end_at'])?.toString() ?? '',
+    ),
+    attempted: json['attempted'] == true,
+    lastScore: (json['lastScore'] as num?)?.toInt(),
+    attemptId: json['attemptId']?.toString(),
+    strictMode: json['strictMode'] == true,
+  );
 }

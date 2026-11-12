@@ -8,6 +8,7 @@ import 'package:intl/intl.dart';
 import '../../state/teacher_providers.dart';
 import '../../theme/app_colors.dart';
 import '../../widgets/section_card.dart';
+import '../../widgets/strict_exam_students.dart';
 import '../../widgets/image_source_sheet.dart';
 import '../../widgets/cupertino_time_picker_sheet.dart';
 
@@ -117,16 +118,16 @@ class TeacherHomeTab extends ConsumerWidget {
     final targetClass = ref.watch(teacherTargetClassProvider);
 
     return SingleChildScrollView(
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 100),
+      padding: const EdgeInsets.fromLTRB(16, 10, 16, 100),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           activeClassBanner,
-          const SizedBox(height: 20),
+          const SizedBox(height: 12),
           _AnnouncementsPanel(targetClass: targetClass),
-          const SizedBox(height: 14),
+          const SizedBox(height: 10),
           _AssignHomeworkPanel(targetClass: targetClass),
-          const SizedBox(height: 14),
+          const SizedBox(height: 10),
           _MockTestsPanel(targetClass: targetClass),
         ],
       ),
@@ -154,9 +155,9 @@ class _SectionCardState extends State<_SectionCard> {
   Widget build(BuildContext context) {
     return Container(
       decoration: BoxDecoration(
-        color: AppColors.card,
+        color: AppColors.of(context).card,
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: AppColors.line),
+        border: Border.all(color: AppColors.of(context).line),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -165,16 +166,16 @@ class _SectionCardState extends State<_SectionCard> {
             borderRadius: BorderRadius.circular(14),
             onTap: () => setState(() => _expanded = !_expanded),
             child: Padding(
-              padding: const EdgeInsets.all(16),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
               child: Row(
                 children: [
                   Expanded(
-                    child: Text(widget.title, style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: AppColors.text)),
+                    child: Text(widget.title, style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: AppColors.of(context).text)),
                   ),
                   AnimatedRotation(
                     turns: _expanded ? 0.5 : 0,
                     duration: const Duration(milliseconds: 180),
-                    child: Icon(Icons.keyboard_arrow_down_rounded, color: AppColors.muted),
+                    child: Icon(Icons.keyboard_arrow_down_rounded, color: AppColors.of(context).muted),
                   ),
                 ],
               ),
@@ -182,7 +183,7 @@ class _SectionCardState extends State<_SectionCard> {
           ),
           AnimatedCrossFade(
             firstChild: const SizedBox(width: double.infinity, height: 0),
-            secondChild: Padding(padding: const EdgeInsets.fromLTRB(16, 0, 16, 16), child: widget.child),
+            secondChild: Padding(padding: const EdgeInsets.fromLTRB(12, 0, 12, 12), child: widget.child),
             crossFadeState: _expanded ? CrossFadeState.showSecond : CrossFadeState.showFirst,
             duration: const Duration(milliseconds: 180),
             sizeCurve: Curves.easeOut,
@@ -205,7 +206,7 @@ class _DateTimeField extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(label, style: TextStyle(fontSize: 10, color: AppColors.muted, fontWeight: FontWeight.w700, letterSpacing: 0.4)),
+        Text(label, style: TextStyle(fontSize: 10, color: AppColors.of(context).muted, fontWeight: FontWeight.w700, letterSpacing: 0.4)),
         const SizedBox(height: 4),
         InkWell(
           borderRadius: BorderRadius.circular(8),
@@ -215,17 +216,17 @@ class _DateTimeField extends StatelessWidget {
           },
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
-            decoration: BoxDecoration(border: Border.all(color: AppColors.line), borderRadius: BorderRadius.circular(8)),
+            decoration: BoxDecoration(border: Border.all(color: AppColors.of(context).line), borderRadius: BorderRadius.circular(8)),
             child: Row(
               children: [
                 Expanded(
                   child: Text(
                     value != null ? DateFormat('d MMM, h:mm a').format(value!) : 'dd/mm/yyyy, --:--',
-                    style: TextStyle(fontSize: 12, color: value != null ? AppColors.text : AppColors.muted),
+                    style: TextStyle(fontSize: 12, color: value != null ? AppColors.of(context).text : AppColors.of(context).muted),
                     overflow: TextOverflow.ellipsis,
                   ),
                 ),
-                Icon(Icons.calendar_today_rounded, size: 14, color: AppColors.muted),
+                Icon(Icons.calendar_today_rounded, size: 14, color: AppColors.of(context).muted),
               ],
             ),
           ),
@@ -405,11 +406,11 @@ class _AnnouncementsPanelState extends ConsumerState<_AnnouncementsPanel> {
           Text.rich(
             TextSpan(
               text: 'Broadcast an update to ',
-              style: TextStyle(fontSize: 13, color: AppColors.muted),
+              style: TextStyle(fontSize: 13, color: AppColors.of(context).muted),
               children: [
                 TextSpan(
                   text: widget.targetClass == 'all' ? 'the selected class' : widget.targetClass,
-                  style: TextStyle(fontWeight: FontWeight.w700, color: AppColors.text),
+                  style: TextStyle(fontWeight: FontWeight.w700, color: AppColors.of(context).text),
                 ),
                 const TextSpan(text: '.'),
               ],
@@ -429,7 +430,7 @@ class _AnnouncementsPanelState extends ConsumerState<_AnnouncementsPanel> {
             ],
           ),
           const SizedBox(height: 6),
-          Text('Leave blank to post immediately and keep it visible indefinitely.', style: TextStyle(fontSize: 11, color: AppColors.muted)),
+          Text('Leave blank to post immediately and keep it visible indefinitely.', style: TextStyle(fontSize: 11, color: AppColors.of(context).muted)),
           const SizedBox(height: 12),
           SizedBox(
             width: double.infinity,
@@ -453,7 +454,7 @@ class _AnnouncementsPanelState extends ConsumerState<_AnnouncementsPanel> {
           ] else if (announcements.isEmpty)
             Text(
               widget.targetClass == 'all' ? 'Select a class to see its announcements.' : 'No announcements posted yet.',
-              style: TextStyle(fontSize: 12, color: AppColors.muted),
+              style: TextStyle(fontSize: 12, color: AppColors.of(context).muted),
             )
           else
             for (final a in announcements)
@@ -467,7 +468,7 @@ class _AnnouncementsPanelState extends ConsumerState<_AnnouncementsPanel> {
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: AppColors.brandSoft,
+                color: AppColors.of(context).brandSoft,
                 border: Border.all(color: AppColors.brand, width: 2),
                 borderRadius: BorderRadius.circular(10),
               ),
@@ -542,7 +543,7 @@ class _AnnouncementTileState extends State<_AnnouncementTile> {
     return Container(
       margin: const EdgeInsets.only(top: 8),
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-      decoration: BoxDecoration(color: AppColors.background, borderRadius: BorderRadius.circular(8)),
+      decoration: BoxDecoration(color: AppColors.of(context).background, borderRadius: BorderRadius.circular(8)),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -554,15 +555,15 @@ class _AnnouncementTileState extends State<_AnnouncementTile> {
                 children: [
                   Row(
                     children: [
-                      Icon(_expanded ? Icons.keyboard_arrow_down_rounded : Icons.chevron_right_rounded, size: 16, color: AppColors.muted),
+                      Icon(_expanded ? Icons.keyboard_arrow_down_rounded : Icons.chevron_right_rounded, size: 16, color: AppColors.of(context).muted),
                       Expanded(child: Text(title, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13))),
                     ],
                   ),
                   if (_expanded) ...[
                     const SizedBox(height: 2),
-                    Text(message, style: TextStyle(fontSize: 12, color: AppColors.text)),
+                    Text(message, style: TextStyle(fontSize: 12, color: AppColors.of(context).text)),
                     const SizedBox(height: 4),
-                    Text(_announcementScheduleLabel(widget.announcement), style: TextStyle(fontSize: 11, color: AppColors.muted)),
+                    Text(_announcementScheduleLabel(widget.announcement), style: TextStyle(fontSize: 11, color: AppColors.of(context).muted)),
                   ],
                 ],
               ),
@@ -912,11 +913,11 @@ class _AssignHomeworkPanelState extends ConsumerState<_AssignHomeworkPanel> {
           Text.rich(
             TextSpan(
               text: 'Send homework to every student in ',
-              style: TextStyle(fontSize: 13, color: AppColors.muted),
+              style: TextStyle(fontSize: 13, color: AppColors.of(context).muted),
               children: [
                 TextSpan(
                   text: widget.targetClass == 'all' ? 'the selected class' : widget.targetClass,
-                  style: TextStyle(fontWeight: FontWeight.w700, color: AppColors.text),
+                  style: TextStyle(fontWeight: FontWeight.w700, color: AppColors.of(context).text),
                 ),
                 const TextSpan(text: '.'),
               ],
@@ -928,7 +929,7 @@ class _AssignHomeworkPanelState extends ConsumerState<_AssignHomeworkPanel> {
           IgnorePointer(
             child: TextField(
               controller: TextEditingController(text: subject),
-              decoration: InputDecoration(hintText: 'Subject', filled: true, fillColor: AppColors.background),
+              decoration: InputDecoration(hintText: 'Subject', filled: true, fillColor: AppColors.of(context).background),
             ),
           ),
           const SizedBox(height: 8),
@@ -970,7 +971,7 @@ class _AssignHomeworkPanelState extends ConsumerState<_AssignHomeworkPanel> {
                           width: 56,
                           height: 56,
                           fit: BoxFit.cover,
-                          errorBuilder: (_, _, _) => Container(width: 56, height: 56, color: AppColors.background),
+                          errorBuilder: (_, _, _) => Container(width: 56, height: 56, color: AppColors.of(context).background),
                         ),
                       ),
                       Positioned(
@@ -1021,7 +1022,7 @@ class _AssignHomeworkPanelState extends ConsumerState<_AssignHomeworkPanel> {
           ],
           if (recentTop2.isNotEmpty) ...[
             const SizedBox(height: 14),
-            Text('Recently assigned', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: AppColors.muted)),
+            Text('Recently assigned', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: AppColors.of(context).muted)),
             for (final h in recentTop2)
               _HomeworkTile(
                 homework: h,
@@ -1038,7 +1039,7 @@ class _AssignHomeworkPanelState extends ConsumerState<_AssignHomeworkPanel> {
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: AppColors.brandSoft,
+                color: AppColors.of(context).brandSoft,
                 border: Border.all(color: AppColors.brand, width: 2),
                 borderRadius: BorderRadius.circular(10),
               ),
@@ -1052,7 +1053,7 @@ class _AssignHomeworkPanelState extends ConsumerState<_AssignHomeworkPanel> {
                   IgnorePointer(
                     child: TextField(
                       controller: TextEditingController(text: subject),
-                      decoration: InputDecoration(hintText: 'Subject', filled: true, fillColor: AppColors.card),
+                      decoration: InputDecoration(hintText: 'Subject', filled: true, fillColor: AppColors.of(context).card),
                     ),
                   ),
                   const SizedBox(height: 8),
@@ -1094,7 +1095,7 @@ class _AssignHomeworkPanelState extends ConsumerState<_AssignHomeworkPanel> {
                                   width: 56,
                                   height: 56,
                                   fit: BoxFit.cover,
-                                  errorBuilder: (_, _, _) => Container(width: 56, height: 56, color: AppColors.background),
+                                  errorBuilder: (_, _, _) => Container(width: 56, height: 56, color: AppColors.of(context).background),
                                 ),
                               ),
                               Positioned(
@@ -1172,7 +1173,7 @@ class _HomeworkTile extends StatelessWidget {
     return Container(
       margin: const EdgeInsets.only(top: 8),
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-      decoration: BoxDecoration(color: AppColors.background, borderRadius: BorderRadius.circular(8)),
+      decoration: BoxDecoration(color: AppColors.of(context).background, borderRadius: BorderRadius.circular(8)),
       child: Row(
         children: [
           Expanded(
@@ -1228,12 +1229,12 @@ class _LessonPicker extends StatelessWidget {
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
             decoration: BoxDecoration(
-              border: Border.all(color: selectedIds.isNotEmpty ? AppColors.brand : AppColors.line),
+              border: Border.all(color: selectedIds.isNotEmpty ? AppColors.brand : AppColors.of(context).line),
               borderRadius: BorderRadius.circular(8),
             ),
             child: Row(
               children: [
-                Icon(Icons.menu_book_outlined, size: 16, color: AppColors.muted),
+                Icon(Icons.menu_book_outlined, size: 16, color: AppColors.of(context).muted),
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
@@ -1244,7 +1245,7 @@ class _LessonPicker extends StatelessWidget {
                 AnimatedRotation(
                   turns: expanded ? 0.5 : 0,
                   duration: const Duration(milliseconds: 150),
-                  child: Icon(Icons.keyboard_arrow_down_rounded, size: 18, color: AppColors.muted),
+                  child: Icon(Icons.keyboard_arrow_down_rounded, size: 18, color: AppColors.of(context).muted),
                 ),
               ],
             ),
@@ -1255,16 +1256,16 @@ class _LessonPicker extends StatelessWidget {
             width: double.infinity,
             margin: const EdgeInsets.only(top: 6),
             constraints: const BoxConstraints(maxHeight: 220),
-            decoration: BoxDecoration(border: Border.all(color: AppColors.line), borderRadius: BorderRadius.circular(8)),
+            decoration: BoxDecoration(border: Border.all(color: AppColors.of(context).line), borderRadius: BorderRadius.circular(8)),
             child: !classSelected
                 ? Padding(
                     padding: const EdgeInsets.all(12),
-                    child: Text('Select a class to see chapters, or no lessons uploaded yet.', style: TextStyle(fontSize: 12, color: AppColors.muted)),
+                    child: Text('Select a class to see chapters, or no lessons uploaded yet.', style: TextStyle(fontSize: 12, color: AppColors.of(context).muted)),
                   )
                 : lessons.isEmpty
                     ? Padding(
                         padding: const EdgeInsets.all(12),
-                        child: Text('No lessons uploaded for this subject in $targetClass yet. Upload lessons from the school portal first.', style: TextStyle(fontSize: 12, color: AppColors.muted)),
+                        child: Text('No lessons uploaded for this subject in $targetClass yet. Upload lessons from the school portal first.', style: TextStyle(fontSize: 12, color: AppColors.of(context).muted)),
                       )
                     : ListView(
                         shrinkWrap: true,
@@ -1361,7 +1362,7 @@ class _HistoryCalendarSheetState extends State<_HistoryCalendarSheet> {
       expand: false,
       builder: (context, scrollController) {
         return Container(
-          decoration: BoxDecoration(color: AppColors.card, borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+          decoration: BoxDecoration(color: AppColors.of(context).card, borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
           child: ListView(
             controller: scrollController,
             padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
@@ -1390,7 +1391,7 @@ class _HistoryCalendarSheetState extends State<_HistoryCalendarSheet> {
               Row(
                 children: [
                   for (final l in const ['M', 'T', 'W', 'T', 'F', 'S', 'S'])
-                    Expanded(child: Center(child: Text(l, style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: AppColors.muted)))),
+                    Expanded(child: Center(child: Text(l, style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: AppColors.of(context).muted)))),
                 ],
               ),
               GridView.count(
@@ -1414,11 +1415,11 @@ class _HistoryCalendarSheetState extends State<_HistoryCalendarSheet> {
               ],
               const Divider(height: 24),
               if (widget.history.isEmpty)
-                Text('No homework assigned yet.', style: TextStyle(fontSize: 13, color: AppColors.muted))
+                Text('No homework assigned yet.', style: TextStyle(fontSize: 13, color: AppColors.of(context).muted))
               else if (visible.isEmpty)
                 Text(
                   _filterDate != null ? 'No homework found for the selected date.' : 'No homework assigned yet.',
-                  style: TextStyle(fontSize: 13, color: AppColors.muted),
+                  style: TextStyle(fontSize: 13, color: AppColors.of(context).muted),
                 )
               else
                 for (var i = 0; i < visible.length; i++) _buildHistoryRow(visible[i], i),
@@ -1434,7 +1435,7 @@ class _HistoryCalendarSheetState extends State<_HistoryCalendarSheet> {
     final hasHomework = dateStatusMap.containsKey(iso);
     final isSelected = _filterDate == iso;
     var bg = Colors.transparent;
-    var fg = AppColors.text;
+    var fg = AppColors.of(context).text;
     if (hasHomework) {
       bg = isSelected ? const Color(0xFF15803D) : const Color(0xFFDCFCE7);
       fg = isSelected ? Colors.white : const Color(0xFF15803D);
@@ -1470,7 +1471,7 @@ class _HistoryCalendarSheetState extends State<_HistoryCalendarSheet> {
       margin: const EdgeInsets.only(bottom: 8),
       padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(
-        color: AppColors.background,
+        color: AppColors.of(context).background,
         borderRadius: BorderRadius.circular(8),
         border: const Border(left: BorderSide(color: AppColors.brand, width: 3)),
       ),
@@ -1496,17 +1497,17 @@ class _HistoryCalendarSheetState extends State<_HistoryCalendarSheet> {
             startAt != null
                 ? 'Start: ${DateFormat('d MMM, h:mm a').format(startAt)}${dueAt != null ? ' · Due: ${DateFormat('d MMM, h:mm a').format(dueAt)}' : ''}'
                 : (dueAt != null ? 'Due: ${DateFormat('d MMM, h:mm a').format(dueAt)}' : (createdAt != null ? 'Assigned: ${DateFormat('d MMM yyyy').format(createdAt)}' : '–')),
-            style: TextStyle(fontSize: 11, color: AppColors.muted),
+            style: TextStyle(fontSize: 11, color: AppColors.of(context).muted),
           ),
           if (expanded) ...[
             const SizedBox(height: 8),
             if (note.isNotEmpty) ...[
-              Text('Instructions', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: AppColors.muted)),
+              Text('Instructions', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: AppColors.of(context).muted)),
               Text(note, style: const TextStyle(fontSize: 12)),
               const SizedBox(height: 6),
             ],
             if (attachments.isNotEmpty) ...[
-              Text('Teacher attachments', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: AppColors.muted)),
+              Text('Teacher attachments', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: AppColors.of(context).muted)),
               const SizedBox(height: 4),
               Wrap(
                 spacing: 6,
@@ -1515,7 +1516,7 @@ class _HistoryCalendarSheetState extends State<_HistoryCalendarSheet> {
                   for (final url in attachments)
                     ClipRRect(
                       borderRadius: BorderRadius.circular(6),
-                      child: Image.network(url, width: 44, height: 44, fit: BoxFit.cover, errorBuilder: (_, _, _) => Container(width: 44, height: 44, color: AppColors.line)),
+                      child: Image.network(url, width: 44, height: 44, fit: BoxFit.cover, errorBuilder: (_, _, _) => Container(width: 44, height: 44, color: AppColors.of(context).line)),
                     ),
                 ],
               ),
@@ -1570,6 +1571,7 @@ class _MockTestsPanelState extends ConsumerState<_MockTestsPanel> {
 
   // ── Per-test "Opens At"/"Closes At" draft before Assign ─────────────────
   final Map<String, DateTime?> _assignStartByTestId = {};
+  final Map<String, bool> _strictByTestId = {};
   final Map<String, DateTime?> _assignEndByTestId = {};
   String? _assigningId;
   String? _reusingId;
@@ -1811,6 +1813,7 @@ class _MockTestsPanelState extends ConsumerState<_MockTestsPanel> {
             testId,
             startAt: start.toIso8601String(),
             endAt: end.toIso8601String(),
+            strictMode: _strictByTestId[testId] == true,
           );
       ref.invalidate(teacherTestsProvider);
       setState(() => _note = 'Test assigned.');
@@ -1874,7 +1877,7 @@ class _MockTestsPanelState extends ConsumerState<_MockTestsPanel> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text('Create tests and add questions for your students.', style: TextStyle(fontSize: 13, color: AppColors.muted)),
+          Text('Create tests and add questions for your students.', style: TextStyle(fontSize: 13, color: AppColors.of(context).muted)),
           const SizedBox(height: 10),
           const Text('New Test', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700)),
           const SizedBox(height: 8),
@@ -1902,7 +1905,7 @@ class _MockTestsPanelState extends ConsumerState<_MockTestsPanel> {
               const SkeletonBox(height: 50),
               const SkeletonBox(height: 50),
             ] else if (tests.isEmpty)
-              Text('No tests yet. Create one above.', style: TextStyle(fontSize: 12, color: AppColors.muted))
+              Text('No tests yet. Create one above.', style: TextStyle(fontSize: 12, color: AppColors.of(context).muted))
             else
               for (final t in tests)
                 _TestTile(
@@ -1925,6 +1928,8 @@ class _MockTestsPanelState extends ConsumerState<_MockTestsPanel> {
                   onAssignStartChanged: (v) => setState(() => _assignStartByTestId[t['id']?.toString() ?? ''] = v),
                   onAssignEndChanged: (v) => setState(() => _assignEndByTestId[t['id']?.toString() ?? ''] = v),
                   onAssign: () => _assignTest(t['id']?.toString() ?? ''),
+                  strictMode: _strictByTestId[t['id']?.toString() ?? ''] == true,
+                  onStrictChanged: (value) => setState(() => _strictByTestId[t['id']?.toString() ?? ''] = value),
                 ),
           ],
           if (_createdTestId != null) ...[
@@ -1981,7 +1986,7 @@ class _MockTestsPanelState extends ConsumerState<_MockTestsPanel> {
               const SkeletonBox(height: 40),
             ] else if (_questions.isNotEmpty) ...[
               const SizedBox(height: 8),
-              Text('${_questions.length} question(s) loaded/added so far.', style: TextStyle(fontSize: 12, color: AppColors.muted)),
+              Text('${_questions.length} question(s) loaded/added so far.', style: TextStyle(fontSize: 12, color: AppColors.of(context).muted)),
               for (var i = 0; i < _questions.length; i++)
                 _QuestionTile(
                   index: i,
@@ -2037,7 +2042,7 @@ class _MockTestsPanelState extends ConsumerState<_MockTestsPanel> {
           ],
           if (_note != null) ...[
             const SizedBox(height: 8),
-            Text(_note!, style: TextStyle(fontSize: 12, color: AppColors.muted)),
+            Text(_note!, style: TextStyle(fontSize: 12, color: AppColors.of(context).muted)),
           ],
         ],
       ),
@@ -2065,6 +2070,8 @@ class _TestTile extends StatelessWidget {
   final ValueChanged<DateTime?> onAssignStartChanged;
   final ValueChanged<DateTime?> onAssignEndChanged;
   final VoidCallback onAssign;
+  final bool strictMode;
+  final ValueChanged<bool> onStrictChanged;
 
   const _TestTile({
     required this.test,
@@ -2086,6 +2093,8 @@ class _TestTile extends StatelessWidget {
     required this.onAssignStartChanged,
     required this.onAssignEndChanged,
     required this.onAssign,
+    required this.strictMode,
+    required this.onStrictChanged,
   });
 
   @override
@@ -2096,12 +2105,14 @@ class _TestTile extends StatelessWidget {
     final isAssigned = status == 'assigned';
     final startAt = _parseDate(test['startAt'] ?? test['start_at']);
     final endAt = _parseDate(test['endAt'] ?? test['end_at']);
+    final deletionLocked = isAssigned && test['strictMode'] == true &&
+        (endAt == null || endAt.isAfter(DateTime.now()));
     final fmt = DateFormat('d MMM, h:mm a');
 
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
       padding: const EdgeInsets.all(10),
-      decoration: BoxDecoration(color: AppColors.background, borderRadius: BorderRadius.circular(8)),
+      decoration: BoxDecoration(color: AppColors.of(context).background, borderRadius: BorderRadius.circular(8)),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -2115,12 +2126,16 @@ class _TestTile extends StatelessWidget {
                     Text(title, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
                     Text(
                       '$subject \u00b7 ${isAssigned ? 'Assigned' : status == 'completed' ? 'Completed' : 'Draft (not visible to students yet)'}',
-                      style: TextStyle(fontSize: 11, color: AppColors.muted),
+                      style: TextStyle(fontSize: 11, color: AppColors.of(context).muted),
                     ),
                   ],
                 ),
               ),
-              IconButton(icon: const Icon(Icons.delete_outline_rounded, color: AppColors.danger, size: 20), onPressed: onDelete),
+              IconButton(
+                tooltip: deletionLocked ? 'Strict exam cannot be deleted before its deadline' : 'Delete test',
+                icon: Icon(Icons.delete_outline_rounded, color: deletionLocked ? AppColors.of(context).muted : AppColors.danger, size: 20),
+                onPressed: deletionLocked ? null : onDelete,
+              ),
             ],
           ),
           const SizedBox(height: 6),
@@ -2128,8 +2143,8 @@ class _TestTile extends StatelessWidget {
             spacing: 6,
             runSpacing: 6,
             children: [
-              _MiniActionButton(label: 'Add Questions', onTap: onAddQuestions),
-              _MiniActionButton(label: 'Edit', onTap: editing ? onCancelEdit : onStartEdit),
+              _MiniActionButton(label: 'Add Questions', onTap: isAssigned && test['strictMode'] == true ? null : onAddQuestions),
+              _MiniActionButton(label: 'Edit', onTap: isAssigned && test['strictMode'] == true ? null : editing ? onCancelEdit : onStartEdit),
               _MiniActionButton(label: reusing ? 'Reusing...' : 'Reuse', onTap: reusing ? null : onReuse),
             ],
           ),
@@ -2151,6 +2166,13 @@ class _TestTile extends StatelessWidget {
           ],
           if (!isAssigned) ...[
             const SizedBox(height: 8),
+            CheckboxListTile(
+              contentPadding: EdgeInsets.zero,
+              title: const Text('Strict exam', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700)),
+              subtitle: const Text('Block AI Tutor; pause only students who leave the test. The timer continues.', style: TextStyle(fontSize: 11)),
+              value: strictMode,
+              onChanged: assigning ? null : (value) => onStrictChanged(value == true),
+            ),
             Row(
               children: [
                 Expanded(child: _DateTimeField(label: 'Opens At', value: assignStart, onChanged: onAssignStartChanged)),
@@ -2165,8 +2187,9 @@ class _TestTile extends StatelessWidget {
             ),
           ] else if (startAt != null && endAt != null) ...[
             const SizedBox(height: 6),
-            Text('Attempt window: ${fmt.format(startAt)} \u2192 ${fmt.format(endAt)}', style: TextStyle(fontSize: 11, color: AppColors.muted)),
+            Text('Attempt window: ${fmt.format(startAt)} \u2192 ${fmt.format(endAt)}', style: TextStyle(fontSize: 11, color: AppColors.of(context).muted)),
           ],
+          if (isAssigned && test['strictMode'] == true) StrictExamStudents(testId: test['id'].toString()),
         ],
       ),
     );
@@ -2188,11 +2211,11 @@ class _MiniActionButton extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
         decoration: BoxDecoration(
-          color: disabled ? AppColors.line.withValues(alpha: 0.4) : Colors.white,
+          color: disabled ? AppColors.of(context).line.withValues(alpha: 0.4) : Colors.white,
           borderRadius: BorderRadius.circular(999),
-          border: Border.all(color: AppColors.line),
+          border: Border.all(color: AppColors.of(context).line),
         ),
-        child: Text(label, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: disabled ? AppColors.muted : AppColors.text)),
+        child: Text(label, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: disabled ? AppColors.of(context).muted : AppColors.of(context).text)),
       ),
     );
   }

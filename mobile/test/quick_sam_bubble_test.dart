@@ -1,13 +1,17 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mobile/models/dashboard.dart';
 import 'package:mobile/state/quick_sam_provider.dart';
+import 'package:mobile/state/exam_access_provider.dart';
 import 'package:mobile/state/student_providers.dart';
 import 'package:mobile/widgets/quick_sam_bubble.dart';
 
 class _QuickSamStub extends QuickSamNotifier {
   String? sent;
+  int closeCalls = 0;
 
   @override
   QuickSamState build() => const QuickSamState(
@@ -19,9 +23,52 @@ class _QuickSamStub extends QuickSamNotifier {
   Future<void> send(String raw) async {
     sent = raw;
   }
+
+  @override
+  Future<void> close() async {
+    closeCalls++;
+    state = const QuickSamState();
+  }
 }
 
 void main() {
+  testWidgets('a scheduled exam closes an already-open Quick Sam session', (
+    tester,
+  ) async {
+    final access = StreamController<ExamAccess>();
+    addTearDown(access.close);
+    final notifier = _QuickSamStub();
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          examAccessProvider.overrideWith((ref) => access.stream),
+          quickSamProvider.overrideWith(() => notifier),
+          dashboardProvider.overrideWith(
+            (ref) async => DashboardData.fromJson({}),
+          ),
+        ],
+        child: const MaterialApp(home: QuickSamScreen()),
+      ),
+    );
+    access.add(const ExamAccess());
+    await tester.pump();
+    await tester.pump();
+    expect(find.text('Explain that in simpler words'), findsOneWidget);
+    access.add(
+      const ExamAccess(
+        exams: [
+          {'testId': 'a', 'title': 'Science exam'},
+        ],
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+    expect(notifier.closeCalls, 1);
+    expect(find.text('AI Tutor is unavailable'), findsOneWidget);
+    expect(find.text('Explain that in simpler words'), findsNothing);
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
   for (final textScale in [1.0, 1.5]) {
     testWidgets(
       'Quick Sam suggestions stay readable at text scale $textScale and send their text',
@@ -34,6 +81,9 @@ void main() {
         await tester.pumpWidget(
           ProviderScope(
             overrides: [
+              examAccessProvider.overrideWith(
+                (ref) => Stream.value(const ExamAccess()),
+              ),
               quickSamProvider.overrideWith(() => notifier),
               dashboardProvider.overrideWith(
                 (ref) async => DashboardData.fromJson({}),

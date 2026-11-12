@@ -8,6 +8,7 @@ import { SupabaseService } from '../supabase.service';
 import { jwtSecret } from './jwt-secret';
 import { StudentAuthService } from './student-auth.service';
 import { AuthGuard } from './auth.guard';
+import { ExamControlService } from '../exams/exam-control.service';
 import { LocalFeedService } from '../shared/local-feed.service';
 import { RewardsController } from '../controllers/rewards.controller';
 import { TestsController } from '../controllers/tests.controller';
@@ -89,10 +90,13 @@ test('HTTP authorization isolates student data and teacher test authoring', asyn
     redemptions: [],
     settings: [{ id: 'settings-b', student_id: 'student-b', prefs: { private: true } }],
     progress_metrics: [],
+    strict_test_settings: [],
+    strict_exam_sessions: [],
   };
   let writes = 0;
   const db: SupabaseService = Object.create(SupabaseService.prototype);
   db.client = {
+    isMock: true,
     from(table: string) {
       const source = tables[table];
       assert.ok(source, `Unexpected table ${table}`);
@@ -128,7 +132,7 @@ test('HTTP authorization isolates student data and teacher test authoring', asyn
   @Module({
     controllers: [RewardsController, TestsController, SettingsController, ProgressController],
     providers: [
-      AuthGuard, LocalFeedService,
+      AuthGuard, LocalFeedService, ExamControlService,
       { provide: SupabaseService, useValue: db },
       { provide: StudentAuthService, useValue: {
         resolveStudentProfile: async () => ({ schoolId: 'school-a', className: 'Class 8' }),

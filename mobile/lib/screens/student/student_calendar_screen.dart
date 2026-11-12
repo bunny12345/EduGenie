@@ -329,10 +329,18 @@ class _MonthCard extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 4),
-          GridView.builder(
+          LayoutBuilder(builder: (context, constraints) {
+            final cellWidth = (constraints.maxWidth - 24) / 7;
+            final contentHeight = MediaQuery.textScalerOf(context).scale(12) * 1.4 + 16;
+            return GridView.builder(
             shrinkWrap: true,
             physics: const NeverScrollableScrollPhysics(),
-            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 7, mainAxisSpacing: 4, crossAxisSpacing: 4, childAspectRatio: 1),
+            gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: 7,
+              mainAxisSpacing: 4,
+              crossAxisSpacing: 4,
+              mainAxisExtent: cellWidth > contentHeight ? cellWidth : contentHeight,
+            ),
             itemCount: cells.length,
             itemBuilder: (context, i) {
               final day = cells[i];
@@ -348,7 +356,8 @@ class _MonthCard extends StatelessWidget {
                 onTap: () => onSelectDay(iso, date),
               );
             },
-          ),
+            );
+          }),
           const SizedBox(height: 10),
           Divider(height: 1, color: AppColors.of(context).line),
           const SizedBox(height: 10),
@@ -460,15 +469,24 @@ class _DayCell extends StatelessWidget {
       child: Container(
         decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(10)),
         alignment: Alignment.center,
-        child: Stack(
-          alignment: Alignment.center,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
           children: [
-            Text('$day', style: TextStyle(fontSize: 12, fontWeight: weight, color: fg)),
-            if (hasEvents)
-              Positioned(
-                bottom: 4,
-                child: Container(width: 5, height: 5, decoration: BoxDecoration(shape: BoxShape.circle, color: isSelected ? Colors.white : const Color(0xFFFF9D3C))),
-              ),
+            FittedBox(
+              fit: BoxFit.scaleDown,
+              child: Text('$day', maxLines: 1, style: TextStyle(fontSize: 12, height: 1.4, fontWeight: weight, color: fg)),
+            ),
+            const SizedBox(height: 3),
+            SizedBox(
+              height: 5,
+              width: 5,
+              child: hasEvents
+                  ? DecoratedBox(
+                      key: ValueKey('calendar-event-dot-$day'),
+                      decoration: BoxDecoration(shape: BoxShape.circle, color: isSelected ? Colors.white : const Color(0xFFFF9D3C)),
+                    )
+                  : null,
+            ),
           ],
         ),
       ),

@@ -1,5 +1,5 @@
 import React from 'react';
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import StudentDashboard from './StudentDashboard';
 import * as api from '../api';
 
@@ -26,6 +26,7 @@ beforeEach(() => {
   api.getHomework.mockResolvedValue({ homework: [] });
   api.getProgress.mockResolvedValue({ subjectScores: [] });
   api.getTests.mockResolvedValue({ tests: [] });
+  api.getExamAccess.mockResolvedValue({ exams: [] });
   api.getLibrary.mockResolvedValue({ resources: [] });
   api.getCalendar.mockResolvedValue({ events: [] });
   api.getSettings.mockResolvedValue({ prefs: {} });
@@ -74,4 +75,44 @@ test('subject average card labels the backend mock-test marks and preserves a re
   const card = screen.getAllByRole('article').find((article) => within(article).queryByText('Average Mock Test Score'));
   expect(within(card).getByText('0%')).toBeInTheDocument();
   expect(api.getProgress).toHaveBeenCalledTimes(1);
+});
+
+test('a strict test saves answers then freezes both answers and submission after a window interruption', async () => {
+  window.location.hash = 'Home/Science';
+  const endAt = new Date(Date.now() + 300000).toISOString();
+  api.getTests.mockResolvedValue({
+    tests: [{ id: 'strict-a', title: 'Strict Science', subject: 'Science', strictMode: true, windowStatus: 'open', endAt }],
+  });
+  let status = 'active';
+  let revision = 0;
+  const answers = {};
+  const control = () => ({ status, revision: ++revision, answers: { ...answers }, endAt, serverNow: new Date().toISOString() });
+  api.startTest.mockResolvedValue({
+    success: true, attemptId: 'strict-attempt', strictMode: true, control: control(), answers: {},
+    questions: [{ id: 'q', text: '1 + 1?', options: ['Two', 'Three'] }],
+  });
+  api.controlExam.mockImplementation(async (_attemptId, payload) => {
+    if (payload.action === 'pause') status = 'paused';
+    if (payload.action === 'save' && status === 'active') Object.assign(answers, payload.answers);
+    return { success: true, control: control() };
+  });
+  const confirmation = jest.spyOn(window, 'confirm').mockReturnValue(true);
+  try {
+    render(<StudentDashboard studentId="student" onLogout={() => {}} />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Start', exact: true }));
+    const option = await screen.findByRole('button', { name: 'Two', exact: true });
+    expect(confirmation).toHaveBeenCalledWith(expect.stringContaining('Only your assigning teacher can resume'));
+    fireEvent.click(option);
+    await waitFor(() => expect(api.controlExam).toHaveBeenCalledWith('strict-attempt', { action: 'save', answers: { q: 0 } }));
+    await waitFor(() => expect(option).toBeEnabled());
+    await act(async () => window.dispatchEvent(new Event('blur')));
+    expect(screen.getByText('Test paused — waiting for your teacher')).toBeInTheDocument();
+    expect(option).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Three' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Submit Test' })).toBeDisabled();
+    expect(screen.getByText(/⏱/)).toBeInTheDocument();
+    expect(api.submitTestAttempt).not.toHaveBeenCalled();
+  } finally {
+    confirmation.mockRestore();
+  }
 });

@@ -336,7 +336,7 @@ class _TeacherReportCardsTabState extends ConsumerState<TeacherReportCardsTab> {
                       ]),
                       selected: e['id'] == _selectedExamId,
                       selectedColor: theme.color,
-                      labelStyle: TextStyle(color: e['id'] == _selectedExamId ? Colors.white : AppColors.text, fontWeight: FontWeight.w700),
+                      labelStyle: TextStyle(color: e['id'] == _selectedExamId ? Colors.white : AppColors.of(context).text, fontWeight: FontWeight.w700),
                       onSelected: (_) {
                         setState(() => _selectedExamId = e['id']?.toString());
                         _loadMarks(_selectedExamId);
@@ -542,7 +542,7 @@ class _TeacherReportCardsTabState extends ConsumerState<TeacherReportCardsTab> {
                 avatar: done ? const Icon(Icons.check_circle, size: 16, color: Colors.white) : null,
                 selected: active,
                 selectedColor: theme.color,
-                labelStyle: TextStyle(color: active ? Colors.white : AppColors.text, fontWeight: FontWeight.w700),
+                labelStyle: TextStyle(color: active ? Colors.white : AppColors.of(context).text, fontWeight: FontWeight.w700),
                 onSelected: (_) {
                   setState(() {
                     _selectedStudentId = s['id']?.toString();
@@ -651,7 +651,7 @@ class _Frame3dCard extends StatelessWidget {
       margin: const EdgeInsets.only(bottom: 4),
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: AppColors.card,
+        color: AppColors.of(context).card,
         borderRadius: BorderRadius.circular(14),
         border: _frame3dBorder(alpha: 0.18),
         boxShadow: _frame3dShadow(alpha: 0.08, blur: 8),

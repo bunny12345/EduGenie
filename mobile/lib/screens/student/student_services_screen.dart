@@ -75,11 +75,11 @@ class _StudentServicesScreenState extends State<StudentServicesScreen> {
     return Scaffold(
       appBar: AppBar(title: const Text('Services'), titleSpacing: 20),
       body: ListView(
-        padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 20),
         children: [
           Container(
             width: double.infinity,
-            padding: const EdgeInsets.all(18),
+            padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
               color: AppColors.of(context).card,
               borderRadius: BorderRadius.circular(26),

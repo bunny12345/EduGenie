@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'navigation/role_router.dart';
 import 'state/theme_provider.dart';
+import 'theme/app_colors.dart';
 import 'theme/app_theme.dart';
 
 void main() {
@@ -14,7 +15,8 @@ class AcademiXApp extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final themeMode = ref.watch(themeModeProvider);
+    final themeMode = ref.watch(activeThemeModeProvider);
+    AppColors.isDark = themeMode == ThemeMode.dark;
     return MaterialApp(
       title: 'AcademiX',
       debugShowCheckedModeBanner: false,
@@ -25,4 +27,3 @@ class AcademiXApp extends ConsumerWidget {
     );
   }
 }
-

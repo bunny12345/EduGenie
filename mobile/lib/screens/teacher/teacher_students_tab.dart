@@ -42,7 +42,7 @@ class _Frame3dCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: AppColors.card,
+        color: AppColors.of(context).card,
         borderRadius: BorderRadius.circular(14),
         border: _frame3dBorder(alpha: 0.18),
         boxShadow: _frame3dShadow(alpha: 0.08, blur: 8),
@@ -77,8 +77,8 @@ class _Frame3dButtonState extends State<_Frame3dButton> {
   @override
   Widget build(BuildContext context) {
     final disabled = widget.onTap == null;
-    final background = widget.background ?? AppColors.card;
-    final foreground = widget.foreground ?? AppColors.text;
+    final background = widget.background ?? AppColors.of(context).card;
+    final foreground = widget.foreground ?? AppColors.of(context).text;
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTapDown: disabled ? null : (_) => setState(() => _pressed = true),
@@ -346,9 +346,9 @@ class _TeacherStudentsTabState extends ConsumerState<TeacherStudentsTab> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Text('Students', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: AppColors.text)),
+                Text('Students', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: AppColors.of(context).text)),
                 const SizedBox(height: 4),
-                Text('Filter by class, select a student, and view their homework status.', style: TextStyle(fontSize: 12, color: AppColors.muted)),
+                Text('Filter by class, select a student, and view their homework status.', style: TextStyle(fontSize: 12, color: AppColors.of(context).muted)),
                 const SizedBox(height: 12),
                 TextField(
                   controller: _searchCtrl,
@@ -361,7 +361,7 @@ class _TeacherStudentsTabState extends ConsumerState<TeacherStudentsTab> {
                     Expanded(
                       child: Container(
                         padding: const EdgeInsets.symmetric(horizontal: 10),
-                        decoration: BoxDecoration(border: Border.all(color: AppColors.line), borderRadius: BorderRadius.circular(8)),
+                        decoration: BoxDecoration(border: Border.all(color: AppColors.of(context).line), borderRadius: BorderRadius.circular(8)),
                         child: DropdownButtonHideUnderline(
                           child: DropdownButton<String>(
                             value: _classFilter,
@@ -391,7 +391,7 @@ class _TeacherStudentsTabState extends ConsumerState<TeacherStudentsTab> {
                   const SkeletonBox(height: 44),
                   const SkeletonBox(height: 44),
                 ] else if (!_loadingStudents && paged.isEmpty)
-                  Text('No students available yet for this class.', style: TextStyle(fontSize: 12, color: AppColors.muted))
+                  Text('No students available yet for this class.', style: TextStyle(fontSize: 12, color: AppColors.of(context).muted))
                 else
                   for (final s in paged) _StudentRow(student: s, selected: _selectedStudentId == s['id']?.toString(), onTap: () => _selectStudent(s)),
                 if (_students.length > _studentsPageSize) ...[
@@ -403,7 +403,7 @@ class _TeacherStudentsTabState extends ConsumerState<TeacherStudentsTab> {
                         onTap: clampedPage == 0 ? null : () => setState(() => _page = clampedPage - 1),
                         child: const Text('\u2190 Previous'),
                       ),
-                      Text('Page ${clampedPage + 1} of $pageCount', style: TextStyle(fontSize: 12, color: AppColors.muted)),
+                      Text('Page ${clampedPage + 1} of $pageCount', style: TextStyle(fontSize: 12, color: AppColors.of(context).muted)),
                       _Frame3dButton(
                         onTap: clampedPage >= pageCount - 1 ? null : () => setState(() => _page = clampedPage + 1),
                         child: const Text('Next \u2192'),
@@ -478,7 +478,7 @@ class _StudentRow extends StatelessWidget {
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
           decoration: BoxDecoration(
-            color: selected ? AppColors.brandSoft : AppColors.background,
+            color: selected ? AppColors.of(context).brandSoft : AppColors.of(context).background,
             borderRadius: BorderRadius.circular(10),
             border: selected ? Border.all(color: AppColors.brand, width: 1.5) : null,
           ),
@@ -489,7 +489,7 @@ class _StudentRow extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(name, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
-                    Text(className, style: TextStyle(fontSize: 11, color: AppColors.muted)),
+                    Text(className, style: TextStyle(fontSize: 11, color: AppColors.of(context).muted)),
                   ],
                 ),
               ),
@@ -580,16 +580,16 @@ class _HomeworkStatusPanel extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Text('Homework Status', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: AppColors.text)),
+        Text('Homework Status', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: AppColors.of(context).text)),
         const SizedBox(height: 8),
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 10),
-          decoration: BoxDecoration(border: Border.all(color: AppColors.line), borderRadius: BorderRadius.circular(8)),
+          decoration: BoxDecoration(border: Border.all(color: AppColors.of(context).line), borderRadius: BorderRadius.circular(8)),
           child: DropdownButtonHideUnderline(
             child: DropdownButton<String>(
               value: selectedStudentId,
               isExpanded: true,
-              hint: Text('Select a student to view homework', style: TextStyle(fontSize: 13, color: AppColors.muted)),
+              hint: Text('Select a student to view homework', style: TextStyle(fontSize: 13, color: AppColors.of(context).muted)),
               items: [
                 for (final s in students)
                   DropdownMenuItem(
@@ -610,7 +610,7 @@ class _HomeworkStatusPanel extends StatelessWidget {
             children: [
               _Frame3dButton(onTap: selectedIndex <= 0 ? null : () => _goToAdjacent(-1), child: const Text('\u2190 Prev')),
               const SizedBox(width: 10),
-              Text('${selectedIndex + 1}/${students.length}', style: TextStyle(fontSize: 12, color: AppColors.muted, fontWeight: FontWeight.w700)),
+              Text('${selectedIndex + 1}/${students.length}', style: TextStyle(fontSize: 12, color: AppColors.of(context).muted, fontWeight: FontWeight.w700)),
               const SizedBox(width: 10),
               _Frame3dButton(
                 onTap: (selectedIndex == -1 || selectedIndex >= students.length - 1) ? null : () => _goToAdjacent(1),
@@ -622,7 +622,7 @@ class _HomeworkStatusPanel extends StatelessWidget {
         const SizedBox(height: 10),
         Text(
           selectedStudentId != null ? '\ud83d\udcdd All homework for ${selectedStudentName ?? 'student'}' : 'Select a student to view homework.',
-          style: TextStyle(fontSize: 12, color: AppColors.muted, fontWeight: FontWeight.w600),
+          style: TextStyle(fontSize: 12, color: AppColors.of(context).muted, fontWeight: FontWeight.w600),
         ),
         if (error != null) ...[
           const SizedBox(height: 8),
@@ -647,7 +647,7 @@ class _HomeworkStatusPanel extends StatelessWidget {
           const SkeletonBox(height: 50),
           const SkeletonBox(height: 50),
         ] else if (!loading && homework.isEmpty)
-          Text('No homework assigned to this student yet.', style: TextStyle(fontSize: 12, color: AppColors.muted))
+          Text('No homework assigned to this student yet.', style: TextStyle(fontSize: 12, color: AppColors.of(context).muted))
         else
           for (final hw in visible)
             _HomeworkStatusTile(
@@ -702,14 +702,14 @@ class _ProgressSnapshotPanel extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Text('Progress Snapshot', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: AppColors.text)),
+        Text('Progress Snapshot', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: AppColors.of(context).text)),
         const SizedBox(height: 8),
         Row(
           children: [
             Expanded(
               child: Text(
                 selectedStudentId != null ? '\ud83d\udcca ${selectedStudentName ?? 'student'}' : 'Select a student to see metrics.',
-                style: TextStyle(fontSize: 12, color: AppColors.muted, fontWeight: FontWeight.w600),
+                style: TextStyle(fontSize: 12, color: AppColors.of(context).muted, fontWeight: FontWeight.w600),
               ),
             ),
             if (subject != null)
@@ -717,15 +717,15 @@ class _ProgressSnapshotPanel extends StatelessWidget {
                 children: [
                   _Frame3dButton(
                     onTap: () => onViewChanged('daily'),
-                    background: view == 'daily' ? AppColors.brand : AppColors.background,
-                    foreground: view == 'daily' ? Colors.white : AppColors.muted,
+                    background: view == 'daily' ? AppColors.brand : AppColors.of(context).background,
+                    foreground: view == 'daily' ? Colors.white : AppColors.of(context).muted,
                     child: const Text('Daily'),
                   ),
                   const SizedBox(width: 6),
                   _Frame3dButton(
                     onTap: () => onViewChanged('monthly'),
-                    background: view == 'monthly' ? AppColors.brand : AppColors.background,
-                    foreground: view == 'monthly' ? Colors.white : AppColors.muted,
+                    background: view == 'monthly' ? AppColors.brand : AppColors.of(context).background,
+                    foreground: view == 'monthly' ? Colors.white : AppColors.of(context).muted,
                     child: const Text('Monthly'),
                   ),
                 ],
@@ -790,7 +790,7 @@ class _ProgressSnapshotPanel extends StatelessWidget {
                   Text(
                     'No activity yet \u2014 the growth line appears here once this student studies the subject.',
                     textAlign: TextAlign.center,
-                    style: TextStyle(fontSize: 12, color: AppColors.muted),
+                    style: TextStyle(fontSize: 12, color: AppColors.of(context).muted),
                   ),
                 ],
               ),
@@ -799,14 +799,14 @@ class _ProgressSnapshotPanel extends StatelessWidget {
             GrowthLineChart(points: series, maxY: 100, gridVals: const [25, 50, 75, 100], color: subject!.accent, mode: view, percentSuffix: true),
           if (subject!.tip.isNotEmpty) ...[
             const SizedBox(height: 10),
-            Text('\ud83d\udca1 ${subject!.tip}', style: TextStyle(fontSize: 12, color: AppColors.muted)),
+            Text('\ud83d\udca1 ${subject!.tip}', style: TextStyle(fontSize: 12, color: AppColors.of(context).muted)),
           ],
         ] else if (selectedStudentId != null && loading) ...[
           const SizedBox(height: 10),
           const SkeletonBox(height: 70),
         ] else if (selectedStudentId != null && !loading) ...[
           const SizedBox(height: 10),
-          Text('No progress data yet.', style: TextStyle(fontSize: 12, color: AppColors.muted)),
+          Text('No progress data yet.', style: TextStyle(fontSize: 12, color: AppColors.of(context).muted)),
         ],
       ],
     );
@@ -875,7 +875,7 @@ class _HomeworkStatusTile extends StatelessWidget {
     return Container(
       margin: const EdgeInsets.only(top: 8),
       padding: const EdgeInsets.all(10),
-      decoration: BoxDecoration(color: AppColors.background, borderRadius: BorderRadius.circular(10)),
+      decoration: BoxDecoration(color: AppColors.of(context).background, borderRadius: BorderRadius.circular(10)),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -887,7 +887,7 @@ class _HomeworkStatusTile extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(title, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
-                    Text('$subject \u00b7 Due ${_shortDate(homework['dueAt'])}', style: TextStyle(fontSize: 11, color: AppColors.muted)),
+                    Text('$subject \u00b7 Due ${_shortDate(homework['dueAt'])}', style: TextStyle(fontSize: 11, color: AppColors.of(context).muted)),
                   ],
                 ),
               ),
@@ -900,14 +900,14 @@ class _HomeworkStatusTile extends StatelessWidget {
           ),
           if (remark != null && remark.isNotEmpty) ...[
             const SizedBox(height: 4),
-            Text(remark, style: TextStyle(fontSize: 11, color: AppColors.muted)),
+            Text(remark, style: TextStyle(fontSize: 11, color: AppColors.of(context).muted)),
           ],
           const SizedBox(height: 6),
           Row(
             children: [
-              Text('Grade: ${grade != null ? '$grade/100' : '\u2014'}', style: TextStyle(fontSize: 11, color: AppColors.text)),
+              Text('Grade: ${grade != null ? '$grade/100' : '\u2014'}', style: TextStyle(fontSize: 11, color: AppColors.of(context).text)),
               const SizedBox(width: 12),
-              Text('Attempts: $attemptCount', style: TextStyle(fontSize: 11, color: AppColors.text)),
+              Text('Attempts: $attemptCount', style: TextStyle(fontSize: 11, color: AppColors.of(context).text)),
               const Spacer(),
               if (canGrade && hasSubmission) ...[
                 _Frame3dButton(

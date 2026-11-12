@@ -151,9 +151,9 @@ class _SupportScreenState extends ConsumerState<SupportScreen>
               ]
             : [
                 ...page.tickets,
-                ..._tickets.skip(50).where(
-                  (t) => !incomingIds.contains(t.id) && !t.expired,
-                ),
+                ..._tickets
+                    .skip(50)
+                    .where((t) => !incomingIds.contains(t.id) && !t.expired),
               ];
         if (more || _tickets.length <= 50) _nextOffset = page.nextOffset;
         _listError = null;
@@ -388,9 +388,10 @@ class _SupportScreenState extends ConsumerState<SupportScreen>
             surface: AppColors.of(context).card,
           ),
           scaffoldBackgroundColor: AppColors.of(context).background,
-          textTheme: Theme.of(
-            context,
-          ).textTheme.apply(bodyColor: AppColors.of(context).text, displayColor: AppColors.of(context).text),
+          textTheme: Theme.of(context).textTheme.apply(
+            bodyColor: AppColors.of(context).text,
+            displayColor: AppColors.of(context).text,
+          ),
           inputDecorationTheme: InputDecorationTheme(
             filled: true,
             fillColor: AppColors.of(context).card,
@@ -401,104 +402,112 @@ class _SupportScreenState extends ConsumerState<SupportScreen>
           appBar: AppBar(
             title: Text(widget.teacher ? 'Teacher Support' : 'Technical Query'),
           ),
-          body: RefreshIndicator(
-            onRefresh: () async {
-              await _refreshList();
-              await _refreshThread();
-            },
-            child: ListView(
-              controller: _scroll,
-              padding: const EdgeInsets.all(16),
-              children: [
-                _card(
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'WEBSITE & APP HELP',
-                        style: TextStyle(
-                          color: AppColors.of(context).accent,
-                          fontWeight: FontWeight.w800,
-                          fontSize: 11,
+          body: SafeArea(
+            top: false,
+            child: RefreshIndicator(
+              onRefresh: () async {
+                await _refreshList();
+                await _refreshThread();
+              },
+              child: ListView(
+                controller: _scroll,
+                padding: const EdgeInsets.fromLTRB(12, 8, 12, 16),
+                children: [
+                  _card(
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'WEBSITE & APP HELP',
+                          style: TextStyle(
+                            color: AppColors.of(context).accent,
+                            fontWeight: FontWeight.w800,
+                            fontSize: 11,
+                          ),
                         ),
-                      ),
-                      const SizedBox(height: 8),
-                      const Text(
-                        'Get help with AcademiX, report an issue, or speak with a technician.',
-                      ),
-                      const SizedBox(height: 12),
-                      Wrap(
-                        spacing: 8,
-                        runSpacing: 8,
-                        children: [
-                          OutlinedButton(
-                            onPressed: saving ? null : () => _report('glitch'),
-                            child: const Text('Report an issue'),
+                        const SizedBox(height: 4),
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 4,
+                          children: [
+                            OutlinedButton(
+                              onPressed: saving
+                                  ? null
+                                  : () => _report('glitch'),
+                              child: const Text('Report an issue'),
+                            ),
+                            FilledButton(
+                              onPressed: saving
+                                  ? null
+                                  : () => _report('technician'),
+                              child: const Text('Connect to a technician'),
+                            ),
+                          ],
+                        ),
+                        if (_category != null || _selected != null)
+                          TextButton.icon(
+                            onPressed: saving ? null : () => _select(null),
+                            icon: const Icon(Icons.support_agent),
+                            label: const Text('Help Assistant'),
                           ),
-                          FilledButton(
-                            onPressed: saving
-                                ? null
-                                : () => _report('technician'),
-                            child: const Text('Connect to a technician'),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-                _card(
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      OutlinedButton.icon(
-                        onPressed: saving ? null : () => _select(null),
-                        icon: const Icon(Icons.support_agent),
-                        label: const Text('Help Assistant'),
-                      ),
-                      Row(
-                        children: [
-                          const Expanded(
-                            child: Text(
-                              'Your requests',
-                              style: TextStyle(fontWeight: FontWeight.w700),
+                        ExpansionTile(
+                          key: const ValueKey('support-requests'),
+                          tilePadding: EdgeInsets.zero,
+                          childrenPadding: EdgeInsets.zero,
+                          shape: const Border(),
+                          collapsedShape: const Border(),
+                          title: Text(
+                            'Your requests (${_tickets.length})',
+                            style: const TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w700,
                             ),
                           ),
-                          TextButton(
-                            onPressed: () => _refreshList(),
-                            child: const Text('Refresh'),
-                          ),
-                        ],
-                      ),
-                      if (_tickets.isEmpty && _listError == null)
-                        const Text(
-                          'Your reports and technician chats appear here.',
-                        ),
-                      for (final ticket in _tickets)
-                        ListTile(
-                          contentPadding: EdgeInsets.zero,
-                          selected: _selected == ticket.id,
-                          title: Text(ticket.subject),
-                          subtitle: Text(
-                            '${ticket.category == 'glitch' ? 'Issue report' : 'Technician chat'} · ${ticket.status == 'resolved' ? 'Resolved' : 'Open'} · #${ticket.id.substring(0, 8)}',
-                          ),
-                          trailing: const Icon(Icons.chevron_right),
-                          onTap: saving
-                              ? null
-                              : () => _select(
-                                  _selected == ticket.id ? null : ticket.id,
+                          children: [
+                            if (_tickets.isEmpty && _listError == null)
+                              const Align(
+                                alignment: Alignment.centerLeft,
+                                child: Text(
+                                  'Your reports and technician chats appear here.',
+                                  style: TextStyle(fontSize: 12),
                                 ),
+                              ),
+                            for (final ticket in _tickets)
+                              ListTile(
+                                contentPadding: EdgeInsets.zero,
+                                selected: _selected == ticket.id,
+                                title: Text(ticket.subject),
+                                subtitle: Text(
+                                  '${ticket.category == 'glitch' ? 'Issue report' : 'Technician chat'} · ${ticket.status == 'resolved' ? 'Resolved' : 'Open'} · #${ticket.id.substring(0, 8)}',
+                                ),
+                                trailing: const Icon(Icons.chevron_right),
+                                onTap: saving
+                                    ? null
+                                    : () => _select(
+                                        _selected == ticket.id
+                                            ? null
+                                            : ticket.id,
+                                      ),
+                              ),
+                            if (_nextOffset != null)
+                              TextButton(
+                                onPressed: () => _refreshList(more: true),
+                                child: const Text('Show more requests'),
+                              ),
+                          ],
                         ),
-                      if (_listError != null) ErrorInline(message: _listError!),
-                      if (_nextOffset != null)
-                        TextButton(
-                          onPressed: () => _refreshList(more: true),
-                          child: const Text('Show more requests'),
-                        ),
-                    ],
+                        if (_listError != null)
+                          ErrorInline(message: _listError!),
+                        const Divider(height: 12),
+                        if (_category != null)
+                          _reportForm()
+                        else
+                          _conversation(),
+                      ],
+                    ),
                   ),
-                ),
-                _card(_category != null ? _reportForm() : _conversation()),
-              ],
+                ],
+              ),
             ),
           ),
         ),
@@ -507,8 +516,9 @@ class _SupportScreenState extends ConsumerState<SupportScreen>
   }
 
   Widget _card(Widget child) => Container(
+    key: const ValueKey('support-workspace'),
     margin: const EdgeInsets.only(bottom: 12),
-    padding: const EdgeInsets.all(16),
+    padding: const EdgeInsets.all(12),
     decoration: BoxDecoration(
       color: AppColors.of(context).card,
       borderRadius: BorderRadius.circular(18),
@@ -608,7 +618,11 @@ class _SupportScreenState extends ConsumerState<SupportScreen>
             child: const Text('Check replies'),
           ),
         ],
-        for (final message in messages) _message(message),
+        for (final message in messages)
+          _message(
+            message,
+            introduction: bot && identical(message, _botMessages.first),
+          ),
         if (_busy && bot)
           Padding(
             padding: const EdgeInsets.all(12),
@@ -616,7 +630,10 @@ class _SupportScreenState extends ConsumerState<SupportScreen>
               label: 'Assistant is replying',
               child: Text(
                 '•••',
-                style: TextStyle(color: AppColors.of(context).accent, fontSize: 22),
+                style: TextStyle(
+                  color: AppColors.of(context).accent,
+                  fontSize: 22,
+                ),
               ),
             ),
           ),
@@ -626,16 +643,20 @@ class _SupportScreenState extends ConsumerState<SupportScreen>
             child: Text('Still need help? Use Connect to a technician above.'),
           ),
         if (bot)
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              for (final suggestion in _suggestions)
-                OutlinedButton(
-                  onPressed: _busy ? null : () => _ask(suggestion),
-                  child: Text(suggestion),
-                ),
-            ],
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              children: [
+                for (final suggestion in _suggestions)
+                  Padding(
+                    padding: const EdgeInsets.only(right: 8),
+                    child: OutlinedButton(
+                      onPressed: _busy ? null : () => _ask(suggestion),
+                      child: Text(suggestion),
+                    ),
+                  ),
+              ],
+            ),
           ),
         if (_error != null)
           Padding(
@@ -663,9 +684,10 @@ class _SupportScreenState extends ConsumerState<SupportScreen>
           ),
         const SizedBox(height: 12),
         TextField(
+          key: const ValueKey('support-message'),
           controller: _input,
           maxLength: 2000,
-          minLines: 2,
+          minLines: 1,
           maxLines: 5,
           enabled: !_busy && (bot || _thread != null),
           decoration: InputDecoration(
@@ -691,10 +713,30 @@ class _SupportScreenState extends ConsumerState<SupportScreen>
         ),
         Text(
           bot
-              ? 'The assistant gives verified feature guidance, not academic answers. Only questions you send to a technician are saved.'
+              ? 'Never share passwords or private records.'
               : 'Never share passwords, verification codes or confidential records. Replies refresh automatically while this chat is open.',
           style: const TextStyle(fontSize: 12),
         ),
+        if (bot)
+          ExpansionTile(
+            tilePadding: EdgeInsets.zero,
+            shape: const Border(),
+            collapsedShape: const Border(),
+            title: const Text(
+              'About support & privacy',
+              style: TextStyle(fontSize: 12),
+            ),
+            children: [
+              Text(
+                _botMessages.first.content,
+                style: const TextStyle(fontSize: 12),
+              ),
+              const Text(
+                'The assistant gives verified feature guidance, not academic answers. Only questions you send to a technician are saved.',
+                style: TextStyle(fontSize: 12),
+              ),
+            ],
+          ),
       ],
     );
   }
@@ -705,7 +747,7 @@ class _SupportScreenState extends ConsumerState<SupportScreen>
     child: CircularProgressIndicator(strokeWidth: 2),
   );
 
-  Widget _message(SupportMessage message) {
+  Widget _message(SupportMessage message, {bool introduction = false}) {
     final student =
         message.role == 'user' ||
         message.role == 'student' ||
@@ -715,13 +757,16 @@ class _SupportScreenState extends ConsumerState<SupportScreen>
       alignment: student ? Alignment.centerRight : Alignment.centerLeft,
       child: Container(
         margin: const EdgeInsets.only(bottom: 12),
-        padding: const EdgeInsets.all(14),
+        padding: const EdgeInsets.all(10),
         constraints: const BoxConstraints(maxWidth: 600),
         decoration: BoxDecoration(
           color: student
               ? _blue
               : owner
-              ? Color.alphaBlend(AppColors.ok.withValues(alpha: 0.12), AppColors.of(context).card)
+              ? Color.alphaBlend(
+                  AppColors.ok.withValues(alpha: 0.12),
+                  AppColors.of(context).card,
+                )
               : AppColors.of(context).brandSoft,
           borderRadius: BorderRadius.circular(14),
         ),
@@ -745,8 +790,10 @@ class _SupportScreenState extends ConsumerState<SupportScreen>
             ),
             const SizedBox(height: 6),
             SelectableText(
-              message.content,
-              style: TextStyle(color: student ? Colors.white : AppColors.of(context).text),
+              introduction ? 'How can I help with the app?' : message.content,
+              style: TextStyle(
+                color: student ? Colors.white : AppColors.of(context).text,
+              ),
             ),
           ],
         ),

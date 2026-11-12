@@ -16,6 +16,48 @@ Small icons use only the emblem so the name/tagline do not become unreadable.
 Deploy the generated public assets together; the source replacement alone does
 not update the production website.
 
+## Strict mock exams
+
+Teachers can enable **Strict exam** when assigning a scheduled test. The
+**Exam monitor** dropdown beside Assigned shows paused students, incident
+reasons/counts and individual Resume actions; it updates every five seconds.
+Only the assigning teacher can resume a student. Assigned strict exams are
+locked against edits; use Reuse for a new draft.
+
+Students receive a warning before starting. Leaving the test, changing the
+page/hash, hiding the tab or blurring the window locks answers for that student,
+without pausing anyone else or stopping the server-synchronized countdown. Failed answer saves
+retry while access is locked. Reloads and another device cannot clear a server
+pause. AI Tutor/Quick Sam are unavailable throughout the active scheduled
+window until submission. At schedule end, saved answers are finalized and
+Tutor access returns, even if the student was paused.
+
+Install the additive `backend/db/migrations/20261112_strict_mock_exams.sql`
+migration first, then deploy the backend and updated web/mobile clients.
+Client detection is best-effort: normal browsers cannot prevent switching
+tabs/apps, and interruptions are reviewable events, not proof of cheating.
+No camera/screen surveillance is used. Network loss can also pause a test.
+Run `CI=true npm test -- --watch=false --runInBand --runTestsByPath src/hooks/useStrictExam.test.jsx src/components/StudentDashboard.performance.test.jsx`.
+
+## School administrator account and support
+
+School-admin website support offers direct Call and WhatsApp links in both
+Report an issue and Connect to a technician. Other portal roles do not render
+these options. WhatsApp opens externally with a generic, editable message and
+does not automatically send account details, form contents or chat history.
+External conversations are not tracked in Your requests; the existing ticket
+form and replies remain available. This is role-specific UI, not a private
+contact-number storage mechanism.
+
+The school website sidebar's school name opens an account dropdown on every section:
+school name, administrator role, login email, branch and location. School ID and
+Logout are not shown in the card; the sidebar footer retains Logout.
+It supports keyboard activation, Escape, outside-click and
+focus-away dismissal. School login retains branch/location from the existing
+authentication response; older saved sessions need a fresh login to populate
+those fields. Unavailable details are labelled explicitly. No new endpoint or
+database migration is required.
+
 ## Loading and refresh performance
 
 Portal dashboards and the owner portal load as separate JavaScript chunks, only

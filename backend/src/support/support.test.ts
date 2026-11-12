@@ -10,6 +10,7 @@ import { answerSupportQuestion, redactSupportText } from './support-guide';
 import { BadRequestException, ForbiddenException, Module, UnauthorizedException } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { AuthGuard } from '../auth/auth.guard';
+import { ExamControlService } from '../exams/exam-control.service';
 import { OwnerGuard } from '../auth/owner.guard';
 import { OwnerAuthService } from '../auth/owner-auth.service';
 import { SupportController, OwnerSupportController } from './support.controller';
@@ -60,6 +61,7 @@ test('support service scopes tickets, verifies identity and explicitly reports e
       controllers: [SupportController, OwnerSupportController],
       providers: [
         AuthGuard, OwnerGuard,
+        { provide: ExamControlService, useValue: { assertTutorAccess: async () => { throw new Error('Support routes must remain available during exams'); } } },
         { provide: SupabaseService, useValue: { verifyJwt: async (token: string) => token === 'Bearer student-token'
           ? { sub: id, role: 'student' } : token === 'Bearer teacher-token' ? { sub: id, role: 'teacher' } : token === 'Bearer school-token' ? { sub: id, role: 'school_admin' } : null } },
         { provide: OwnerAuthService, useValue: ownerAuth },

@@ -581,13 +581,51 @@ export async function getTests(studentId, filter = 'upcoming') {
   return getJsonChecked(url, 'getTests');
 }
 
+export function getExamClientId() {
+  const key = 'AcademiX.examClient';
+  let id = sessionStorage.getItem(key);
+  if (!id) {
+    id = crypto.randomUUID();
+    sessionStorage.setItem(key, id);
+  }
+  return id;
+}
+
+export async function getExamAccess() {
+  return getJsonChecked(`${API_BASE}/tests/exam-access/current`, 'Exam access');
+}
+
+// Control: {status, answers, incidentCount, lastReason, pausedAt, endAt, serverNow}.
+export async function controlExam(attemptId, payload) {
+  const res = await fetch(`${API_BASE}/tests/attempts/${encodeURIComponent(attemptId)}/control`, {
+    method: 'POST', headers: await authHeaders(), keepalive: payload.action === 'pause',
+    body: JSON.stringify({ ...payload, clientId: getExamClientId() }),
+  });
+  const data = await res.json();
+  if (!res.ok || data.success === false) throw new Error(data.error || data.message || 'Unable to synchronize exam');
+  return data;
+}
+
+export async function getExamStudents(testId) {
+  return getJsonChecked(`${API_BASE}/tests/${encodeURIComponent(testId)}/exam-students`, 'Exam students');
+}
+
+export async function resumeExamStudent(testId, studentId) {
+  const res = await fetch(`${API_BASE}/tests/${encodeURIComponent(testId)}/exam-students/${encodeURIComponent(studentId)}/resume`, {
+    method: 'POST', headers: await authHeaders(), body: '{}',
+  });
+  const data = await res.json();
+  if (!res.ok || data.success === false) throw new Error(data.error || data.message || 'Unable to resume student');
+  return data;
+}
+
 export async function startTest(testId, studentId) {
   const headers = await authHeaders();
   const url = `${API_BASE}/tests/${encodeURIComponent(testId)}/start`;
   const res = await fetch(url, {
     method: 'POST',
     headers,
-    body: JSON.stringify({ studentId })
+    body: JSON.stringify({ studentId, clientId: getExamClientId() })
   });
   return res.json();
 }
@@ -598,9 +636,11 @@ export async function submitTestAttempt(attemptId, studentId, answers) {
   const res = await fetch(url, {
     method: 'POST',
     headers,
-    body: JSON.stringify({ studentId, answers })
+    body: JSON.stringify({ studentId, answers, clientId: getExamClientId() })
   });
-  return res.json();
+  const data = await res.json();
+  if (!res.ok || data.success === false) throw new Error(data.error || data.message || 'Unable to submit test');
+  return data;
 }
 
 export async function getTestAttempt(attemptId) {

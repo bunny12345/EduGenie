@@ -147,8 +147,11 @@ Future<void> _mount(
   bool teacher = false,
   bool teacherBubble = false,
   bool dark = false,
+  double width = 390,
+  double height = 844,
+  bool safeArea = false,
 }) async {
-  tester.view.physicalSize = const Size(390, 844);
+  tester.view.physicalSize = Size(width, height);
   tester.view.devicePixelRatio = 1;
   addTearDown(tester.view.resetPhysicalSize);
   addTearDown(tester.view.resetDevicePixelRatio);
@@ -161,9 +164,12 @@ Future<void> _mount(
       child: MaterialApp(
         theme: ThemeData(brightness: dark ? Brightness.dark : Brightness.light),
         builder: (context, child) => MediaQuery(
-          data: MediaQuery.of(
-            context,
-          ).copyWith(textScaler: TextScaler.linear(scale)),
+          data: MediaQuery.of(context).copyWith(
+            textScaler: TextScaler.linear(scale),
+            padding: safeArea
+                ? const EdgeInsets.symmetric(vertical: 24)
+                : EdgeInsets.zero,
+          ),
           child: child!,
         ),
         home: teacherBubble
@@ -180,6 +186,12 @@ Future<void> _mount(
 }
 
 Future<void> _tap(WidgetTester tester, Finder finder) async {
+  if (finder.evaluate().isEmpty) {
+    final requests = find.byKey(const ValueKey('support-requests'));
+    await tester.ensureVisible(requests);
+    await tester.tap(requests);
+    await tester.pumpAndSettle();
+  }
   await tester.ensureVisible(finder.first);
   await tester.pumpAndSettle();
   await tester.tap(finder.first);
@@ -192,19 +204,98 @@ Future<void> _dispose(WidgetTester tester) async {
 }
 
 void main() {
-  testWidgets('support keeps dark surfaces and readable technician messages', (tester) async {
+  for (final teacher in [false, true]) {
+    for (final width in [320.0, 390.0]) {
+      testWidgets('support opens directly to usable chat ($teacher, $width)', (
+        tester,
+      ) async {
+        await _mount(
+          tester,
+          _SupportStub()..saved = true,
+          teacher: teacher,
+          width: width,
+          height: 740,
+          safeArea: true,
+        );
+        expect(find.byKey(const ValueKey('support-workspace')), findsOneWidget);
+        expect(find.text('Upload problem'), findsNothing);
+        expect(
+          tester
+              .getRect(find.byKey(const ValueKey('support-workspace')))
+              .bottom,
+          lessThanOrEqualTo(716),
+        );
+        final message = tester.getRect(
+          find.byKey(const ValueKey('support-message')),
+        );
+        final send = tester.getRect(find.widgetWithText(FilledButton, 'Send'));
+        expect(message.top, greaterThan(0));
+        expect(send.bottom, lessThanOrEqualTo(740));
+        expect(find.text('Send').hitTestable(), findsOneWidget);
+        await tester.tap(find.text('Your requests (1)'));
+        await tester.pumpAndSettle();
+        expect(find.text('Upload problem'), findsOneWidget);
+        await tester.tap(find.text('Your requests (1)'));
+        await tester.pumpAndSettle();
+        expect(find.text('Upload problem'), findsNothing);
+        await _tap(tester, find.text('About support & privacy'));
+        expect(find.textContaining('Never share passwords'), findsWidgets);
+        expect(tester.takeException(), isNull);
+        await _dispose(tester);
+      });
+    }
+
+    for (final scale in [1.5, 2.0]) {
+      testWidgets(
+        'compact support stays accessible with large text ($teacher, $scale)',
+        (tester) async {
+          await _mount(
+            tester,
+            _SupportStub(),
+            teacher: teacher,
+            scale: scale,
+            width: 320,
+          );
+          await tester.ensureVisible(
+            find.byKey(const ValueKey('support-message')),
+          );
+          await tester.enterText(
+            find.byKey(const ValueKey('support-message')),
+            'Help with homework',
+          );
+          await _tap(tester, find.widgetWithText(FilledButton, 'Send'));
+          expect(tester.takeException(), isNull);
+          await _dispose(tester);
+        },
+      );
+    }
+  }
+
+  testWidgets('support keeps dark surfaces and readable technician messages', (
+    tester,
+  ) async {
     final api = _SupportStub()
       ..saved = true
       ..ownerReplied = true;
     await _mount(tester, api, dark: true);
     final scaffoldContext = tester.element(find.byType(Scaffold).first);
     expect(Theme.of(scaffoldContext).brightness, Brightness.dark);
-    expect(Theme.of(scaffoldContext).scaffoldBackgroundColor, AppColors.backgroundDark);
-    expect(tester.widget<Text>(find.text('WEBSITE & APP HELP')).style?.color, const AppPalette(true).accent);
+    expect(
+      Theme.of(scaffoldContext).scaffoldBackgroundColor,
+      AppColors.backgroundDark,
+    );
+    expect(
+      tester.widget<Text>(find.text('WEBSITE & APP HELP')).style?.color,
+      const AppPalette(true).accent,
+    );
     await _tap(tester, find.text('Upload problem'));
-    final technician = tester.widget<SelectableText>(find.byWidgetPredicate(
-      (widget) => widget is SelectableText && widget.data == 'Please try uploading again.',
-    ));
+    final technician = tester.widget<SelectableText>(
+      find.byWidgetPredicate(
+        (widget) =>
+            widget is SelectableText &&
+            widget.data == 'Please try uploading again.',
+      ),
+    );
     expect(technician.style?.color, AppColors.textDark);
     expect(tester.takeException(), isNull);
     await _dispose(tester);
@@ -490,6 +581,7 @@ void main() {
       await _dispose(tester);
       await _mount(tester, api);
       expect(find.text('Use Sam on Home for quick questions.'), findsNothing);
+      await _tap(tester, find.byKey(const ValueKey('support-requests')));
       expect(find.text('Upload problem'), findsOneWidget);
       await _dispose(tester);
     },

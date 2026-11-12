@@ -51,6 +51,43 @@ beforeEach(() => {
 });
 afterEach(() => { window.location.hash = ''; });
 
+test('school account dropdown shows registered details, dismisses and preserves logout', async () => {
+  const onLogout = jest.fn();
+  render(<SchoolDashboard session={{ ...session, email: 'admin@example.test', branch: 'Main campus', location: 'Hyderabad' }} onLogout={onLogout} />);
+  await screen.findByTestId('learning-report');
+  const trigger = screen.getByRole('button', { name: 'School account details' });
+  expect(within(screen.getByRole('navigation')).getByRole('button', { name: 'School account details' })).toBe(trigger);
+  expect(document.querySelector('.td-topbar')).not.toContainElement(trigger);
+  expect(trigger).toHaveAttribute('aria-expanded', 'false');
+  fireEvent.click(trigger);
+  const card = screen.getByRole('region', { name: 'School account' });
+  for (const value of ['Test School', 'admin@example.test', 'Main campus', 'Hyderabad']) {
+    expect(within(card).getByText(value)).toBeInTheDocument();
+  }
+  expect(within(card).queryByText('School ID')).not.toBeInTheDocument();
+  expect(within(card).queryByText('school-a')).not.toBeInTheDocument();
+  expect(within(card).queryByRole('button', { name: 'Logout' })).not.toBeInTheDocument();
+  fireEvent.keyDown(document, { key: 'Escape' });
+  expect(screen.queryByRole('region', { name: 'School account' })).not.toBeInTheDocument();
+  expect(trigger).toHaveFocus();
+  fireEvent.click(trigger);
+  fireEvent.mouseDown(document.body);
+  expect(trigger).toHaveAttribute('aria-expanded', 'false');
+  fireEvent.click(trigger);
+  fireEvent.click(screen.getByRole('button', { name: /Logout/ }));
+  expect(onLogout).toHaveBeenCalledTimes(1);
+});
+
+test('school account keeps missing fields explicit and closes when focus leaves', async () => {
+  render(<SchoolDashboard session={session} onLogout={jest.fn()} />);
+  await screen.findByTestId('learning-report');
+  const trigger = screen.getByRole('button', { name: 'School account details' });
+  fireEvent.click(trigger);
+  expect(within(screen.getByRole('region', { name: 'School account' })).getAllByText('Not available')).toHaveLength(3);
+  fireEvent.blur(trigger, { relatedTarget: screen.getByRole('button', { name: /Export/ }) });
+  expect(trigger).toHaveAttribute('aria-expanded', 'false');
+});
+
 test('school sidebar restores progress from the hash and reuses both student reports', async () => {
   render(<SchoolDashboard session={session} onLogout={jest.fn()} />);
   expect(screen.getByRole('button', { name: /Student Progress/ })).toHaveClass('active');

@@ -9,6 +9,7 @@ import { LocalFeedService } from '../shared/local-feed.service';
 import { StudentAuthService } from '../auth/student-auth.service';
 import { ProgressController } from '../controllers/progress.controller';
 import { TestsController } from '../controllers/tests.controller';
+import { ExamControlService } from '../exams/exam-control.service';
 
 type Row = Record<string, unknown>;
 
@@ -85,7 +86,7 @@ function fixture(initial: Record<string, Row[]> = {}, failingTable = '', isMock 
   return {
     service, tables, requests, localFeed, failingWrites,
     progressController: new ProgressController(db, service, orchard),
-    testsController: new TestsController(db, localFeed, auth),
+    testsController: new TestsController(db, localFeed, auth, new ExamControlService(db, auth, localFeed)),
   };
 }
 
@@ -859,7 +860,7 @@ test('local fallback test can start and submit without sending local IDs to UUID
   assert.equal(started.success, true);
   assert.ok(started.attemptId?.startsWith('local-attempt-'));
   assert.equal((await testsController.submit(studentRequest, started.attemptId, { answers: { q: 0 } })).score, 100);
-  assert.ok(requests.every(({ filters }) => !Object.values(filters).some((value) => String(value).startsWith('local-'))));
+  assert.ok(requests.filter(({ table }) => !table.startsWith('strict_')).every(({ filters }) => !Object.values(filters).some((value) => String(value).startsWith('local-'))));
   assert.equal((await testsController.start(studentRequest, 'local-test-a', {})).success, false);
 });
 

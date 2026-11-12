@@ -54,8 +54,8 @@ class _ArcadeHero extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       clipBehavior: Clip.antiAlias,
-      margin: const EdgeInsets.only(bottom: 18),
-      padding: const EdgeInsets.fromLTRB(24, 22, 24, 22),
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(18),
         border: Border.all(color: GameColors.of(context).line(Color(0xFFE7E3FF))),
@@ -88,7 +88,7 @@ class _ArcadeHero extends StatelessWidget {
               Text(
                 'Learning Arcade 🎮',
                 style: TextStyle(
-                  fontSize: 22,
+                  fontSize: 18,
                   fontWeight: FontWeight.w800,
                   color: GameColors.of(context).text(Color(0xFF2A2360)),
                 ),

@@ -7,6 +7,8 @@ import { SupabaseService } from '../supabase.service';
 import { StudentAuthService } from '../auth/student-auth.service';
 import { EmailService } from '../auth/email.service';
 import { AuthGuard } from '../auth/auth.guard';
+import { ExamControlService } from '../exams/exam-control.service';
+import { LocalFeedService } from '../shared/local-feed.service';
 import { LearningScoreService } from '../progress/learning-score.service';
 import { SchoolController } from './school.controller';
 import { ReportCardsController } from './report-cards.controller';
@@ -88,7 +90,8 @@ test('school progress routes use verified school scope and the shared reports', 
   @Module({
     controllers: [SchoolController, ReportCardsController],
     providers: [
-      AuthGuard,
+      AuthGuard, ExamControlService,
+      { provide: LocalFeedService, useValue: { listTests: () => [] } },
       { provide: SupabaseService, useValue: db },
       { provide: StudentAuthService, useValue: {
         schoolAdminSchoolId: auth.schoolAdminSchoolId.bind(auth),

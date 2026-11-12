@@ -50,6 +50,7 @@ import SamAvatar from './SamAvatar';
 import QuickSamBubble from './QuickSamBubble';
 import TechnicalSupport from './TechnicalSupport';
 import useVisiblePanels from '../hooks/useVisiblePanels';
+import useStrictExam, { useExamAccess } from '../hooks/useStrictExam';
 
 function safeArray(v) {
   return Array.isArray(v) ? v : [];
@@ -637,6 +638,39 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
   const [mockTestError, setMockTestError] = useState('');
   const [mockTestSecondsLeft, setMockTestSecondsLeft] = useState(null); // countdown to activeMockTest.endAt
   const mockTestAutoSubmittedRef = React.useRef(false);
+  const examAccess = useExamAccess(studentId, mockTestResult);
+  const examAccessBlockedRef = React.useRef(examAccess.blocked);
+  examAccessBlockedRef.current = examAccess.blocked;
+  useEffect(() => {
+    if (!examAccess.blocked) return;
+    samSessionActiveRef.current = false;
+    setSamSessionActive(false);
+    setTalkToSamOpen(false);
+    localAudioRef.current?.pause();
+    talkToSamAudioRef.current?.pause();
+    window.speechSynthesis?.cancel();
+    setChatVoicePlayId('');
+    setSamVoicePlaying(false);
+    setTalkToSamSpeaking(false);
+    if (talkMediaRecorderRef.current && talkMediaRecorderRef.current.state !== 'inactive') {
+      talkMediaRecorderRef.current.stop();
+    }
+    talkMediaStreamRef.current?.getTracks().forEach((track) => track.stop());
+    talkMediaRecorderRef.current = null;
+    talkMediaStreamRef.current = null;
+    setTalkToSamRecording(false);
+  }, [examAccess.blocked]);
+  const strictExam = useStrictExam(activeMockTest, !!mockTestResult, (result) => {
+    setMockTestResult(result);
+    setTestResult(result);
+    loadTestsPanel();
+    loadProgressPanel();
+  });
+  useEffect(() => {
+    if (activeMockTest?.strictMode && strictExam.status !== 'active' && strictExam.answers) {
+      setMockTestAnswers(strictExam.answers);
+    }
+  }, [activeMockTest?.strictMode, strictExam.status, strictExam.answers]);
   const [expandedTestReviewId, setExpandedTestReviewId] = useState(''); // completed test whose question review is expanded
   const [testReviewByTestId, setTestReviewByTestId] = useState({}); // testId -> { score, feedback, perQuestionFeedback }
   const [testReviewLoadingId, setTestReviewLoadingId] = useState('');
@@ -1709,6 +1743,7 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
         localVoiceCacheRef.current[cacheKey] = cached;
       }
 
+      if (examAccessBlockedRef.current) return;
       stopLocalVoicePlayback();
 
       const blob = base64ToBlob(cached.audioBase64, cached.mimeType);
@@ -1832,7 +1867,9 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
     }
     setStartingTestId(testId);
     try {
+      if (testItem?.strictMode && !window.confirm('Strict exam: AI Tutor is unavailable during the scheduled window. Leaving this test, switching tabs/apps, or losing connection pauses your answers; the clock continues. Only your assigning teacher can resume you. Continue?')) return;
       const started = await startTest(testId, studentId);
+      if (testItem?.strictMode && started?.strictMode !== true) throw new Error('Strict exam controls are unavailable. Please update the backend.');
       if (started?.success === false) {
         setPanelErrorKey('tests', started?.error || 'Unable to start test.');
         await loadTestsPanel();
@@ -1850,9 +1887,11 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
         title: testItem?.title || testItem?.name || 'Mock Test',
         subject: testItem?.subject || activeView,
         endAt: testItem?.endAt || testItem?.end_at || null,
+        strictMode: started.strictMode === true,
+        control: started.control,
         questions: questionList
       });
-      setMockTestAnswers({});
+      setMockTestAnswers(started.answers || {});
       setMockTestResult(null);
       setMockTestError('');
     } catch (e) {
@@ -1863,11 +1902,14 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
   }
 
   function onSelectMockTestAnswer(questionId, optionIndex) {
+    if (strictExam.locked || mockTestSubmitting) return;
     setMockTestAnswers((prev) => ({ ...prev, [questionId]: optionIndex }));
+    strictExam.save({ [questionId]: optionIndex });
   }
 
   async function onSubmitMockTest(options = {}) {
     if (!activeMockTest) return;
+    if (strictExam.locked && !options.autoSubmit) return;
     const autoSubmit = !!options.autoSubmit;
     const { attemptId, questions } = activeMockTest;
     if (!autoSubmit) {
@@ -1896,6 +1938,7 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
   }
 
   function onCloseMockTest() {
+    if (activeMockTest?.strictMode && !mockTestResult) strictExam.pause('left_test');
     setActiveMockTest(null);
     setMockTestAnswers({});
     setMockTestResult(null);
@@ -1946,7 +1989,7 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
     }
     mockTestAutoSubmittedRef.current = false;
     const tick = () => {
-      const remaining = Math.max(0, Math.round((endAtMs - Date.now()) / 1000));
+      const remaining = Math.max(0, Math.ceil((endAtMs - strictExam.now()) / 1000));
       setMockTestSecondsLeft(remaining);
       if (remaining <= 0 && !mockTestAutoSubmittedRef.current) {
         mockTestAutoSubmittedRef.current = true;
@@ -4216,7 +4259,13 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
         {panelError.dashboard ? <p className="eg-loading">{panelError.dashboard}</p> : null}
 
         <div key={contentViewKey} className={`eg-view-shell ${activeSidebarTab === 'AI Tutor' ? 'eg-view-ai' : 'eg-view-standard'}`}>
-        {activeSidebarTab === 'AI Tutor' ? (
+        {activeSidebarTab === 'AI Tutor' && examAccess.blocked ? (
+          <section className="eg-exam-notice" role="status">
+            <h3>AI Tutor is unavailable</h3>
+            <p>{examAccess.error || (examAccess.checking ? 'Checking exam access.' : 'A strict mock exam is scheduled now. AI Tutor returns after you submit or the exam schedule ends.')}</p>
+            {examAccess.exams.map((exam) => <p key={exam.testId}>{exam.title} · Ends {new Date(exam.endAt).toLocaleString()}</p>)}
+          </section>
+        ) : activeSidebarTab === 'AI Tutor' ? (
           tutorPanel
         ) : activeSidebarTab === 'My Orchard' ? (
           <StudentOrchard studentId={studentId} greetingName={greetingName} initialData={orchardData} onData={setOrchardData} />
@@ -5378,6 +5427,12 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
 
             {!mockTestResult ? (
               <>
+                {activeMockTest.strictMode ? <div className="eg-exam-notice" role="status">
+                  <strong>{strictExam.status === 'paused' ? 'Test paused — waiting for your teacher' : 'Strict exam in progress'}</strong>
+                  <p>{strictExam.status === 'paused' ? 'An interruption was recorded for your account. Answers are locked. Your assigning teacher can resume you; the clock continues.' : 'Stay on this test. Leaving the window, switching tabs or losing connection pauses your answers.'}</p>
+                  {strictExam.saving ? <span>Saving answer…</span> : null}
+                  {strictExam.error ? <p role="alert">{strictExam.error} Answers are locked while reconnecting.</p> : null}
+                </div> : null}
                 <div className="eg-mocktest-body">
                   {activeMockTest.questions.map((q, idx) => (
                     <div key={q.id} className="eg-mocktest-question">
@@ -5389,6 +5444,7 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
                             key={optIdx}
                             className={`eg-mocktest-option${mockTestAnswers[q.id] === optIdx ? ' is-selected' : ''}`}
                             onClick={() => onSelectMockTestAnswer(q.id, optIdx)}
+                            disabled={strictExam.locked || mockTestSubmitting}
                           >
                             {opt}
                           </button>
@@ -5402,7 +5458,7 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
                   <span className="eg-mocktest-progress">
                     {Object.keys(mockTestAnswers).length}/{activeMockTest.questions.length} answered
                   </span>
-                  <button type="button" className="eg-mocktest-submit" disabled={mockTestSubmitting} onClick={onSubmitMockTest}>
+                  <button type="button" className="eg-mocktest-submit" disabled={mockTestSubmitting || strictExam.locked} onClick={onSubmitMockTest}>
                     {mockTestSubmitting ? 'Submitting...' : 'Submit Test'}
                   </button>
                 </div>
@@ -5435,7 +5491,7 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
           </div>
         </div>
       ) : null}
-      {activeSidebarTab === 'Home' && activeView === 'home' && selectedSchoolService?.type !== 'query' && studentId ? (
+      {!examAccess.blocked && !activeMockTest && activeSidebarTab === 'Home' && activeView === 'home' && selectedSchoolService?.type !== 'query' && studentId ? (
         <QuickSamBubble studentId={studentId} schoolName={schoolName} greetingName={dashboard?.greetingName || sessionProfile?.name || ''} />
       ) : null}
     </div>

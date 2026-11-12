@@ -93,6 +93,27 @@ function GradeMultiSelect({ selected, onChange, disabled }) {
 }
 
 export default function SchoolDashboard({ session, onLogout }) {
+  const [showSchoolProfile, setShowSchoolProfile] = useState(false);
+  const schoolProfileRef = useRef(null);
+  const schoolProfileButtonRef = useRef(null);
+  useEffect(() => {
+    if (!showSchoolProfile) return undefined;
+    const dismissOutside = (event) => {
+      if (!schoolProfileRef.current?.contains(event.target)) setShowSchoolProfile(false);
+    };
+    const dismissOnEscape = (event) => {
+      if (event.key === 'Escape') {
+        setShowSchoolProfile(false);
+        schoolProfileButtonRef.current?.focus();
+      }
+    };
+    document.addEventListener('mousedown', dismissOutside);
+    document.addEventListener('keydown', dismissOnEscape);
+    return () => {
+      document.removeEventListener('mousedown', dismissOutside);
+      document.removeEventListener('keydown', dismissOnEscape);
+    };
+  }, [showSchoolProfile]);
   const [error, setError] = useState('');
   const [teacherName, setTeacherName] = useState('');
   const [teacherEmail, setTeacherEmail] = useState('');
@@ -1173,14 +1194,39 @@ export default function SchoolDashboard({ session, onLogout }) {
           <span className="td-sidebar-title">AcademiX</span>
         </div>
 
-        <div className="td-sidebar-profile">
-          <div className="td-profile-avatar">
-            <span>{String(schoolLabel).charAt(0).toUpperCase()}</span>
-          </div>
-          <div className="td-profile-info">
-            <strong>{schoolLabel}</strong>
-            <span>School Admin</span>
-          </div>
+        <div
+          className="sd-account-wrap"
+          ref={schoolProfileRef}
+          onBlur={(event) => {
+            if (!event.currentTarget.contains(event.relatedTarget)) setShowSchoolProfile(false);
+          }}
+        >
+          <button
+            type="button"
+            className="td-sidebar-profile sd-account-trigger"
+            ref={schoolProfileButtonRef}
+            aria-expanded={showSchoolProfile}
+            aria-controls="sd-school-account"
+            aria-label="School account details"
+            title={schoolLabel}
+            onClick={() => setShowSchoolProfile((open) => !open)}
+          >
+            <span className="td-profile-avatar" aria-hidden="true">{String(schoolLabel).charAt(0).toUpperCase()}</span>
+            <span className="td-profile-info"><strong>{schoolLabel}</strong><span>School Admin</span></span>
+            <span className="sd-account-caret" aria-hidden="true">{showSchoolProfile ? '▴' : '▾'}</span>
+          </button>
+          {showSchoolProfile && (
+            <section id="sd-school-account" className="sd-account-card" aria-label="School account">
+              <span className="sd-account-avatar" aria-hidden="true">{String(schoolLabel).charAt(0).toUpperCase()}</span>
+              <h2>{schoolLabel}</h2>
+              <span className="sd-account-role">School administrator</span>
+              <dl>
+                <div><dt>Login email</dt><dd>{session?.email || 'Not available'}</dd></div>
+                <div><dt>Branch</dt><dd>{session?.branch || 'Not available'}</dd></div>
+                <div><dt>Location</dt><dd>{session?.location || 'Not available'}</dd></div>
+              </dl>
+            </section>
+          )}
         </div>
 
         <div className="td-sidebar-nav">
@@ -1208,7 +1254,7 @@ export default function SchoolDashboard({ session, onLogout }) {
       {/* ── Main content ── */}
       <div className="td-main">
         <header className="td-topbar sd-portal-topbar">
-          <div>
+          <div className="sd-topbar-heading">
             <p className="td-kicker">School Admin Portal</p>
             <h1>{meta.title}</h1>
             <p>{meta.subtitle}</p>

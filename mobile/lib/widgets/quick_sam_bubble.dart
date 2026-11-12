@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../state/quick_sam_provider.dart';
+import '../state/exam_access_provider.dart';
+import 'exam_tutor_notice.dart';
 import '../state/session_provider.dart';
 import '../state/student_providers.dart';
 import '../utils/tutor_text.dart';
@@ -20,7 +22,13 @@ class QuickSamBubble extends ConsumerStatefulWidget {
 }
 
 class _QuickSamBubbleState extends ConsumerState<QuickSamBubble> with SingleTickerProviderStateMixin {
-  late final AnimationController _spin = AnimationController(vsync: this, duration: const Duration(seconds: 4))..repeat();
+  late final AnimationController _spin;
+
+  @override
+  void initState() {
+    super.initState();
+    _spin = AnimationController(vsync: this, duration: const Duration(seconds: 4));
+  }
 
   @override
   void dispose() {
@@ -48,6 +56,12 @@ class _QuickSamBubbleState extends ConsumerState<QuickSamBubble> with SingleTick
 
   @override
   Widget build(BuildContext context) {
+    final access = ref.watch(examAccessProvider);
+    if (!access.hasValue || access.value!.blocked) {
+      _spin.stop();
+      return const SizedBox.shrink();
+    }
+    if (!_spin.isAnimating) _spin.repeat();
     final reduceMotion = MediaQuery.of(context).disableAnimations;
     return Semantics(
       button: true,
@@ -162,6 +176,13 @@ class _QuickSamScreenState extends ConsumerState<QuickSamScreen> {
 
   @override
   Widget build(BuildContext context) {
+    ref.listen(examAccessProvider, (_, next) {
+      if ((!next.hasValue || next.value!.blocked) && ref.exists(quickSamProvider)) {
+        ref.read(quickSamProvider.notifier).close();
+      }
+    });
+    final access = ref.watch(examAccessProvider);
+    if (!access.hasValue || access.value!.blocked) return ExamTutorNotice(access: access.value);
     final s = ref.watch(quickSamProvider);
     ref.listen<QuickSamState>(quickSamProvider, (prev, next) {
       if (prev?.messages.length != next.messages.length || prev?.sending != next.sending) _scrollToEnd();

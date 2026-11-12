@@ -34,6 +34,7 @@ type TeacherAccount = {
   passwordHash: string;
   name?: string;
   subject?: string;
+  gender?: string;
   schoolId: string;
   grades?: string[];
 };
@@ -790,7 +791,8 @@ export class StudentAuthService implements OnModuleInit {
       name,
       subject,
       schoolId,
-      grades
+      grades,
+      gender: String(payload.gender || '').trim().toLowerCase() || undefined
     };
     this.rememberTeacher(account);
 
@@ -867,6 +869,7 @@ export class StudentAuthService implements OnModuleInit {
           passwordHash: row.password_hash,
           name: row.name,
           subject: row.subject,
+          gender: row.gender || undefined,
           schoolId: row.school_id,
           grades: normalizeGrades(row.grades)
         };
@@ -1104,6 +1107,7 @@ export class StudentAuthService implements OnModuleInit {
             passwordHash: row.password_hash,
             name: row.name,
             subject: row.subject,
+            gender: row.gender || undefined,
             schoolId: row.school_id,
             grades: normalizeGrades(row.grades)
           };
@@ -1193,6 +1197,7 @@ export class StudentAuthService implements OnModuleInit {
     id: string;
     name?: string;
     subject?: string;
+    gender?: string;
     email?: string;
     schoolId?: string;
     loginId?: string;
@@ -1204,6 +1209,7 @@ export class StudentAuthService implements OnModuleInit {
       id: account.teacherId,
       name: account.name,
       subject: account.subject,
+      gender: account.gender,
       email: account.email,
       schoolId: account.schoolId,
       loginId: account.loginId,

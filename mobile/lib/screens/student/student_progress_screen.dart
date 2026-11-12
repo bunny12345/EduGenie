@@ -146,13 +146,13 @@ class LearningReportBody extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Text(
-            'A fun, simple picture of how ${greetingName ?? 'you'} ${greetingName != null ? 'is' : 'are'} growing — not just marks.',
+            'Learning progress${greetingName != null ? ' for $greetingName' : ''} — more than marks.',
             style: TextStyle(
               fontSize: 12.5,
               color: colors.muted(const Color(0xFF6B7194)),
             ),
           ),
-          const SizedBox(height: 14),
+          const SizedBox(height: 8),
           if (data.alert != null) _AlertBanner(alert: data.alert!),
           _ScoreCard(
             score: data.score,

@@ -18,9 +18,8 @@ class AppColors {
     return hsl.withLightness(hsl.lightness.clamp(0.72, 1.0)).toColor();
   }
 
-  /// Kept in sync with `themeModeProvider` — do not set directly, use
-  /// `ref.read(themeModeProvider.notifier).set(...)` instead so the rest of
-  /// the app (MaterialApp's ThemeData) stays consistent with this flag.
+  /// Kept in sync with the active portal theme by AcademiXApp.
+  /// Widgets should prefer [of] to react to inherited theme changes.
   static bool isDark = false;
 
   static Color get background => isDark ? backgroundDark : backgroundLight;

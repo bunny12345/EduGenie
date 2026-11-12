@@ -9,12 +9,12 @@ class SectionCard extends StatelessWidget {
   final Widget child;
   final EdgeInsets padding;
 
-  const SectionCard({super.key, this.title, required this.child, this.padding = const EdgeInsets.all(16)});
+  const SectionCard({super.key, this.title, required this.child, this.padding = const EdgeInsets.all(12)});
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      margin: const EdgeInsets.only(bottom: 12),
+      margin: const EdgeInsets.only(bottom: 10),
       padding: padding,
       decoration: BoxDecoration(
         color: AppColors.of(context).card,

@@ -1,12 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../theme/app_colors.dart';
+import 'session_provider.dart';
 
-/// Drives the student app's light/dark theme — Settings > Toggle Theme.
-/// Keeps `AppColors.isDark` in sync so the many plain `AppColors.x`
-/// references throughout the app (not just Theme-aware widgets) pick up the
-/// right colors too.
+/// Independent student and teacher preferences, retained for this app session.
 class ThemeModeNotifier extends Notifier<ThemeMode> {
   bool _hydratedFromPrefs = false;
 
@@ -15,7 +12,6 @@ class ThemeModeNotifier extends Notifier<ThemeMode> {
 
   void setDark(bool dark) {
     _hydratedFromPrefs = true;
-    AppColors.isDark = dark;
     state = dark ? ThemeMode.dark : ThemeMode.light;
   }
 
@@ -32,4 +28,18 @@ class ThemeModeNotifier extends Notifier<ThemeMode> {
   }
 }
 
-final themeModeProvider = NotifierProvider<ThemeModeNotifier, ThemeMode>(ThemeModeNotifier.new);
+final themeModeProvider = NotifierProvider<ThemeModeNotifier, ThemeMode>(
+  ThemeModeNotifier.new,
+);
+
+final teacherThemeModeProvider = NotifierProvider<ThemeModeNotifier, ThemeMode>(
+  ThemeModeNotifier.new,
+);
+
+/// Signed-out and unsupported-role screens never inherit a portal's theme.
+final activeThemeModeProvider = Provider<ThemeMode>((ref) {
+  final session = ref.watch(sessionProvider).value;
+  if (session?.isTeacher == true) return ref.watch(teacherThemeModeProvider);
+  if (session?.isStudent == true) return ref.watch(themeModeProvider);
+  return ThemeMode.light;
+});

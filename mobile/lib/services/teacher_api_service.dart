@@ -141,7 +141,10 @@ class TeacherApiService {
   /// and submits manually) — mirrors `aiGradeTeacherHomework(hwId)` in
   /// `web/src/api.js` / `POST /teacher/homework/:hwId/ai-grade`.
   Future<Map<String, dynamic>> aiGradeHomework(String hwId) {
-    return _post('/teacher/homework/${Uri.encodeComponent(hwId)}/ai-grade', const {});
+    return _post(
+      '/teacher/homework/${Uri.encodeComponent(hwId)}/ai-grade',
+      const {},
+    );
   }
 
   /// One student's progress for the teacher's own subject — same shape as one
@@ -197,31 +200,43 @@ class TeacherApiService {
     String? name,
     num? maxMarks,
   }) {
-    return _patch('/teacher/report-cards/exams/${Uri.encodeComponent(examId)}', {
-      'name': ?name,
-      'maxMarks': ?maxMarks,
-    });
+    return _patch(
+      '/teacher/report-cards/exams/${Uri.encodeComponent(examId)}',
+      {'name': ?name, 'maxMarks': ?maxMarks},
+    );
   }
 
   /// Returns `{exam, subject, canEdit, students: [{id,name,marks,remarks}]}` —
   /// `students` always lists the whole class roster, with `marks` null for
   /// anyone this teacher hasn't entered yet.
   Future<Map<String, dynamic>> getReportCardMarks(String examId) {
-    return _get('/teacher/report-cards/exams/${Uri.encodeComponent(examId)}/marks', const {});
+    return _get(
+      '/teacher/report-cards/exams/${Uri.encodeComponent(examId)}/marks',
+      const {},
+    );
   }
 
   /// `entries` is a list of `{studentId, marks, remarks}` — `marks` may be an
   /// empty string to clear a previously saved value. The server always
   /// resolves the subject from the signed-in teacher, never from the client.
-  Future<Map<String, dynamic>> saveReportCardMarks(String examId, List<Map<String, dynamic>> entries) {
-    return _post('/teacher/report-cards/exams/${Uri.encodeComponent(examId)}/marks', {'entries': entries});
+  Future<Map<String, dynamic>> saveReportCardMarks(
+    String examId,
+    List<Map<String, dynamic>> entries,
+  ) {
+    return _post(
+      '/teacher/report-cards/exams/${Uri.encodeComponent(examId)}/marks',
+      {'entries': entries},
+    );
   }
 
   /// `{reportCards: [...], pending: [{examName, entered, total, missingSubjects}]}`
   /// for one student — released cards only, plus which exams still wait on
   /// subjects. Mirrors `getTeacherStudentReportCards(studentId)` in `web/src/api.js`.
   Future<Map<String, dynamic>> getStudentReportCards(String studentId) {
-    return _get('/teacher/students/${Uri.encodeComponent(studentId)}/report-cards', const {});
+    return _get(
+      '/teacher/students/${Uri.encodeComponent(studentId)}/report-cards',
+      const {},
+    );
   }
 
   /// `{name, subject, schoolName, avatarUrl, ...}` — mirrors `getTeacherProfile()`
@@ -422,12 +437,25 @@ class TeacherApiService {
     String testId, {
     required String startAt,
     required String endAt,
+    bool strictMode = false,
   }) {
     return _post('/tests/${Uri.encodeComponent(testId)}/assign', {
       'startAt': startAt,
       'endAt': endAt,
+      'strictMode': strictMode,
     });
   }
+
+  Future<Map<String, dynamic>> getExamStudents(String testId) =>
+      _get('/tests/${Uri.encodeComponent(testId)}/exam-students', {});
+
+  Future<Map<String, dynamic>> resumeExamStudent(
+    String testId,
+    String studentId,
+  ) => _post(
+    '/tests/${Uri.encodeComponent(testId)}/exam-students/${Uri.encodeComponent(studentId)}/resume',
+    {},
+  );
 
   /// Edits a test's metadata — mirrors `updateTest(testId, payload)` in
   /// `web/src/api.js` / `PATCH /tests/:testId`.
@@ -468,7 +496,10 @@ class TeacherApiService {
   /// `listTestQuestions(testId)` in `web/src/api.js` /
   /// `GET /tests/:testId/questions`.
   Future<List<Map<String, dynamic>>> listTestQuestions(String testId) async {
-    final json = await _get('/tests/${Uri.encodeComponent(testId)}/questions', const {});
+    final json = await _get(
+      '/tests/${Uri.encodeComponent(testId)}/questions',
+      const {},
+    );
     final list = json['questions'] as List? ?? [];
     return list.map((q) => Map<String, dynamic>.from(q as Map)).toList();
   }

@@ -30,6 +30,36 @@ afterEach(() => {
   Object.defineProperty(global, 'crypto', { configurable: true, value: originalCrypto });
 });
 
+test.each(['Report an issue', 'Connect to a technician'])('school admins get direct contact options in %s without sending a request', async (action) => {
+  render(<TechnicalSupport requesterRole="school_admin" />);
+  fireEvent.click(screen.getByRole('button', { name: action }));
+  expect(screen.getByRole('region', { name: 'School administrator direct support' })).toBeInTheDocument();
+  expect(screen.getByRole('link', { name: 'Call support' })).toHaveAttribute('href', 'tel:+917993846579');
+  expect(screen.getByRole('link', { name: '+91 79938 46579' })).toHaveAttribute('href', 'tel:+917993846579');
+  const whatsapp = screen.getByRole('link', { name: 'WhatsApp support' });
+  const url = new URL(whatsapp.href);
+  expect(url.origin + url.pathname).toBe('https://wa.me/917993846579');
+  expect(url.searchParams.get('text')).toContain(action === 'Report an issue' ? 'report an issue' : 'technical support');
+  expect(whatsapp).toHaveAttribute('target', '_blank');
+  expect(whatsapp).toHaveAttribute('rel', 'noopener noreferrer');
+  expect(screen.getByLabelText('Short title')).toBeInTheDocument();
+  expect(createSupportTicket).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+  expect(screen.queryByRole('link', { name: 'WhatsApp support' })).not.toBeInTheDocument();
+  await waitFor(() => expect(listSupportTickets).toHaveBeenCalled());
+});
+
+test.each(['student', 'teacher'])('direct contact options are absent for %s in both report forms', async (requesterRole) => {
+  render(<TechnicalSupport requesterRole={requesterRole} />);
+  for (const action of ['Report an issue', 'Connect to a technician']) {
+    fireEvent.click(screen.getByRole('button', { name: action }));
+    expect(screen.queryByRole('region', { name: 'School administrator direct support' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Call support' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'WhatsApp support' })).not.toBeInTheDocument();
+  }
+  await waitFor(() => expect(listSupportTickets).toHaveBeenCalled());
+});
+
 test('student bot answers operational questions and offers human escalation', async () => {
   render(<TechnicalSupport />);
   fireEvent.change(screen.getByLabelText('Message'), { target: { value: 'How do I submit homework?' } });

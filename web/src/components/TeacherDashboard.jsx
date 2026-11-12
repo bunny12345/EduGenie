@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import SupportBubble from './SupportBubble';
+import StrictExamStudents from './StrictExamStudents';
 import SubjectBackground, { getPalette } from './SubjectBackground';
 import TeacherSubjectProgressChart from './TeacherSubjectProgressChart';
 import StudentProgress from './StudentProgress';
@@ -1066,7 +1067,7 @@ export default function TeacherDashboard({ session, onLogout }) {
     setBusy(`assignTest-${testId}`);
     setTestsNote('');
     try {
-      const res = await assignTest(testId, { startAt: startAtDate.toISOString(), endAt: endAtDate.toISOString() });
+      const res = await assignTest(testId, { startAt: startAtDate.toISOString(), endAt: endAtDate.toISOString(), strictMode: scheduleWindow.strictMode === true });
       setTestsNote(`Test "${res.test?.title || 'Test'}" assigned — students in its class can take it from ${startAtDate.toLocaleString()} to ${endAtDate.toLocaleString()}.`);
       await loadTestsPanel();
     } catch (e2) {
@@ -3066,6 +3067,7 @@ export default function TeacherDashboard({ session, onLogout }) {
                               <button
                                 type="button"
                                 className="td-inline-btn"
+                                disabled={t.status === 'assigned' && t.strictMode}
                                 onClick={() => { setCreatedTestId(t.id); setCreatedTestTitle(t.title); setTestsNote(`Adding questions to "${t.title}"`); }}
                               >Add Questions</button>
                               {t.status !== 'assigned' ? (
@@ -3078,7 +3080,8 @@ export default function TeacherDashboard({ session, onLogout }) {
                               ) : (
                                 <span className="td-inline-btn" style={{ opacity: 0.7, cursor: 'default' }}>Assigned ✓</span>
                               )}
-                              <button type="button" className="td-inline-btn" onClick={() => onStartEdit(t)}>Edit</button>
+                              {t.status === 'assigned' && t.strictMode ? <StrictExamStudents testId={t.id} /> : null}
+                              <button type="button" className="td-inline-btn" disabled={t.status === 'assigned' && t.strictMode} onClick={() => onStartEdit(t)}>Edit</button>
                               <button
                                 type="button"
                                 className="td-inline-btn"
@@ -3089,12 +3092,17 @@ export default function TeacherDashboard({ session, onLogout }) {
                                 className="td-inline-btn danger"
                                 type="button"
                                 onClick={() => onDeleteTest(t.id)}
-                                disabled={busy === `deleteTest-${t.id}`}
+                                disabled={busy === `deleteTest-${t.id}` || (t.strictMode && t.status === 'assigned' && Date.now() < new Date(t.endAt || t.end_at).getTime())}
                               >Delete</button>
                             </div>
                           </div>
                           {t.status !== 'assigned' ? (
                             <div className="td-test-schedule">
+                              <label className="td-strict-option">
+                                <input type="checkbox" checked={assignWindowByTestId[t.id]?.strictMode === true}
+                                  onChange={(e) => updateAssignWindow(t.id, 'strictMode', e.target.checked)} />
+                                Strict exam: block AI Tutor; pause individual students on tab/app switches. Timer keeps running.
+                              </label>
                               <div>
                                 <label className="td-field-label">Opens At</label>
                                 <input

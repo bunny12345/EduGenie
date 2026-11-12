@@ -11,6 +11,7 @@ import '../utils/tutor_text.dart';
 import '../utils/voice_envelope.dart';
 import '../utils/wav_encoder.dart';
 import 'session_provider.dart';
+import 'exam_access_provider.dart';
 import 'tutor_providers.dart';
 
 class TalkToSamState {
@@ -225,7 +226,9 @@ class TalkToSamNotifier extends Notifier<TalkToSamState> {
       // playback so a closed popup can't suddenly start talking. Mirrors
       // web's `samSessionActiveRef.current` check right after the TTS await
       // in `speakSamResponse()`.
-      final aborted = requireSession && !state.sessionActive;
+      final access = ref.read(examAccessProvider);
+      final aborted = !access.hasValue || access.value!.blocked ||
+          (requireSession && !state.sessionActive);
       if (!aborted) {
         state = state.copyWith(
           speaking: true,

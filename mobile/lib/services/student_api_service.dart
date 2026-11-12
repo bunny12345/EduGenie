@@ -1,4 +1,5 @@
 import 'package:dio/dio.dart';
+import 'dart:math';
 
 import '../models/calendar_event.dart';
 import '../models/dashboard.dart';
@@ -21,10 +22,16 @@ import 'api_client.dart';
 /// `AsyncError` automatically.
 class StudentApiService {
   final ApiClient _client;
+  final String _examClientId =
+      '${DateTime.now().microsecondsSinceEpoch}-${Random.secure().nextInt(1 << 32)}';
+  final Map<String, String> pendingExamIncidents = {};
 
   StudentApiService(this._client);
 
-  Future<Map<String, dynamic>> _get(String path, Map<String, dynamic> query) async {
+  Future<Map<String, dynamic>> _get(
+    String path,
+    Map<String, dynamic> query,
+  ) async {
     try {
       final res = await _client.dio.get(path, queryParameters: query);
       final data = Map<String, dynamic>.from(res.data as Map);
@@ -34,12 +41,17 @@ class StudentApiService {
       return data;
     } on DioException catch (e) {
       final data = e.response?.data;
-      final msg = (data is Map && data['error'] != null) ? data['error'].toString() : (e.message ?? 'Network error');
+      final msg = (data is Map && (data['error'] ?? data['message']) != null)
+          ? (data['error'] ?? data['message']).toString()
+          : (e.message ?? 'Network error');
       throw Exception(msg);
     }
   }
 
-  Future<Map<String, dynamic>> _post(String path, Map<String, dynamic> body) async {
+  Future<Map<String, dynamic>> _post(
+    String path,
+    Map<String, dynamic> body,
+  ) async {
     try {
       final res = await _client.dio.post(path, data: body);
       final data = Map<String, dynamic>.from(res.data as Map);
@@ -49,7 +61,9 @@ class StudentApiService {
       return data;
     } on DioException catch (e) {
       final data = e.response?.data;
-      final msg = (data is Map && data['error'] != null) ? data['error'].toString() : (e.message ?? 'Network error');
+      final msg = (data is Map && (data['error'] ?? data['message']) != null)
+          ? (data['error'] ?? data['message']).toString()
+          : (e.message ?? 'Network error');
       throw Exception(msg);
     }
   }
@@ -62,17 +76,29 @@ class StudentApiService {
   Future<List<HomeworkItem>> getHomework(String studentId) async {
     final json = await _get('/homework', {'studentId': studentId});
     final list = json['homework'] as List? ?? [];
-    return list.map((h) => HomeworkItem.fromJson(Map<String, dynamic>.from(h as Map))).toList();
+    return list
+        .map((h) => HomeworkItem.fromJson(Map<String, dynamic>.from(h as Map)))
+        .toList();
   }
 
-  Future<List<SubjectScore>> getProgress(String studentId, {String period = 'week'}) async {
-    final json = await _get('/progress', {'studentId': studentId, 'period': period});
+  Future<List<SubjectScore>> getProgress(
+    String studentId, {
+    String period = 'week',
+  }) async {
+    final json = await _get('/progress', {
+      'studentId': studentId,
+      'period': period,
+    });
     final list = json['subjectScores'] as List? ?? [];
-    return list.map((s) => SubjectScore.fromJson(Map<String, dynamic>.from(s as Map))).toList();
+    return list
+        .map((s) => SubjectScore.fromJson(Map<String, dynamic>.from(s as Map)))
+        .toList();
   }
 
   Future<LearningScoreData> getLearningScore(String studentId) async {
-    final json = await _get('/progress/learning-score', {'studentId': studentId});
+    final json = await _get('/progress/learning-score', {
+      'studentId': studentId,
+    });
     return LearningScoreData.fromJson(json);
   }
 
@@ -81,10 +107,18 @@ class StudentApiService {
     return RewardsData.fromJson(json);
   }
 
-  Future<List<TestItem>> getTests(String studentId, {String filter = 'upcoming'}) async {
-    final json = await _get('/tests', {'studentId': studentId, 'filter': filter});
+  Future<List<TestItem>> getTests(
+    String studentId, {
+    String filter = 'upcoming',
+  }) async {
+    final json = await _get('/tests', {
+      'studentId': studentId,
+      'filter': filter,
+    });
     final list = json['tests'] as List? ?? [];
-    return list.map((t) => TestItem.fromJson(Map<String, dynamic>.from(t as Map))).toList();
+    return list
+        .map((t) => TestItem.fromJson(Map<String, dynamic>.from(t as Map)))
+        .toList();
   }
 
   /// Released report cards for the signed-in student (plus the current top-3
@@ -98,12 +132,19 @@ class StudentApiService {
   /// Records that the rank celebration has played so it never replays —
   /// mirrors `markReportCardCelebrated(examId)` in `web/src/api.js`.
   Future<void> markReportCardCelebrated(String examId) async {
-    await _post('/progress/report-cards/${Uri.encodeComponent(examId)}/celebrated', const {});
+    await _post(
+      '/progress/report-cards/${Uri.encodeComponent(examId)}/celebrated',
+      const {},
+    );
   }
 
   /// Text-only submission for this MVP pass — mirrors `submitHomework()` in
   /// web/src/api.js minus attachment uploads (deferred, see mobile-app-plan memory).
-  Future<Map<String, dynamic>> submitHomeworkText(String homeworkId, String studentId, String answerText) {
+  Future<Map<String, dynamic>> submitHomeworkText(
+    String homeworkId,
+    String studentId,
+    String answerText,
+  ) {
     return _post('/homework/${Uri.encodeComponent(homeworkId)}/submit', {
       'studentId': studentId,
       'answers': {'summary': 'Completed in mobile app', 'text': answerText},
@@ -129,7 +170,11 @@ class StudentApiService {
 
   /// Uploads one image (base64 data URL) — mirrors `uploadHomeworkImage()` in
   /// `web/src/api.js`. Returns the hosted URL.
-  Future<String> uploadHomeworkImage({required String fileName, required String mimeType, required String dataUrl}) async {
+  Future<String> uploadHomeworkImage({
+    required String fileName,
+    required String mimeType,
+    required String dataUrl,
+  }) async {
     final json = await _post('/homework/upload', {
       'fileName': fileName,
       'mimeType': mimeType,
@@ -141,24 +186,49 @@ class StudentApiService {
   /// Returns `{attemptId, questions: [...]}` — see `start()` in
   /// `backend/src/controllers/tests.controller.ts`.
   Future<Map<String, dynamic>> startTest(String testId, String studentId) {
-    return _post('/tests/${Uri.encodeComponent(testId)}/start', {'studentId': studentId});
+    return _post('/tests/${Uri.encodeComponent(testId)}/start', {
+      'studentId': studentId,
+      'clientId': _examClientId,
+    });
   }
 
   /// `answers` is `{questionId: selectedOptionIndex}`. Returns
   /// `{score, feedback, perQuestionFeedback}`.
-  Future<Map<String, dynamic>> submitTestAttempt(String attemptId, String studentId, Map<String, int> answers) {
+  Future<Map<String, dynamic>> submitTestAttempt(
+    String attemptId,
+    String studentId,
+    Map<String, int> answers,
+  ) {
     return _post('/tests/attempts/${Uri.encodeComponent(attemptId)}/submit', {
       'studentId': studentId,
       'answers': answers,
+      'clientId': _examClientId,
     });
   }
+
+  Future<Map<String, dynamic>> getExamAccess() =>
+      _get('/tests/exam-access/current', {});
+
+  Future<Map<String, dynamic>> controlExam(
+    String attemptId, {
+    required String action,
+    String? reason,
+    Map<String, int>? answers,
+  }) => _post('/tests/attempts/${Uri.encodeComponent(attemptId)}/control', {
+    'action': action,
+    'clientId': _examClientId,
+    'reason': ?reason,
+    'answers': ?answers,
+  });
 
   /// Question-by-question breakdown of the student's latest submitted
   /// attempt for a test — mirrors `getTestReview(testId, studentId)` in
   /// `web/src/api.js` / `GET /tests/:testId/review`. Used for the collapsed
   /// "Review" panel on an already-completed test.
   Future<Map<String, dynamic>> getTestReview(String testId, String studentId) {
-    return _get('/tests/${Uri.encodeComponent(testId)}/review', {'studentId': studentId});
+    return _get('/tests/${Uri.encodeComponent(testId)}/review', {
+      'studentId': studentId,
+    });
   }
 
   Future<OrchardData> getOrchard(String studentId) async {
@@ -168,8 +238,13 @@ class StudentApiService {
 
   /// Single tree detail with its chapters (seeds) — mirrors `getOrchardTree()`
   /// in `web/src/api.js`.
-  Future<OrchardTreeDetailData> getOrchardTree(String studentId, String subjectKey) async {
-    final json = await _get('/orchard/${Uri.encodeComponent(subjectKey)}', {'studentId': studentId});
+  Future<OrchardTreeDetailData> getOrchardTree(
+    String studentId,
+    String subjectKey,
+  ) async {
+    final json = await _get('/orchard/${Uri.encodeComponent(subjectKey)}', {
+      'studentId': studentId,
+    });
     return OrchardTreeDetailData.fromJson(json);
   }
 
@@ -215,19 +290,38 @@ class StudentApiService {
   Future<List<CalendarEvent>> getCalendar(String studentId) async {
     final json = await _get('/calendar', {'studentId': studentId});
     final list = json['events'] as List? ?? [];
-    return list.map((e) => CalendarEvent.fromJson(Map<String, dynamic>.from(e as Map))).toList();
+    return list
+        .map((e) => CalendarEvent.fromJson(Map<String, dynamic>.from(e as Map)))
+        .toList();
   }
 
-  Future<Map<String, dynamic>> createCalendarEvent(String studentId, String title, DateTime date) {
+  Future<Map<String, dynamic>> createCalendarEvent(
+    String studentId,
+    String title,
+    DateTime date,
+  ) {
     final iso = date.toIso8601String();
-    return _post('/calendar', {'studentId': studentId, 'title': title, 'start': iso, 'end': iso, 'type': 'study'});
+    return _post('/calendar', {
+      'studentId': studentId,
+      'title': title,
+      'start': iso,
+      'end': iso,
+      'type': 'study',
+    });
   }
 
   /// Mirrors `updateCalendarEvent()` in `web/src/api.js` — `PATCH /calendar/:id`.
-  Future<void> updateCalendarEvent(String eventId, String title, DateTime date) async {
+  Future<void> updateCalendarEvent(
+    String eventId,
+    String title,
+    DateTime date,
+  ) async {
     final iso = date.toIso8601String();
     try {
-      await _client.dio.patch('/calendar/${Uri.encodeComponent(eventId)}', data: {'title': title, 'start': iso, 'end': iso});
+      await _client.dio.patch(
+        '/calendar/${Uri.encodeComponent(eventId)}',
+        data: {'title': title, 'start': iso, 'end': iso},
+      );
     } on DioException catch (e) {
       throw Exception(e.message ?? 'updateCalendarEvent failed');
     }
@@ -235,34 +329,58 @@ class StudentApiService {
 
   Future<void> deleteCalendarEvent(String eventId, String studentId) async {
     try {
-      await _client.dio.delete('/calendar/${Uri.encodeComponent(eventId)}', queryParameters: {'studentId': studentId});
+      await _client.dio.delete(
+        '/calendar/${Uri.encodeComponent(eventId)}',
+        queryParameters: {'studentId': studentId},
+      );
     } on DioException catch (e) {
       throw Exception(e.message ?? 'deleteCalendarEvent failed');
     }
   }
 
-  Future<List<LibraryResource>> getLibrary({String topic = '', int page = 1}) async {
+  Future<List<LibraryResource>> getLibrary({
+    String topic = '',
+    int page = 1,
+  }) async {
     final json = await _get('/library', {'topic': topic, 'page': page});
     final list = json['resources'] as List? ?? [];
-    return list.map((r) => LibraryResource.fromJson(Map<String, dynamic>.from(r as Map))).toList();
+    return list
+        .map(
+          (r) => LibraryResource.fromJson(Map<String, dynamic>.from(r as Map)),
+        )
+        .toList();
   }
 
-  Future<Map<String, dynamic>> getSettings(String studentId) => _get('/settings', {'studentId': studentId});
+  Future<Map<String, dynamic>> getSettings(String studentId) =>
+      _get('/settings', {'studentId': studentId});
 
-  Future<Map<String, dynamic>> saveSettings(String studentId, Map<String, dynamic> prefs) {
+  Future<Map<String, dynamic>> saveSettings(
+    String studentId,
+    Map<String, dynamic> prefs,
+  ) {
     return _post('/settings', {'studentId': studentId, 'prefs': prefs});
   }
 
   Future<List<GameCatalogEntry>> getGamesCatalog() async {
     final json = await _get('/games', const {});
     final list = json['games'] as List? ?? [];
-    return list.map((g) => GameCatalogEntry.fromJson(Map<String, dynamic>.from(g as Map))).toList();
+    return list
+        .map(
+          (g) => GameCatalogEntry.fromJson(Map<String, dynamic>.from(g as Map)),
+        )
+        .toList();
   }
 
   Future<List<FlashcardSubject>> getFlashcardOverview(String studentId) async {
-    final json = await _get('/games/flashcards/overview', {'studentId': studentId});
+    final json = await _get('/games/flashcards/overview', {
+      'studentId': studentId,
+    });
     final list = json['subjects'] as List? ?? [];
-    return list.map((s) => FlashcardSubject.fromJson(Map<String, dynamic>.from(s as Map))).toList();
+    return list
+        .map(
+          (s) => FlashcardSubject.fromJson(Map<String, dynamic>.from(s as Map)),
+        )
+        .toList();
   }
 
   Future<List<FlashcardCard>> getFlashcardCards(
@@ -282,18 +400,34 @@ class StudentApiService {
       'limit': limit,
     });
     final list = json['cards'] as List? ?? [];
-    return list.map((c) => FlashcardCard.fromJson(Map<String, dynamic>.from(c as Map))).toList();
+    return list
+        .map((c) => FlashcardCard.fromJson(Map<String, dynamic>.from(c as Map)))
+        .toList();
   }
 
-  Future<FlashcardSchedule?> submitFlashcardReview(String flashcardId, String rating) async {
-    final json = await _post('/games/flashcards/review', {'flashcardId': flashcardId, 'rating': rating});
+  Future<FlashcardSchedule?> submitFlashcardReview(
+    String flashcardId,
+    String rating,
+  ) async {
+    final json = await _post('/games/flashcards/review', {
+      'flashcardId': flashcardId,
+      'rating': rating,
+    });
     final schedule = json['schedule'];
-    return schedule is Map ? FlashcardSchedule.fromJson(Map<String, dynamic>.from(schedule)) : null;
+    return schedule is Map
+        ? FlashcardSchedule.fromJson(Map<String, dynamic>.from(schedule))
+        : null;
   }
 
-  Future<void> logGameSession(Map<String, dynamic> payload) => _post('/games/session', payload);
+  Future<void> logGameSession(Map<String, dynamic> payload) =>
+      _post('/games/session', payload);
 
-  Future<Map<String, dynamic>> completeFlashcardChapter(String studentId, String deckId, {String? subjectKey, String? chapterTitle}) {
+  Future<Map<String, dynamic>> completeFlashcardChapter(
+    String studentId,
+    String deckId, {
+    String? subjectKey,
+    String? chapterTitle,
+  }) {
     return _post('/games/flashcards/complete-chapter', {
       'studentId': studentId,
       'deckId': deckId,
@@ -303,9 +437,15 @@ class StudentApiService {
   }
 
   Future<List<QuizRushSubject>> getQuizRushOverview(String studentId) async {
-    final json = await _get('/games/quiz-rush/overview', {'studentId': studentId});
+    final json = await _get('/games/quiz-rush/overview', {
+      'studentId': studentId,
+    });
     final list = json['subjects'] as List? ?? [];
-    return list.map((s) => QuizRushSubject.fromJson(Map<String, dynamic>.from(s as Map))).toList();
+    return list
+        .map(
+          (s) => QuizRushSubject.fromJson(Map<String, dynamic>.from(s as Map)),
+        )
+        .toList();
   }
 
   Future<List<QuizRushQuestion>> getQuizRushQuestions(
@@ -323,6 +463,10 @@ class StudentApiService {
       'limit': limit,
     });
     final list = json['questions'] as List? ?? [];
-    return list.map((q) => QuizRushQuestion.fromJson(Map<String, dynamic>.from(q as Map))).toList();
+    return list
+        .map(
+          (q) => QuizRushQuestion.fromJson(Map<String, dynamic>.from(q as Map)),
+        )
+        .toList();
   }
 }

@@ -6,6 +6,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../../models/chat_message.dart';
+import '../../state/exam_access_provider.dart';
+import '../../widgets/exam_tutor_notice.dart';
 import '../../models/curriculum_lesson.dart';
 import '../../state/student_providers.dart';
 import '../../state/talk_to_sam_provider.dart';
@@ -73,6 +75,15 @@ class _StudentAiTutorScreenState extends ConsumerState<StudentAiTutorScreen> {
 
   @override
   Widget build(BuildContext context) {
+    ref.listen(examAccessProvider, (_, next) {
+      if ((!next.hasValue || next.value!.blocked) && ref.exists(talkToSamProvider)) {
+        final voice = ref.read(talkToSamProvider.notifier);
+        voice.stopSpeaking();
+        if (ref.read(talkToSamProvider).open) voice.togglePopup();
+      }
+    });
+    final examAccess = ref.watch(examAccessProvider);
+    if (!examAccess.hasValue || examAccess.value!.blocked) return ExamTutorNotice(access: examAccess.value);
     final subjects = ref.watch(studentSubjectsProvider);
     final talkState = ref.watch(talkToSamProvider);
 

@@ -39,7 +39,7 @@ class _Frame3dCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: AppColors.card,
+        color: AppColors.of(context).card,
         borderRadius: BorderRadius.circular(14),
         border: _frame3dBorder(alpha: 0.18),
         boxShadow: _frame3dShadow(alpha: 0.08, blur: 8),
@@ -79,15 +79,15 @@ class _Frame3dButtonState extends State<_Frame3dButton> {
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
           decoration: BoxDecoration(
             color: disabled
-                ? AppColors.card.withValues(alpha: 0.5)
-                : AppColors.card,
+                ? AppColors.of(context).card.withValues(alpha: 0.5)
+                : AppColors.of(context).card,
             borderRadius: BorderRadius.circular(999),
             border: _frame3dBorder(alpha: _pressed ? 0.45 : 0.25),
             boxShadow: _pressed ? [] : _frame3dShadow(alpha: 0.12, blur: 6),
           ),
           child: DefaultTextStyle(
             style: TextStyle(
-              color: AppColors.text,
+              color: AppColors.of(context).text,
               fontSize: 12,
               fontWeight: FontWeight.w700,
             ),
@@ -249,13 +249,13 @@ class _TeacherProgressTabState extends ConsumerState<TeacherProgressTab> {
                   style: TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.w800,
-                    color: AppColors.text,
+                    color: AppColors.of(context).text,
                   ),
                 ),
                 const SizedBox(height: 4),
                 Text(
                   'Select a student to see their full progress report \u2014 every subject, just like they see it.',
-                  style: TextStyle(fontSize: 12, color: AppColors.muted),
+                  style: TextStyle(fontSize: 12, color: AppColors.of(context).muted),
                 ),
                 const SizedBox(height: 12),
                 TextField(
@@ -270,7 +270,7 @@ class _TeacherProgressTabState extends ConsumerState<TeacherProgressTab> {
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 10),
                   decoration: BoxDecoration(
-                    border: Border.all(color: AppColors.line),
+                    border: Border.all(color: AppColors.of(context).line),
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: DropdownButtonHideUnderline(
@@ -318,7 +318,7 @@ class _TeacherProgressTabState extends ConsumerState<TeacherProgressTab> {
                 ] else if (!_loadingStudents && paged.isEmpty)
                   Text(
                     'No students available yet for this class.',
-                    style: TextStyle(fontSize: 12, color: AppColors.muted),
+                    style: TextStyle(fontSize: 12, color: AppColors.of(context).muted),
                   )
                 else
                   for (final s in paged)
@@ -342,7 +342,7 @@ class _TeacherProgressTabState extends ConsumerState<TeacherProgressTab> {
                         'Page ${clampedPage + 1} of $pageCount',
                         style: TextStyle(
                           fontSize: 12,
-                          color: AppColors.muted,
+                          color: AppColors.of(context).muted,
                         ),
                       ),
                       _Frame3dButton(
@@ -364,7 +364,7 @@ class _TeacherProgressTabState extends ConsumerState<TeacherProgressTab> {
                     padding: const EdgeInsets.symmetric(vertical: 24),
                     child: Text(
                       'Select a student above to see their full progress report.',
-                      style: TextStyle(fontSize: 13, color: AppColors.muted),
+                      style: TextStyle(fontSize: 13, color: AppColors.of(context).muted),
                     ),
                   )
                 : _loadingReport && _report == null
@@ -455,7 +455,7 @@ class _StudentReportCardsSectionState extends ConsumerState<_StudentReportCardsS
           const SizedBox(height: 2),
           Text(
             "${widget.studentName}'s released exam results \u2014 handy for parent-teacher meetings.",
-            style: TextStyle(fontSize: 12, color: AppColors.muted),
+            style: TextStyle(fontSize: 12, color: AppColors.of(context).muted),
           ),
           const SizedBox(height: 12),
           async.when(
@@ -499,7 +499,7 @@ class _StudentReportCardsSectionState extends ConsumerState<_StudentReportCardsS
                       child: Text(
                         'No report card has been released for this student yet. It appears once every subject teacher has added marks.',
                         textAlign: TextAlign.center,
-                        style: TextStyle(fontSize: 13, color: AppColors.muted),
+                        style: TextStyle(fontSize: 13, color: AppColors.of(context).muted),
                       ),
                     )
                   else ...[
@@ -516,7 +516,7 @@ class _StudentReportCardsSectionState extends ConsumerState<_StudentReportCardsS
                                 selected: c.examId == card.examId,
                                 selectedColor: AppColors.brand,
                                 labelStyle: TextStyle(
-                                  color: c.examId == card.examId ? Colors.white : AppColors.text,
+                                  color: c.examId == card.examId ? Colors.white : AppColors.of(context).text,
                                   fontWeight: FontWeight.w700,
                                 ),
                                 onSelected: (_) => setState(() => _selectedExamId = c.examId),
@@ -559,7 +559,7 @@ class _ProgressStudentRow extends StatelessWidget {
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
           decoration: BoxDecoration(
-            color: selected ? AppColors.brandSoft : AppColors.background,
+            color: selected ? AppColors.of(context).brandSoft : AppColors.of(context).background,
             borderRadius: BorderRadius.circular(10),
             border: selected
                 ? Border.all(color: AppColors.brand, width: 1.5)
@@ -577,7 +577,7 @@ class _ProgressStudentRow extends StatelessWidget {
               ),
               Text(
                 className,
-                style: TextStyle(fontSize: 11, color: AppColors.muted),
+                style: TextStyle(fontSize: 11, color: AppColors.of(context).muted),
               ),
             ],
           ),

@@ -1,4 +1,5 @@
-import { Controller, Get, Post, Patch, Delete, Param, Body, Query, UseGuards, Req, ForbiddenException, NotFoundException, ServiceUnavailableException } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Delete, Param, Body, Query, UseGuards, Req, BadRequestException, ForbiddenException, NotFoundException, ServiceUnavailableException } from '@nestjs/common';
+import { ExamControlService, ExamSession } from '../exams/exam-control.service';
 import { SupabaseService } from '../supabase.service';
 import { AuthGuard } from '../auth/auth.guard';
 import { LocalFeedService } from '../shared/local-feed.service';
@@ -8,11 +9,42 @@ import { latestCompletedTests, mergeTestAttempts, testPercentage } from '../prog
 
 @Controller('tests')
 export class TestsController {
+  private examTimer?: ReturnType<typeof setInterval>;
+  private examSweepBusy = false;
   constructor(
     private readonly db: SupabaseService,
     private readonly localFeed: LocalFeedService,
-    private readonly studentAuth: StudentAuthService
+    private readonly studentAuth: StudentAuthService,
+    private readonly exams: ExamControlService
   ) {}
+
+  onModuleInit() {
+    this.examTimer = setInterval(() => { void this.finishExpiredStrictExams(); }, 15000);
+  }
+
+  onModuleDestroy() {
+    if (this.examTimer) clearInterval(this.examTimer);
+  }
+
+  private async finishExpiredStrictExams() {
+    if (this.examSweepBusy) return;
+    this.examSweepBusy = true;
+    try {
+      for (const session of await this.exams.unfinished()) {
+        try {
+          const test = await this.loadTest(session.test_id);
+          if (session.status !== 'closed' && Date.now() < new Date(test.end_at || test.endAt).getTime()) continue;
+          const closed = await this.exams.sync(test, session.student_id);
+          const attempt = await this.loadStudentAttempt(closed.attempt_id, closed.student_id);
+          if (attempt) await this.scoreAndFinalizeAttempt(attempt, closed.answers, closed.student_id);
+        } catch (error) {
+          console.warn('Unable to finalize strict exam', session.test_id, error);
+        }
+      }
+    } catch (error) {
+      console.warn('Strict exam finalization sweep unavailable', error);
+    } finally { this.examSweepBusy = false; }
+  }
 
   private requireTeacher(req: any) {
     if (req?.user?.role !== 'teacher' || !req.user.sub || !req.user.schoolId) {
@@ -35,6 +67,14 @@ export class TestsController {
     const row = await this.loadTest(testId);
     if (row.teacher_id !== req.user.sub || row.school_id !== req.user.schoolId) {
       throw new ForbiddenException('Test not in teacher scope');
+    }
+    return row;
+  }
+
+  private async requireEditableTest(req: any, testId: string) {
+    const row = await this.requireOwnedTest(req, testId);
+    if (row.status === 'assigned' && await this.exams.enabled(testId)) {
+      throw new ForbiddenException('Assigned strict exams cannot be edited. Use Reuse to create a new draft.');
     }
     return row;
   }
@@ -126,7 +166,8 @@ export class TestsController {
           // Finalize only persisted answers; unsaved browser selections cannot
           // be reconstructed after the window closes.
           const stale = inProgressByTest.get(testId);
-          attempt = await this.scoreAndFinalizeAttempt(stale, stale.answers || {}, id);
+          const strict = t.strictMode ? await this.exams.sync(t, id) : null;
+          attempt = await this.scoreAndFinalizeAttempt(stale, strict?.answers || stale.answers || {}, id);
         }
         out.push({
           ...t,
@@ -167,7 +208,7 @@ export class TestsController {
     const startAt = startAtRaw ? new Date(startAtRaw).getTime() : null;
     const endAt = endAtRaw ? new Date(endAtRaw).getTime() : null;
     if (startAt && now < startAt) return 'scheduled';
-    if (endAt && now > endAt) return 'expired';
+    if (endAt && now >= endAt) return 'expired';
     return 'open';
   }
 
@@ -176,6 +217,10 @@ export class TestsController {
   // auto-finalize sweep for attempts whose window closed before submission.
   private async scoreAndFinalizeAttempt(attempt: any, answers: any, actorId: string) {
     if (Number.isFinite(testPercentage(attempt))) {
+      const strict = await this.exams.session(attempt.test_id, actorId);
+      if (strict?.status === 'closed' && !strict.finalized_at) {
+        await this.exams.change(attempt.test_id, actorId, (row) => row.finalized_at ? {} : { finalized_at: new Date().toISOString() });
+      }
       const questions = await this.loadQuestions(attempt.test_id);
       const { perQuestionFeedback } = this.computePerQuestionFeedback(questions, attempt.answers || {});
       return { id: attempt.id, score: testPercentage(attempt), feedback: attempt.feedback || '', perQuestionFeedback };
@@ -220,6 +265,10 @@ export class TestsController {
       details: `Submitted test attempt with score ${score}%`,
       meta: { testId: attempt.test_id, attemptId: attempt.id, score }
     });
+    const strict = await this.exams.session(attempt.test_id, actorId);
+    if (strict?.status === 'closed') {
+      await this.exams.change(attempt.test_id, actorId, (row) => row.finalized_at ? {} : { finalized_at: new Date().toISOString() });
+    }
     return { id: attempt.id, score, feedback, perQuestionFeedback };
   }
 
@@ -278,7 +327,7 @@ export class TestsController {
         if ((res.data || []).length < 500) break;
       }
       let tests = [...byId.values()];
-      tests = await this.filterTestsForRequest(await this.scopeTests(req, tests), filter, id);
+      tests = await this.exams.decorate(await this.filterTestsForRequest(await this.scopeTests(req, tests), filter, id));
       if (filter === 'upcoming') tests = await this.attachAttemptStatus(tests, id);
       return { success: true, tests: Array.isArray(tests) ? tests : [] };
     } catch (e) {
@@ -350,6 +399,13 @@ export class TestsController {
       }
       const startAt = startAtRaw.toISOString();
       const endAt = endAtRaw.toISOString();
+      if (body.strictMode !== undefined && typeof body.strictMode !== 'boolean') {
+        throw new BadRequestException('Strict mode must be true or false');
+      }
+      if (ownedTest.status === 'assigned' && (body.strictMode === true || await this.exams.enabled(testId))) {
+        throw new BadRequestException('This test is already assigned. Strict mode cannot be changed during an exam.');
+      }
+      await this.exams.configure(testId, body.strictMode === true);
 
       const res = await this.db.client.from('tests').update({ status: 'assigned', start_at: startAt, end_at: endAt }).eq('id', testId).select();
       const test = (res as any)?.data?.[0] || null;
@@ -382,7 +438,7 @@ export class TestsController {
   @Patch(':testId')
   @UseGuards(AuthGuard)
   async update(@Req() req: any, @Param('testId') testId: string, @Body() body: any) {
-    const ownedTest = await this.requireOwnedTest(req, testId);
+    const ownedTest = await this.requireEditableTest(req, testId);
     try {
       const patch = {
         title: body.title !== undefined ? String(body.title || 'Untitled Test').slice(0, 200) : undefined,
@@ -511,7 +567,7 @@ export class TestsController {
   @Post(':testId/questions')
   @UseGuards(AuthGuard)
   async addQuestion(@Req() req: any, @Param('testId') testId: string, @Body() body: any) {
-    await this.requireOwnedTest(req, testId);
+    await this.requireEditableTest(req, testId);
     try {
       const options = Array.isArray(body.options) ? body.options : [];
       const row = {
@@ -553,7 +609,7 @@ export class TestsController {
   @Patch(':testId/questions/:questionId')
   @UseGuards(AuthGuard)
   async updateQuestion(@Req() req: any, @Param('testId') testId: string, @Param('questionId') questionId: string, @Body() body: any) {
-    await this.requireOwnedTest(req, testId);
+    await this.requireEditableTest(req, testId);
     try {
       const patch = {
         text: body.text !== undefined ? String(body.text || '').slice(0, 500) : undefined,
@@ -611,7 +667,7 @@ export class TestsController {
   @Delete(':testId/questions/:questionId')
   @UseGuards(AuthGuard)
   async deleteQuestion(@Req() req: any, @Param('testId') testId: string, @Param('questionId') questionId: string) {
-    await this.requireOwnedTest(req, testId);
+    await this.requireEditableTest(req, testId);
     try {
       await this.db.client.from('test_questions').delete().eq('id', questionId).eq('test_id', testId);
       this.localFeed.removeQuestion(testId, questionId);
@@ -661,7 +717,12 @@ export class TestsController {
   @Delete(':testId')
   @UseGuards(AuthGuard)
   async remove(@Req() req: any, @Param('testId') testId: string) {
-    await this.requireOwnedTest(req, testId);
+    const test = await this.requireOwnedTest(req, testId);
+    if (test.status === 'assigned' && await this.exams.enabled(testId)) {
+      if (Date.now() < new Date(test.end_at || test.endAt).getTime()) throw new ForbiddenException('A scheduled strict exam cannot be deleted before its closing time.');
+      const unfinished = (await this.exams.unfinished()).some((row) => row.test_id === testId);
+      if (unfinished) throw new ForbiddenException('Exam results are still being finalized. Please retry shortly.');
+    }
     try {
       await this.db.client.from('test_questions').delete().eq('test_id', testId);
       await this.db.client.from('tests').delete().eq('id', testId);
@@ -697,10 +758,17 @@ export class TestsController {
         return { success: false, error: "This test's time window has closed.", attemptId: null, questions: [] };
       }
 
+      const strictMode = await this.exams.enabled(testId);
+      const clientId = strictMode ? this.exams.clientId(body.clientId) : '';
+      const existingSession = strictMode ? await this.exams.session(testId, sId) : null;
+      if (existingSession?.status === 'closed') throw new ForbiddenException('You have already finished this test.');
       const questions = await this.loadQuestions(testId);
       const attempt = { test_id: testId, student_id: sId, started_at: new Date().toISOString() };
       let attemptRow;
-      if (testId.startsWith('local-test-')) {
+      if (existingSession) {
+        attemptRow = await this.loadStudentAttempt(existingSession.attempt_id, sId);
+        if (!attemptRow) throw new ServiceUnavailableException('Unable to restore the saved exam attempt');
+      } else if (testId.startsWith('local-test-')) {
         attemptRow = this.localFeed.createAttempt(testId, sId);
       } else {
         const ins = await this.db.client.from('test_attempts').insert([attempt]).select();
@@ -722,7 +790,13 @@ export class TestsController {
         details: `Started test with ${normalizedQuestions.length} question(s)`,
         meta: { testId, attemptId: attemptRow.id || 'attempt-1' }
       });
-      return { success: true, attemptId: attemptRow.id || 'attempt-1', questions: normalizedQuestions };
+      let control: ExamSession | null = null;
+      if (strictMode) {
+        control = existingSession || await this.exams.open(testRow, sId, attemptRow.id, clientId);
+        control = await this.exams.sync(testRow, sId, clientId);
+      }
+      return { success: true, attemptId: control?.attempt_id || attemptRow.id, questions: normalizedQuestions,
+        strictMode, control: control ? this.publicControl(control, testRow) : null, answers: control?.answers || {} };
     } catch (e) {
       return { success: false, error: String((e as any)?.message || e || 'test start failed'), attemptId: null, questions: [] };
     }
@@ -738,12 +812,94 @@ export class TestsController {
         return { success: false, error: 'Attempt not found', score: 0, feedback: 'Submission failed', perQuestionFeedback: [] };
       }
       const answers = body.answers || {};
-      const result = await this.scoreAndFinalizeAttempt(attempt, answers, actorId);
+      const test = await this.loadTest(attempt.test_id);
+      let finalAnswers = answers;
+      if (await this.exams.enabled(test.id)) {
+        const state = await this.exams.sync(test, actorId, this.exams.clientId(body.clientId));
+        if (state.attempt_id !== attemptId) throw new ForbiddenException('This is not your current exam attempt');
+        const validated = await this.validateExamAnswers(test.id, answers);
+        const closed = await this.exams.change(test.id, actorId, (row) => {
+          if (row.status === 'closed') return {};
+          if (row.status === 'paused') throw new ForbiddenException('Your test is paused. Only your assigning teacher can resume it. The clock is still running.');
+          if (row.client_id && row.client_id !== body.clientId) throw new ForbiddenException('This exam is open on another device');
+          return { status: 'closed', answers: { ...row.answers, ...validated } };
+        });
+        finalAnswers = closed.answers;
+      }
+      const result = await this.scoreAndFinalizeAttempt(attempt, finalAnswers, actorId);
       return { success: true, score: result.score, feedback: result.feedback, perQuestionFeedback: result.perQuestionFeedback };
     } catch (e) {
       if (e instanceof ForbiddenException || e instanceof ServiceUnavailableException) throw e;
       return { success: false, error: String(e), score: 0, feedback: 'Submission failed', perQuestionFeedback: [] };
     }
+  }
+
+  private publicControl(row: ExamSession, test: any) {
+    return { status: row.status, revision: row.revision, incidentCount: row.incident_count, lastReason: row.last_reason,
+      pausedAt: row.paused_at, endAt: test.end_at || test.endAt, serverNow: new Date().toISOString(), answers: row.answers };
+  }
+
+  private async validateExamAnswers(testId: string, value: unknown): Promise<Record<string, number>> {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) throw new BadRequestException('Invalid answers');
+    const questions = await this.loadQuestions(testId);
+    const out: Record<string, number> = {};
+    for (const [id, answer] of Object.entries(value)) {
+      const question = questions.find((q: any) => String(q.id) === id);
+      if (!question || typeof answer !== 'number' || !Number.isInteger(answer) || answer < 0 || answer >= (question.options || []).length) {
+        throw new BadRequestException('Invalid exam answer');
+      }
+      out[id] = answer;
+    }
+    return out;
+  }
+
+  @Get('exam-access/current')
+  @UseGuards(AuthGuard)
+  async examAccess(@Req() req: any) {
+    return { success: true, exams: await this.exams.restrictions(requireStudentIdentity(req)) };
+  }
+
+  @Post('attempts/:attemptId/control')
+  @UseGuards(AuthGuard)
+  async examControl(@Req() req: any, @Param('attemptId') attemptId: string, @Body() body: any) {
+    const studentId = requireStudentIdentity(req);
+    const attempt = await this.loadStudentAttempt(attemptId, studentId);
+    if (!attempt) throw new NotFoundException('Attempt not found');
+    const test = await this.loadTest(attempt.test_id);
+    if (!(await this.scopeTests(req, [test])).length) throw new ForbiddenException('Test not in student scope');
+    if (!await this.exams.enabled(test.id)) throw new BadRequestException('This test does not use strict mode');
+    const session = await this.exams.session(test.id, studentId);
+    if (session?.attempt_id !== attemptId) throw new ForbiddenException('This is not your current exam attempt');
+    const clientId = this.exams.clientId(body.clientId);
+    if (!['heartbeat', 'save', 'pause'].includes(body.action)) throw new BadRequestException('Invalid exam action');
+    if (body.action === 'pause' && !body.reason) throw new BadRequestException('An incident reason is required');
+    const answers = body.action === 'save' ? await this.validateExamAnswers(test.id, body.answers) : undefined;
+    const row = await this.exams.sync(test, studentId, clientId, body.action === 'pause' ? body.reason : undefined, answers);
+    const result = row.status === 'closed' ? await this.scoreAndFinalizeAttempt(attempt, row.answers, studentId) : null;
+    return { success: true, control: this.publicControl(row, test), result };
+  }
+
+  @Get(':testId/exam-students')
+  @UseGuards(AuthGuard)
+  async examStudents(@Req() req: any, @Param('testId') testId: string) {
+    const test = await this.requireOwnedTest(req, testId);
+    const rows = await this.exams.roster(test);
+    for (const row of rows.filter((item) => item.status === 'closed')) {
+      const attempt = await this.loadStudentAttempt(row.attempt_id, row.student_id);
+      if (attempt) await this.scoreAndFinalizeAttempt(attempt, row.answers, row.student_id);
+    }
+    return { success: true, students: rows.map((row) => ({
+      studentId: row.student_id, name: row.student_name, status: row.status, incidentCount: row.incident_count,
+      lastReason: row.last_reason, pausedAt: row.paused_at, resumedAt: row.resumed_at,
+    })) };
+  }
+
+  @Post(':testId/exam-students/:studentId/resume')
+  @UseGuards(AuthGuard)
+  async resumeExam(@Req() req: any, @Param('testId') testId: string, @Param('studentId') studentId: string) {
+    const test = await this.requireOwnedTest(req, testId);
+    const row = await this.exams.resume(test, studentId);
+    return { success: true, control: this.publicControl(row, test) };
   }
 
   @Get('/attempts/:attemptId')

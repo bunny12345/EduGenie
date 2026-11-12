@@ -6,6 +6,36 @@ sessions show a web-only/unsupported notice and can sign out, never fall through
 to the student portal. Web school administration and existing API/session
 contracts remain unchanged.
 
+## Optional strict mock exams
+
+Teachers can enable Strict exam before assigning a scheduled mock test. Their
+assigned-test Exam monitor shows student statuses and interruption summaries,
+with an individual Resume action available only to the assigning teacher.
+Updates are polled every five seconds and support both themes.
+
+Students confirm the rules before starting. Moving the app out of the active
+foreground (including system interruptions) or attempting Back pauses only
+that student's answers. Failed connection/save checks lock input while
+retrying; a server heartbeat gap longer than 25 seconds also requires teacher
+review. Returning/reopening does not lift a persisted pause. The timer never
+stops, and the original schedule is never extended. At schedule end only
+server-saved answers are finalized, whether active or paused.
+
+AI Tutor and Quick Sam show an exam restriction during the scheduled strict
+window, even before starting, until submission or schedule end. Ongoing Sam
+sessions, voice playback and microphone capture are stopped when access locks.
+Backend guards
+also block tutor/voice/game assistance endpoints. These features require the
+updated backend and additive `20261112_strict_mock_exams.sql` migration.
+
+This is best-effort interruption monitoring, not device kiosk mode or proof of
+cheating. Normal apps cannot prevent all app switches, screenshots or external
+devices. Network loss, calls and system overlays may also cause pauses; no
+camera, screen recording or clipboard surveillance is introduced.
+Run `flutter test --no-pub test/strict_exam_test.dart test/quick_sam_bubble_test.dart test/tasks_games_dark_test.dart test/teacher_theme_test.dart`
+and `flutter analyze --no-pub`. Native device verification is still required
+before a school rollout; this development machine has no Android/Xcode target.
+
 ## Student Home design
 
 The student Home screen uses a navy/indigo school banner, a readable streak
@@ -54,6 +84,55 @@ changes without remounting, dark text contrast (at least 4.5:1), saved-preferenc
 precedence and Calendar readability at larger text sizes. Page-specific theme
 regressions are covered by `orchard_dark_theme_test.dart`,
 `progress_dark_theme_test.dart` and `tasks_games_dark_test.dart`.
+
+## Independent teacher theme
+
+The teacher's three-dot menu has a compact Dark theme switch above Logout.
+Teacher and student theme selections are independent; switching roles no longer
+copies the previous portal's appearance, and the login screen stays light.
+The teacher selection is retained during the current app session (it defaults
+to light on a fresh launch); student saved-preference behaviour is unchanged.
+Teacher panels and the floating bottom bar update in place without resetting
+the current tab or form state. Dark navigation uses the same surface, muted
+icons and highlighted accent as the student bar.
+
+Run `flutter test --no-pub test/teacher_theme_test.dart test/student_dark_theme_test.dart test/role_router_test.dart test/widget_test.dart`
+for role isolation, menu switching, navigation colours, retained state and logout.
+
+The top-left teacher profile chip opens a read-only account card on every tab,
+with a male/female teacher avatar (neutral when unspecified), name, school,
+subject, login ID and registered teaching classes. Classes come from
+`GET /teacher/profile`'s `grades`, not the roster or currently selected class.
+That endpoint now also returns `gender` and `loginId`; deploy the backend update
+alongside the mobile change. Missing fields are labelled unavailable and profile
+errors have an explicit Retry action.
+Run `flutter test --no-pub test/teacher_profile_chip_test.dart test/teacher_theme_test.dart`
+for avatar/data display, both themes, large text, narrow screens and menu isolation.
+
+## Compact mobile panels
+
+Student and teacher support use one workspace: report/technician actions, a
+collapsed **Your requests** list, and the active conversation or report form.
+The initial chat uses a short welcome and a horizontal suggestion strip so
+Message and Send are visible without scrolling on 320/390px-wide, 740px-high
+phones at default text size. Full role-specific guidance remains available under
+**About support & privacy**. Request-list errors remain visible when collapsed;
+polling, pagination, retries, request selection and report/reply handling are
+unchanged. Pull down to refresh requests/replies.
+
+Shared cards, Services, Games, Orchard and teacher Home use tighter padding and
+gaps; teacher Home shows the selected class in the dropdown rather than a second
+duplicate badge. Charts, artwork, form fields and text scaling retain their
+usable dimensions; larger accessibility text remains scrollable.
+
+Run `flutter test --no-pub test/student_support_screen_test.dart` for measured
+first-screen visibility, expandable content, 1.5x/2x text and both support roles.
+
+Calendar day cells reserve a separate row below the date for event dots, including
+on unmarked days so numbers stay aligned. Rows grow with accessibility text
+instead of letting markers overlap dates. Run
+`flutter test --no-pub test/student_calendar_layout_test.dart` for small-phone,
+light/dark and selected-date marker placement through 2x text size.
 
 ## School-controlled learning calendar
 

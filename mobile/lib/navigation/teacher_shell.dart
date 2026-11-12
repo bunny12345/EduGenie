@@ -8,9 +8,11 @@ import '../screens/teacher/teacher_report_cards_tab.dart';
 import '../screens/teacher/teacher_students_tab.dart';
 import '../state/session_provider.dart';
 import '../state/teacher_providers.dart';
+import '../state/theme_provider.dart';
 import '../theme/app_colors.dart';
 import '../theme/subject_background.dart';
 import '../widgets/teacher_support_bubble.dart';
+import '../widgets/teacher_profile_chip.dart';
 
 /// The site-wide "3D button" frame — a light-black ring border + soft drop
 /// shadow, ported from `.eg-subject-hw-card button`/the Academics panel.
@@ -113,26 +115,44 @@ class _TeacherShellState extends ConsumerState<TeacherShell> {
 
   @override
   Widget build(BuildContext context) {
-    final session = ref.watch(sessionProvider).value;
     final item = _navItems[_index];
     final subject = ref
         .watch(teacherProfileProvider)
         .value?['subject']
         ?.toString();
     final palette = subjectBgPalette(subject);
+    final colors = AppColors.of(context);
     return Scaffold(
-      backgroundColor: palette.bg,
+      backgroundColor: colors.isDark ? colors.background : palette.bg,
       appBar: AppBar(
-        title: Text(
-          _index == 0
-              ? 'Hi, ${session?.name.isNotEmpty == true ? session!.name : 'Teacher'}'
-              : item.label,
-        ),
+        title: TeacherProfileChip(section: item.label),
         actions: [
           PopupMenuButton<String>(
             icon: const Icon(Icons.more_vert_rounded),
-            onSelected: (_) => ref.read(sessionProvider.notifier).logout(),
+            onSelected: (value) {
+              if (value == 'logout') {
+                ref.read(sessionProvider.notifier).logout();
+              }
+            },
             itemBuilder: (context) => [
+              PopupMenuItem(
+                enabled: false,
+                child: Consumer(
+                  builder: (context, ref, _) {
+                    final dark = ref.watch(teacherThemeModeProvider) == ThemeMode.dark;
+                    return SwitchListTile.adaptive(
+                      contentPadding: EdgeInsets.zero,
+                      secondary: Icon(
+                        dark ? Icons.dark_mode_outlined : Icons.light_mode_outlined,
+                        color: AppColors.of(context).accent,
+                      ),
+                      title: Text('Dark theme', style: TextStyle(color: AppColors.of(context).text)),
+                      value: dark,
+                      onChanged: (value) => ref.read(teacherThemeModeProvider.notifier).setDark(value),
+                    );
+                  },
+                ),
+              ),
               const PopupMenuItem(
                 value: 'logout',
                 child: ListTile(
@@ -213,7 +233,7 @@ class _FloatingNavBar extends StatelessWidget {
       height: compact ? 56 : 76,
       padding: EdgeInsets.symmetric(horizontal: compact ? 10 : 16),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: AppColors.of(context).card,
         borderRadius: BorderRadius.circular(999),
         border: _frame3dBorder(),
         boxShadow: _frame3dShadow(),
@@ -222,11 +242,13 @@ class _FloatingNavBar extends StatelessWidget {
         mainAxisAlignment: MainAxisAlignment.spaceEvenly,
         children: [
           for (var i = 0; i < items.length; i++)
-            _NavIconButton(
-              item: items[i],
-              selected: i == selectedIndex,
-              compact: compact,
-              onTap: () => onSelected(i),
+            Expanded(
+              child: _NavIconButton(
+                item: items[i],
+                selected: i == selectedIndex,
+                compact: compact,
+                onTap: () => onSelected(i),
+              ),
             ),
         ],
       ),
@@ -260,7 +282,7 @@ class _NavIconButtonState extends State<_NavIconButton> {
   Widget build(BuildContext context) {
     final size = widget.compact ? 36.0 : 44.0;
     final iconSize = widget.compact ? 20.0 : 22.0;
-    final color = widget.selected ? AppColors.brand : AppColors.muted;
+    final color = widget.selected ? AppColors.of(context).accent : AppColors.of(context).muted;
 
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
@@ -283,7 +305,7 @@ class _NavIconButtonState extends State<_NavIconButton> {
               height: size,
               decoration: BoxDecoration(
                 color: widget.selected
-                    ? AppColors.brandSoft
+                    ? AppColors.of(context).brandSoft
                     : Colors.transparent,
                 shape: BoxShape.circle,
                 border: _pressed ? _frame3dBorder(alpha: 0.4) : null,
@@ -300,6 +322,8 @@ class _NavIconButtonState extends State<_NavIconButton> {
               const SizedBox(height: 2),
               Text(
                 widget.item.label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
                 style: TextStyle(
                   fontSize: 10,
                   fontWeight: FontWeight.w600,
@@ -318,7 +342,7 @@ class _NavIconButtonState extends State<_NavIconButton> {
 /// Mirrors the website's "Active Class" banner exactly (`.td-class-banner`
 /// in `App.css` / the `<div className="td-class-banner td-framed">` block
 /// in `TeacherDashboard.jsx`) — same dark gradient, uppercase label, class
-/// dropdown, selected-class badge, and scoping hint text.
+/// dropdown and scoping hint text.
 class _ActiveClassBanner extends StatelessWidget {
   final List<String> classOptions;
   final String targetClass;
@@ -334,7 +358,7 @@ class _ActiveClassBanner extends StatelessWidget {
   Widget build(BuildContext context) {
     final hasClass = targetClass != 'all';
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
         // web: .td-class-banner { background: linear-gradient(120deg, #1b1e3c 0%, #2f3478 100%); }
         gradient: const LinearGradient(
@@ -346,7 +370,7 @@ class _ActiveClassBanner extends StatelessWidget {
       ),
       child: Wrap(
         spacing: 12,
-        runSpacing: 10,
+        runSpacing: 6,
         crossAxisAlignment: WrapCrossAlignment.center,
         children: [
           const Text(
@@ -393,29 +417,10 @@ class _ActiveClassBanner extends StatelessWidget {
               ),
             ),
           ),
-          if (hasClass)
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-              decoration: BoxDecoration(
-                // web: .td-class-banner-badge { background: linear-gradient(120deg, #5764c9, #7c5be6); }
-                gradient: const LinearGradient(
-                  colors: [Color(0xFF5764C9), Color(0xFF7C5BE6)],
-                ),
-                borderRadius: BorderRadius.circular(20),
-              ),
-              child: Text(
-                targetClass,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 12,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-            ),
           Text(
             hasClass
-                ? 'All announcements, homework and tests below go to $targetClass.'
-                : 'Select a class — all actions below will apply to it.',
+                ? 'Announcements, homework and tests apply to $targetClass.'
+                : 'Choose a class for the actions below.',
             style: TextStyle(
               color: Colors.white.withValues(alpha: 0.5),
               fontSize: 11,

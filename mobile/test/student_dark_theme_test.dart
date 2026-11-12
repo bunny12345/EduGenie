@@ -11,6 +11,7 @@ import 'package:mobile/models/session.dart';
 import 'package:mobile/navigation/student_nav_shell.dart';
 import 'package:mobile/screens/student/student_calendar_screen.dart';
 import 'package:mobile/state/focus_lock_provider.dart';
+import 'package:mobile/state/exam_access_provider.dart';
 import 'package:mobile/state/session_provider.dart';
 import 'package:mobile/state/student_providers.dart';
 import 'package:mobile/state/theme_provider.dart';
@@ -97,6 +98,9 @@ void main() {
       final container = ProviderContainer(
         overrides: [
           focusLockProvider.overrideWith(_UnlockedFocus.new),
+          examAccessProvider.overrideWith(
+            (ref) => Stream.value(const ExamAccess()),
+          ),
           sessionProvider.overrideWith(_FixtureSession.new),
           dashboardProvider.overrideWith(
             (ref) async => DashboardData(

@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { ExamControlModule } from './exams/exam-control.module';
 import { ChatModule } from './chat/chat.module';
 import { DashboardController } from './controllers/dashboard.controller';
 import { HealthController } from './controllers/health.controller';
@@ -36,7 +37,7 @@ import { VisitorController, OwnerEnquiriesController } from './support/visitor.c
 import { VisitorService } from './support/visitor.service';
 
 @Module({
-  imports: [ChatModule, SharedModule],
+  imports: [ExamControlModule, ChatModule, SharedModule],
   controllers: [
     VisitorController,
     OwnerEnquiriesController,
