@@ -182,7 +182,7 @@ class _GrowthLinePainter extends CustomPainter {
     }
 
     final lastRealIdx = real.last.key;
-    final hasFuture = mode == 'monthly' && real.length < points.length;
+    final hasFuture = real.length < points.length;
 
     // "Road ahead" shading + goal dashed line (monthly mode with future buckets).
     if (hasFuture && !mini) {
@@ -231,7 +231,7 @@ class _GrowthLinePainter extends CustomPainter {
 
     // Dots + x-axis labels + value labels.
     final last = points.length - 1;
-    final labelEvery = mode == 'daily' && points.length > (mini ? 7 : 8) ? (mini ? 3 : 2) : (mini && mode == 'daily' ? 2 : 1);
+    final labelEvery = math.max(1, (points.length / (mini ? 4 : 6)).ceil());
     for (var i = 0; i < points.length; i++) {
       final p = points[i];
       final isFuture = p.value == null;
@@ -252,11 +252,11 @@ class _GrowthLinePainter extends CustomPainter {
         if (mini) {
           // Compact mode only shows a single solid dot on the most recent point.
           if (isLastReal) canvas.drawCircle(dotPos, dotRadius, Paint()..color = color);
-        } else {
+        } else if (showLabel || isLastReal) {
           canvas.drawCircle(dotPos, dotRadius, Paint()..color = Colors.white);
           canvas.drawCircle(dotPos, dotRadius, Paint()..color = color..style = PaintingStyle.stroke..strokeWidth = 3);
         }
-        final showVal = !mini && (isLastReal || mode == 'monthly');
+        final showVal = !mini && (isLastReal || (mode == 'monthly' && showLabel));
         if (showVal) {
           _drawText(canvas, '${p.value!.round()}${percentSuffix ? '%' : ''}', Offset(x(i), y(p.value!) - 14), fontSize: 10.5, color: const Color(0xFF6B7194), align: TextAlign.center, bold: true);
         }

@@ -126,6 +126,18 @@ export class SchoolController {
     return { success: true, students, classes };
   }
 
+  @Get('progress/period')
+  async progressPeriod(@Req() req: any) {
+    const schoolId = this.authFlow.schoolAdminSchoolId(req?.user);
+    return { success: true, period: await this.learningScore.getSchoolProgressPeriod(schoolId) };
+  }
+
+  @Patch('progress/period')
+  async saveProgressPeriod(@Req() req: any, @Body() body: unknown) {
+    const schoolId = this.authFlow.schoolAdminSchoolId(req?.user);
+    return { success: true, period: await this.learningScore.saveSchoolProgressPeriod(schoolId, body) };
+  }
+
   @Get('students/:id/learning-score')
   async studentLearningScore(@Req() req: any, @Param('id') studentId: string) {
     const profile = await this.authFlow.resolveSchoolStudentProfile(req?.user, studentId);

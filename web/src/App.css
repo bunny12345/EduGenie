@@ -17,6 +17,29 @@
   --lh-loose: 1.6;
 }
 
+.sd-progress-period { grid-column: 1 / -1; min-width: 0; padding: 24px; border: 1px solid #dcd7f5; border-radius: 20px; background: linear-gradient(120deg, #f3efff, #fff 70%, #f0faf7); box-shadow: 0 6px 24px #5244980a; }
+.sd-progress-period header { display: flex; gap: 14px; align-items: flex-start; }
+.sd-progress-period-icon { display: grid; place-items: center; flex-shrink: 0; width: 44px; height: 44px; background: #e7e0ff; color: #6751ce; border-radius: 14px; font-size: 25px; }
+.sd-progress-period-kicker { font-size: 9px; font-weight: 800; letter-spacing: 1.4px; color: #7a68bb; }
+.sd-progress-period h3 { margin: 7px 0; font-size: 21px; color: #30254c; }
+.sd-progress-period p { margin: 6px 0 0; font-size: 12px; color: #79728d; line-height: 1.7; }
+.sd-progress-period form { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 14px; margin: 20px 0 12px; }
+.sd-progress-period label { display: flex; flex: 1; min-width: 155px; flex-direction: column; gap: 7px; color: #655876; font-size: 12px; font-weight: 700; }
+.sd-progress-period input { width: 100%; box-sizing: border-box; padding: 11px 13px; border: 1px solid #dcd5ee; border-radius: 11px; background: #fff; font: inherit; color: #3a2f51; }
+.sd-progress-period form button { padding: 12px 18px; border: 0; border-radius: 11px; background: #6651cb; color: white; font: inherit; font-size: 12px; font-weight: 700; cursor: pointer; }
+.sd-progress-period button:disabled { opacity: .5; cursor: default; }
+.sd-progress-period-arrow { margin-bottom: 12px; color: #9c8fbb; }
+.sd-progress-period p.sd-progress-period-help { font-size: 11px; color: #8c839c; }
+.sd-progress-period p.sd-progress-period-error { color: #a63e2d; }
+.sd-progress-period-error button { border: 0; background: transparent; color: inherit; text-decoration: underline; cursor: pointer; }
+.sd-progress-period p.sd-progress-period-success { padding: 10px 12px; background: #e4f7ed; color: #167451; border-radius: 10px; }
+.sd-progress-period input:focus-visible, .sd-progress-period button:focus-visible { outline: 3px solid #b0a0f4; outline-offset: 3px; }
+@media (max-width: 650px) {
+  .sd-progress-period { padding: 17px; }
+  .sd-progress-period form { flex-direction: column; align-items: stretch; }
+  .sd-progress-period-arrow { display: none; }
+}
+
 .eg-exam-journey {
   grid-column: 1 / -1;
   min-width: 0;

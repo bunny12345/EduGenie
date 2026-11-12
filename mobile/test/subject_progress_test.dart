@@ -6,6 +6,33 @@ import 'package:mobile/screens/student/progress/subject_progress_detail_screen.d
 import 'package:mobile/screens/student/student_progress_screen.dart';
 
 void main() {
+  testWidgets('school graph dates and future gaps flow to mobile with no editing controls', (tester) async {
+    final data = LearningScoreData.fromJson({
+      'score': 546, 'hasData': true,
+      'trackingSince': '15 June 2026', 'academicEndLabel': '20 March 2027',
+      'dailyTrend': [
+        {'key': '2026-06-15', 'label': '15 Jun', 'score': 400},
+        {'key': '2027-03-20', 'label': '20 Mar', 'score': null, 'future': true},
+      ],
+      'trend': [
+        {'label': 'Jun 26', 'score': 400},
+        {'label': 'Mar 27', 'score': null, 'future': true},
+      ],
+    });
+    await tester.pumpWidget(MaterialApp(home: Scaffold(body: SingleChildScrollView(
+      child: LearningReportBody(
+        data: data, greetingName: null, trendView: 'daily', subjView: 'daily',
+        onTrendViewChange: (_) {}, onSubjViewChange: (_) {},
+      ),
+    ))));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('15 June 2026 → 20 March 2027'), findsOneWidget);
+    final chart = tester.widget<GrowthLineChart>(find.byType(GrowthLineChart).first);
+    expect(chart.points.map((p) => p.value), [400, null]);
+    expect(chart.points.last.future, isTrue);
+    expect(find.byType(TextField), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
   testWidgets(
     'overall graph preserves the backend /1000 scores in both ranges',
     (tester) async {

@@ -978,6 +978,14 @@ export async function getSchoolProgressStudents() {
   return getJsonChecked(`${API_BASE}/school/progress/students`, 'getSchoolProgressStudents');
 }
 
+export async function getSchoolProgressPeriod() {
+  return getJsonChecked(`${API_BASE}/school/progress/period`, 'getSchoolProgressPeriod');
+}
+
+export async function saveSchoolProgressPeriod(period) {
+  return sendReportCardJson('PATCH', '/school/progress/period', period, 'saveSchoolProgressPeriod');
+}
+
 export async function getSchoolStudentLearningScore(studentId) {
   return getJsonChecked(`${API_BASE}/school/students/${encodeURIComponent(studentId)}/learning-score`, 'getSchoolStudentLearningScore');
 }
@@ -1491,6 +1499,8 @@ const api = {
   schoolInvites,
   schoolStudents,
   getSchoolProgressStudents,
+  getSchoolProgressPeriod,
+  saveSchoolProgressPeriod,
   getSchoolStudentLearningScore,
   getSchoolStudentReportCards,
   schoolRegisterTeacher,

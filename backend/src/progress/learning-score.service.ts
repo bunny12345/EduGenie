@@ -6,6 +6,7 @@ import { metricAt, metricMinutes, metricScore } from './progress-metric.util';
 import { LocalFeedService } from '../shared/local-feed.service';
 import { StudentAuthService } from '../auth/student-auth.service';
 import { latestCompletedTests, mergeTestAttempts, testPercentage } from './test-results.util';
+import { ProgressPeriod, progressPeriodBuckets, progressPeriodLabel, validateProgressPeriod } from './school-progress-period';
 
 /**
  * LearningScoreService — turns a student's raw activity across the whole portal
@@ -80,6 +81,30 @@ export class LearningScoreService {
     private readonly localFeed: LocalFeedService,
     private readonly studentAuth: StudentAuthService,
   ) {}
+
+  async getSchoolProgressPeriod(schoolId: string): Promise<ProgressPeriod | null> {
+    const res = await this.db.client.from('school_progress_periods').select('*').eq('school_id', schoolId).limit(1);
+    if (res.error) {
+      this.logger.error(`Unable to retrieve school progress period: ${res.error.message}`);
+      throw new ServiceUnavailableException('Unable to retrieve the school graph dates. Ensure the school progress-period migration is installed.');
+    }
+    const row = res.data?.[0];
+    return row ? validateProgressPeriod({ startDate: row.start_date, endDate: row.end_date }) : null;
+  }
+
+  async saveSchoolProgressPeriod(schoolId: string, input: unknown): Promise<ProgressPeriod> {
+    const period = validateProgressPeriod(input);
+    const existing = await this.getSchoolProgressPeriod(schoolId);
+    const row = { school_id: schoolId, start_date: period.startDate, end_date: period.endDate, updated_at: new Date().toISOString() };
+    const result = existing
+      ? await this.db.client.from('school_progress_periods').update(row).eq('school_id', schoolId).select('*')
+      : await this.db.client.from('school_progress_periods').insert([row]).select('*');
+    if (result.error || !result.data?.length) {
+      this.logger.error(`Unable to save school progress period: ${result.error?.message || 'No saved row returned'}`);
+      throw new ServiceUnavailableException('Unable to save the school graph dates. Please retry.');
+    }
+    return validateProgressPeriod({ startDate: result.data[0].start_date, endDate: result.data[0].end_date });
+  }
 
   // ── small helpers ──────────────────────────────────────────────────────────
   private async rows(table: string, studentId: string): Promise<any[]> {
@@ -599,9 +624,10 @@ export class LearningScoreService {
         this.rows('homework', studentId),
       ]);
     const schoolId = studentRow?.school_id || (await this.studentAuth.resolveStudentProfile(studentId)).schoolId;
-    const [chapters, assignedTests] = await Promise.all([
+    const [chapters, assignedTests, schoolPeriod] = await Promise.all([
       this.assignmentRows('orchard_chapters', rawGrowth.map((r) => r.chapter_id)),
       this.studentTests(schoolId, className),
+      this.getSchoolProgressPeriod(schoolId),
     ]);
     const homeworkById = new Map(this.localFeed.listHomeworkForStudent(studentId).map((row) => [String(row.id), row]));
     for (const row of dbHomework) {
@@ -665,7 +691,8 @@ export class LearningScoreService {
     // only evidence available at each date. Runs from the
     // account-creation month all the way to the end of the academic year (April);
     // months still in the future carry a null score (drawn as the "road ahead").
-    const buckets = LearningScoreService.monthBuckets(accountCreatedMs);
+    const configuredBuckets = schoolPeriod ? progressPeriodBuckets(schoolPeriod, ctx.now) : null;
+    const buckets = configuredBuckets?.monthly || LearningScoreService.monthBuckets(accountCreatedMs);
     const trend = buckets.map((b) => {
       if (b.future) return { key: b.key, label: b.label, score: null, value: null, future: true };
       const snap = this.computeDimensions(ctx, Math.min(b.end, ctx.now));
@@ -674,8 +701,9 @@ export class LearningScoreService {
 
     // Daily growth trend — from the day the account was created (capped at 14
     // days), so students can watch their score climb day by day.
-    const dayBk = LearningScoreService.dayBuckets(accountCreatedMs);
+    const dayBk = configuredBuckets?.daily || LearningScoreService.dayBuckets(accountCreatedMs);
     const dailyTrend = dayBk.map((b) => {
+      if ('future' in b && b.future) return { key: b.key, label: b.label, weekday: b.weekday, score: null, value: null, future: true };
       const snap = this.computeDimensions(ctx, Math.min(b.end, ctx.now));
       return { key: b.key, label: b.label, weekday: b.weekday, score: Math.round(snap.overall * 10), value: Math.round(snap.overall) };
     });
@@ -742,9 +770,10 @@ export class LearningScoreService {
       improvements: improvements.slice(0, 4),
       alert,
       accountCreatedAt: new Date(accountCreatedMs).toISOString(),
-      trackingSince: new Date(accountCreatedMs).toLocaleString('en-US', { month: 'long', year: 'numeric' }),
-      academicEndAt: new Date(LearningScoreService.academicEndMs(accountCreatedMs)).toISOString(),
-      academicEndLabel: new Date(LearningScoreService.academicEndMs(accountCreatedMs)).toLocaleString('en-US', { month: 'long', year: 'numeric' }),
+      graphPeriod: schoolPeriod,
+      trackingSince: schoolPeriod ? progressPeriodLabel(schoolPeriod.startDate) : new Date(accountCreatedMs).toLocaleString('en-US', { month: 'long', year: 'numeric' }),
+      academicEndAt: schoolPeriod ? new Date(`${schoolPeriod.endDate}T23:59:59.999+05:30`).toISOString() : new Date(LearningScoreService.academicEndMs(accountCreatedMs)).toISOString(),
+      academicEndLabel: schoolPeriod ? progressPeriodLabel(schoolPeriod.endDate) : new Date(LearningScoreService.academicEndMs(accountCreatedMs)).toLocaleString('en-US', { month: 'long', year: 'numeric' }),
       generatedAt: new Date().toISOString(),
     };
   }

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -24,6 +26,21 @@ class StudentProgressScreen extends ConsumerStatefulWidget {
 class _StudentProgressScreenState extends ConsumerState<StudentProgressScreen> {
   String _trendView = 'daily';
   String _subjView = 'daily';
+  Timer? _progressRefresh;
+
+  @override
+  void initState() {
+    super.initState();
+    _progressRefresh = Timer.periodic(const Duration(minutes: 1), (_) {
+      ref.invalidate(learningScoreProvider);
+    });
+  }
+
+  @override
+  void dispose() {
+    _progressRefresh?.cancel();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {

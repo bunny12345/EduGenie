@@ -10,6 +10,7 @@ import { AuthGuard } from '../auth/auth.guard';
 import { LearningScoreService } from '../progress/learning-score.service';
 import { SchoolController } from './school.controller';
 import { ReportCardsController } from './report-cards.controller';
+import { ProgressPeriod, validateProgressPeriod } from '../progress/school-progress-period';
 
 test('school progress routes use verified school scope and the shared reports', async (t) => {
   type Row = Record<string, unknown>;
@@ -82,6 +83,7 @@ test('school progress routes use verified school scope and the shared reports', 
   };
   const auth = new StudentAuthService(db, Object.create(EmailService.prototype));
   const scoreCalls: string[] = [];
+  const periods = new Map<string, ProgressPeriod>();
   const score = { success: true, score: 335, maxScore: 1000, dimensions: [], subjects: [], trend: [], hasData: true };
   @Module({
     controllers: [SchoolController, ReportCardsController],
@@ -102,7 +104,13 @@ test('school progress routes use verified school scope and the shared reports', 
         ]
       } },
       { provide: LearningScoreService, useValue: {
-        getLearningScore: async (id: string) => { scoreCalls.push(id); return score; }
+        getLearningScore: async (id: string) => { scoreCalls.push(id); return score; },
+        getSchoolProgressPeriod: async (id: string) => periods.get(id) || null,
+        saveSchoolProgressPeriod: async (id: string, input: unknown) => {
+          const value = validateProgressPeriod(input);
+          periods.set(id, value);
+          return value;
+        },
       } }
     ]
   })
@@ -207,5 +215,30 @@ test('school progress routes use verified school scope and the shared reports', 
     assert.equal(after.reportCards.length, 2);
     assert.equal(after.reportCards.find((card) => card.examId === 'exam-pending')?.total, 160);
     tables.report_exam_marks.pop();
+  });
+  await t.test('only school administrators can read/write the school graph dates; school scope comes from the token', async () => {
+    for (const token of ['teacher', 'student', '']) {
+      const read = await request('/school/progress/period', token);
+      assert.equal(read.status, token ? 403 : 401);
+      const write = await fetch(`${base}/school/progress/period`, {
+        method: 'PATCH', headers: { Authorization: token, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ startDate: '2026-06-01', endDate: '2027-03-20' }),
+      });
+      assert.equal(write.status, token ? 403 : 401);
+    }
+    const saved = await fetch(`${base}/school/progress/period`, {
+      method: 'PATCH', headers: { Authorization: 'school-a', 'Content-Type': 'application/json' },
+      body: JSON.stringify({ schoolId: 'school-b', startDate: '2026-06-01', endDate: '2027-03-20' }),
+    });
+    assert.equal(saved.status, 200);
+    assert.deepEqual(periods.get('school-a'), { startDate: '2026-06-01', endDate: '2027-03-20' });
+    assert.equal(periods.has('school-b'), false);
+    const read = await (await request('/school/progress/period')).json() as { period: ProgressPeriod };
+    assert.equal(read.period.endDate, '2027-03-20');
+    const invalid = await fetch(`${base}/school/progress/period`, {
+      method: 'PATCH', headers: { Authorization: 'school-a', 'Content-Type': 'application/json' },
+      body: JSON.stringify({ startDate: '2026-06-30', endDate: '2026-06-01' }),
+    });
+    assert.equal(invalid.status, 400);
   });
 });

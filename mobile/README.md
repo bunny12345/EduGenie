@@ -6,6 +6,15 @@ sessions show a web-only/unsupported notice and can sign out, never fall through
 to the student portal. Web school administration and existing API/session
 contracts remain unchanged.
 
+## School-controlled learning calendar
+
+School graph dates are read from the backend's shared learning-score response;
+mobile never offers editing controls. The school's inclusive start/end dates
+apply to overall and subject daily/monthly charts, while scores remain
+cumulative and the current headline remains unchanged. Open student and teacher
+Progress screens refresh every minute to pick up calendar changes. The default
+timeline is retained until a school saves its calendar on the website.
+
 ## Exam results in Progress
 
 The **Exam Results Journey** panel sits below the subject progress cards in

@@ -118,6 +118,7 @@ class _TeacherProgressTabState extends ConsumerState<TeacherProgressTab> {
   String _classFilter = 'all';
   int _page = 0;
   Timer? _searchDebounce;
+  Timer? _progressRefresh;
 
   List<Map<String, dynamic>> _students = [];
   bool _loadingStudents = true;
@@ -127,6 +128,7 @@ class _TeacherProgressTabState extends ConsumerState<TeacherProgressTab> {
   String? _selectedStudentName;
   LearningScoreData? _report;
   bool _loadingReport = false;
+  int _reportRequest = 0;
   String? _reportError;
   String _trendView = 'daily';
   String _subjView = 'daily';
@@ -135,11 +137,15 @@ class _TeacherProgressTabState extends ConsumerState<TeacherProgressTab> {
   void initState() {
     super.initState();
     _loadStudents();
+    _progressRefresh = Timer.periodic(const Duration(minutes: 1), (_) {
+      if (!_loadingReport) _loadReport();
+    });
   }
 
   @override
   void dispose() {
     _searchDebounce?.cancel();
+    _progressRefresh?.cancel();
     _searchCtrl.dispose();
     super.dispose();
   }
@@ -184,6 +190,7 @@ class _TeacherProgressTabState extends ConsumerState<TeacherProgressTab> {
       _selectedStudentId = s['id']?.toString();
       _selectedStudentName = s['name']?.toString() ?? 'Student';
       _reportError = null;
+      _report = null;
     });
     await _loadReport();
   }
@@ -191,6 +198,7 @@ class _TeacherProgressTabState extends ConsumerState<TeacherProgressTab> {
   Future<void> _loadReport() async {
     final id = _selectedStudentId;
     if (id == null) return;
+    final request = ++_reportRequest;
     setState(() {
       _loadingReport = true;
       _reportError = null;
@@ -199,16 +207,16 @@ class _TeacherProgressTabState extends ConsumerState<TeacherProgressTab> {
       final data = await ref
           .read(teacherApiServiceProvider)
           .getStudentLearningScore(id);
-      if (!mounted) return;
+      if (!mounted || request != _reportRequest || id != _selectedStudentId) return;
       setState(() => _report = data);
     } catch (e) {
-      if (!mounted) return;
+      if (!mounted || request != _reportRequest || id != _selectedStudentId) return;
       setState(() {
         _reportError = e.toString().replaceFirst('Exception: ', '');
         _report = null;
       });
     } finally {
-      if (mounted) setState(() => _loadingReport = false);
+      if (mounted && request == _reportRequest) setState(() => _loadingReport = false);
     }
   }
 

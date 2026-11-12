@@ -43,16 +43,21 @@ function fixture(initial: Record<string, Row[]> = {}, failingTable = '', isMock 
       let start = 0;
       let end = Infinity;
       let patch: Row | undefined;
+      let inserted: Row[] | undefined;
       const query = {
         select() { return query; },
         eq(key: string, value: unknown) { filters[key] = value; return query; },
         is(key: string, value: unknown) { filters[key] = value; return query; },
         update(value: Row) { patch = value; return query; },
+        insert(value: Row[]) { inserted = value; return query; },
         in(_key: string, values: unknown[]) { ids = values; return query; },
         order() { return query; },
         range(from: number, to: number) { start = from; end = to; return query; },
         limit(count: number) { end = count - 1; return query; },
         then(resolve: (result: { data: Row[]; error: { message: string } | null }) => void) {
+          if (inserted && table !== failingTable && !failingWrites.has(table)) {
+            (tables[table] ||= []).push(...inserted);
+          }
           requests.push({ table, filters });
           if (!isMock && ids?.some((id) => !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(id)))) {
             return resolve({ data: [], error: { message: 'invalid input syntax for type uuid' } });
@@ -63,7 +68,7 @@ function fixture(initial: Record<string, Row[]> = {}, failingTable = '', isMock 
           if (patch && !failingWrites.has(table)) rows.forEach((row) => Object.assign(row, patch));
           resolve({
             data: rows.slice(start, end + 1),
-            error: table === failingTable || (patch && failingWrites.has(table)) ? { message: 'simulated query failure' } : null,
+            error: table === failingTable || ((patch || inserted) && failingWrites.has(table)) ? { message: 'simulated query failure' } : null,
           });
         },
       };
@@ -856,4 +861,51 @@ test('local fallback test can start and submit without sending local IDs to UUID
   assert.equal((await testsController.submit(studentRequest, started.attemptId, { answers: { q: 0 } })).score, 100);
   assert.ok(requests.every(({ filters }) => !Object.values(filters).some((value) => String(value).startsWith('local-'))));
   assert.equal((await testsController.start(studentRequest, 'local-test-a', {})).success, false);
+});
+
+test('saved school dates recalculate all graph buckets, retain cumulative evidence and isolate schools', async () => {
+  const { service, tables, failingWrites } = fixture({
+    tests: [{ id: 'test', subject: 'Science', school_id: 'school', status: 'assigned', created_at: '2025-01-01' }],
+    test_attempts: own([
+      { test_id: 'test', score: 80, finished_at: '2025-02-01' },
+      { test_id: 'test', score: 20, finished_at: '2025-09-01' },
+    ]),
+  });
+  const baseline = await service.getLearningScore('student');
+  const dates = { startDate: '2025-06-15', endDate: '2025-08-03' };
+  await service.saveSchoolProgressPeriod('school', dates);
+  assert.deepEqual(await service.getSchoolProgressPeriod('school'), dates);
+  assert.equal(await service.getSchoolProgressPeriod('other'), null);
+  const report = await service.getLearningScore('student');
+  assert.equal(report.score, baseline.score);
+  assert.deepEqual(report.trend.map((p: { key: string }) => p.key), ['2025-06', '2025-07', '2025-08']);
+  assert.equal(report.dailyTrend[0].key, dates.startDate);
+  assert.equal(report.dailyTrend.at(-1).key, dates.endDate);
+  assert.equal(report.subjects[0].monthly[0].value, 80);
+  assert.equal(report.subjects[0].monthly.at(-1).value, 80);
+  assert.equal(report.subjects[0].score, 20);
+  for (const subject of report.subjects) {
+    assert.deepEqual(subject.monthly.map((p: { key: string }) => p.key), report.trend.map((p: { key: string }) => p.key));
+    assert.deepEqual(subject.daily.map((p: { key: string }) => p.key), report.dailyTrend.map((p: { key: string }) => p.key));
+  }
+  await service.saveSchoolProgressPeriod('school', { startDate: '2025-07-01', endDate: '2025-07-12' });
+  const updated = await service.getLearningScore('student');
+  assert.equal(updated.trend.length, 1);
+  assert.equal(updated.dailyTrend.length, 12);
+  assert.equal(tables.school_progress_periods.length, 1);
+  failingWrites.add('school_progress_periods');
+  await assert.rejects(service.saveSchoolProgressPeriod('school', dates), ServiceUnavailableException);
+  assert.equal((await service.getSchoolProgressPeriod('school'))?.endDate, '2025-07-12');
+});
+
+test('an entirely future school period has null graph points, and settings read errors never use a silent default', async () => {
+  const future = fixture({
+    school_progress_periods: [{ school_id: 'school', start_date: '2099-06-01', end_date: '2099-07-01' }],
+  });
+  const report = await future.service.getLearningScore('student');
+  assert.ok(report.trend.every((p: { score: number | null }) => p.score === null));
+  assert.ok(report.dailyTrend.every((p: { score: number | null }) => p.score === null));
+  assert.ok(report.subjects.every((s: { daily: Array<{ value: number | null }> }) => s.daily.every((p) => p.value === null)));
+  const broken = fixture({}, 'school_progress_periods');
+  await assert.rejects(broken.service.getLearningScore('student'), ServiceUnavailableException);
 });

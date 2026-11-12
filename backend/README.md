@@ -221,6 +221,39 @@ and Science in a disposable file-backed database, including retention failures,
 Learning progress graphs
 ------------------------
 
+### School-controlled graph dates
+
+School administrators can set **Start date** and **End date** in the learning
+calendar panel at the top of **Student Progress** in the school website.
+`GET /school/progress/period` reads the saved range and
+`PATCH /school/progress/period` saves `{startDate, endDate}` as `YYYY-MM-DD`.
+Both endpoints require a verified school administrator; the school ID always
+comes from the token, never the request body. Teachers/students cannot edit it.
+
+Apply `db/migrations/20261112_school_progress_periods.sql` **before deploying
+the updated backend**. This creates a new, service-role-only table with RLS
+enabled, without altering existing tables or policies. No period is seeded.
+The existing mock database persists this setting through its normal local store.
+Read/write failures are explicit errors, not an unsaved success or silent default.
+
+The range covers at most 24 calendar months and uses inclusive **India time
+(Asia/Kolkata, UTC+05:30)** date boundaries. It applies to every student's overall
+and subject daily/monthly histories in student, teacher and school reports,
+including web/mobile subject detail charts. Partial first/last months use the
+exact selected dates. Daily histories cover the complete selected period; long
+histories reduce axis-label density, not the underlying points. Future points
+are null rather than predicted scores. Without a saved range the previous
+account-creation/April timeline remains unchanged.
+
+As confirmed by the product requirement, these are **cumulative snapshots up to
+each displayed date**: earlier learning is included, not reset at the start.
+The current headline score, weights, momentum and exam-report journey do not
+change. Past ranges show past snapshots even if the current headline is higher
+or lower. Responses expose `graphPeriod` plus dynamic `trackingSince`,
+`academicEndAt` and `academicEndLabel`. Saving refreshes the selected school
+report immediately; open progress reports check for updates every minute, and
+manual refresh also picks up changes. Only the school portal renders controls.
+
 `GET /progress/learning-score` supplies the same daily/monthly histories to web
 and mobile. Subject scores combine understanding (20%), tree growth (20%),
 tests/mock tests (25%), practice (20%) and homework (15%), renormalizing weights

@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import SupportBubble from './SupportBubble';
 import StudentProgress from './StudentProgress';
 import StudentReportCard from './StudentReportCard';
+import SchoolProgressPeriod from './SchoolProgressPeriod';
 import {
   createCurriculumLesson,
   deleteCurriculumLesson,
@@ -1288,6 +1289,7 @@ export default function SchoolDashboard({ session, onLogout }) {
 
         {activeSection === 'progress' && (
           <section className="td-progress-layout sd-progress-layout">
+            <SchoolProgressPeriod schoolId={session?.schoolId || session?.userId} onSaved={() => setProgressRefresh((v) => v + 1)} />
             <article className="td-card td-card-framed td-progress-student-card sd-progress-picker" aria-label="School student picker">
               <h3>Students in your school</h3>
               <p>Choose a class or search across all classes to view the same report the student sees.</p>

@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { getLearningScore } from '../api';
 import { Skel } from './Skeleton';
 import ExamResultsJourney from './ExamResultsJourney';
@@ -68,24 +68,32 @@ export default function StudentProgress({ studentId, greetingName, fetchFn, repo
   const [subjView, setSubjView] = useState('daily'); // 'daily' | 'monthly'
   const [openSubject, setOpenSubject] = useState(null); // subject object or null
   const [examRefresh, setExamRefresh] = useState(0);
+  const requestSequence = useRef({ sequence: 0 });
 
   // The report loads in the background: nothing on screen says "loading". The
   // page simply stays blank for the moment it takes to arrive, then fills in.
   // A refresh keeps the current report visible until the new one replaces it.
   const load = useCallback(async () => {
+    const request = ++requestSequence.current.sequence;
     setError(null);
     try {
       const res = fetchFn ? await fetchFn(studentId) : await getLearningScore(studentId);
-      setData(res || null);
+      if (res?.success === false) throw new Error(res.error || 'Could not load your progress right now.');
+      if (request === requestSequence.current.sequence) setData(res || null);
     } catch (e) {
-      setError('Could not load your progress right now.');
+      if (request === requestSequence.current.sequence) setError(e.message || 'Could not load your progress right now.');
     }
   }, [studentId, fetchFn]);
 
   // A different studentId (e.g. a teacher switching students) means the old
   // report is now for the wrong person — clear it instead of showing stale data.
-  useEffect(() => { setData(null); }, [studentId]);
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => { setData(null); setOpenSubject(null); }, [studentId]);
+  useEffect(() => {
+    const requests = requestSequence.current;
+    load();
+    const timer = setInterval(load, 60000);
+    return () => { clearInterval(timer); requests.sequence++; };
+  }, [load]);
 
   if (error) {
     return (
@@ -288,8 +296,8 @@ export default function StudentProgress({ studentId, greetingName, fetchFn, repo
         )}
       </div>
 
-      {openSubject && (
-        <SubjectDetail subject={openSubject} onClose={() => setOpenSubject(null)} />
+      {openSubject && subjects.some((subject) => subject.subjectKey === openSubject.subjectKey) && (
+        <SubjectDetail subject={subjects.find((subject) => subject.subjectKey === openSubject.subjectKey)} onClose={() => setOpenSubject(null)} />
       )}
     </div>
   );
@@ -346,7 +354,7 @@ function TrendChart({ trend, color, hasData, mode }) {
   const padB = 44;
   const pts = Array.isArray(trend) ? trend : [];
   // Real (already-happened) points carry a numeric score; future months to
-  // April are null and drawn as the "road ahead".
+  // the selected end date are null and drawn as the "road ahead".
   const real = pts.map((p, i) => ({ ...p, i })).filter((p) => p.score != null);
   const active = real.some((p) => p.score > 0);
   if (!pts.length || !hasData || !active) {
@@ -368,9 +376,9 @@ function TrendChart({ trend, color, hasData, mode }) {
   const areaPts = `${x(firstReal.i)},${padT + innerH} ${linePts} ${x(lastReal.i)},${padT + innerH}`;
   const gridVals = [250, 500, 750, 1000];
   // For the daily view, only label a few points so it doesn't get crowded.
-  const labelEvery = mode === 'daily' && pts.length > 8 ? 2 : 1;
+  const labelEvery = Math.max(1, Math.ceil(pts.length / 8));
   const last = pts.length - 1;
-  const hasFuture = mode === 'monthly' && real.length < pts.length;
+  const hasFuture = real.length < pts.length;
   return (
     <svg viewBox={`0 0 ${W} ${H}`} className="eg-pg-trend-svg" preserveAspectRatio="xMidYMid meet">
       <defs>
@@ -385,14 +393,14 @@ function TrendChart({ trend, color, hasData, mode }) {
           <text x={padL - 8} y={y(g) + 4} className="eg-pg-axis-y">{g}</text>
         </g>
       ))}
-      {/* Shade the "road ahead" from now to April */}
+      {/* Shade the remaining selected period. */}
       {hasFuture && (
         <g>
           <rect x={x(lastReal.i)} y={padT} width={x(last) - x(lastReal.i)} height={innerH} className="eg-pg-future-zone" />
           <line x1={x(lastReal.i)} y1={padT} x2={x(lastReal.i)} y2={padT + innerH} className="eg-pg-now-line" />
-          {/* Dashed "goal" line from now to the April finish */}
+          {/* The goal line is not a prediction. */}
           <line x1={x(lastReal.i)} y1={y(lastReal.score)} x2={x(last)} y2={y(lastReal.score)} className="eg-pg-goal-line" stroke={color || '#6d5efc'} />
-          <text x={x(last)} y={y(lastReal.score) - 12} className="eg-pg-goal-flag" textAnchor="end">🎯 keep going to April</text>
+          <text x={x(last)} y={y(lastReal.score) - 12} className="eg-pg-goal-flag" textAnchor="end">🎯 keep growing</text>
         </g>
       )}
       <polygon points={areaPts} fill="url(#egTrendFill)" />
@@ -400,7 +408,7 @@ function TrendChart({ trend, color, hasData, mode }) {
       {pts.map((p, i) => {
         const showLabel = i % labelEvery === 0 || i === last;
         const isFuture = p.score == null;
-        const showVal = !isFuture && (i === lastReal.i || mode === 'monthly');
+        const showVal = !isFuture && (i === lastReal.i || (mode === 'monthly' && showLabel));
         return (
           <g key={p.key}>
             {showLabel && (
@@ -409,7 +417,7 @@ function TrendChart({ trend, color, hasData, mode }) {
             {showLabel && mode === 'daily' && (
               <text x={x(i)} y={H - 10} className="eg-pg-axis-x-sub">{p.label}</text>
             )}
-            {!isFuture && (
+            {!isFuture && (showLabel || i === lastReal.i) && (
               <circle cx={x(i)} cy={y(p.score)} r={i === lastReal.i ? 6 : 4} className="eg-pg-trend-dot" stroke={color || '#6d5efc'} />
             )}
             {showVal && <text x={x(i)} y={y(p.score) - 12} className="eg-pg-trend-val">{p.score}</text>}
@@ -532,7 +540,7 @@ function SubjectGraph({ series, accent, mode }) {
   const lastReal = real[real.length - 1];
   const area = `${x(firstReal.i)},${H - padB} ${line} ${x(lastReal.i)},${H - padB}`;
   const gid = `egSubjFill-${accent.replace('#', '')}`;
-  const labelEvery = mode === 'daily' && pts.length > 7 ? 3 : mode === 'daily' ? 2 : 1;
+  const labelEvery = Math.max(1, Math.ceil(pts.length / 5));
   const last = pts.length - 1;
   return (
     <svg viewBox={`0 0 ${W} ${H}`} className="eg-pg-subj-graph" preserveAspectRatio="none">
@@ -701,9 +709,9 @@ function SubjectTrendChart({ series, accent, mode }) {
   const lastReal = real[real.length - 1];
   const areaPts = `${x(firstReal.i)},${padT + innerH} ${linePts} ${x(lastReal.i)},${padT + innerH}`;
   const gridVals = [25, 50, 75, 100];
-  const labelEvery = mode === 'daily' && pts.length > 8 ? 2 : 1;
+  const labelEvery = Math.max(1, Math.ceil(pts.length / 8));
   const last = pts.length - 1;
-  const hasFuture = mode === 'monthly' && real.length < pts.length;
+  const hasFuture = real.length < pts.length;
   const gid = `egSubjTrend-${(accent || '').replace('#', '')}`;
   return (
     <svg viewBox={`0 0 ${W} ${H}`} className="eg-pg-trend-svg" preserveAspectRatio="xMidYMid meet">
@@ -724,7 +732,7 @@ function SubjectTrendChart({ series, accent, mode }) {
           <rect x={x(lastReal.i)} y={padT} width={x(last) - x(lastReal.i)} height={innerH} className="eg-pg-future-zone" />
           <line x1={x(lastReal.i)} y1={padT} x2={x(lastReal.i)} y2={padT + innerH} className="eg-pg-now-line" />
           <line x1={x(lastReal.i)} y1={y(lastReal.value)} x2={x(last)} y2={y(lastReal.value)} className="eg-pg-goal-line" stroke={accent} />
-          <text x={x(last)} y={y(lastReal.value) - 12} className="eg-pg-goal-flag" textAnchor="end">🎯 to April</text>
+          <text x={x(last)} y={y(lastReal.value) - 12} className="eg-pg-goal-flag" textAnchor="end">🎯 keep growing</text>
         </g>
       )}
       <polygon points={areaPts} fill={`url(#${gid})`} />
@@ -732,7 +740,7 @@ function SubjectTrendChart({ series, accent, mode }) {
       {pts.map((p, i) => {
         const showLabel = i % labelEvery === 0 || i === last;
         const isFuture = p.value == null;
-        const showVal = !isFuture && (i === lastReal.i || mode === 'monthly');
+        const showVal = !isFuture && (i === lastReal.i || (mode === 'monthly' && showLabel));
         return (
           <g key={p.key}>
             {showLabel && (
@@ -741,7 +749,7 @@ function SubjectTrendChart({ series, accent, mode }) {
             {showLabel && mode === 'daily' && (
               <text x={x(i)} y={H - 10} className="eg-pg-axis-x-sub">{p.label}</text>
             )}
-            {!isFuture && (
+            {!isFuture && (showLabel || i === lastReal.i) && (
               <circle cx={x(i)} cy={y(p.value)} r={i === lastReal.i ? 6 : 4} className="eg-pg-trend-dot" stroke={accent} />
             )}
             {showVal && <text x={x(i)} y={y(p.value) - 12} className="eg-pg-trend-val">{p.value}%</text>}

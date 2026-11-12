@@ -3,6 +3,7 @@ import { act, fireEvent, render, screen, waitFor, within } from '@testing-librar
 import SchoolDashboard from './SchoolDashboard';
 import {
   getSchoolProgressStudents, getSchoolStudentLearningScore, getSchoolStudentReportCards,
+  getSchoolProgressPeriod, saveSchoolProgressPeriod,
   schoolDashboard, schoolTeachers, schoolStudents, schoolDeduplicateTeachers, listCurriculumSubjects
 } from '../api';
 
@@ -13,6 +14,8 @@ jest.mock('../api', () => ({
   schoolDeduplicateTeachers: jest.fn().mockResolvedValue({ success: true }),
   listCurriculumSubjects: jest.fn().mockResolvedValue({ classes: [] }),
   getSchoolProgressStudents: jest.fn(),
+  getSchoolProgressPeriod: jest.fn(),
+  saveSchoolProgressPeriod: jest.fn(),
   getSchoolStudentLearningScore: jest.fn(),
   getSchoolStudentReportCards: jest.fn()
 }));
@@ -41,6 +44,8 @@ beforeEach(() => {
   schoolDeduplicateTeachers.mockResolvedValue({ success: true });
   listCurriculumSubjects.mockResolvedValue({ classes: [] });
   getSchoolProgressStudents.mockResolvedValue({ students, classes: ['Class 8', 'Class 9', 'Class 10'] });
+  getSchoolProgressPeriod.mockResolvedValue({ success: true, period: null });
+  saveSchoolProgressPeriod.mockResolvedValue({ success: true, period: { startDate: '2026-06-15', endDate: '2027-03-20' } });
   getSchoolStudentLearningScore.mockResolvedValue({ success: true });
   getSchoolStudentReportCards.mockResolvedValue({ success: true });
 });
@@ -56,6 +61,19 @@ test('school sidebar restores progress from the hash and reuses both student rep
   expect(screen.queryByTestId('school-support')).not.toBeInTheDocument();
 });
 
+test('school graph dates sit at the top and saving refreshes the selected student report', async () => {
+  render(<SchoolDashboard session={session} onLogout={jest.fn()} />);
+  await screen.findByTestId('learning-report');
+  await waitFor(() => expect(screen.getByRole('button', { name: 'Apply to all progress graphs' })).toBeEnabled());
+  const before = getSchoolStudentLearningScore.mock.calls.length;
+  fireEvent.change(screen.getByLabelText('Start date'), { target: { value: '2026-06-15' } });
+  fireEvent.change(screen.getByLabelText('End date'), { target: { value: '2027-03-20' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Apply to all progress graphs' }));
+  expect(await screen.findByText(/Saved for your whole school/)).toBeInTheDocument();
+  await waitFor(() => expect(getSchoolStudentLearningScore.mock.calls.length).toBeGreaterThan(before));
+  fireEvent.click(within(screen.getByRole('navigation')).getByRole('button', { name: /Overview/ }));
+  expect(screen.queryByRole('region', { name: 'School progress graph dates' })).not.toBeInTheDocument();
+});
 test('filters by available class and searches the entire school including later pages', async () => {
   render(<SchoolDashboard session={session} onLogout={jest.fn()} />);
   await screen.findByTestId('learning-report');
