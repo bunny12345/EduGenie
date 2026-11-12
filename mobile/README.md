@@ -59,6 +59,18 @@ small screens and large text are covered by
 Submission, uploads, the resubmission window, test start/review and strict-exam
 controls use their existing services and rules. No backend/schema change.
 
+Teacher Assigned Homework History thumbnails open the same full-screen viewer
+as student subject homework history and saved submissions. Tap any image to
+open it, swipe or use the arrows between images, and pinch to zoom. Download
+image saves the current photo; Download all saves the attachment group. Native
+builds request Photos access and save to the AcademiX album; browser builds
+download files (the browser may ask permission for multiple downloads).
+Failures and denied photo access are reported explicitly. Relative attachment
+paths resolve against the configured backend in both portals.
+Run `flutter test --no-pub test/homework_attachments_test.dart` and
+`flutter test --no-pub --platform chrome test/homework_attachments_test.dart test/save_attachment_web_test.dart`
+for history viewing, navigation, download handling and browser file creation.
+
 ## Student Home design
 
 The student Home screen uses a navy/indigo school banner, a readable streak
@@ -118,6 +130,11 @@ to light on a fresh launch); student saved-preference behaviour is unchanged.
 Teacher panels and the floating bottom bar update in place without resetting
 the current tab or form state. Dark navigation uses the same surface, muted
 icons and highlighted accent as the student bar.
+
+The shared scheduling time wheel (homework, tests and announcements) uses the
+active theme for its sheet, wheel text and Cancel/Done controls. Run
+`flutter test --no-pub test/cupertino_time_picker_sheet_test.dart` for light/dark
+contrast, large text, confirming a time and cancelling without a change.
 
 Mock-test action buttons, manual grading fields and report-card entry panels
 use theme-aware surfaces and contrasting text, including live theme switches

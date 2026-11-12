@@ -1,19 +1,19 @@
-import 'dart:io';
-
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:gal/gal.dart';
 
-/// Full-screen image viewer — mirrors web's click-to-expand lightbox with
-/// prev/next navigation across an attachment group (`lightboxImages` /
-/// `moveLightbox` in StudentDashboard.jsx), plus swipe support and a
-/// mobile-only "download all" action for the whole group.
+import '../../../services/attachment_url.dart';
+import '../../../services/save_attachment.dart';
+
 void showImageLightbox(BuildContext context, List<String> urls, int initialIndex) {
   if (urls.isEmpty) return;
   showDialog(
     context: context,
     barrierColor: Colors.black87,
-    builder: (_) => _LightboxView(urls: urls, initialIndex: initialIndex.clamp(0, urls.length - 1)),
+    useSafeArea: false,
+    builder: (_) => ScaffoldMessenger(
+      child: _LightboxView(urls: urls.map(resolveAttachmentUrl).toList(), initialIndex: initialIndex.clamp(0, urls.length - 1)),
+    ),
   );
 }
 
@@ -43,34 +43,57 @@ class _LightboxViewState extends State<_LightboxView> {
     _controller.animateToPage(index, duration: const Duration(milliseconds: 220), curve: Curves.easeOut);
   }
 
-  Future<void> _downloadAll() async {
+  Future<void> _download({required bool all}) async {
     if (_downloading) return;
     setState(() => _downloading = true);
     final messenger = ScaffoldMessenger.of(context);
+    final urls = all ? widget.urls : [widget.urls[_index]];
     var saved = 0;
+    final failures = <String>[];
+    final dio = Dio(BaseOptions(connectTimeout: const Duration(seconds: 20), receiveTimeout: const Duration(seconds: 30)));
     try {
-      final hasAccess = await Gal.hasAccess() || await Gal.requestAccess();
-      if (!hasAccess) {
-        messenger.showSnackBar(const SnackBar(content: Text('Permission to save photos was denied.')));
-        return;
-      }
-      for (var i = 0; i < widget.urls.length; i++) {
+      for (var i = 0; i < urls.length; i++) {
         try {
-          final tempPath = '${Directory.systemTemp.path}/academix-attachment-${DateTime.now().millisecondsSinceEpoch}-$i.jpg';
-          await Dio().download(widget.urls[i], tempPath);
-          await Gal.putImage(tempPath, album: 'AcademiX');
+          final response = await dio.get<List<int>>(urls[i], options: Options(responseType: ResponseType.bytes));
+          final bytes = response.data;
+          if (bytes == null || bytes.isEmpty) throw StateError('The image file is empty.');
+          final mime = response.headers.value('content-type')?.split(';').first ?? 'application/octet-stream';
+          if (!mime.startsWith('image/') && mime != 'application/octet-stream') throw StateError('The attachment is not an image.');
+          final extension = switch (mime) {
+            'image/png' => 'png',
+            'image/webp' => 'webp',
+            'image/gif' => 'gif',
+            _ => 'jpg',
+          };
+          await saveAttachment(
+            Uint8List.fromList(bytes),
+            'academix-attachment-${DateTime.now().microsecondsSinceEpoch}-$i.$extension',
+            mime,
+          );
           saved++;
-        } catch (_) {
-          // best-effort — keep going with the remaining images
+        } catch (error, stack) {
+          debugPrint('Attachment download failed: $error\n$stack');
+          failures.add(
+            error is DioException
+                ? 'The image could not be downloaded. Check your connection and try again.'
+                : error is StateError
+                ? error.message
+                : 'Could not save to Photos. Check photo access and available storage, then try again.',
+          );
         }
       }
       if (!mounted) return;
-      messenger.showSnackBar(SnackBar(
-        content: Text(saved == widget.urls.length
-            ? 'Saved $saved image${saved == 1 ? '' : 's'} to Photos.'
-            : 'Saved $saved of ${widget.urls.length} image(s).'),
-      ));
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text(
+            failures.isEmpty
+                ? (kIsWeb ? 'Downloaded $saved image${saved == 1 ? '' : 's'}.' : 'Saved $saved image${saved == 1 ? '' : 's'} to Photos.')
+                : 'Saved $saved of ${urls.length} images. Could not save ${failures.length}. ${failures.first}',
+          ),
+        ),
+      );
     } finally {
+      dio.close();
       if (mounted) setState(() => _downloading = false);
     }
   }
@@ -82,66 +105,90 @@ class _LightboxViewState extends State<_LightboxView> {
     return GestureDetector(
       onTap: () => Navigator.of(context).pop(),
       child: Scaffold(
-        backgroundColor: Colors.transparent,
-        body: Stack(
-          children: [
-            PageView.builder(
-              controller: _controller,
-              itemCount: widget.urls.length,
-              onPageChanged: (i) => setState(() => _index = i),
-              itemBuilder: (_, i) => GestureDetector(
-                onTap: () {}, // swallow taps on the image so it doesn't close the dialog
-                child: Center(
-                  child: InteractiveViewer(
-                    child: Image.network(widget.urls[i], fit: BoxFit.contain),
-                  ),
+        backgroundColor: Colors.black,
+        body: SafeArea(
+          child: Column(
+            children: [
+              Padding(
+                padding: const EdgeInsets.all(8),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        '${_index + 1} / ${widget.urls.length}',
+                        style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
+                      ),
+                    ),
+                    _CircleIconButton(
+                      icon: Icons.download_rounded,
+                      busy: _downloading,
+                      tooltip: 'Download image',
+                      onTap: () => _download(all: false),
+                    ),
+                    if (widget.urls.length > 1) ...[
+                      const SizedBox(width: 8),
+                      _CircleIconButton(
+                        icon: Icons.download_for_offline_outlined,
+                        busy: _downloading,
+                        tooltip: 'Download all',
+                        onTap: () => _download(all: true),
+                      ),
+                    ],
+                    const SizedBox(width: 8),
+                    _CircleIconButton(icon: Icons.close_rounded, tooltip: 'Close image viewer', onTap: () => Navigator.of(context).pop()),
+                  ],
                 ),
               ),
-            ),
-            if (canPrev)
-              Positioned(
-                left: 8,
-                top: 0,
-                bottom: 0,
-                child: Center(child: _NavArrowButton(icon: Icons.chevron_left_rounded, onTap: () => _goTo(_index - 1))),
-              ),
-            if (canNext)
-              Positioned(
-                right: 8,
-                top: 0,
-                bottom: 0,
-                child: Center(child: _NavArrowButton(icon: Icons.chevron_right_rounded, onTap: () => _goTo(_index + 1))),
-              ),
-            if (widget.urls.length > 1)
-              Positioned(
-                top: 44,
-                left: 0,
-                right: 0,
-                child: Center(
-                  child: Text(
-                    '${_index + 1} / ${widget.urls.length}',
-                    style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w600),
-                  ),
+              Expanded(
+                child: Stack(
+                  children: [
+                    PageView.builder(
+                      controller: _controller,
+                      itemCount: widget.urls.length,
+                      onPageChanged: (i) => setState(() => _index = i),
+                      itemBuilder: (_, i) => GestureDetector(
+                        onTap: () {}, // swallow taps on the image so it doesn't close the dialog
+                        child: Center(
+                          child: InteractiveViewer(
+                            child: Image.network(
+                              widget.urls[i],
+                              fit: BoxFit.contain,
+                              errorBuilder: (_, _, _) => const Padding(
+                                padding: EdgeInsets.all(48),
+                                child: Text(
+                                  'Unable to display this image. You can try downloading it or close and reopen the viewer.',
+                                  style: TextStyle(color: Colors.white),
+                                  textAlign: TextAlign.center,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                    if (canPrev)
+                      Positioned(
+                        left: 8,
+                        top: 0,
+                        bottom: 0,
+                        child: Center(
+                          child: _NavArrowButton(icon: Icons.chevron_left_rounded, onTap: () => _goTo(_index - 1)),
+                        ),
+                      ),
+                    if (canNext)
+                      Positioned(
+                        right: 8,
+                        top: 0,
+                        bottom: 0,
+                        child: Center(
+                          child: _NavArrowButton(icon: Icons.chevron_right_rounded, onTap: () => _goTo(_index + 1)),
+                        ),
+                      ),
+                  ],
                 ),
               ),
-            Positioned(
-              top: 36,
-              right: 12,
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  _CircleIconButton(
-                    icon: Icons.download_rounded,
-                    busy: _downloading,
-                    tooltip: 'Download all',
-                    onTap: _downloadAll,
-                  ),
-                  const SizedBox(width: 8),
-                  _CircleIconButton(icon: Icons.close_rounded, onTap: () => Navigator.of(context).pop()),
-                ],
-              ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -156,14 +203,18 @@ class _NavArrowButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        width: 44,
-        height: 44,
-        decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.18), shape: BoxShape.circle),
-        alignment: Alignment.center,
-        child: Icon(icon, color: Colors.white, size: 28),
+    return Semantics(
+      button: true,
+      label: icon == Icons.chevron_left_rounded ? 'Previous image' : 'Next image',
+      child: GestureDetector(
+        onTap: onTap,
+        child: Container(
+          width: 44,
+          height: 44,
+          decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.18), shape: BoxShape.circle),
+          alignment: Alignment.center,
+          child: Icon(icon, color: Colors.white, size: 28),
+        ),
       ),
     );
   }
@@ -179,23 +230,23 @@ class _CircleIconButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final button = GestureDetector(
-      onTap: busy ? null : onTap,
-      child: Container(
-        width: 40,
-        height: 40,
-        decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.15), shape: BoxShape.circle),
-        alignment: Alignment.center,
-        child: busy
-            ? const SizedBox(
-                width: 18,
-                height: 18,
-                child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-              )
-            : Icon(icon, color: Colors.white, size: 22),
+    final button = Semantics(
+      button: true,
+      label: tooltip,
+      enabled: !busy,
+      child: GestureDetector(
+        onTap: busy ? null : onTap,
+        child: Container(
+          width: 48,
+          height: 48,
+          decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.15), shape: BoxShape.circle),
+          alignment: Alignment.center,
+          child: busy
+              ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+              : Icon(icon, color: Colors.white, size: 22),
+        ),
       ),
     );
     return tooltip != null ? Tooltip(message: tooltip!, child: button) : button;
   }
 }
-

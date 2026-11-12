@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
-import '../../../config/env.dart';
+import '../../../services/attachment_url.dart';
 import '../../../models/homework_item.dart';
 import '../../../models/test_item.dart';
 import '../../../state/session_provider.dart';
@@ -19,22 +19,6 @@ import '../../../widgets/pressable_scale.dart';
 import '../../../widgets/image_source_sheet.dart';
 
 enum _HwFilter { all, submitted, notSubmitted, overdue }
-
-/// The backend returns attachment paths relative to its own host (e.g.
-/// `/uploads/homework/x.jpg`) — the website resolves these fine since the
-/// page and API share an origin, but Flutter's `Image.network` needs a full
-/// URL, so relative paths must be resolved against the configured API host.
-/// Some older records were also saved with a plain `http://` scheme (a
-/// backend proxy-header bug, now fixed at the source) — upgrade those to
-/// `https://` too, since the site is HTTPS-only and both the browser and
-/// native Android reject cleartext requests to it.
-String _resolveAttachmentUrl(String url) {
-  if (url.startsWith('http://')) return 'https://${url.substring(7)}';
-  if (url.startsWith('https://')) return url;
-  final base = Env.apiBaseUrl.endsWith('/') ? Env.apiBaseUrl.substring(0, Env.apiBaseUrl.length - 1) : Env.apiBaseUrl;
-  final path = url.startsWith('/') ? url : '/$url';
-  return '$base$path';
-}
 
 /// Muted per-subject header/border theme — ports `getSubjectTheme()` in
 /// `StudentDashboard.jsx` (kept separate from `SubjectPalette`, which mirrors
@@ -1534,7 +1518,7 @@ class _ImageThumbRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final resolvedUrls = urls.map(_resolveAttachmentUrl).toList();
+    final resolvedUrls = urls.map(resolveAttachmentUrl).toList();
     return Wrap(
       spacing: 8,
       runSpacing: 8,

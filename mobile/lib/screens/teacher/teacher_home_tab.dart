@@ -6,11 +6,13 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
 import '../../state/teacher_providers.dart';
+import '../../services/attachment_url.dart';
 import '../../theme/app_colors.dart';
 import '../../widgets/section_card.dart';
 import '../../widgets/strict_exam_students.dart';
 import '../../widgets/image_source_sheet.dart';
 import '../../widgets/cupertino_time_picker_sheet.dart';
+import '../student/homework/lightbox.dart';
 
 String _normalizeClassName(String value) => value.trim().toLowerCase().replaceAll(RegExp(r'\s+'), ' ');
 
@@ -1370,7 +1372,7 @@ class _HistoryCalendarSheetState extends State<_HistoryCalendarSheet> {
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  const Text('Assigned Homework History', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
+                  const Expanded(child: Text('Assigned Homework History', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700))),
                   IconButton(icon: const Icon(Icons.close_rounded), onPressed: () => Navigator.of(context).pop()),
                 ],
               ),
@@ -1463,6 +1465,7 @@ class _HistoryCalendarSheetState extends State<_HistoryCalendarSheet> {
     final subject = h['subject']?.toString() ?? '';
     final note = h['note']?.toString() ?? '';
     final attachments = _asUrlList(h['attachmentUrls'] ?? h['attachment_urls'], h['attachmentUrl'] ?? h['attachment_url']);
+    final resolvedAttachments = attachments.map(resolveAttachmentUrl).toList();
     final startAt = _parseDate(h['startAt'] ?? h['start_at']);
     final dueAt = _parseDate(h['dueAt'] ?? h['due_at']);
     final createdAt = _parseDate(h['createdAt'] ?? h['created_at']);
@@ -1513,10 +1516,18 @@ class _HistoryCalendarSheetState extends State<_HistoryCalendarSheet> {
                 spacing: 6,
                 runSpacing: 6,
                 children: [
-                  for (final url in attachments)
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(6),
-                      child: Image.network(url, width: 44, height: 44, fit: BoxFit.cover, errorBuilder: (_, _, _) => Container(width: 44, height: 44, color: AppColors.of(context).line)),
+                  for (var i = 0; i < resolvedAttachments.length; i++)
+                    Semantics(
+                      button: true,
+                      label: 'View attachment ${i + 1}',
+                      child: InkWell(
+                        onTap: () => showImageLightbox(context, resolvedAttachments, i),
+                        borderRadius: BorderRadius.circular(6),
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(6),
+                          child: Image.network(resolvedAttachments[i], width: 56, height: 56, fit: BoxFit.cover, errorBuilder: (_, _, _) => Container(width: 56, height: 56, color: AppColors.of(context).line, child: const Icon(Icons.broken_image_outlined))),
+                        ),
+                      ),
                     ),
                 ],
               ),
