@@ -8,9 +8,11 @@ import 'package:mobile/models/session.dart';
 import 'package:mobile/navigation/student_nav_shell.dart';
 import 'package:mobile/screens/student/student_services_screen.dart';
 import 'package:mobile/state/focus_lock_provider.dart';
+import 'package:mobile/state/exam_access_provider.dart';
 import 'package:mobile/state/session_provider.dart';
 import 'package:mobile/state/student_providers.dart';
 import 'package:mobile/theme/app_colors.dart';
+import 'package:mobile/theme/app_theme.dart';
 
 class _UnlockedFocus extends FocusLockNotifier {
   @override
@@ -23,63 +25,90 @@ class _SignedOutSession extends SessionNotifier {
 }
 
 void main() {
-  testWidgets('Services PNG keeps selection, navigation and compact sizing', (
-    tester,
-  ) async {
-    await tester.pumpWidget(
-      ProviderScope(
-        overrides: [
-          focusLockProvider.overrideWith(_UnlockedFocus.new),
-          sessionProvider.overrideWith(_SignedOutSession.new),
-          dashboardProvider.overrideWith(
-            (ref) async => DashboardData.fromJson({}),
+  for (final dark in [false, true]) {
+    testWidgets(
+      'Services filled icon matches Home selection and compact sizing in ${dark ? 'dark' : 'light'} mode',
+      (tester) async {
+        await tester.pumpWidget(
+          ProviderScope(
+            overrides: [
+              focusLockProvider.overrideWith(_UnlockedFocus.new),
+              examAccessProvider.overrideWith(
+                (ref) => Stream.value(const ExamAccess()),
+              ),
+              sessionProvider.overrideWith(_SignedOutSession.new),
+              dashboardProvider.overrideWith(
+                (ref) async => DashboardData.fromJson({}),
+              ),
+              rewardsProvider.overrideWith(
+                (ref) async => RewardsData.fromJson({}),
+              ),
+              reportCardsProvider.overrideWith(
+                (ref) async => ReportCardsData.fromJson({}),
+              ),
+            ],
+            child: MaterialApp(
+              theme: dark ? AppTheme.dark() : AppTheme.light(),
+              home: const StudentShell(),
+            ),
           ),
-          rewardsProvider.overrideWith((ref) async => RewardsData.fromJson({})),
-          reportCardsProvider.overrideWith(
-            (ref) async => ReportCardsData.fromJson({}),
+        );
+        await tester.pump();
+
+        final palette = AppPalette(dark);
+        Finder servicesIcon() => find.byIcon(Icons.grid_view_rounded);
+        Icon icon() => tester.widget<Icon>(servicesIcon());
+
+        expect(find.byIcon(Icons.grid_view_outlined), findsOneWidget);
+        expect(
+          tester.widget<Icon>(find.byIcon(Icons.grid_view_outlined)).color,
+          palette.muted,
+        );
+        expect(find.byIcon(Icons.home_rounded), findsOneWidget);
+        await tester.tap(find.text('Services'));
+        await tester.pump(const Duration(milliseconds: 250));
+        expect(servicesIcon(), findsOneWidget);
+        expect(icon().size, 22);
+        expect(icon().color, palette.accent);
+        expect(find.byIcon(Icons.home_outlined), findsOneWidget);
+        final selectedCircle = tester.widget<AnimatedContainer>(
+          find
+              .ancestor(
+                of: servicesIcon(),
+                matching: find.byType(AnimatedContainer),
+              )
+              .first,
+        );
+        expect(
+          (selectedCircle.decoration as BoxDecoration).color,
+          palette.brandSoft,
+        );
+        expect(find.byType(StudentServicesScreen), findsOneWidget);
+        expect(find.text('Services'), findsNWidgets(2));
+
+        ScrollUpdateNotification(
+          metrics: FixedScrollMetrics(
+            minScrollExtent: 0,
+            maxScrollExtent: 100,
+            pixels: 20,
+            viewportDimension: 400,
+            axisDirection: AxisDirection.down,
+            devicePixelRatio: 1,
           ),
-        ],
-        child: const MaterialApp(home: StudentShell()),
-      ),
+          context: tester.element(find.byType(StudentServicesScreen)),
+          scrollDelta: 20,
+        ).dispatch(tester.element(find.byType(StudentServicesScreen)));
+        await tester.pump(const Duration(milliseconds: 250));
+        expect(icon().size, 20);
+        expect(icon().color, palette.accent);
+        expect(find.text('Services'), findsOneWidget);
+        await tester.tap(find.byIcon(Icons.home_outlined));
+        await tester.pump(const Duration(milliseconds: 250));
+        expect(find.byIcon(Icons.home_rounded), findsOneWidget);
+        expect(find.byIcon(Icons.grid_view_outlined), findsOneWidget);
+        expect(tester.takeException(), isNull);
+        await tester.pumpWidget(const SizedBox.shrink());
+      },
     );
-    await tester.pump();
-
-    final servicesIcon = find.byWidgetPredicate(
-      (widget) =>
-          widget is Image &&
-          widget.image is AssetImage &&
-          (widget.image as AssetImage).assetName ==
-              'assets/branding/services.png',
-    );
-    Image icon() => tester.widget<Image>(servicesIcon);
-
-    expect(servicesIcon, findsOneWidget);
-    expect(icon().width, 22);
-    expect(icon().color, AppColors.muted);
-    expect(find.byIcon(Icons.miscellaneous_services_outlined), findsNothing);
-    await tester.tap(find.text('Services'));
-    await tester.pump(const Duration(milliseconds: 250));
-    expect(icon().color, AppColors.brand);
-    expect(find.byType(StudentServicesScreen), findsOneWidget);
-    expect(find.text('Services'), findsNWidgets(2));
-
-    ScrollUpdateNotification(
-      metrics: FixedScrollMetrics(
-        minScrollExtent: 0,
-        maxScrollExtent: 100,
-        pixels: 20,
-        viewportDimension: 400,
-        axisDirection: AxisDirection.down,
-        devicePixelRatio: 1,
-      ),
-      context: tester.element(find.byType(StudentServicesScreen)),
-      scrollDelta: 20,
-    ).dispatch(tester.element(find.byType(StudentServicesScreen)));
-    await tester.pump(const Duration(milliseconds: 250));
-    expect(icon().width, 20);
-    expect(icon().color, AppColors.brand);
-    expect(find.text('Services'), findsOneWidget);
-    expect(tester.takeException(), isNull);
-    await tester.pumpWidget(const SizedBox.shrink());
-  });
+  }
 }

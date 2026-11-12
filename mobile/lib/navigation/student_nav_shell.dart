@@ -39,17 +39,15 @@ class StudentShell extends StatefulWidget {
 }
 
 class _NavItem {
-  final IconData? icon;
-  final IconData? selectedIcon;
-  final String? assetPath;
+  final IconData icon;
+  final IconData selectedIcon;
   final String label;
 
   const _NavItem({
-    this.icon,
-    this.selectedIcon,
-    this.assetPath,
+    required this.icon,
+    required this.selectedIcon,
     required this.label,
-  }) : assert(assetPath != null || (icon != null && selectedIcon != null));
+  });
 }
 
 class _StudentShellState extends State<StudentShell> {
@@ -68,7 +66,11 @@ class _StudentShellState extends State<StudentShell> {
       selectedIcon: Icons.home_rounded,
       label: 'Home',
     ),
-    _NavItem(assetPath: 'assets/branding/services.png', label: 'Services'),
+    _NavItem(
+      icon: Icons.grid_view_outlined,
+      selectedIcon: Icons.grid_view_rounded,
+      label: 'Services',
+    ),
     _NavItem(
       icon: Icons.more_horiz_rounded,
       selectedIcon: Icons.more_horiz_rounded,
@@ -244,7 +246,9 @@ class _NavIconButtonState extends State<_NavIconButton> {
   Widget build(BuildContext context) {
     final size = widget.compact ? 36.0 : 44.0;
     final iconSize = widget.compact ? 20.0 : 22.0;
-    final color = widget.selected ? AppColors.of(context).accent : AppColors.of(context).muted;
+    final color = widget.selected
+        ? AppColors.of(context).accent
+        : AppColors.of(context).muted;
 
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
@@ -274,23 +278,11 @@ class _NavIconButtonState extends State<_NavIconButton> {
                 boxShadow: _pressed ? _frame3dShadow(blur: 6) : null,
               ),
               alignment: Alignment.center,
-              child: widget.item.assetPath != null
-                  ? Image.asset(
-                      widget.item.assetPath!,
-                      width: iconSize,
-                      height: iconSize,
-                      fit: BoxFit.contain,
-                      color: color,
-                      colorBlendMode: BlendMode.srcIn,
-                      excludeFromSemantics: true,
-                    )
-                  : Icon(
-                      widget.selected
-                          ? widget.item.selectedIcon
-                          : widget.item.icon,
-                      size: iconSize,
-                      color: color,
-                    ),
+              child: Icon(
+                widget.selected ? widget.item.selectedIcon : widget.item.icon,
+                size: iconSize,
+                color: color,
+              ),
             ),
             if (!widget.compact) ...[
               const SizedBox(height: 2),

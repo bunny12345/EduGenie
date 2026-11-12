@@ -310,10 +310,11 @@ must be resolved before treating the full regression suite as green.
 
 ## Student navigation icon
 
-The Services bottom-navigation icon uses `assets/branding/services.png`.
-Use a transparent PNG; its silhouette is tinted to match the selected/unselected
-navigation colors and scales down with the compact navigation bar.
-After adding or replacing a bundled image, stop and relaunch the app to refresh assets.
+Services uses an outlined grid when inactive and a filled rounded grid when
+selected, matching Home's outline/filled treatment. Both use the same selected
+accent, soft circular highlight and compact sizing in light and dark themes.
+Run `flutter test --no-pub test/student_nav_shell_test.dart` to verify selection,
+navigation and compact sizing in both themes.
 
 ## Homework layouts
 
