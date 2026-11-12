@@ -31,6 +31,10 @@ refreshes and refresh stale visible data when returning. Tutor history polls
 only while AI Tutor is open. User actions still refresh their affected data.
 Errors continue to appear through the existing panel messages.
 
+Student, teacher and school web portals omit manual Refresh buttons. Existing
+background updates and post-save reloads remain active; browser reload fetches
+fresh data. Failed requests still offer retry controls where available.
+
 Regression checks:
 `CI=true npm test -- --watchAll=false --runInBand src/hooks/useVisiblePanels.test.js src/components/StudentDashboard.performance.test.jsx src/App.test.js`.
 
@@ -95,7 +99,8 @@ school-scoped roster is retrieved, so search includes students on every page.
 The selected student sees the same shared `StudentProgress` and embedded
 `StudentReportCard` components as the teacher portal: learning score, skill and
 subject growth, daily/monthly trends, released exam results and pending subjects.
-**Refresh** reloads the roster and both reports. Reports are read-only and use
+Learning and exam graphs update every minute while open. Saving the school
+calendar immediately reloads the selected reports. Reports are read-only and use
 the authenticated `/school/*` APIs; student and teacher flows are unchanged.
 The picker stacks above reports on narrow screens. No mobile changes are included.
 

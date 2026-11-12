@@ -41,8 +41,7 @@ export default function SchoolEnquiriesInbox({ token, onAuthError }) {
   }, [token, refresh, onAuthError]);
   return <section className="vc-inbox">
     <header><h2>Prospective schools</h2><p>Verified website enquiries. Reply here; the visitor receives an email notification.</p></header>
-    {error ? <p className="vc-error" role="alert">{error}</p> : null}
-    <button type="button" className="vc-text-btn" onClick={() => setRefresh((v) => v + 1)}>Refresh enquiries</button>
+    {error ? <div className="vc-error" role="alert">{error}<button type="button" className="vc-text-btn" onClick={() => setRefresh((v) => v + 1)}>Try again</button></div> : null}
     <div className="vc-inbox-layout">
       <div className="vc-enquiry-list" aria-label="School enquiries">
         {enquiries.map((enquiry) => <button type="button" key={enquiry.id} aria-pressed={selected === enquiry.id} onClick={() => setSelected((id) => id === enquiry.id ? '' : enquiry.id)}>

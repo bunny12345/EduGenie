@@ -32,6 +32,8 @@ function renderPortal() {
 
 describe('SchoolDashboard', () => {
   beforeEach(() => {
+    window.location.hash = '';
+    api.schoolDeduplicateTeachers.mockResolvedValue({ success: true });
     api.schoolDashboard.mockResolvedValue({
       summary: { teachers: 5, students: 150, activeInvites: 3 }
     });
@@ -247,32 +249,25 @@ describe('SchoolDashboard', () => {
     });
   });
 
-  describe('Refresh', () => {
-    test('the header refreshes every section', async () => {
+  describe('Automatic updates without manual refresh controls', () => {
+    test('the header retains export without a refresh button', async () => {
       renderPortal();
       await waitFor(() => expect(api.schoolDashboard).toHaveBeenCalled());
 
-      jest.clearAllMocks();
-      fireEvent.click(screen.getByText(/⟳ Refresh/));
-
-      await waitFor(() => {
-        expect(api.schoolTeachers).toHaveBeenCalled();
-        expect(api.schoolInvites).toHaveBeenCalled();
-        expect(api.schoolStudents).toHaveBeenCalled();
-      });
+      expect(screen.queryByRole('button', { name: /refresh|↻/i })).not.toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /Export/ })).toBeInTheDocument();
     });
 
-    test('each page refreshes only its own section', async () => {
+    test('teacher and student rosters load without refresh buttons', async () => {
       renderPortal();
       await waitFor(() => expect(api.schoolStudents).toHaveBeenCalled());
 
-      goTo('Students');
-      jest.clearAllMocks();
-      fireEvent.click(screen.getByText('↻'));
-
-      await waitFor(() => expect(api.schoolStudents).toHaveBeenCalled());
-      expect(api.schoolTeachers).not.toHaveBeenCalled();
-      expect(api.schoolInvites).not.toHaveBeenCalled();
+      goTo('Teachers & Invites');
+      expect(await screen.findByText('Rajesh Kumar')).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /refresh|↻/i })).not.toBeInTheDocument();
+      goTo('Student Registration');
+      expect(await screen.findByText(/Aditya Singh/)).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /refresh|↻/i })).not.toBeInTheDocument();
     });
   });
 

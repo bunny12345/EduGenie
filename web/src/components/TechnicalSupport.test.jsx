@@ -1,5 +1,5 @@
 import React from 'react';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import TechnicalSupport from './TechnicalSupport';
 import SupportBubble from './SupportBubble';
 import {
@@ -25,7 +25,10 @@ beforeEach(() => {
   replyToSupportTicket.mockResolvedValue({ success: true, notificationWarning: null });
   setSupportTicketStatus.mockResolvedValue({ success: true });
 });
-afterEach(() => { Object.defineProperty(global, 'crypto', { configurable: true, value: originalCrypto }); });
+afterEach(() => {
+  jest.useRealTimers();
+  Object.defineProperty(global, 'crypto', { configurable: true, value: originalCrypto });
+});
 
 test('student bot answers operational questions and offers human escalation', async () => {
   render(<TechnicalSupport />);
@@ -144,24 +147,31 @@ test('owner inbox displays teacher authors instead of labelling them as bots', a
 });
 
 test.each(['student', 'teacher', 'school_admin'])('resolved %s thread explains retention and clears deleted messages on refresh', async (requesterRole) => {
+  jest.useFakeTimers();
   const resolvedTicket = { ...ticket, requester_role: requesterRole, status: 'resolved' };
   listSupportTickets.mockResolvedValue({ tickets: [resolvedTicket], nextOffset: null });
   getSupportThread.mockResolvedValue({
     ticket: resolvedTicket,
     messages: [{ id: 'm1', author_role: 'owner', content: 'Resolved conversation content' }],
   });
-  render(<TechnicalSupport requesterRole={requesterRole} />);
+  const { unmount } = render(<TechnicalSupport requesterRole={requesterRole} />);
   fireEvent.click(await screen.findByRole('button', { name: /Upload problem/ }));
   expect(await screen.findByText(/automatically deleted 48 hours after resolution/)).toBeInTheDocument();
   expect(screen.getByText('Resolved conversation content')).toBeInTheDocument();
   const error = new Error('Support request not found.');
   error.status = 404;
   getSupportThread.mockRejectedValue(error);
-  fireEvent.click(screen.getByRole('button', { name: 'Check replies' }));
+  expect(screen.queryByRole('button', { name: /refresh|check replies/i })).not.toBeInTheDocument();
+  await act(async () => { jest.advanceTimersByTime(10000); });
   expect(await screen.findByRole('alert')).toHaveTextContent('Support request not found.');
   expect(screen.queryByText('Resolved conversation content')).not.toBeInTheDocument();
   fireEvent.change(screen.getByLabelText('Message'), { target: { value: 'Cannot send to a deleted request' } });
   expect(screen.getByRole('button', { name: 'Send', exact: true })).toBeDisabled();
+  expect(screen.getByRole('button', { name: 'Try again' })).toBeInTheDocument();
+  getSupportThread.mockResolvedValue({ ticket: resolvedTicket, messages: [] });
+  fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+  await waitFor(() => expect(screen.queryByRole('alert')).not.toBeInTheDocument());
+  unmount();
 });
 
 test('floating teacher support opens and closes an accessible modal and resets bot chat', async () => {

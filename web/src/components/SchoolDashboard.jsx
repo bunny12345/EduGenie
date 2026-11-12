@@ -175,8 +175,6 @@ export default function SchoolDashboard({ session, onLogout }) {
   const [curriculumRowBusy, setCurriculumRowBusy] = useState('');
   const [curriculumConfirmDelete, setCurriculumConfirmDelete] = useState(null);
 
-  // New: Section-specific loading and refresh states
-  const [refreshing, setRefreshing] = useState('');
   const [exportFormat, setExportFormat] = useState(null);
 
   // Which sidebar page is open.
@@ -294,15 +292,7 @@ export default function SchoolDashboard({ session, onLogout }) {
     setExportFormat(null);
   }
 
-  // Refresh specific sections
-  async function refreshTeachersSection() {
-    setRefreshing('teachers');
-    await loadTeachers({ q: teacherSearch, className: teacherClassFilter || undefined, page: teacherPage, limit: TEACHERS_PER_PAGE });
-    setRefreshing('');
-  }
-
   async function refreshStudentsSection() {
-    setRefreshing('students');
     try {
       const sRes = await schoolStudents({
         q: studentSearch,
@@ -313,20 +303,6 @@ export default function SchoolDashboard({ session, onLogout }) {
     } catch (e) {
       setError(e?.message || 'Failed to refresh students');
     }
-    setRefreshing('');
-  }
-
-  async function refreshAllSections() {
-    if (activeSection === 'progress') {
-      setProgressRefresh((v) => v + 1);
-      return;
-    }
-    setRefreshing('all');
-    await Promise.all([
-      refreshTeachersSection(),
-      refreshStudentsSection()
-    ]);
-    setRefreshing('');
   }
 
   function applyTeachers(nextTeachers, pagination) {
@@ -1238,14 +1214,6 @@ export default function SchoolDashboard({ session, onLogout }) {
             <p>{meta.subtitle}</p>
           </div>
           <div className="sd-portal-actions">
-            <button
-              className="sd-inline-btn"
-              onClick={refreshAllSections}
-              disabled={refreshing === 'all' || (activeSection === 'progress' && progressLoading)}
-              title="Refresh all sections"
-            >
-              {refreshing === 'all' ? '⟳ ...' : '⟳ Refresh'}
-            </button>
             <div className="sd-export-wrap">
               <button
                 className="sd-inline-btn"
@@ -1822,14 +1790,6 @@ export default function SchoolDashboard({ session, onLogout }) {
 
         <article className="sd-card">
           <h3>Teachers</h3>
-          <button 
-            className="sd-inline-btn" 
-            onClick={refreshTeachersSection}
-            disabled={refreshing === 'teachers'}
-            style={{ float: 'right', fontSize: '12px' }}
-          >
-            {refreshing === 'teachers' ? '...' : '↻'}
-          </button>
           <div className="invite-toolbar">
             <input
               className="invite-search"
@@ -2027,14 +1987,6 @@ export default function SchoolDashboard({ session, onLogout }) {
 
         <article className="sd-card">
           <h3>Students (School-wide)</h3>
-          <button 
-            className="sd-inline-btn" 
-            onClick={refreshStudentsSection}
-            disabled={refreshing === 'students'}
-            style={{ float: 'right', fontSize: '12px' }}
-          >
-            {refreshing === 'students' ? '...' : '↻'}
-          </button>
           <div className="invite-toolbar">
             <input
               className="invite-search"

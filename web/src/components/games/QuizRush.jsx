@@ -207,7 +207,7 @@ export default function QuizRush({ studentId, onArcadeBackReady }) {
         <div className="eg-fc-empty-emoji">⚡</div>
         <h3>No chapters ready yet</h3>
         <p>{error || 'Quiz Rush appears automatically once a chapter\'s questions are generated — check back soon!'}</p>
-        <button className="eg-fc-btn ghost" onClick={loadOverview}>Refresh</button>
+        {error ? <button className="eg-fc-btn ghost" onClick={loadOverview}>Try again</button> : null}
       </div>
     );
   }

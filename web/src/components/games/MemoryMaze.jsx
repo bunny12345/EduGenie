@@ -223,7 +223,7 @@ export default function MemoryMaze({ studentId, onArcadeBackReady }) {
         <div className="eg-fc-empty-emoji">🌀</div>
         <h3>No chapters ready yet</h3>
         <p>{error || 'Memory Maze uses the same chapters as AI Flashcards — check back once your teacher uploads content!'}</p>
-        <button className="eg-fc-btn ghost" onClick={loadOverview}>Refresh</button>
+        {error ? <button className="eg-fc-btn ghost" onClick={loadOverview}>Try again</button> : null}
       </div>
     );
   }

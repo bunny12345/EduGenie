@@ -234,7 +234,7 @@ export default function Flashcards({ studentId, onAskTutor, onCoinsEarned, onArc
         <div className="eg-fc-empty-emoji">🃏</div>
         <h3>No flashcards yet</h3>
         <p>{error || 'Flashcards appear automatically once your teacher uploads chapter content. Check back soon!'}</p>
-        <button className="eg-fc-btn ghost" onClick={loadOverview}>Refresh</button>
+        {error ? <button className="eg-fc-btn ghost" onClick={loadOverview}>Try again</button> : null}
       </div>
     );
   }

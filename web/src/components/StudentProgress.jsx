@@ -67,7 +67,6 @@ export default function StudentProgress({ studentId, greetingName, fetchFn, repo
   const [trendView, setTrendView] = useState('daily'); // 'daily' | 'monthly'
   const [subjView, setSubjView] = useState('daily'); // 'daily' | 'monthly'
   const [openSubject, setOpenSubject] = useState(null); // subject object or null
-  const [examRefresh, setExamRefresh] = useState(0);
   const requestSequence = useRef({ sequence: 0 });
 
   // The report loads in the background: nothing on screen says "loading". The
@@ -141,7 +140,6 @@ export default function StudentProgress({ studentId, greetingName, fetchFn, repo
           <h1>My Learning Report</h1>
           <p>A fun, simple picture of how {greetingName || 'you'} {greetingName ? 'is' : 'are'} growing — not just marks.</p>
         </div>
-        <button className="eg-pg-refresh" onClick={() => { load(); setExamRefresh((n) => n + 1); }} title="Update with your latest activity and exam results">↻ Refresh</button>
       </header>
 
       {/* ── Friendly alert / notification banner ─────────────────────────── */}
@@ -292,7 +290,7 @@ export default function StudentProgress({ studentId, greetingName, fetchFn, repo
           </div>
         </section>
         {(!fetchFn || reportCardsFetchFn) && (
-          <ExamResultsJourney key={studentId} studentId={studentId} fetchFn={reportCardsFetchFn} refreshKey={examRefresh} />
+          <ExamResultsJourney key={studentId} studentId={studentId} fetchFn={reportCardsFetchFn} />
         )}
       </div>
 

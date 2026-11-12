@@ -2379,13 +2379,6 @@ export default function TeacherDashboard({ session, onLogout }) {
                 <div style={{ position: 'relative' }}>
                   <button
                     className="td-btn-outline"
-                    onClick={() => loadHomeworkHistory()}
-                    style={{ marginRight: '6px' }}
-                  >
-                    ↻ Refresh
-                  </button>
-                  <button
-                    className="td-btn-outline"
                     onClick={() => {
                       if (!showHistoryDropdown) {
                         setHistoryFilterDate('');

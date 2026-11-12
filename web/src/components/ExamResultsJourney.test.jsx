@@ -103,15 +103,22 @@ test('student switches discard old responses and scoped readers never fetch the 
   expect(fetchFn).toHaveBeenLastCalledWith('new');
 });
 
-test('progress places the journey below subject panels and Refresh reloads both independently', async () => {
+test('progress places the journey below subject panels and updates both automatically without refresh buttons', async () => {
+  jest.useFakeTimers();
   const fetchFn = jest.fn().mockResolvedValue({ score: 0, subjects: [] });
   const reportCardsFetchFn = jest.fn().mockResolvedValue({ reportCards: [first] });
-  render(<StudentProgress studentId="student" fetchFn={fetchFn} reportCardsFetchFn={reportCardsFetchFn} />);
+  const { unmount } = render(<StudentProgress studentId="student" fetchFn={fetchFn} reportCardsFetchFn={reportCardsFetchFn} />);
   await screen.findByText('1 released exam');
   const headings = screen.getAllByRole('heading', { level: 3 }).map((node) => node.textContent);
   expect(headings.indexOf('Exam Results Journey')).toBeGreaterThan(headings.indexOf('📚 Each subject on its own'));
-  fireEvent.click(screen.getByRole('button', { name: /Refresh/ }));
-  await screen.findByText('1 released exam');
+  expect(screen.queryByRole('button', { name: /refresh/i })).not.toBeInTheDocument();
+  reportCardsFetchFn.mockResolvedValue({ reportCards: [second, first] });
+  await act(async () => { jest.advanceTimersByTime(60000); });
+  expect(screen.getByText('2 released exams')).toBeInTheDocument();
+  expect(fetchFn).toHaveBeenCalledTimes(2);
+  expect(reportCardsFetchFn).toHaveBeenCalledTimes(2);
+  unmount();
+  await act(async () => { jest.advanceTimersByTime(60000); });
   expect(fetchFn).toHaveBeenCalledTimes(2);
   expect(reportCardsFetchFn).toHaveBeenCalledTimes(2);
 });

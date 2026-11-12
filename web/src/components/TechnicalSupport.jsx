@@ -125,14 +125,14 @@ export default function TechnicalSupport({ ownerToken, onAuthError, requesterRol
       <div className="eg-support-layout">
         <aside className="eg-support-requests" aria-label="Support requests">
           {!owner ? <button type="button" className={`eg-support-request${!selected && !category ? ' selected' : ''}`} onClick={() => { select(''); }}>Help Assistant<span>App and website guidance</span></button> : null}
-          <div className="eg-support-list-heading"><strong>{owner ? 'All requests' : 'Your requests'}</strong><button type="button" onClick={() => refresh()}>Refresh</button></div>
+          <div className="eg-support-list-heading"><strong>{owner ? 'All requests' : 'Your requests'}</strong></div>
           {tickets.map((ticket) => <button key={ticket.id} type="button" className={`eg-support-request${selected === ticket.id ? ' selected' : ''}`} onClick={() => select(ticket.id)}>
             <strong>{ticket.subject}</strong>
             <span>{owner ? `${ticket.requester_name} · ${ticket.requester_role} · ${ticket.class_name || 'Class not specified'}` : ticket.category === 'glitch' ? 'Issue report' : 'Technician chat'}</span>
             <span className={`eg-support-badge ${ticket.status}`}>{ticket.status === 'resolved' ? 'Resolved' : 'Open'} · #{ticket.id.slice(0, 8)}</span>
           </button>)}
           {!tickets.length && !listError ? <p className="eg-support-empty">{owner ? 'No support requests yet.' : 'Your reports and technician chats appear here.'}</p> : null}
-          {listError ? <p className="eg-support-error" role="alert">{listError}</p> : null}
+          {listError ? <div className="eg-support-error" role="alert">{listError}<button type="button" onClick={() => refresh()}>Try again</button></div> : null}
           {nextOffset !== null ? <button type="button" onClick={loadMore}>Show more requests</button> : null}
         </aside>
         <div className="eg-support-main">
@@ -294,9 +294,9 @@ function SupportThread({ id, token, requesterRole, onError, onChanged, initialWa
   return <>
     {thread ? <div className="eg-support-thread-heading"><div><h4>{thread.ticket.subject}</h4><p>{thread.ticket.status === 'resolved' ? 'Resolved. This request and its messages are automatically deleted 48 hours after resolution. Sending another message before then reopens it.' : 'Sent to the technician. Replies appear here.'}</p>
       {token ? <small>{thread.ticket.requester_name} · {thread.ticket.requester_role} · {thread.ticket.class_name}<br />School ID: {thread.ticket.school_id}<br />Account ID: {thread.ticket.requester_id}</small> : null}</div>
-      {token ? <button type="button" disabled={busy} onClick={updateStatus}>{thread.ticket.status === 'open' ? 'Mark resolved' : 'Reopen'}</button> : <button type="button" disabled={busy} onClick={() => refresh()}>Check replies</button>}</div> : null}
+      {token ? <button type="button" disabled={busy} onClick={updateStatus}>{thread.ticket.status === 'open' ? 'Mark resolved' : 'Reopen'}</button> : null}</div> : null}
     <SupportMessages messages={thread?.messages || []} requesterRole={requesterRole} />
-    {error ? <p className="eg-support-error" role="alert">{error}</p> : null}
+    {error ? <div className="eg-support-error" role="alert">{error}<button type="button" disabled={busy} onClick={() => refresh()}>Try again</button></div> : null}
     {warning ? <div className="eg-support-warning" role="status">{warning}<button type="button" disabled={busy} onClick={retryEmail}>Retry email notification</button></div> : null}
     <SupportComposer value={input} setValue={setInput} disabled={busy || !thread} sending={busy} onSubmit={send} placeholder={token ? 'Write your reply…' : 'Message the technician…'} />
     <small className="eg-support-privacy">Never share passwords, verification codes or confidential records. Replies refresh automatically while this chat is open.</small>

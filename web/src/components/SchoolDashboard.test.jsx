@@ -105,15 +105,13 @@ test('paginates student results and switches both reports without changing other
   expect(screen.getByTestId('learning-report')).toHaveTextContent('Banu');
 });
 
-test('Refresh reloads the roster and both selected student reports', async () => {
+test('progress loads the roster and both selected reports without a refresh button', async () => {
   render(<SchoolDashboard session={session} onLogout={jest.fn()} />);
   await screen.findByTestId('learning-report');
-  const scoreCalls = getSchoolStudentLearningScore.mock.calls.length;
-  const cardCalls = getSchoolStudentReportCards.mock.calls.length;
-  fireEvent.click(screen.getByRole('button', { name: /Refresh/ }));
-  await waitFor(() => expect(getSchoolProgressStudents).toHaveBeenCalledTimes(2));
-  expect(getSchoolStudentLearningScore.mock.calls.length).toBeGreaterThan(scoreCalls);
-  expect(getSchoolStudentReportCards.mock.calls.length).toBeGreaterThan(cardCalls);
+  expect(screen.queryByRole('button', { name: /refresh/i })).not.toBeInTheDocument();
+  expect(getSchoolProgressStudents).toHaveBeenCalledTimes(1);
+  expect(getSchoolStudentLearningScore).toHaveBeenCalledWith('asha');
+  expect(getSchoolStudentReportCards).toHaveBeenCalledWith('asha');
 });
 
 test('roster errors are visible and retry recovers without showing Loading text', async () => {
