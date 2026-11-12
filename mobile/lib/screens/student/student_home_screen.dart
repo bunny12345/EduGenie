@@ -5,6 +5,7 @@ import '../../models/dashboard.dart';
 import '../../state/session_provider.dart';
 import '../../state/student_providers.dart';
 import '../../theme/app_colors.dart';
+import '../../widgets/student_shortcut_tile.dart';
 import '../../widgets/quick_sam_bubble.dart';
 import '../../widgets/rank_badge.dart';
 import '../../widgets/section_card.dart';
@@ -19,12 +20,7 @@ import 'student_rewards_screen.dart';
 import 'student_report_card_screen.dart';
 import 'homework/homework_screen.dart';
 
-/// Student Home — mirrors the web app's home page content (streak + weekly
-/// goal + the "Academics" quick-access icon grid) with the sidebar dropped
-/// and everything sized down for mobile. Other home sections (homework
-/// summary, subjects row, announcements, teachers) are intentionally left
-/// off per the current redesign scope — other pages are being redesigned
-/// separately next.
+/// Home-only presentation; destinations and shared portal styling stay intact.
 class StudentHomeScreen extends ConsumerWidget {
   const StudentHomeScreen({super.key});
 
@@ -34,16 +30,17 @@ class StudentHomeScreen extends ConsumerWidget {
 
     return Scaffold(
       appBar: AppBar(
-        titleSpacing: 12,
+        titleSpacing: 20,
+        toolbarHeight:
+            64 +
+            (MediaQuery.textScalerOf(context).scale(1) - 1).clamp(0, 2) * 24,
         centerTitle: false,
         title: const _ProfileChip(),
         actions: const [
-          _StreakTopChip(),
-          SizedBox(width: 6),
           _CoinsTopChip(),
-          SizedBox(width: 6),
+          SizedBox(width: 8),
           _AnnouncementBell(),
-          SizedBox(width: 12),
+          SizedBox(width: 16),
         ],
       ),
       floatingActionButton: const QuickSamBubble(),
@@ -55,16 +52,28 @@ class StudentHomeScreen extends ConsumerWidget {
         },
         child: ListView(
           // Extra bottom room so the floating Sam bubble never covers the Academics grid.
-          padding: const EdgeInsets.fromLTRB(16, 16, 16, 96),
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: const EdgeInsets.fromLTRB(20, 8, 20, 96),
           children: [
             // Left out entirely until the dashboard has loaded a school name.
             _SchoolBanner(name: dashboardAsync.value?.schoolName),
             dashboardAsync.when(
               loading: () => const SectionCard(child: SkeletonBox(height: 90)),
-              error: (e, _) => SectionCard(child: ErrorInline(message: 'Unable to load streak: $e')),
+              error: (e, _) => SectionCard(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    ErrorInline(message: 'Unable to load streak: $e'),
+                    TextButton(
+                      onPressed: () => ref.invalidate(dashboardProvider),
+                      child: const Text('Try again'),
+                    ),
+                  ],
+                ),
+              ),
               data: (d) => _StreakCard(streak: d.streak),
             ),
-            const SizedBox(height: 4),
+            const SizedBox(height: 12),
             const _AcademicsGrid(),
           ],
         ),
@@ -92,54 +101,63 @@ class _SchoolBanner extends StatelessWidget {
         gradient: const LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: [Color(0xFF0B6E6A), Color(0xFF12A38F), Color(0xFF3CCB9B)],
+          colors: [AppColors.sidebar, AppColors.sidebar2, AppColors.brand2],
         ),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.7), width: 1.5),
-        boxShadow: const [BoxShadow(color: Color(0x4012A38F), blurRadius: 18, offset: Offset(0, 8))],
+        borderRadius: BorderRadius.circular(26),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.16)),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x242B3BE0),
+            blurRadius: 24,
+            offset: Offset(0, 10),
+          ),
+        ],
       ),
       clipBehavior: Clip.antiAlias,
       child: Stack(
         children: [
-          Positioned(right: -28, top: -34, child: _BannerCircle(size: 110, alpha: 0.14)),
-          Positioned(left: -22, bottom: -40, child: _BannerCircle(size: 90, alpha: 0.10)),
+          Positioned(
+            right: -35,
+            top: -70,
+            child: _BannerCircle(size: 200, alpha: 0.06),
+          ),
+          Positioned(
+            right: -55,
+            bottom: -90,
+            child: _BannerCircle(size: 190, alpha: 0.06),
+          ),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
             child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Container(
-                  width: 48,
-                  height: 48,
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(15),
-                    boxShadow: const [BoxShadow(color: Color(0x33000000), blurRadius: 8, offset: Offset(0, 3))],
-                  ),
-                  alignment: Alignment.center,
-                  child: const Text('🏫', style: TextStyle(fontSize: 27)),
+                Image.asset(
+                  'assets/branding/logo.png',
+                  width: 38,
+                  height: 38,
+                  excludeFromSemantics: true,
                 ),
-                const SizedBox(width: 14),
-                Flexible(
+                const SizedBox(width: 12),
+                Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       const Text(
-                        'PROUDLY LEARNING AT',
-                        style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800, letterSpacing: 1.4, color: Color(0xFFFFF1B8)),
+                        'AcademiX · YOUR SCHOOL',
+                        style: TextStyle(
+                          color: Color(0xFFBFC8FF),
+                          fontSize: 10,
+                          fontWeight: FontWeight.w600,
+                        ),
                       ),
-                      const SizedBox(height: 2),
+                      const SizedBox(height: 4),
                       Text(
                         school,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
                         style: const TextStyle(
-                          fontSize: 19,
-                          fontWeight: FontWeight.w900,
-                          height: 1.15,
                           color: Colors.white,
-                          shadows: [Shadow(color: Color(0x40000000), blurRadius: 6, offset: Offset(0, 1))],
+                          fontSize: 18,
+                          fontWeight: FontWeight.w800,
+                          height: 1.2,
                         ),
                       ),
                     ],
@@ -165,62 +183,9 @@ class _BannerCircle extends StatelessWidget {
     return Container(
       width: size,
       height: size,
-      decoration: BoxDecoration(shape: BoxShape.circle, color: Colors.white.withValues(alpha: alpha)),
-    );
-  }
-}
-
-/// Mirrors `.eg-streak-chip` — the flame + day-count pill from the website's
-/// top bar, sized down for the mobile app bar. Same at-risk/done-today/zero
-/// color states as `.eg-streak-chip.at-risk`/`.done-today`/`.is-zero`.
-class _StreakTopChip extends ConsumerWidget {
-  const _StreakTopChip();
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final streak = ref.watch(dashboardProvider).value?.streak;
-    final days = streak?.days ?? 0;
-    final atRisk = streak?.atRisk ?? false;
-    final doneToday = streak?.activeToday ?? false;
-
-    late final Gradient gradient;
-    late final Color textColor;
-    if (days == 0) {
-      gradient = const LinearGradient(colors: [Color(0xFFF4F5FF), Color(0xFFF4F5FF)]);
-      textColor = const Color(0xFF6B7090);
-    } else if (atRisk) {
-      gradient = const LinearGradient(colors: [Color(0xFFFFD9D0), Color(0xFFFF8A6B)]);
-      textColor = const Color(0xFF7A1500);
-    } else if (doneToday) {
-      gradient = const LinearGradient(colors: [Color(0xFFFFD88A), Color(0xFFFF9D3C)]);
-      textColor = const Color(0xFF5C2200);
-    } else {
-      gradient = const LinearGradient(colors: [Color(0xFFFFE9C7), Color(0xFFFFCF8F)]);
-      textColor = const Color(0xFF7A2E00);
-    }
-
-    return InkWell(
-      borderRadius: BorderRadius.circular(999),
-      onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const StudentRewardsScreen())),
-      child: Container(
-        height: 28,
-        padding: const EdgeInsets.fromLTRB(8, 0, 9, 0),
-        decoration: BoxDecoration(
-          gradient: gradient,
-          borderRadius: BorderRadius.circular(999),
-          border: Border.all(color: const Color(0x4D28282D), width: 1.5),
-          boxShadow: days > 0 ? const [BoxShadow(color: Color(0x47FF9500), blurRadius: 8, offset: Offset(0, 2))] : null,
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text('🔥', style: TextStyle(fontSize: 14, color: days == 0 ? textColor.withValues(alpha: 0.5) : null)),
-            const SizedBox(width: 4),
-            Text('$days', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w900, color: textColor)),
-            const SizedBox(width: 2),
-            Text('d', style: TextStyle(fontSize: 9, fontWeight: FontWeight.w700, color: textColor.withValues(alpha: 0.8))),
-          ],
-        ),
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: Colors.white.withValues(alpha: alpha),
       ),
     );
   }
@@ -237,39 +202,94 @@ class _CoinsTopChip extends ConsumerWidget {
     final coins = rewardsAsync.value?.coins ?? 0;
     final isZero = coins <= 0;
 
-    return InkWell(
-      borderRadius: BorderRadius.circular(999),
-      onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const StudentRewardsScreen())),
-      child: Container(
-        height: 28,
-        padding: const EdgeInsets.fromLTRB(7, 0, 10, 0),
-        decoration: BoxDecoration(
-          gradient: isZero
-              ? const LinearGradient(colors: [Color(0xFFF6EFD6), Color(0xFFECDFB4)])
-              : const LinearGradient(colors: [Color(0xFFFFF4C2), Color(0xFFFFD85E), Color(0xFFF5B010)]),
-          borderRadius: BorderRadius.circular(999),
-          border: Border.all(color: isZero ? const Color(0xFFDCC98E) : const Color(0x4D28282D), width: 1.5),
-          boxShadow: isZero ? null : const [BoxShadow(color: Color(0x6AD8A014), blurRadius: 10, offset: Offset(0, 2))],
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              width: 18,
-              height: 18,
-              alignment: Alignment.center,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                gradient: isZero
-                    ? const LinearGradient(colors: [Color(0xFFF3ECD6), Color(0xFFBFA870)])
-                    : const RadialGradient(colors: [Color(0xFFFFF7D4), Color(0xFFFFE17A), Color(0xFFF7B731)]),
-                border: Border.all(color: isZero ? const Color(0xFFB7A375) : const Color(0xFFB9791A), width: 1.2),
-              ),
-              child: Text('★', style: TextStyle(fontSize: 9, color: isZero ? const Color(0xFF8A7134) : const Color(0xFFA86A08))),
+    return Semantics(
+      button: true,
+      label: '$coins coins. Open rewards',
+      child: InkWell(
+        borderRadius: BorderRadius.circular(999),
+        onTap: () => Navigator.of(
+          context,
+        ).push(MaterialPageRoute(builder: (_) => const StudentRewardsScreen())),
+        child: Container(
+          constraints: const BoxConstraints(minHeight: 44),
+          padding: const EdgeInsets.fromLTRB(7, 0, 10, 0),
+          decoration: BoxDecoration(
+            gradient: isZero
+                ? const LinearGradient(
+                    colors: [Color(0xFFF6EFD6), Color(0xFFECDFB4)],
+                  )
+                : const LinearGradient(
+                    colors: [
+                      Color(0xFFFFF4C2),
+                      Color(0xFFFFD85E),
+                      Color(0xFFF5B010),
+                    ],
+                  ),
+            borderRadius: BorderRadius.circular(999),
+            border: Border.all(
+              color: isZero ? const Color(0xFFDCC98E) : const Color(0x4D28282D),
+              width: 1.5,
             ),
-            const SizedBox(width: 5),
-            Text('$coins', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w900, color: isZero ? const Color(0xFF8A7134) : const Color(0xFF6A4200))),
-          ],
+            boxShadow: isZero
+                ? null
+                : const [
+                    BoxShadow(
+                      color: Color(0x6AD8A014),
+                      blurRadius: 10,
+                      offset: Offset(0, 2),
+                    ),
+                  ],
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 18,
+                height: 18,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  gradient: isZero
+                      ? const LinearGradient(
+                          colors: [Color(0xFFF3ECD6), Color(0xFFBFA870)],
+                        )
+                      : const RadialGradient(
+                          colors: [
+                            Color(0xFFFFF7D4),
+                            Color(0xFFFFE17A),
+                            Color(0xFFF7B731),
+                          ],
+                        ),
+                  border: Border.all(
+                    color: isZero
+                        ? const Color(0xFFB7A375)
+                        : const Color(0xFFB9791A),
+                    width: 1.2,
+                  ),
+                ),
+                child: Text(
+                  '★',
+                  style: TextStyle(
+                    fontSize: 9,
+                    color: isZero
+                        ? const Color(0xFF8A7134)
+                        : const Color(0xFFA86A08),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 5),
+              Text(
+                '$coins',
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w900,
+                  color: isZero
+                      ? const Color(0xFF8A7134)
+                      : const Color(0xFF6A4200),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -286,38 +306,59 @@ class _AnnouncementBell extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final count = ref.watch(dashboardProvider).value?.announcements.length ?? 0;
 
-    return InkWell(
-      borderRadius: BorderRadius.circular(999),
-      onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const StudentAnnouncementsScreen())),
-      child: Container(
-        width: 28,
-        height: 28,
-        alignment: Alignment.center,
-        decoration: BoxDecoration(
-          color: Colors.white,
-          shape: BoxShape.circle,
-          border: Border.all(color: const Color(0x4D28282D), width: 1.5),
+    return Semantics(
+      button: true,
+      label:
+          'Announcements, $count ${count == 1 ? 'announcement' : 'announcements'}',
+      child: InkWell(
+        borderRadius: BorderRadius.circular(999),
+        onTap: () => Navigator.of(context).push(
+          MaterialPageRoute(builder: (_) => const StudentAnnouncementsScreen()),
         ),
-        child: Stack(
-          clipBehavior: Clip.none,
-          children: [
-            Icon(Icons.notifications_outlined, size: 16, color: AppColors.text),
-            if (count > 0)
-              Positioned(
-                top: -4,
-                right: -4,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
-                  constraints: const BoxConstraints(minWidth: 14),
-                  decoration: BoxDecoration(color: AppColors.danger, borderRadius: BorderRadius.circular(999)),
-                  child: Text(
-                    count > 9 ? '9+' : '$count',
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(fontSize: 8, fontWeight: FontWeight.w800, color: Colors.white),
+        child: Container(
+          width: 44,
+          height: 44,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: AppColors.card,
+            borderRadius: BorderRadius.circular(15),
+            border: Border.all(color: AppColors.line),
+          ),
+          child: Stack(
+            clipBehavior: Clip.none,
+            children: [
+              Icon(
+                Icons.notifications_none_rounded,
+                size: 22,
+                color: AppColors.text,
+              ),
+              if (count > 0)
+                Positioned(
+                  top: -4,
+                  right: -4,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 4,
+                      vertical: 1,
+                    ),
+                    constraints: const BoxConstraints(minWidth: 14),
+                    decoration: BoxDecoration(
+                      color: AppColors.danger,
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                    child: Text(
+                      count > 9 ? '9+' : '$count',
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                        fontSize: 8,
+                        fontWeight: FontWeight.w800,
+                        color: Colors.white,
+                      ),
+                    ),
                   ),
                 ),
-              ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -375,27 +416,52 @@ class _ProfileChipState extends ConsumerState<_ProfileChip> {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(label, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: Color(0xFF1F2340))),
+          Text(
+            label,
+            style: const TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w700,
+              color: Color(0xFF1F2340),
+            ),
+          ),
           const SizedBox(width: 4),
-          Expanded(child: Text(value, style: const TextStyle(fontSize: 11, color: Color(0xFF475569), fontWeight: FontWeight.w500))),
+          Expanded(
+            child: Text(
+              value,
+              style: const TextStyle(
+                fontSize: 11,
+                color: Color(0xFF475569),
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
         ],
       ),
     );
   }
 
-  OverlayEntry _buildOverlay(String name, String className, DashboardData? dashboard) {
+  OverlayEntry _buildOverlay(
+    String name,
+    String className,
+    DashboardData? dashboard,
+  ) {
     final emoji = _avatarEmoji(dashboard?.gender);
     final schoolName = dashboard?.schoolName ?? '';
     final gender = dashboard?.gender ?? '';
     final loginId = dashboard?.loginId ?? '';
-    final hasDetails = className.isNotEmpty || gender.isNotEmpty || loginId.isNotEmpty;
+    final hasDetails =
+        className.isNotEmpty || gender.isNotEmpty || loginId.isNotEmpty;
     final badge = ref.read(reportCardsProvider).value?.badge;
 
     return OverlayEntry(
       builder: (context) => Stack(
         children: [
           Positioned.fill(
-            child: GestureDetector(behavior: HitTestBehavior.opaque, onTap: _close, child: const SizedBox.expand()),
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: _close,
+              child: const SizedBox.expand(),
+            ),
           ),
           CompositedTransformFollower(
             link: _link,
@@ -410,7 +476,13 @@ class _ProfileChipState extends ConsumerState<_ProfileChip> {
                   color: Colors.white,
                   borderRadius: BorderRadius.circular(14),
                   border: Border.all(color: const Color(0xFFE4E8F8)),
-                  boxShadow: const [BoxShadow(color: Color(0x29272D64), blurRadius: 32, offset: Offset(0, 10))],
+                  boxShadow: const [
+                    BoxShadow(
+                      color: Color(0x29272D64),
+                      blurRadius: 32,
+                      offset: Offset(0, 10),
+                    ),
+                  ],
                 ),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
@@ -420,30 +492,59 @@ class _ProfileChipState extends ConsumerState<_ProfileChip> {
                       height: 56,
                       decoration: const BoxDecoration(
                         shape: BoxShape.circle,
-                        gradient: LinearGradient(colors: [Color(0xFFF0EDFF), Color(0xFFE8F0FF)]),
+                        gradient: LinearGradient(
+                          colors: [Color(0xFFF0EDFF), Color(0xFFE8F0FF)],
+                        ),
                       ),
                       alignment: Alignment.center,
                       child: Text(emoji, style: const TextStyle(fontSize: 30)),
                     ),
                     const SizedBox(height: 8),
-                    Text(name, style: const TextStyle(fontSize: 14, color: Color(0xFF1E293B), fontWeight: FontWeight.w700)),
+                    Text(
+                      name,
+                      style: const TextStyle(
+                        fontSize: 14,
+                        color: Color(0xFF1E293B),
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
                     if (schoolName.isNotEmpty) ...[
                       const SizedBox(height: 6),
                       Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
-                        decoration: BoxDecoration(color: const Color(0xFFEEF0FF), borderRadius: BorderRadius.circular(999)),
-                        child: Text('🏫 $schoolName', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Color(0xFF6366F1))),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 3,
+                        ),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFEEF0FF),
+                          borderRadius: BorderRadius.circular(999),
+                        ),
+                        child: Text(
+                          '🏫 $schoolName',
+                          style: const TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w600,
+                            color: Color(0xFF6366F1),
+                          ),
+                        ),
                       ),
                     ],
-                    if (badge != null && badge.rank >= 1 && badge.rank <= 3) ...[
+                    if (badge != null &&
+                        badge.rank >= 1 &&
+                        badge.rank <= 3) ...[
                       const SizedBox(height: 8),
                       Container(
                         width: double.infinity,
                         padding: const EdgeInsets.all(8),
                         decoration: BoxDecoration(
-                          gradient: const LinearGradient(colors: [Color(0xFFFFF9DF), Colors.white]),
+                          gradient: const LinearGradient(
+                            colors: [Color(0xFFFFF9DF), Colors.white],
+                          ),
                           borderRadius: BorderRadius.circular(14),
-                          border: Border.all(color: const Color(0xFFF3D36B), width: 1.5),
+                          border: Border.all(
+                            color: const Color(0xFFF3D36B),
+                            width: 1.5,
+                          ),
                         ),
                         child: Column(
                           children: [
@@ -452,7 +553,11 @@ class _ProfileChipState extends ConsumerState<_ProfileChip> {
                             Text(
                               '${rankOrdinal(badge.rank)} in class · ${badge.examName}',
                               textAlign: TextAlign.center,
-                              style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: Color(0xFF6B4A00)),
+                              style: const TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w700,
+                                color: Color(0xFF6B4A00),
+                              ),
                             ),
                           ],
                         ),
@@ -463,13 +568,23 @@ class _ProfileChipState extends ConsumerState<_ProfileChip> {
                       Container(
                         width: double.infinity,
                         padding: const EdgeInsets.only(top: 8),
-                        decoration: const BoxDecoration(border: Border(top: BorderSide(color: Color(0xFFF0F2FF)))),
+                        decoration: const BoxDecoration(
+                          border: Border(
+                            top: BorderSide(color: Color(0xFFF0F2FF)),
+                          ),
+                        ),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            if (className.isNotEmpty) _detailRow('Class:', className),
-                            if (gender.isNotEmpty) _detailRow('Gender:', gender[0].toUpperCase() + gender.substring(1)),
-                            if (loginId.isNotEmpty) _detailRow('Login ID:', loginId),
+                            if (className.isNotEmpty)
+                              _detailRow('Class:', className),
+                            if (gender.isNotEmpty)
+                              _detailRow(
+                                'Gender:',
+                                gender[0].toUpperCase() + gender.substring(1),
+                              ),
+                            if (loginId.isNotEmpty)
+                              _detailRow('Login ID:', loginId),
                           ],
                         ),
                       ),
@@ -494,52 +609,88 @@ class _ProfileChipState extends ConsumerState<_ProfileChip> {
 
     return CompositedTransformTarget(
       link: _link,
-      child: GestureDetector(
-        onTap: () => _toggle(name, className, dashboard),
-        child: Container(
-          constraints: const BoxConstraints(minHeight: 30),
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(999),
-            border: Border.all(color: const Color(0x4D28282D), width: 1.5),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Stack(
-                clipBehavior: Clip.none,
-                children: [
-                  Container(
-                    width: 26,
-                    height: 26,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      border: Border.all(color: const Color(0xFFDDE2FF)),
-                      gradient: const LinearGradient(colors: [Color(0xFFF3F5FF), Color(0xFFE8ECFF)]),
+      child: Semantics(
+        button: true,
+        label: 'Open student profile',
+        child: GestureDetector(
+          onTap: () => _toggle(name, className, dashboard),
+          child: Container(
+            constraints: const BoxConstraints(minHeight: 48),
+            padding: const EdgeInsets.symmetric(vertical: 5),
+            decoration: BoxDecoration(color: Colors.transparent),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Stack(
+                  clipBehavior: Clip.none,
+                  children: [
+                    Container(
+                      width: 38,
+                      height: 38,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        border: Border.all(color: const Color(0xFFDDE2FF)),
+                        gradient: const LinearGradient(
+                          colors: [Color(0xFFF3F5FF), Color(0xFFE8ECFF)],
+                        ),
+                      ),
+                      alignment: Alignment.center,
+                      child: Text(
+                        _avatarEmoji(dashboard?.gender),
+                        style: const TextStyle(fontSize: 22),
+                      ),
                     ),
-                    alignment: Alignment.center,
-                    child: Text(_avatarEmoji(dashboard?.gender), style: const TextStyle(fontSize: 12)),
+                    if (badge != null && badge.rank >= 1 && badge.rank <= 3)
+                      Positioned(
+                        right: -9,
+                        bottom: -11,
+                        child: RankBadge(
+                          rank: badge.rank,
+                          size: 22,
+                          animated: false,
+                        ),
+                      ),
+                  ],
+                ),
+                const SizedBox(width: 8),
+                Flexible(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        'Hi, $name',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w800,
+                          height: 1.3,
+                          color: AppColors.text,
+                        ),
+                      ),
+                      Text(
+                        className.isNotEmpty
+                            ? 'Student · $className'
+                            : 'Student',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: AppColors.muted,
+                          height: 1.3,
+                        ),
+                      ),
+                    ],
                   ),
-                  if (badge != null && badge.rank >= 1 && badge.rank <= 3)
-                    Positioned(right: -9, bottom: -11, child: RankBadge(rank: badge.rank, size: 22, animated: false)),
-                ],
-              ),
-              const SizedBox(width: 8),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text('Hi, $name', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, height: 1.1, color: AppColors.text)),
-                  Text(
-                    className.isNotEmpty ? 'Student · $className' : 'Student',
-                    style: const TextStyle(fontSize: 10, color: Color(0xFF7C82A7), height: 1.1),
-                  ),
-                ],
-              ),
-              const SizedBox(width: 6),
-              const Text('▾', style: TextStyle(fontSize: 10, color: Color(0xFF7C82A7))),
-            ],
+                ),
+                const SizedBox(width: 6),
+                const Text(
+                  '▾',
+                  style: TextStyle(fontSize: 10, color: Color(0xFF7C82A7)),
+                ),
+              ],
+            ),
           ),
         ),
       ),
@@ -547,146 +698,282 @@ class _ProfileChipState extends ConsumerState<_ProfileChip> {
   }
 }
 
-/// Mirrors `.eg-streak-box` in `web/src/App.css` — golden glow ring by
-/// default, peach gradient when done-today, salmon gradient + pulsing nudge
-/// banner when at-risk, milestone badges row, and the gold gradient progress
-/// bar toward the next badge.
-class _StreakCard extends StatelessWidget {
+class _StreakCard extends StatefulWidget {
   final StreakInfo streak;
 
   const _StreakCard({required this.streak});
 
   @override
+  State<_StreakCard> createState() => _StreakCardState();
+}
+
+class _StreakCardState extends State<_StreakCard> {
+  bool _expanded = false;
+
+  @override
   Widget build(BuildContext context) {
+    final streak = widget.streak;
     final days = streak.days;
     final atRisk = streak.atRisk;
     final doneToday = streak.activeToday;
 
-    late final Color ringColor;
-    late final Gradient bgGradient;
-    if (atRisk) {
-      ringColor = const Color(0xFFFFB4A0);
-      bgGradient = const LinearGradient(colors: [Color(0xFFFFF5F2), Color(0xFFFFE6DE)], begin: Alignment.topLeft, end: Alignment.bottomRight);
-    } else if (doneToday) {
-      ringColor = const Color(0xFFFFD08A);
-      bgGradient = const LinearGradient(colors: [Color(0xFFFFFAF0), Color(0xFFFFF2D9)], begin: Alignment.topLeft, end: Alignment.bottomRight);
-    } else {
-      ringColor = const Color(0xFFF5B942);
-      bgGradient = const LinearGradient(colors: [Color(0xFFFAFBFF), Color(0xFFFAFBFF)]);
-    }
+    final accent = atRisk ? const Color(0xFFE26735) : const Color(0xFFD58A16);
+    final next = streak.nextMilestone;
 
     return Container(
       width: double.infinity,
-      margin: const EdgeInsets.only(bottom: 8),
-      padding: const EdgeInsets.fromLTRB(10, 8, 10, 9),
+      key: const ValueKey('student-home-streak'),
+      padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        gradient: bgGradient,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: ringColor, width: 1.5),
+        color: AppColors.card,
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: AppColors.line),
         boxShadow: [
-          BoxShadow(color: Colors.black.withValues(alpha: 0.08), blurRadius: 16, offset: const Offset(0, 6)),
-          BoxShadow(color: ringColor.withValues(alpha: 0.4), blurRadius: 8),
+          BoxShadow(
+            color: AppColors.sidebar.withValues(alpha: 0.04),
+            blurRadius: 20,
+            offset: const Offset(0, 6),
+          ),
         ],
       ),
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            'Current Streak${doneToday ? ' ✅' : ''}',
-            style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: AppColors.text),
-          ),
-          const SizedBox(height: 2),
-          Text('$days', style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800, color: AppColors.brand, height: 1)),
-          Text('Day${days == 1 ? '' : 's'} 🔥', style: const TextStyle(fontSize: 9, color: Color(0xFF6F76A2))),
-          if (atRisk) ...[
-            const SizedBox(height: 6),
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
-              decoration: BoxDecoration(
-                color: const Color(0xFFFFECE6),
-                borderRadius: BorderRadius.circular(7),
-                border: Border.all(color: const Color(0xFFFFC4B3)),
+          Row(
+            children: [
+              Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  color: accent.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: Icon(
+                  Icons.local_fire_department_rounded,
+                  color: accent,
+                  size: 30,
+                ),
               ),
-              child: Text(
-                streak.freezesAvailable > 0
-                    ? 'Study today to keep your streak! ❄️ A freeze will protect it once.'
-                    : 'Study today or your streak resets!',
-                textAlign: TextAlign.center,
-                style: const TextStyle(fontSize: 9, fontWeight: FontWeight.w700, color: Color(0xFFB23C17), height: 1.25),
-              ),
-            ),
-          ] else if (days > 0 && (streak.freezeUsed || streak.freezesAvailable > 0)) ...[
-            const SizedBox(height: 4),
-            Text(
-              streak.freezeUsed ? '❄️ A freeze saved a missed day' : '❄️ Freeze ready — one missed day is protected',
-              style: const TextStyle(fontSize: 8, fontWeight: FontWeight.w700, color: Color(0xFF2F7FB0)),
-            ),
-          ],
-          if (streak.milestones.isNotEmpty) ...[
-            const SizedBox(height: 6),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: streak.milestones.map((m) {
-                final badgeGradient = m.earned
-                    ? const LinearGradient(colors: [Color(0xFFFFF6E6), Color(0xFFFFE9C7)], begin: Alignment.topLeft, end: Alignment.bottomRight)
-                    : const LinearGradient(colors: [Color(0xFFFAFBFF), Color(0xFFFAFBFF)]);
-                return Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 2),
-                  child: Container(
-                    constraints: const BoxConstraints(minWidth: 26),
-                    padding: const EdgeInsets.fromLTRB(4, 3, 4, 2),
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(6),
-                      gradient: badgeGradient,
-                      border: Border.all(color: m.earned ? const Color(0xFFFFCF8F) : const Color(0xFFECEFF9)),
-                      boxShadow: m.earned ? const [BoxShadow(color: Color(0x2EFF9500), blurRadius: 5, offset: Offset(0, 1))] : null,
-                    ),
-                    child: Opacity(
-                      opacity: m.earned ? 1 : 0.65,
-                      child: Column(
-                        children: [
-                          Text(m.earned ? m.icon : '🔒', style: const TextStyle(fontSize: 12, height: 1)),
-                          Text(
-                            '${m.days}d',
-                            style: TextStyle(fontSize: 7, fontWeight: FontWeight.w700, color: m.earned ? const Color(0xFFA15C00) : const Color(0xFF6B7090)),
-                          ),
-                        ],
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Current Streak',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: AppColors.muted,
                       ),
                     ),
+                    Text(
+                      '$days ${days == 1 ? 'day' : 'days'}',
+                      style: TextStyle(
+                        fontSize: 23,
+                        fontWeight: FontWeight.w800,
+                        color: AppColors.text,
+                        height: 1.2,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              if (doneToday)
+                Tooltip(
+                  message: 'Learning activity completed today',
+                  child: Icon(
+                    Icons.check_circle_rounded,
+                    color: AppColors.ok,
+                    size: 26,
                   ),
-                );
-              }).toList(),
+                ),
+              IconButton(
+                tooltip: _expanded
+                    ? 'Hide streak details'
+                    : 'Show streak details',
+                onPressed: () => setState(() => _expanded = !_expanded),
+                icon: Icon(
+                  _expanded
+                      ? Icons.expand_less_rounded
+                      : Icons.expand_more_rounded,
+                  color: AppColors.muted,
+                ),
+              ),
+            ],
+          ),
+          if (!_expanded) ...[
+            const SizedBox(height: 8),
+            if (next != null && next > 0) ...[
+              ClipRRect(
+                borderRadius: BorderRadius.circular(999),
+                child: LinearProgressIndicator(
+                  value: (days / next).clamp(0, 1),
+                  minHeight: 5,
+                  backgroundColor: AppColors.line,
+                  color: accent,
+                  semanticsLabel: 'Progress to $next-day badge',
+                ),
+              ),
+              const SizedBox(height: 6),
+            ],
+            Text(
+              atRisk
+                  ? 'Study today to protect your streak.'
+                  : doneToday
+                  ? 'Today’s learning complete. Keep it up!'
+                  : days == 0
+                  ? 'One small step starts your streak.'
+                  : next != null
+                  ? '$days / $next days toward your next badge'
+                  : 'Keep your learning rhythm going.',
+              style: TextStyle(
+                fontSize: 11,
+                height: 1.3,
+                color: AppColors.muted,
+              ),
             ),
           ],
-          if (streak.nextMilestone != null) ...[
-            const SizedBox(height: 5),
-            ClipRRect(
-              borderRadius: BorderRadius.circular(999),
-              child: Container(
+          if (_expanded) ...[
+            if (!atRisk && (doneToday || days == 0)) ...[
+              const SizedBox(height: 8),
+              Text(
+                doneToday
+                    ? 'A little effort today. A stronger you tomorrow.'
+                    : 'Your next chapter starts with one small step.',
+                style: TextStyle(
+                  fontSize: 12,
+                  height: 1.5,
+                  color: AppColors.muted,
+                ),
+              ),
+            ],
+            if (atRisk) ...[
+              const SizedBox(height: 8),
+              Container(
                 width: double.infinity,
-                height: 8,
-                color: const Color(0xFFECECF6),
-                child: FractionallySizedBox(
-                  alignment: Alignment.centerLeft,
-                  widthFactor: (days / streak.nextMilestone!).clamp(0, 1),
-                  child: Container(
-                    decoration: const BoxDecoration(gradient: LinearGradient(colors: [Color(0xFFFFD23F), Color(0xFFFFB200)])),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 8,
+                ),
+                decoration: BoxDecoration(
+                  color: accent.withValues(alpha: 0.10),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Text(
+                  streak.freezesAvailable > 0
+                      ? 'Study today to keep your streak! ❄️ A freeze will protect it once.'
+                      : 'Study today or your streak resets!',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.isDark
+                        ? const Color(0xFFFFBB9D)
+                        : const Color(0xFF9B401B),
+                    height: 1.4,
                   ),
                 ),
               ),
-            ),
-            const SizedBox(height: 3),
-            Text(
-              '${streak.daysToNextMilestone} day${streak.daysToNextMilestone == 1 ? '' : 's'} to your ${streak.nextMilestone}-day badge',
-              style: const TextStyle(fontSize: 8, fontWeight: FontWeight.w600, color: Color(0xFF7F86AE)),
-            ),
-          ],
-          if (streak.longest > 0) ...[
-            const SizedBox(height: 2),
-            Text(
-              '🏆 Best: ${streak.longest} day${streak.longest == 1 ? '' : 's'}',
-              style: const TextStyle(fontSize: 8, fontWeight: FontWeight.w600, color: Color(0xFF8A6D3B)),
-            ),
+            ] else if (days > 0 &&
+                (streak.freezeUsed || streak.freezesAvailable > 0)) ...[
+              const SizedBox(height: 10),
+              Text(
+                streak.freezeUsed
+                    ? '❄️ A freeze saved a missed day'
+                    : '❄️ Freeze ready — one missed day is protected',
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600,
+                  color: AppColors.muted,
+                ),
+              ),
+            ],
+            if (streak.milestones.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: streak.milestones.map((m) {
+                  return Semantics(
+                    label:
+                        '${m.days}-day badge, ${m.earned ? 'earned' : 'locked'}',
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 7,
+                      ),
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(10),
+                        color: m.earned
+                            ? accent.withValues(alpha: 0.12)
+                            : AppColors.background,
+                        border: Border.all(
+                          color: m.earned
+                              ? accent.withValues(alpha: 0.25)
+                              : AppColors.line,
+                        ),
+                      ),
+                      child: ExcludeSemantics(
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              m.earned
+                                  ? Icons.workspace_premium_rounded
+                                  : Icons.lock_outline_rounded,
+                              size: 14,
+                              color: m.earned ? accent : AppColors.muted,
+                            ),
+                            const SizedBox(width: 4),
+                            Text(
+                              '${m.days}d',
+                              style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w700,
+                                color: AppColors.text,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  );
+                }).toList(),
+              ),
+            ],
+            if (next != null && next > 0) ...[
+              const SizedBox(height: 10),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(999),
+                child: LinearProgressIndicator(
+                  value: (days / next).clamp(0, 1),
+                  minHeight: 6,
+                  backgroundColor: AppColors.line,
+                  color: accent,
+                  semanticsLabel: 'Progress to $next-day badge',
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                '${streak.daysToNextMilestone} day${streak.daysToNextMilestone == 1 ? '' : 's'} to your ${streak.nextMilestone}-day badge',
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w500,
+                  color: AppColors.muted,
+                ),
+              ),
+            ],
+            if (streak.longest > 0) ...[
+              const SizedBox(height: 8),
+              Text(
+                'Personal best: ${streak.longest} day${streak.longest == 1 ? '' : 's'}',
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600,
+                  color: AppColors.muted,
+                ),
+              ),
+            ],
           ],
         ],
       ),
@@ -694,35 +981,22 @@ class _StreakCard extends StatelessWidget {
   }
 }
 
-/// The site-wide "3D button" frame — a light-black ring border + soft drop
-/// shadow, ported from `.eg-subject-hw-card button` in `App.css`.
-const Color _frame3dColor = Color(0xFF46464E);
-
-Border _frame3dBorder({double alpha = 0.35, double width = 1.5}) => Border.all(color: _frame3dColor.withValues(alpha: alpha), width: width);
-
-List<BoxShadow> _frame3dShadow({double alpha = 0.18, double blur = 10}) =>
-    [BoxShadow(color: Colors.black.withValues(alpha: alpha), blurRadius: blur, offset: const Offset(0, 4))];
-
 class _AcademicItem {
   final String gifAsset;
   final String label;
-  final Color background;
+  final String subtitle;
+  final Color accent;
   final WidgetBuilder builder;
 
   const _AcademicItem({
     required this.gifAsset,
     required this.label,
-    required this.background,
+    required this.subtitle,
+    required this.accent,
     required this.builder,
   });
 }
 
-/// Mirrors the web home page's "Academics" quick-access grid
-/// (`eg-academ-grid`/`eg-academ-card`/`eg-academ-icon` in
-/// `StudentDashboard.jsx`/`App.css`) exactly — same 9 destinations, same
-/// bundled GIF icons, same white bordered card panel and icon-tile
-/// background tints, and a press-down "3D button" tactile effect standing in
-/// for web's hover-lift/active-flatten (mobile has no hover).
 class _AcademicsGrid extends StatelessWidget {
   const _AcademicsGrid();
 
@@ -730,55 +1004,64 @@ class _AcademicsGrid extends StatelessWidget {
     _AcademicItem(
       gifAsset: 'assets/gifs/ai-tutor.gif',
       label: 'AI Tutor',
-      background: const Color(0xFFEEF0FF),
+      subtitle: 'Ask & discover',
+      accent: AppColors.brand,
       builder: (_) => const StudentAiTutorScreen(),
     ),
     _AcademicItem(
       gifAsset: 'assets/gifs/homework.gif',
       label: 'Homework',
-      background: const Color(0xFFFEF3E2),
+      subtitle: 'Your daily tasks',
+      accent: const Color(0xFFD58A16),
       builder: (_) => const HomeworkScreen(),
     ),
     _AcademicItem(
       gifAsset: 'assets/gifs/my-orchard.gif',
       label: 'My Orchard',
-      background: const Color(0xFFE8F8EE),
+      subtitle: 'Watch it grow',
+      accent: const Color(0xFF10B981),
       builder: (_) => const StudentOrchardScreen(),
     ),
     _AcademicItem(
       gifAsset: 'assets/gifs/mock-tests.gif',
       label: 'Report Card',
-      background: const Color(0xFFFDE8EE),
+      subtitle: 'Every milestone',
+      accent: const Color(0xFFEC4899),
       builder: (_) => const StudentReportCardScreen(),
     ),
     _AcademicItem(
       gifAsset: 'assets/gifs/progress.gif',
       label: 'Progress',
-      background: const Color(0xFFE0F2FE),
+      subtitle: 'See your growth',
+      accent: const Color(0xFF3B82F6),
       builder: (_) => const StudentProgressScreen(),
     ),
     _AcademicItem(
       gifAsset: 'assets/gifs/games.gif',
       label: 'Games',
-      background: const Color(0xFFFEF9E7),
+      subtitle: 'Play & learn',
+      accent: const Color(0xFFF97316),
       builder: (_) => const StudentGamesScreen(),
     ),
     _AcademicItem(
       gifAsset: 'assets/gifs/calendar.gif',
       label: 'Calendar',
-      background: const Color(0xFFF0E6FF),
+      subtitle: 'Plan your days',
+      accent: const Color(0xFF8B5CF6),
       builder: (_) => const StudentCalendarScreen(),
     ),
     _AcademicItem(
       gifAsset: 'assets/gifs/rewards.gif',
       label: 'Rewards',
-      background: const Color(0xFFFFF7ED),
+      subtitle: 'Celebrate effort',
+      accent: const Color(0xFFD58A16),
       builder: (_) => const StudentRewardsScreen(),
     ),
     _AcademicItem(
       gifAsset: 'assets/gifs/library.gif',
       label: 'Library',
-      background: const Color(0xFFECFDF5),
+      subtitle: 'Explore more',
+      accent: const Color(0xFF06B6D4),
       builder: (_) => const StudentLibraryScreen(),
     ),
   ];
@@ -786,31 +1069,82 @@ class _AcademicsGrid extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
+      key: const ValueKey('student-home-academics'),
       width: double.infinity,
       margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
         color: AppColors.card,
-        borderRadius: BorderRadius.circular(14),
-        border: _frame3dBorder(),
-        boxShadow: _frame3dShadow(),
+        borderRadius: BorderRadius.circular(26),
+        border: Border.all(color: AppColors.line),
+        boxShadow: [
+          BoxShadow(
+            color: AppColors.sidebar.withValues(alpha: 0.04),
+            blurRadius: 24,
+            offset: const Offset(0, 6),
+          ),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text('Academics', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700)),
-          const SizedBox(height: 10),
-          GridView.builder(
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: 3,
-              mainAxisSpacing: 10,
-              crossAxisSpacing: 10,
-              childAspectRatio: 0.82,
-            ),
-            itemCount: _items.length,
-            itemBuilder: (context, i) => _AcademicCard(item: _items[i]),
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: AppColors.brandSoft,
+                  borderRadius: BorderRadius.circular(11),
+                ),
+                child: const Icon(
+                  Icons.grid_view_rounded,
+                  color: AppColors.brand,
+                  size: 19,
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Academics',
+                      style: TextStyle(
+                        color: AppColors.text,
+                        fontSize: 18,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    Text(
+                      'Your world of learning',
+                      style: TextStyle(color: AppColors.muted, fontSize: 11),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final scale = MediaQuery.textScalerOf(context).scale(1);
+              final columns = constraints.maxWidth < 280 || scale > 1.25
+                  ? 2
+                  : 3;
+              return GridView.builder(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                padding: EdgeInsets.zero,
+                gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: columns,
+                  mainAxisSpacing: 10,
+                  crossAxisSpacing: 10,
+                  mainAxisExtent: 116 + (scale - 1).clamp(0, 3) * 70,
+                ),
+                itemCount: _items.length,
+                itemBuilder: (context, i) => _AcademicCard(item: _items[i]),
+              );
+            },
           ),
         ],
       ),
@@ -818,66 +1152,20 @@ class _AcademicsGrid extends StatelessWidget {
   }
 }
 
-/// One "eg-academ-card" tile — white bordered panel, colored icon tile with
-/// the bundled GIF, label below, and a tactile press-down scale/border effect.
-class _AcademicCard extends StatefulWidget {
+class _AcademicCard extends StatelessWidget {
   final _AcademicItem item;
 
   const _AcademicCard({required this.item});
 
   @override
-  State<_AcademicCard> createState() => _AcademicCardState();
-}
-
-class _AcademicCardState extends State<_AcademicCard> {
-  bool _pressed = false;
-
-  @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTapDown: (_) => setState(() => _pressed = true),
-      onTapCancel: () => setState(() => _pressed = false),
-      onTapUp: (_) => setState(() => _pressed = false),
-      onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: widget.item.builder)),
-      child: AnimatedScale(
-        scale: _pressed ? 0.94 : 1.0,
-        duration: const Duration(milliseconds: 110),
-        curve: Curves.easeOut,
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 110),
-          curve: Curves.easeOut,
-          padding: const EdgeInsets.fromLTRB(6, 10, 6, 8),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(14),
-            border: _pressed ? _frame3dBorder() : Border.all(color: const Color(0xFFECE8FF)),
-            boxShadow: _pressed ? _frame3dShadow() : const [],
-          ),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                width: 48,
-                height: 48,
-                alignment: Alignment.center,
-                decoration: BoxDecoration(color: widget.item.background, borderRadius: BorderRadius.circular(14)),
-                child: Image.asset(widget.item.gifAsset, width: 32, height: 32, fit: BoxFit.contain),
-              ),
-              const SizedBox(height: 5),
-              Text(
-                widget.item.label,
-                textAlign: TextAlign.center,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(fontSize: 10.5, fontWeight: FontWeight.w600, color: Color(0xFF374151), height: 1.15),
-              ),
-            ],
-          ),
-        ),
-      ),
+    return StudentShortcutTile(
+      label: item.label,
+      hint: item.subtitle,
+      asset: item.gifAsset,
+      accent: item.accent,
+      onTap: () =>
+          Navigator.of(context).push(MaterialPageRoute(builder: item.builder)),
     );
   }
 }
-

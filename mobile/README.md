@@ -6,6 +6,34 @@ sessions show a web-only/unsupported notice and can sign out, never fall through
 to the student portal. Web school administration and existing API/session
 contracts remain unchanged.
 
+## Student Home design
+
+The student Home screen uses a navy/indigo school banner, a readable streak
+summary with milestone badges, and compact illustrated Academics tiles with
+clear labels and screen-reader hints. The nine destinations, profile, announcements, coin balance,
+Quick Sam and bottom navigation retain their existing behavior. Tiles adapt to
+narrow screens and larger system text; Home surfaces follow the selected theme.
+The school banner is a compact logo/name row, followed by a compact streak
+summary and Academics. Expand the streak arrow for milestone badges, freeze
+details and personal best. Raised illustrated icon tiles use tighter spacing.
+At least 70% of Academics is visible on a 390 × 844 phone at default text size,
+including space for bottom navigation and safe areas. Smaller screens and larger
+accessibility text remain scrollable rather than shrinking their text.
+This is a Home-only visual update: shared theme tokens, web and teacher screens
+are unchanged. Existing bundled artwork is reused; no new dependencies or assets.
+
+Run `flutter test --no-pub test/student_home_test.dart test/student_nav_shell_test.dart`
+for phone/tablet layout, larger-text, streak-state and navigation checks.
+
+## Student Services design
+
+Student Services uses the same shared `StudentShortcutTile` as Home: raised
+illustrated icons, compact gradient cards, tactile presses and theme-aware colors.
+All eight services are retained; demo previews and Technical Query navigation
+are unchanged. Grids switch to two columns for narrow screens or larger text.
+Run `flutter test --no-pub test/student_services_layout_test.dart test/student_support_screen_test.dart`
+for responsive layouts, preview selection/closing and support navigation.
+
 ## School-controlled learning calendar
 
 School graph dates are read from the backend's shared learning-score response;
