@@ -8761,6 +8761,10 @@ textarea {
 }
 
 .eg-quick-sam .eg-quick-sam-panel { width: min(420px, 34vw); max-height: calc(100vh - 110px); grid-template-rows: minmax(0, 1fr) auto auto auto auto; }
+.eg-quick-sam-speed { display: inline-flex; align-items: center; gap: 6px; padding: 6px 10px; border: 1px solid rgba(255, 255, 255, .3); border-radius: 999px; background: #222b68; color: #fff; font-size: 13px; font-weight: 700; }
+.eg-quick-sam-speed select { border: 0; border-radius: 6px; background: #222b68; color: #fff; font: inherit; cursor: pointer; min-height: 30px; }
+.eg-quick-sam-speed select:focus-visible { outline: 2px solid #93c5fd; outline-offset: 2px; }
+.eg-quick-sam .eg-sam-live-actions { flex-wrap: wrap; }
 .eg-quick-sam-list { min-height: 120px; max-height: 44vh; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; padding: 2px; scrollbar-width: thin; scrollbar-color: rgba(255, 255, 255, .35) transparent; }
 .eg-quick-sam-msg { max-width: 88%; padding: 9px 12px; border-radius: 14px; font-size: 14px; line-height: 1.5; word-wrap: break-word; }
 .eg-quick-sam-msg.ai { align-self: flex-start; background: rgba(255, 255, 255, .1); color: #eef1ff; border-bottom-left-radius: 4px; }

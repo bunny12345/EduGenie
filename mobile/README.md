@@ -71,6 +71,21 @@ Run `flutter test --no-pub test/homework_attachments_test.dart` and
 `flutter test --no-pub --platform chrome test/homework_attachments_test.dart test/save_attachment_web_test.dart`
 for history viewing, navigation, download handling and browser file creation.
 
+## Home Sam voice
+
+The top-right Home Sam speed menu offers 1x and 2x. It updates current
+and subsequent playback without regenerating the voice, and is retained when
+Sam is closed/reopened within the app session. Lesson AI Tutor speed is unchanged.
+After a chat reply arrives, a short opening segment (at most 240 characters)
+is synthesized first; subsequent segments are prefetched one at a time and
+played sequentially. Mute, close, new questions, microphone use and exam
+restrictions invalidate pending speech to prevent stale or overlapping audio.
+Voice errors leave the text reply visible and show feedback. Startup still
+depends on the voice service/network; this does not stream partially generated chat.
+Run `flutter test --no-pub test/quick_sam_audio_test.dart test/quick_sam_bubble_test.dart`
+for speed controls, short-segment startup, ordered playback and cancellation.
+Native playback/audio quality still needs a device check.
+
 ## Student Home design
 
 The student Home screen uses a navy/indigo school banner, a readable streak

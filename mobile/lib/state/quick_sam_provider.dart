@@ -11,6 +11,7 @@ import 'package:record/record.dart';
 import '../utils/tutor_text.dart';
 import '../utils/voice_envelope.dart';
 import '../utils/wav_encoder.dart';
+import '../utils/sam_speech_chunks.dart';
 import 'session_provider.dart';
 import 'tutor_providers.dart';
 
@@ -33,6 +34,7 @@ class QuickSamState {
   // True only while Sam's voice is audible — drives the avatar's talking.
   final bool voicePlaying;
   final bool muted;
+  final int speechRate;
   final String? error;
 
   const QuickSamState({
@@ -44,6 +46,7 @@ class QuickSamState {
     this.transcribing = false,
     this.voicePlaying = false,
     this.muted = false,
+    this.speechRate = 1,
     this.error,
   });
 
@@ -56,34 +59,38 @@ class QuickSamState {
     bool? transcribing,
     bool? voicePlaying,
     bool? muted,
+    int? speechRate,
     String? error,
     bool clearError = false,
-  }) =>
-      QuickSamState(
-        open: open ?? this.open,
-        messages: messages ?? this.messages,
-        followups: followups ?? this.followups,
-        sending: sending ?? this.sending,
-        recording: recording ?? this.recording,
-        transcribing: transcribing ?? this.transcribing,
-        voicePlaying: voicePlaying ?? this.voicePlaying,
-        muted: muted ?? this.muted,
-        error: clearError ? null : (error ?? this.error),
-      );
+  }) => QuickSamState(
+    open: open ?? this.open,
+    messages: messages ?? this.messages,
+    followups: followups ?? this.followups,
+    sending: sending ?? this.sending,
+    recording: recording ?? this.recording,
+    transcribing: transcribing ?? this.transcribing,
+    voicePlaying: voicePlaying ?? this.voicePlaying,
+    muted: muted ?? this.muted,
+    speechRate: speechRate ?? this.speechRate,
+    error: clearError ? null : (error ?? this.error),
+  );
 }
 
-/// Home-page "Quick Sam" — mirrors `QuickSamBubble.jsx` on web. Answers from
-/// every subject of the student's class with no subject/lesson filter. The
-/// thread only lives in this state: nothing is saved, and [close] wipes it.
+final quickSamAudioPlayerProvider = Provider<AudioPlayer>((ref) => AudioPlayer());
+
+/// Home-page class-wide chat. Closing forgets the conversation.
 class QuickSamNotifier extends Notifier<QuickSamState> {
-  final AudioRecorder _recorder = AudioRecorder();
-  final AudioPlayer _player = AudioPlayer();
+  AudioRecorder? _recorder;
+  AudioRecorder get _activeRecorder => _recorder ??= AudioRecorder();
+  late final AudioPlayer _player;
   StreamSubscription<Uint8List>? _recordingSub;
   final List<int> _pcmBuffer = [];
   Timer? _recordingCap;
   CancelToken? _cancel;
   // Bumped on every close so late replies/audio from a closed session are dropped.
   int _session = 0;
+  int _speechRevision = 0;
+  Completer<void>? _audioDone;
 
   VoiceEnvelope? _envelope;
   Duration _anchorPosition = Duration.zero;
@@ -91,6 +98,7 @@ class QuickSamNotifier extends Notifier<QuickSamState> {
 
   @override
   QuickSamState build() {
+    _player = ref.read(quickSamAudioPlayerProvider);
     final stateSub = _player.onPlayerStateChanged.listen((s) {
       if (s != PlayerState.playing && state.voicePlaying) {
         state = state.copyWith(voicePlaying: false);
@@ -105,13 +113,27 @@ class QuickSamNotifier extends Notifier<QuickSamState> {
         state = state.copyWith(voicePlaying: true);
       }
     });
+    final completeSub = _player.onPlayerComplete.listen(
+      (_) {
+        if (!(_audioDone?.isCompleted ?? true)) _audioDone!.complete();
+      },
+      onError: (Object error, StackTrace stack) {
+        debugPrint('Quick Sam audio playback failed: $error\n$stack');
+        unawaited(_stopAudio());
+        state = state.copyWith(voicePlaying: false, error: 'Sam’s voice stopped unexpectedly. You can still read the reply.');
+      },
+    );
     ref.onDispose(() {
+      _session++;
+      _speechRevision++;
+      if (!(_audioDone?.isCompleted ?? true)) _audioDone!.complete();
       stateSub.cancel();
       positionSub.cancel();
+      completeSub.cancel();
       _recordingCap?.cancel();
       _recordingSub?.cancel();
       _cancel?.cancel();
-      _recorder.dispose();
+      _recorder?.dispose();
       _player.dispose();
     });
     return const QuickSamState();
@@ -124,7 +146,7 @@ class QuickSamNotifier extends Notifier<QuickSamState> {
     final env = _envelope;
     if (env == null) return null;
     if (_player.state != PlayerState.playing || !_anchorClock.isRunning) return (level: 0, bright: 0.4);
-    final sinceAnchor = math.min(_anchorClock.elapsedMilliseconds, 400);
+    final sinceAnchor = math.min(_anchorClock.elapsedMilliseconds, 400) * state.speechRate;
     return env.at(_anchorPosition + Duration(milliseconds: sinceAnchor));
   }
 
@@ -134,6 +156,7 @@ class QuickSamNotifier extends Notifier<QuickSamState> {
     state = QuickSamState(
       open: true,
       muted: state.muted,
+      speechRate: state.speechRate,
       messages: [
         QuickSamMessage(
           isUser: false,
@@ -151,7 +174,7 @@ class QuickSamNotifier extends Notifier<QuickSamState> {
     _cancel = null;
     await _stopRecorder();
     await _stopAudio();
-    state = QuickSamState(muted: state.muted);
+    state = QuickSamState(muted: state.muted, speechRate: state.speechRate);
   }
 
   Future<void> send(String raw) async {
@@ -168,28 +191,32 @@ class QuickSamNotifier extends Notifier<QuickSamState> {
         .reversed
         .map((m) => {'role': m.isUser ? 'user' : 'assistant', 'content': m.text})
         .toList();
-    await _stopAudio();
     state = state.copyWith(
-      messages: [...state.messages, QuickSamMessage(isUser: true, text: text)],
+      messages: [
+        ...state.messages,
+        QuickSamMessage(isUser: true, text: text),
+      ],
       followups: const [],
       sending: true,
       clearError: true,
     );
+    await _stopAudio();
+    if (session != _session) return;
     final cancel = CancelToken();
     _cancel = cancel;
     try {
-      final res = await ref.read(chatApiServiceProvider).sendQuickChat(
-            studentId: studentId,
-            message: text,
-            recentMessages: history,
-            cancelToken: cancel,
-          );
+      final res = await ref
+          .read(chatApiServiceProvider)
+          .sendQuickChat(studentId: studentId, message: text, recentMessages: history, cancelToken: cancel);
       if (session != _session) return;
       var reply = (res['reply'] as String? ?? '').trim();
       if (reply.isEmpty) reply = "Sorry, I couldn't come up with an answer. Try asking in a different way.";
       final followups = (res['followups'] as List? ?? []).map((e) => e.toString()).take(3).toList();
       state = state.copyWith(
-        messages: [...state.messages, QuickSamMessage(isUser: false, text: reply)],
+        messages: [
+          ...state.messages,
+          QuickSamMessage(isUser: false, text: reply),
+        ],
         followups: followups,
         sending: false,
       );
@@ -205,28 +232,80 @@ class QuickSamNotifier extends Notifier<QuickSamState> {
   Future<void> _speak(String text, int session) async {
     final speech = tutorSpeechText(text);
     if (speech.isEmpty || state.muted || _studentId.isEmpty) return;
+    final revision = _speechRevision;
+    bool valid() => session == _session && revision == _speechRevision && !state.muted;
+    final service = ref.read(chatApiServiceProvider);
+    final studentId = _studentId;
+    final chunks = splitSamSpeech(speech);
+    Future<({Map<String, dynamic>? tts, Object? error})> prepare(String chunk) async {
+      try {
+        return (tts: await service.generateLocalTtsAudio(chunk, studentId, voice: 'shimmer', speed: 1, format: 'wav'), error: null);
+      } catch (error) {
+        return (tts: null, error: error);
+      }
+    }
+
+    var pending = prepare(chunks.first);
     try {
-      final tts = await ref.read(chatApiServiceProvider).generateLocalTtsAudio(speech, _studentId, voice: 'shimmer', speed: 1.15, format: 'wav');
-      if (session != _session || state.muted) return;
-      final audioBase64 = (tts['audioBase64'] as String? ?? '').trim();
-      if (audioBase64.isEmpty) return;
-      final bytes = base64Decode(audioBase64);
-      // Only WAV can be analysed; an older backend still answers with mp3.
-      _envelope = (tts['mimeType'] as String? ?? '').contains('wav') ? VoiceEnvelope.fromWav(bytes) : null;
-      _anchorPosition = Duration.zero;
+      for (var i = 0; i < chunks.length; i++) {
+        final result = await pending;
+        if (!valid()) return;
+        if (result.error != null) throw result.error!;
+        if (i + 1 < chunks.length) pending = prepare(chunks[i + 1]);
+        final tts = result.tts!;
+        final audioBase64 = (tts['audioBase64'] as String? ?? '').trim();
+        if (audioBase64.isEmpty) throw StateError('Sam returned empty voice audio.');
+        final bytes = base64Decode(audioBase64);
+        _envelope = (tts['mimeType'] as String? ?? '').contains('wav') ? VoiceEnvelope.fromWav(bytes) : null;
+        _anchorPosition = Duration.zero;
+        _anchorClock.reset();
+        final done = Completer<void>();
+        _audioDone = done;
+        await _player.setSource(BytesSource(bytes));
+        if (!valid()) return;
+        await _player.setPlaybackRate(state.speechRate.toDouble());
+        if (!valid()) return;
+        await _player.resume();
+        await done.future;
+        if (!valid()) return;
+        state = state.copyWith(voicePlaying: false);
+      }
+    } catch (error, stack) {
+      debugPrint('Quick Sam voice failed: $error\n$stack');
+      if (valid()) state = state.copyWith(voicePlaying: false, error: 'Sam’s voice is unavailable. You can still read the reply.');
+    } finally {
+      if (valid()) _audioDone = null;
+    }
+  }
+
+  Future<void> setSpeechRate(int rate) async {
+    if (![1, 2].contains(rate)) throw ArgumentError.value(rate, 'rate');
+    final oldRate = state.speechRate;
+    if (_anchorClock.isRunning) {
+      _anchorPosition += Duration(milliseconds: math.min(_anchorClock.elapsedMilliseconds, 400) * oldRate);
       _anchorClock.reset();
-      await _player.play(BytesSource(bytes));
-    } catch (_) {
-      /* voice is optional — the text reply is already on screen */
+    }
+    state = state.copyWith(speechRate: rate);
+    try {
+      await _player.setPlaybackRate(rate.toDouble());
+    } catch (error, stack) {
+      debugPrint('Quick Sam speed change failed: $error\n$stack');
+      if (state.speechRate == rate) state = state.copyWith(speechRate: oldRate, error: 'Unable to change Sam’s speed. Please try again.');
     }
   }
 
   Future<void> _stopAudio() async {
+    _speechRevision++;
+    if (!(_audioDone?.isCompleted ?? true)) _audioDone!.complete();
+    _audioDone = null;
     _envelope = null;
     _anchorClock.stop();
     try {
       await _player.stop();
-    } catch (_) {/* ignore */}
+    } catch (error, stack) {
+      debugPrint('Quick Sam audio stop failed: $error\n$stack');
+      state = state.copyWith(error: 'Unable to stop Sam’s voice. Please close Sam and try again.');
+    }
     if (state.voicePlaying) state = state.copyWith(voicePlaying: false);
   }
 
@@ -244,12 +323,12 @@ class QuickSamNotifier extends Notifier<QuickSamState> {
     if (state.sending || state.transcribing) return;
     await _stopAudio();
     try {
-      if (!await _recorder.hasPermission()) {
+      if (!await _activeRecorder.hasPermission()) {
         state = state.copyWith(error: 'Microphone permission denied. You can type your question instead.');
         return;
       }
       _pcmBuffer.clear();
-      final stream = await _recorder.startStream(
+      final stream = await _activeRecorder.startStream(
         const RecordConfig(
           encoder: AudioEncoder.pcm16bits,
           sampleRate: 16000,
@@ -306,8 +385,11 @@ class QuickSamNotifier extends Notifier<QuickSamState> {
     await _recordingSub?.cancel();
     _recordingSub = null;
     try {
-      if (await _recorder.isRecording()) await _recorder.stop();
-    } catch (_) {/* ignore */}
+      final recorder = _recorder;
+      if (recorder != null && await recorder.isRecording()) await recorder.stop();
+    } catch (_) {
+      /* ignore */
+    }
     if (state.recording) state = state.copyWith(recording: false);
   }
 }

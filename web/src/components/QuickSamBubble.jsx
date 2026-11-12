@@ -32,6 +32,24 @@ function base64ToBlob(base64, mimeType) {
   return new Blob([bytes], { type: mimeType || 'audio/mpeg' });
 }
 
+export function splitSamSpeech(text) {
+  const chunks = [];
+  let rest = text.trim();
+  while (rest) {
+    const limit = chunks.length ? 600 : 240;
+    const boundary = /[.!?](?=\s)/g;
+    const ends = [...rest.slice(0, limit).matchAll(boundary)];
+    let end = ends.length ? (chunks.length ? ends[ends.length - 1].index : ends[0].index) + 1 : Math.min(limit, rest.length);
+    if (!ends.length && rest.length > limit) {
+      const space = rest.lastIndexOf(' ', limit);
+      if (space > 0) end = space;
+    }
+    chunks.push(rest.slice(0, end).trim());
+    rest = rest.slice(end).trim();
+  }
+  return chunks;
+}
+
 function blobToBase64(blob) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -52,6 +70,7 @@ export default function QuickSamBubble({ studentId, schoolName = '', greetingNam
   const [recording, setRecording] = useState(false);
   const [transcribing, setTranscribing] = useState(false);
   const [muted, setMuted] = useState(false);
+  const [speechRate, setSpeechRate] = useState(1);
 
   // Bumped on every close so late replies/audio from a closed session are dropped.
   const sessionRef = useRef(0);
@@ -68,17 +87,26 @@ export default function QuickSamBubble({ studentId, schoolName = '', greetingNam
   const listRef = useRef(null);
   const inputRef = useRef(null);
   const mutedRef = useRef(false);
+  const speechRateRef = useRef(1);
+  const speechRevisionRef = useRef(0);
+  const finishAudioRef = useRef(null);
+  const utteranceRef = useRef(null);
   const messagesRef = useRef([]);
   messagesRef.current = messages;
 
   const firstName = String(greetingName || '').trim().split(/\s+/)[0] || '';
 
   const stopSpeaking = useCallback(() => {
+    speechRevisionRef.current += 1;
+    finishAudioRef.current?.();
+    finishAudioRef.current = null;
+    utteranceRef.current = null;
     const audio = audioRef.current;
     if (audio) {
       try { audio.pause(); } catch { /* ignore */ }
       audio.onended = null;
       audio.onerror = null;
+      audio.onplaying = null;
     }
     if (audioUrlRef.current) URL.revokeObjectURL(audioUrlRef.current);
     audioUrlRef.current = '';
@@ -114,6 +142,7 @@ export default function QuickSamBubble({ studentId, schoolName = '', greetingNam
         await Promise.race([ctx.resume(), new Promise((r) => setTimeout(r, 300))]);
       }
       if (ctx.state !== 'running') return;
+      if (audioRef.current !== audio) return;
       if (!analyserRef.current) {
         const analyser = ctx.createAnalyser();
         analyser.fftSize = 512;
@@ -158,35 +187,86 @@ export default function QuickSamBubble({ studentId, schoolName = '', greetingNam
     if (!speech || mutedRef.current) return;
     const session = sessionRef.current;
     stopSpeaking();
-    try {
-      const tts = await generateLocalTtsAudio(speech, 'en-US', studentId, 'shimmer', 1.15);
-      if (session !== sessionRef.current || mutedRef.current) return;
-      const b64 = String(tts?.audioBase64 || '').trim();
-      if (!b64) throw new Error('no audio');
-      const url = URL.createObjectURL(base64ToBlob(b64, tts?.mimeType));
-      const audio = new Audio(url);
-      audio.preload = 'auto';
-      audio.onplaying = () => setVoicePlaying(true);
-      audio.onended = () => stopSpeaking();
-      audio.onerror = () => stopSpeaking();
-      audioRef.current = audio;
-      audioUrlRef.current = url;
-      await attachAnalyser(audio);
-      await audio.play();
-    } catch {
-      if (session !== sessionRef.current || mutedRef.current) return;
-      if (typeof window !== 'undefined' && window.speechSynthesis) {
-        const u = new window.SpeechSynthesisUtterance(speech);
-        u.lang = 'en-US';
-        u.rate = 1.1;
-        u.pitch = 1.3;
-        u.onstart = () => setVoicePlaying(true);
-        u.onend = () => setVoicePlaying(false);
-        u.onerror = () => setVoicePlaying(false);
-        window.speechSynthesis.cancel();
-        window.speechSynthesis.speak(u);
+    const revision = speechRevisionRef.current;
+    const valid = () => session === sessionRef.current && revision === speechRevisionRef.current && !mutedRef.current;
+    const chunks = splitSamSpeech(speech);
+    // Prepare one short segment ahead while the current segment is speaking.
+    // Capture failures here so a prefetched rejection can never go unhandled.
+    const prepare = (chunk) => generateLocalTtsAudio(chunk, 'en-US', studentId, 'shimmer', 1)
+      .then((tts) => ({ tts }), (error) => ({ error }));
+    let pending = prepare(chunks[0]);
+    for (let i = 0; i < chunks.length; i += 1) {
+      const result = await pending;
+      if (!valid()) return;
+      pending = i + 1 < chunks.length ? prepare(chunks[i + 1]) : null;
+      try {
+        if (result.error) throw result.error;
+        const b64 = String(result.tts?.audioBase64 || '').trim();
+        if (!b64) throw new Error('Sam returned empty voice audio');
+        const url = URL.createObjectURL(base64ToBlob(b64, result.tts?.mimeType));
+        const audio = new Audio(url);
+        audio.preload = 'auto';
+        audio.playbackRate = speechRateRef.current;
+        audioRef.current = audio;
+        audioUrlRef.current = url;
+        await new Promise((resolve, reject) => {
+          finishAudioRef.current = resolve;
+          audio.onplaying = () => { if (valid()) setVoicePlaying(true); };
+          audio.onended = resolve;
+          audio.onerror = () => reject(new Error('Sam audio playback failed'));
+          // Lip-sync setup must not delay audio playback.
+          attachAnalyser(audio);
+          audio.play().catch(reject);
+        });
+      } catch (error) {
+        if (!valid()) return;
+        console.warn('Quick Sam voice playback failed', error);
+        audioRef.current?.pause();
+        if (!window.speechSynthesis) {
+          setError('Sam’s voice is unavailable. You can still read the reply.');
+          return;
+        }
+        await new Promise((resolve) => {
+          const u = new window.SpeechSynthesisUtterance(chunks[i]);
+          utteranceRef.current = u;
+          finishAudioRef.current = resolve;
+          u.lang = 'en-US';
+          u.rate = speechRateRef.current;
+          u.pitch = 1.3;
+          u.onstart = () => { if (valid()) setVoicePlaying(true); };
+          u.onend = resolve;
+          u.onerror = () => {
+            if (valid()) setError('Sam’s voice is unavailable. You can still read the reply.');
+            resolve();
+          };
+          window.speechSynthesis.speak(u);
+        });
+      } finally {
+        if (valid()) {
+          if (audioRef.current) {
+            audioRef.current.onplaying = null;
+            audioRef.current.onended = null;
+            audioRef.current.onerror = null;
+          }
+          if (audioUrlRef.current) URL.revokeObjectURL(audioUrlRef.current);
+          audioRef.current = null;
+          audioUrlRef.current = '';
+          finishAudioRef.current = null;
+          utteranceRef.current = null;
+          levelLiveRef.current = false;
+          setVoicePlaying(false);
+        }
       }
     }
+  }
+
+  function changeSpeechRate(event) {
+    const rate = Number(event.target.value);
+    speechRateRef.current = rate;
+    setSpeechRate(rate);
+    if (audioRef.current) audioRef.current.playbackRate = rate;
+    // SpeechSynthesis cannot change rate mid-utterance; apply it to the next segment.
+    if (utteranceRef.current) utteranceRef.current.rate = rate;
   }
 
   async function send(raw) {
@@ -370,6 +450,12 @@ export default function QuickSamBubble({ studentId, schoolName = '', greetingNam
             </div>
             {schoolName ? <div className="eg-sam-live-school">🏫 {schoolName}</div> : <span />}
             <div className="eg-sam-live-actions">
+              <label className="eg-quick-sam-speed">
+                <span>Speed</span>
+                <select aria-label="Sam speaking speed" value={speechRate} onChange={changeSpeechRate}>
+                  {[1, 2].map((rate) => <option key={rate} value={rate}>{rate}×</option>)}
+                </select>
+              </label>
               <button type="button" className="eg-sam-live-btn" onClick={toggleMute} title={muted ? 'Turn Sam\'s voice on' : 'Mute Sam'}>
                 {muted ? '🔈 Unmute' : '🔇 Mute'}
               </button>

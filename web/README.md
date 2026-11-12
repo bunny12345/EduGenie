@@ -16,6 +16,21 @@ Small icons use only the emblem so the name/tagline do not become unreadable.
 Deploy the generated public assets together; the source replacement alone does
 not update the production website.
 
+## Home Sam voice
+
+Home-page Sam has a top-right **Speed** selector with 1x and 2x
+playback. It applies immediately to generated audio and is retained while the
+Home component remains mounted. Browser speech fallback applies a changed
+speed from the next segment if the browser cannot change a spoken utterance.
+The speed setting does not affect lesson AI Tutor playback.
+
+After the text reply arrives, speech starts with a short segment (at most 240
+characters), with the next segment prepared during playback. Segments play
+sequentially; mute, closing, a new question, recording or unmounting invalidates
+pending audio so old replies cannot restart. Actual startup time still depends
+on the voice service and network; this is not token-streaming chat/audio.
+Run `CI=true npm test -- --watch=false --runInBand --runTestsByPath src/components/QuickSamBubble.test.jsx`.
+
 ## Strict mock exams
 
 Teachers can enable **Strict exam** when assigning a scheduled test. The

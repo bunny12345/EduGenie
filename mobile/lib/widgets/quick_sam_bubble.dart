@@ -241,6 +241,38 @@ class _QuickSamScreenState extends ConsumerState<QuickSamScreen> {
                         ],
                       ),
                     ),
+                    PopupMenuButton<int>(
+                      tooltip: 'Sam speaking speed',
+                      initialValue: s.speechRate,
+                      color: const Color(0xFF202957),
+                      onSelected: notifier.setSpeechRate,
+                      itemBuilder: (_) => [
+                        for (final rate in [1, 2])
+                          PopupMenuItem<int>(
+                            value: rate,
+                            child: Semantics(
+                              selected: s.speechRate == rate,
+                              child: Row(
+                                children: [
+                                  Expanded(child: Text('$rate×', style: const TextStyle(color: Colors.white))),
+                                  if (s.speechRate == rate) const Icon(Icons.check_rounded, color: Color(0xFFB7C7FF), size: 20),
+                                ],
+                              ),
+                            ),
+                          ),
+                      ],
+                      child: Container(
+                        constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
+                        alignment: Alignment.center,
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF202957),
+                          border: Border.all(color: const Color(0xFF8999D8)),
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        child: Text('${s.speechRate}×', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
+                      ),
+                    ),
                     IconButton(
                       tooltip: s.muted ? 'Unmute Sam' : 'Mute Sam',
                       icon: Icon(s.muted ? Icons.volume_off_rounded : Icons.volume_up_rounded, color: Colors.white, size: 20),

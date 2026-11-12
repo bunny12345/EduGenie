@@ -25,6 +25,11 @@ class _QuickSamStub extends QuickSamNotifier {
   }
 
   @override
+  Future<void> setSpeechRate(int rate) async {
+    state = state.copyWith(speechRate: rate);
+  }
+
+  @override
   Future<void> close() async {
     closeCalls++;
     state = const QuickSamState();
@@ -126,6 +131,22 @@ void main() {
           tester.getRect(find.text('Explain that in simpler words')).height,
           lessThan(tester.getRect(chipFinder).height),
         );
+        expect(tester.takeException(), isNull);
+
+        await tester.tap(find.byTooltip('Sam speaking speed'));
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 350));
+        expect(find.byType(PopupMenuItem<int>), findsNWidgets(2));
+        for (final rate in [1, 2]) {
+          expect(find.widgetWithText(PopupMenuItem<int>, '$rate×'), findsOneWidget);
+        }
+        expect(find.text('3×'), findsNothing);
+        expect(find.text('4×'), findsNothing);
+        await tester.tap(find.widgetWithText(PopupMenuItem<int>, '2×'));
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 350));
+        expect(ProviderScope.containerOf(tester.element(find.byType(QuickSamScreen))).read(quickSamProvider).speechRate, 2);
+        expect(find.text('2×'), findsOneWidget);
         expect(tester.takeException(), isNull);
 
         await tester.tap(chipFinder);
