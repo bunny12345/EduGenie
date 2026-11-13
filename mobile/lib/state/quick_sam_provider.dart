@@ -12,6 +12,7 @@ import '../utils/tutor_text.dart';
 import '../utils/voice_envelope.dart';
 import '../utils/wav_encoder.dart';
 import '../utils/sam_speech_chunks.dart';
+import '../utils/sam_audio_source.dart';
 import 'session_provider.dart';
 import 'tutor_providers.dart';
 
@@ -253,15 +254,13 @@ class QuickSamNotifier extends Notifier<QuickSamState> {
         if (result.error != null) throw result.error!;
         if (i + 1 < chunks.length) pending = prepare(chunks[i + 1]);
         final tts = result.tts!;
-        final audioBase64 = (tts['audioBase64'] as String? ?? '').trim();
-        if (audioBase64.isEmpty) throw StateError('Sam returned empty voice audio.');
-        final bytes = base64Decode(audioBase64);
-        _envelope = (tts['mimeType'] as String? ?? '').contains('wav') ? VoiceEnvelope.fromWav(bytes) : null;
+        final source = samAudioSource(tts);
+        _envelope = source.mimeType == 'audio/wav' ? VoiceEnvelope.fromWav(source.bytes) : null;
         _anchorPosition = Duration.zero;
         _anchorClock.reset();
         final done = Completer<void>();
         _audioDone = done;
-        await _player.setSource(BytesSource(bytes));
+        await _player.setSource(source);
         if (!valid()) return;
         await _player.setPlaybackRate(state.speechRate.toDouble());
         if (!valid()) return;

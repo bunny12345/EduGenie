@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:audioplayers/audioplayers.dart';
 import 'package:dio/dio.dart';
@@ -12,6 +13,7 @@ import 'package:mobile/state/quick_sam_provider.dart';
 import 'package:mobile/state/session_provider.dart';
 import 'package:mobile/state/tutor_providers.dart';
 import 'package:mobile/utils/sam_speech_chunks.dart';
+import 'package:mobile/utils/wav_encoder.dart';
 
 class _Session extends SessionNotifier {
   @override
@@ -127,6 +129,27 @@ void main() {
     player.complete.add(null);
     await _flush();
     expect(player.plays, 2);
+  });
+
+  test('Home Sam supplies WAV MIME and finalized streaming lengths to the player', () async {
+    final wav = wrapPcm16AsWav(Uint8List(480), sampleRate: 24000);
+    final data = ByteData.sublistView(wav);
+    data.setUint32(4, 0xffffffff, Endian.little);
+    data.setUint32(40, 0xffffffff, Endian.little);
+    await notifier.send('Question');
+    chat.requests.first.result.complete({
+      'audioBase64': base64Encode(wav),
+      'mimeType': 'audio/wav',
+    });
+    await _flush();
+    final source = player.sources.single as BytesSource;
+    expect(source.mimeType, 'audio/wav');
+    final header = ByteData.sublistView(source.bytes);
+    expect(header.getUint32(4, Endian.little), wav.length - 8);
+    expect(header.getUint32(40, Endian.little), 480);
+    expect(player.plays, 1);
+    await notifier.close();
+    chat.requests.last.result.complete(_tts);
   });
 
   test('all speeds apply to current and future segments and survive reopening', () async {

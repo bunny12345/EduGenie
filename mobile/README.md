@@ -86,6 +86,15 @@ Run `flutter test --no-pub test/quick_sam_audio_test.dart test/quick_sam_bubble_
 for speed controls, short-segment startup, ordered playback and cancellation.
 Native playback/audio quality still needs a device check.
 
+Home Sam and lesson AI Tutor finalize streamed WAV container lengths before
+playback and supply the audio MIME type to the native player. This avoids
+phone decoder failures from unknown RIFF/data sizes and format detection;
+older MP3 replies remain supported. Tutor playback errors are shown explicitly,
+and completion/cancellation releases voice listeners without a fixed 30-second
+cutoff.
+Run `flutter test --no-pub test/sam_audio_source_test.dart test/talk_to_sam_audio_test.dart test/quick_sam_audio_test.dart`
+for WAV compatibility, both playback paths, errors and cancellation.
+
 ## Student Home design
 
 The student Home screen uses a navy/indigo school banner, a readable streak

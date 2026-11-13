@@ -10,6 +10,7 @@ import 'package:record/record.dart';
 import '../utils/tutor_text.dart';
 import '../utils/voice_envelope.dart';
 import '../utils/wav_encoder.dart';
+import '../utils/sam_audio_source.dart';
 import 'session_provider.dart';
 import 'exam_access_provider.dart';
 import 'tutor_providers.dart';
@@ -77,14 +78,19 @@ class TalkToSamState {
       );
 }
 
+final talkToSamAudioPlayerProvider = Provider<AudioPlayer>((ref) => AudioPlayer());
+
 /// "Talk to Sam" voice loop — mirrors the equivalent flow in
 /// `StudentDashboard.jsx`: open -> greet (speak) -> auto-listen -> student
 /// speaks -> transcribe -> send as chat -> speak reply -> auto-listen -> loop.
 /// Recording uses `record`'s cross-platform PCM16 stream (wrapped as WAV
 /// before upload); playback uses `audioplayers` with in-memory bytes.
 class TalkToSamNotifier extends Notifier<TalkToSamState> {
-  final AudioRecorder _recorder = AudioRecorder();
-  final AudioPlayer _player = AudioPlayer();
+  AudioRecorder? _recorder;
+  AudioRecorder get _activeRecorder => _recorder ??= AudioRecorder();
+  late final AudioPlayer _player;
+  int _speechRevision = 0;
+  Completer<void>? _audioDone;
   StreamSubscription<Uint8List>? _recordingSub;
   final List<int> _pcmBuffer = [];
 
@@ -128,6 +134,7 @@ class TalkToSamNotifier extends Notifier<TalkToSamState> {
 
   @override
   TalkToSamState build() {
+    _player = ref.read(talkToSamAudioPlayerProvider);
     // Voice counts as "playing" only once audio actually advances, so the
     // avatar never starts talking before the sound does.
     final stateSub = _player.onPlayerStateChanged.listen((s) {
@@ -135,7 +142,12 @@ class TalkToSamNotifier extends Notifier<TalkToSamState> {
         state = state.copyWith(voicePlaying: false, error: state.error);
       }
     });
-    final durationSub = _player.onDurationChanged.listen((d) => _voiceDuration = d);
+    final durationSub = _player.onDurationChanged.listen(
+      (d) => _voiceDuration = d,
+      onError: (Object error, StackTrace stack) {
+        debugPrint('Sam audio duration failed: $error\n$stack');
+      },
+    );
     final positionSub = _player.onPositionChanged.listen((p) {
       _anchorPosition = p;
       _anchorClock
@@ -149,12 +161,14 @@ class TalkToSamNotifier extends Notifier<TalkToSamState> {
       }
     });
     ref.onDispose(() {
+      _speechRevision++;
+      if (!(_audioDone?.isCompleted ?? true)) _audioDone!.complete();
       stateSub.cancel();
       durationSub.cancel();
       positionSub.cancel();
       voiceProgress.dispose();
       _recordingSub?.cancel();
-      _recorder.dispose();
+      _recorder?.dispose();
       _player.dispose();
     });
     return const TalkToSamState();
@@ -173,7 +187,7 @@ class TalkToSamNotifier extends Notifier<TalkToSamState> {
   Future<void> togglePopup() async {
     if (state.open) {
       state = state.copyWith(sessionActive: false, error: '');
-      await _player.stop();
+      stopSpeaking();
       await _stopRecordingSilently();
       _speakQueue.clear();
       state = const TalkToSamState();
@@ -213,15 +227,21 @@ class TalkToSamNotifier extends Notifier<TalkToSamState> {
   Future<void> _playSpeech(String text, bool autoListen, bool requireSession, String? messageId) async {
     final studentId = ref.read(sessionProvider).value?.userId ?? '';
     if (studentId.isEmpty) return;
+    final revision = _speechRevision;
+    bool valid() => ref.mounted && revision == _speechRevision;
+    StreamSubscription<void>? completeSub;
+    var failed = false;
     voiceProgress.value = 0;
     _voiceDuration = Duration.zero;
     state = state.copyWith(
+      speaking: true,
       loadingMessageId: messageId,
       clearLoadingMessageId: messageId == null,
       caption: requireSession ? text : null,
     );
     try {
       final tts = await ref.read(chatApiServiceProvider).generateLocalTtsAudio(tutorSpeechText(text), studentId, voice: 'shimmer', speed: 1.15, format: 'wav');
+      if (!valid()) return;
       // Sam may have been closed while this request was in flight — skip
       // playback so a closed popup can't suddenly start talking. Mirrors
       // web's `samSessionActiveRef.current` check right after the TTS await
@@ -231,37 +251,59 @@ class TalkToSamNotifier extends Notifier<TalkToSamState> {
           (requireSession && !state.sessionActive);
       if (!aborted) {
         state = state.copyWith(
-          speaking: true,
           clearLoadingMessageId: true,
           playingMessageId: messageId,
           clearPlayingMessageId: messageId == null,
         );
-        final audioBase64 = (tts['audioBase64'] as String? ?? '').trim();
-        if (audioBase64.isNotEmpty) {
-          final bytes = base64Decode(audioBase64);
-          // Only WAV can be analysed; an older backend still answers with mp3.
-          _envelope = (tts['mimeType'] as String? ?? '').contains('wav') ? VoiceEnvelope.fromWav(bytes) : null;
-          _anchorPosition = Duration.zero;
-          _anchorClock.reset();
-          final completer = Completer<void>();
-          late final StreamSubscription sub;
-          sub = _player.onPlayerComplete.listen((_) {
-            sub.cancel();
+        final source = samAudioSource(tts);
+        _envelope = source.mimeType == 'audio/wav' ? VoiceEnvelope.fromWav(source.bytes) : null;
+        _anchorPosition = Duration.zero;
+        _anchorClock.reset();
+        final completer = Completer<void>();
+        _audioDone = completer;
+        Object? playbackError;
+        completeSub = _player.onPlayerComplete.listen(
+          (_) {
             if (!completer.isCompleted) completer.complete();
-          });
-          await _player.play(BytesSource(bytes));
-          await completer.future.timeout(const Duration(seconds: 30), onTimeout: () {});
-        }
+          },
+          onError: (Object error, StackTrace stack) {
+            playbackError = error;
+            debugPrint('Sam audio playback failed: $error\n$stack');
+            if (!completer.isCompleted) completer.complete();
+          },
+        );
+        await _player.setSource(source);
+        if (!valid()) return;
+        if (playbackError != null) throw playbackError!;
+        await _player.resume();
+        await completer.future;
+        if (!valid()) return;
+        if (playbackError != null) throw playbackError!;
       } else {
         state = state.copyWith(clearLoadingMessageId: true);
       }
-    } catch (_) {
-      /* fall through — speaking indicator still clears below */
+    } catch (error, stack) {
+      debugPrint('Sam voice failed: $error\n$stack');
+      failed = true;
+      if (valid()) {
+        _speakQueue.clear();
+        state = state.copyWith(error: 'Sam’s voice is unavailable. You can still read the reply.');
+        try {
+          await _player.stop();
+        } catch (stopError, stopStack) {
+          debugPrint('Sam audio stop failed: $stopError\n$stopStack');
+        }
+      }
     } finally {
-      _envelope = null;
-      _anchorClock.stop();
-      state = state.copyWith(speaking: false, voicePlaying: false, clearLoadingMessageId: true, clearPlayingMessageId: true);
+      await completeSub?.cancel();
+      if (valid()) {
+        _audioDone = null;
+        _envelope = null;
+        _anchorClock.stop();
+        state = state.copyWith(speaking: false, voicePlaying: false, clearLoadingMessageId: true, clearPlayingMessageId: true, error: state.error);
+      }
     }
+    if (!valid() || failed) return;
     if (_speakQueue.isNotEmpty) {
       final next = _speakQueue.removeAt(0);
       unawaited(_playSpeech(next.text, next.autoListen, next.requireSession, next.messageId));
@@ -271,7 +313,15 @@ class TalkToSamNotifier extends Notifier<TalkToSamState> {
   }
 
   void stopSpeaking() {
-    _player.stop();
+    _speechRevision++;
+    if (!(_audioDone?.isCompleted ?? true)) _audioDone!.complete();
+    _audioDone = null;
+    _envelope = null;
+    _anchorClock.stop();
+    unawaited(_player.stop().catchError((Object error, StackTrace stack) {
+      debugPrint('Sam audio stop failed: $error\n$stack');
+      if (ref.mounted) state = state.copyWith(error: 'Unable to stop Sam’s voice. Please close Sam and try again.');
+    }));
     _speakQueue.clear();
     state = state.copyWith(speaking: false, voicePlaying: false, clearLoadingMessageId: true, clearPlayingMessageId: true);
   }
@@ -279,7 +329,7 @@ class TalkToSamNotifier extends Notifier<TalkToSamState> {
   Future<void> startRecording() async {
     if (state.recording || state.busy) return;
     try {
-      if (!await _recorder.hasPermission()) {
+      if (!await _activeRecorder.hasPermission()) {
         state = state.copyWith(error: 'Microphone permission denied or unavailable.');
         return;
       }
@@ -296,7 +346,7 @@ class TalkToSamNotifier extends Notifier<TalkToSamState> {
       // these (plus Android's dedicated `voiceRecognition` audio source,
       // which tunes gain/processing for speech-to-text specifically) gives
       // normalized, speech-level amplitude.
-      final stream = await _recorder.startStream(
+      final stream = await _activeRecorder.startStream(
         const RecordConfig(
           encoder: AudioEncoder.pcm16bits,
           sampleRate: 16000,
@@ -412,7 +462,7 @@ class TalkToSamNotifier extends Notifier<TalkToSamState> {
 
   Future<void> _stopRecordingSilently() async {
     try {
-      await _recorder.stop();
+      await _recorder?.stop();
     } catch (_) {
       /* ignore */
     }
