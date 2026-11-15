@@ -71,6 +71,16 @@ Run `flutter test --no-pub test/homework_attachments_test.dart` and
 `flutter test --no-pub --platform chrome test/homework_attachments_test.dart test/save_attachment_web_test.dart`
 for history viewing, navigation, download handling and browser file creation.
 
+Teacher Students > Homework Status includes **View student submission** for
+submitted text and photos. Text is selectable; photos use the same zoom,
+swipe and download viewer. Assignment/question photos are not mistaken for
+student answers. **Autocorrect** suggests a score and corrective feedback;
+the teacher reviews/edits them and taps Submit to publish the grade.
+Unreadable images and AI failures appear explicitly without saving a grade.
+Image-based correction requires the updated backend and a working vision
+model; rebuild the app and deploy the backend for these changes to reach phones.
+The existing app/backend URL configuration is unchanged.
+
 ## Home Sam voice
 
 The top-right Home Sam speed menu offers 1x and 2x. It updates current

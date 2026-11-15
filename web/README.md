@@ -31,6 +31,16 @@ pending audio so old replies cannot restart. Actual startup time still depends
 on the voice service and network; this is not token-streaming chat/audio.
 Run `CI=true npm test -- --watch=false --runInBand --runTestsByPath src/components/QuickSamBubble.test.jsx`.
 
+## Teacher homework autocorrection
+
+Students > Homework Status keeps its submission viewer and Autocorrect action.
+The shared backend sends both typed answers and submitted photos, alongside
+the teacher's questions/worksheet images, to a vision-capable model. AI returns
+a suggested score and corrections for teacher review; Submit is still required
+to publish the grade. Missing/unreadable images, AI service failures and invalid
+grading responses show errors rather than guessed grades. Deploy the updated
+backend for image recognition in both the website and Flutter app.
+
 ## Strict mock exams
 
 Teachers can enable **Strict exam** when assigning a scheduled test. The

@@ -5,10 +5,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
 import '../../models/learning_score.dart';
+import '../../services/attachment_url.dart';
 import '../../state/teacher_providers.dart';
 import '../../theme/app_colors.dart';
 import '../../widgets/section_card.dart';
 import '../student/progress/progress_charts.dart';
+import '../student/homework/lightbox.dart';
 
 /// The site-wide "3D button/card" frame — a light-black ring border + soft
 /// drop shadow, duplicated per-file per this codebase's convention (see
@@ -214,6 +216,8 @@ class _TeacherStudentsTabState extends ConsumerState<TeacherStudentsTab> {
       _selectedStudentName = s['name']?.toString() ?? 'Student';
       _homeworkStatusFilter = 'all';
       _expandedGradeId = null;
+      _homework = [];
+      _homeworkError = null;
     });
     await Future.wait([_loadHomework(), _loadSubjectProgress()]);
   }
@@ -232,16 +236,16 @@ class _TeacherStudentsTabState extends ConsumerState<TeacherStudentsTab> {
         final bTs = _parseDate(b['startAt'] ?? b['createdAt'] ?? b['dueAt']) ?? DateTime(0);
         return bTs.compareTo(aTs);
       });
-      if (!mounted) return;
+      if (!mounted || _selectedStudentId != id) return;
       setState(() => _homework = list);
     } catch (e) {
-      if (!mounted) return;
+      if (!mounted || _selectedStudentId != id) return;
       setState(() {
         _homeworkError = e.toString().replaceFirst('Exception: ', '');
         _homework = [];
       });
     } finally {
-      if (mounted) setState(() => _loadingHomework = false);
+      if (mounted && _selectedStudentId == id) setState(() => _loadingHomework = false);
     }
   }
 
@@ -312,10 +316,14 @@ class _TeacherStudentsTabState extends ConsumerState<TeacherStudentsTab> {
   Future<void> _startAiGrade(Map<String, dynamic> hw) async {
     final id = hw['id']?.toString();
     if (id == null) return;
-    setState(() => _aiGradingId = id);
+    final studentId = _selectedStudentId;
+    setState(() {
+      _aiGradingId = id;
+      _homeworkError = null;
+    });
     try {
       final res = await ref.read(teacherApiServiceProvider).aiGradeHomework(id);
-      if (!mounted) return;
+      if (!mounted || _selectedStudentId != studentId) return;
       setState(() {
         _expandedGradeId = id;
         final score = res['score'];
@@ -323,10 +331,10 @@ class _TeacherStudentsTabState extends ConsumerState<TeacherStudentsTab> {
         _gradeFeedbackCtrl.text = res['feedback']?.toString() ?? '';
       });
     } catch (e) {
-      if (!mounted) return;
+      if (!mounted || _selectedStudentId != studentId) return;
       setState(() => _homeworkError = e.toString().replaceFirst('Exception: ', ''));
     } finally {
-      if (mounted) setState(() => _aiGradingId = null);
+      if (mounted && _aiGradingId == id) setState(() => _aiGradingId = null);
     }
   }
 
@@ -546,7 +554,7 @@ class _HomeworkStatusPanel extends StatelessWidget {
   bool _isSubmitted(Map<String, dynamic> h) {
     final due = (h['dueStatus']?.toString() ?? '').toLowerCase();
     final status = (h['status']?.toString() ?? '').toLowerCase();
-    return due == 'submitted' || status == 'submitted' || status == 'graded';
+    return due == 'submitted' || ['submitted', 'resubmitted', 'graded'].contains(status);
   }
 
   bool _isOverdue(Map<String, dynamic> h) => (h['dueStatus']?.toString() ?? '').toLowerCase() == 'overdue';
@@ -866,14 +874,17 @@ class _HomeworkStatusTile extends StatelessWidget {
     final grade = homework['grade'];
     final attemptCount = (homework['attemptCount'] as num?)?.toInt() ?? 0;
     final remark = homework['remark']?.toString();
-    final canGrade = dueStatus == 'submitted' || dueStatus == 'overdue' || dueStatus == 'pending';
+    final canGrade = ['submitted', 'resubmitted', 'graded', 'overdue', 'pending'].contains(dueStatus);
     final badgeColor = AppColors.readableAccent(
-      dueStatus == 'submitted' ? AppColors.ok : (dueStatus == 'overdue' ? AppColors.danger : AppColors.warn),
+      ['submitted', 'resubmitted', 'graded'].contains(dueStatus) ? AppColors.ok : (dueStatus == 'overdue' ? AppColors.danger : AppColors.warn),
       dark: AppColors.of(context).isDark,
     );
-    final hasSubmission = (homework['latestAnswerText']?.toString().trim().isNotEmpty ?? false)
-        || (homework['latestAttachmentUrls'] is List && (homework['latestAttachmentUrls'] as List).isNotEmpty)
-        || (homework['latestAttachmentUrl']?.toString().trim().isNotEmpty ?? false);
+    final answerText = (homework['latestAnswerText'] ?? homework['latest_answer_text'])?.toString().trim() ?? '';
+    final rawUrls = homework['latestAttachmentUrls'] ?? homework['latest_attachment_urls'];
+    final urls = rawUrls is List ? rawUrls.whereType<String>().map((url) => url.trim()).where((url) => url.isNotEmpty).toList() : <String>[];
+    final singleUrl = (homework['latestAttachmentUrl'] ?? homework['latest_attachment_url'])?.toString().trim() ?? '';
+    if (urls.isEmpty && singleUrl.isNotEmpty) urls.add(singleUrl);
+    final hasSubmission = answerText.isNotEmpty || urls.isNotEmpty;
 
     return Container(
       margin: const EdgeInsets.only(top: 8),
@@ -905,6 +916,66 @@ class _HomeworkStatusTile extends StatelessWidget {
             const SizedBox(height: 4),
             Text(remark, style: TextStyle(fontSize: 11, color: AppColors.of(context).muted)),
           ],
+          if (hasSubmission)
+            ExpansionTile(
+              key: ValueKey('teacher-submission-${homework['id']}'),
+              tilePadding: EdgeInsets.zero,
+              childrenPadding: const EdgeInsets.only(bottom: 10),
+              shape: const Border(),
+              collapsedShape: const Border(),
+              title: Text('View student submission', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: AppColors.of(context).text)),
+              children: [
+                if (answerText.isNotEmpty)
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(10),
+                    margin: const EdgeInsets.only(bottom: 8),
+                    decoration: BoxDecoration(color: AppColors.of(context).card, borderRadius: BorderRadius.circular(8)),
+                    child: SelectableText(answerText, style: TextStyle(fontSize: 13, color: AppColors.of(context).text)),
+                  ),
+                if (urls.isNotEmpty) ...[
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        for (var i = 0; i < urls.length; i++)
+                          Semantics(
+                            button: true,
+                            label: 'Open student submission image ${i + 1}',
+                            child: InkWell(
+                              onTap: () => showImageLightbox(context, urls, i),
+                              borderRadius: BorderRadius.circular(8),
+                              child: ClipRRect(
+                                borderRadius: BorderRadius.circular(8),
+                                child: Image.network(
+                                  resolveAttachmentUrl(urls[i]),
+                                  width: 72,
+                                  height: 72,
+                                  fit: BoxFit.cover,
+                                  errorBuilder: (_, _, _) => SizedBox(
+                                    width: 72,
+                                    height: 72,
+                                    child: Center(child: Text('Image unavailable', textAlign: TextAlign.center, style: TextStyle(fontSize: 11, color: AppColors.of(context).muted))),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Text('Tap a photo to zoom, swipe or download.', style: TextStyle(fontSize: 11, color: AppColors.of(context).muted)),
+                ],
+              ],
+            )
+          else
+            Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: Text('No student submission yet', style: TextStyle(fontSize: 11, color: AppColors.of(context).muted)),
+            ),
           const SizedBox(height: 6),
           Wrap(
             spacing: 8,

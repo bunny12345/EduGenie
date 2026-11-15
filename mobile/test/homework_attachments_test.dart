@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -9,13 +11,80 @@ import 'package:mobile/models/homework_item.dart';
 import 'package:mobile/screens/student/homework/homework_screen.dart';
 import 'package:mobile/screens/student/homework/lightbox.dart';
 import 'package:mobile/screens/teacher/teacher_home_tab.dart';
+import 'package:mobile/screens/teacher/teacher_students_tab.dart';
+import 'package:mobile/services/api_client.dart';
 import 'package:mobile/services/attachment_url.dart';
 import 'package:mobile/services/save_attachment_native.dart' as native;
+import 'package:mobile/services/teacher_api_service.dart';
 import 'package:mobile/state/student_providers.dart';
 import 'package:mobile/state/teacher_providers.dart';
 import 'package:mobile/theme/app_theme.dart';
 
 const _urls = ['/uploads/homework/one.png', '/uploads/homework/two.png'];
+
+class _TeacherApi extends TeacherApiService {
+  _TeacherApi() : super(ApiClient());
+  int? savedGrade;
+  String? savedFeedback;
+  bool failAi = false;
+  bool twoStudents = false;
+  Completer<Map<String, dynamic>>? pendingAi;
+  @override
+  Future<List<Map<String, dynamic>>> getStudents({String search = '', String className = ''}) async => [
+    {'id': 'student', 'name': 'Alex', 'className': 'Class 8'},
+    if (twoStudents) {'id': 'other', 'name': 'Blair', 'className': 'Class 8'},
+  ];
+  @override
+  Future<List<Map<String, dynamic>>> getStudentHomework(String studentId) async => studentId == 'other' ? [
+    {'id': 'other-hw', 'title': 'Blair homework', 'status': 'pending'},
+  ] : [
+    {
+      'id': 'submitted', 'title': 'Submitted worksheet', 'subject': 'Science', 'status': 'submitted',
+      'latestAnswerText': 'Plants need sunlight and water.', 'latestAttachmentUrls': _urls,
+      'grade': savedGrade, 'feedback': savedFeedback,
+    },
+    {
+      'id': 'pending', 'title': 'Pending worksheet', 'status': 'pending',
+      'attachmentUrls': ['/uploads/teacher-question.png'],
+    },
+  ];
+  @override
+  Future<Map<String, dynamic>?> getStudentSubjectProgress(String studentId) async => null;
+  @override
+  Future<Map<String, dynamic>> aiGradeHomework(String hwId) async {
+    expect(hwId, 'submitted');
+    if (pendingAi != null) return pendingAi!.future;
+    if (failAi) throw Exception('The handwriting is unreadable. Please review manually.');
+    return {'success': true, 'score': 87, 'feedback': 'Good explanation. Add how roots absorb water.'};
+  }
+  @override
+  Future<Map<String, dynamic>> gradeHomework(String hwId, {int? grade, String? feedback}) async {
+    expect(hwId, 'submitted');
+    savedGrade = grade;
+    savedFeedback = feedback;
+    return {'success': true};
+  }
+}
+
+Widget _teacherStudentApp(_TeacherApi api, {bool dark = false}) => ProviderScope(
+  overrides: [
+    teacherApiServiceProvider.overrideWithValue(api),
+    teacherClassOptionsProvider.overrideWith((ref) async => ['Class 8']),
+  ],
+  child: MaterialApp(
+    theme: dark ? AppTheme.dark() : AppTheme.light(),
+    home: const Scaffold(body: TeacherStudentsTab()),
+  ),
+);
+
+Future<void> _selectTeacherStudent(WidgetTester tester) async {
+  final selector = find.byWidgetPredicate((widget) => widget is DropdownButton<String> && widget.value == null);
+  await tester.ensureVisible(selector);
+  await tester.tap(selector);
+  await tester.pumpAndSettle();
+  await tester.tap(find.text('Alex \u00b7 Class 8').last);
+  await tester.pumpAndSettle();
+}
 
 Finder _thumbnail(int index, double size) => find.byWidgetPredicate(
   (w) => w is Image && w.width == size && w.image is NetworkImage && (w.image as NetworkImage).url == resolveAttachmentUrl(_urls[index]),
@@ -48,6 +117,30 @@ void main() {
   });
 
   for (final dark in [false, true]) {
+    testWidgets('teacher student grading shows submitted text/photos and reuses the image viewer in ${dark ? 'dark' : 'light'} mode', (tester) async {
+      tester.view.physicalSize = const Size(430, 1100);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      await tester.pumpWidget(_teacherStudentApp(_TeacherApi(), dark: dark));
+      await tester.pumpAndSettle();
+      await _selectTeacherStudent(tester);
+      final submission = find.text('View student submission');
+      await tester.ensureVisible(submission);
+      await tester.tap(submission);
+      await tester.pumpAndSettle();
+      expect(find.text('Plants need sunlight and water.'), findsOneWidget);
+      expect(find.text('No student submission yet'), findsOneWidget);
+      expect(find.text('✨ Autocorrect'), findsOneWidget);
+      expect(find.byWidgetPredicate((w) => w is Image && w.image is NetworkImage && (w.image as NetworkImage).url.contains('teacher-question')), findsNothing);
+      await tester.ensureVisible(_thumbnail(1, 72));
+      await tester.tap(_thumbnail(1, 72));
+      await tester.pumpAndSettle();
+      await _checkViewer(tester);
+      expect(find.text('Plants need sunlight and water.'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+
     testWidgets('teacher assignment history opens the selected photo and supports swiping in ${dark ? 'dark' : 'light'} mode', (
       tester,
     ) async {
@@ -165,6 +258,81 @@ void main() {
       },
     );
   }
+
+  testWidgets('teacher reviews and edits AI suggestions before publishing a grade', (tester) async {
+    tester.view.physicalSize = const Size(430, 1100);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final api = _TeacherApi();
+    await tester.pumpWidget(_teacherStudentApp(api));
+    await tester.pumpAndSettle();
+    await _selectTeacherStudent(tester);
+    final ai = find.text('✨ Autocorrect');
+    await tester.ensureVisible(ai);
+    await tester.tap(ai);
+    await tester.pumpAndSettle();
+    expect(api.savedGrade, isNull);
+    final score = find.widgetWithText(TextField, 'Score (0-100)');
+    final feedback = find.widgetWithText(TextField, 'Feedback for student');
+    expect(tester.widget<TextField>(score).controller!.text, '87');
+    expect(tester.widget<TextField>(feedback).controller!.text, contains('roots absorb water'));
+    await tester.enterText(score, '90');
+    await tester.enterText(feedback, 'Reviewed by teacher.');
+    final submit = find.text('Submit');
+    await tester.ensureVisible(submit);
+    await tester.tap(submit);
+    await tester.pumpAndSettle();
+    expect(api.savedGrade, 90);
+    expect(api.savedFeedback, 'Reviewed by teacher.');
+    expect(find.text('Grade: 90/100'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('AI correction errors remain visible and never publish a grade', (tester) async {
+    tester.view.physicalSize = const Size(430, 1100);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final api = _TeacherApi()..failAi = true;
+    await tester.pumpWidget(_teacherStudentApp(api));
+    await tester.pumpAndSettle();
+    await _selectTeacherStudent(tester);
+    final ai = find.text('✨ Autocorrect');
+    await tester.ensureVisible(ai);
+    await tester.tap(ai);
+    await tester.pumpAndSettle();
+    expect(find.textContaining('handwriting is unreadable'), findsOneWidget);
+    expect(api.savedGrade, isNull);
+    expect(find.widgetWithText(TextField, 'Score (0-100)'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('a late AI suggestion cannot populate another student grading form', (tester) async {
+    tester.view.physicalSize = const Size(430, 1100);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final pending = Completer<Map<String, dynamic>>();
+    final api = _TeacherApi()..twoStudents = true..pendingAi = pending;
+    await tester.pumpWidget(_teacherStudentApp(api));
+    await tester.pumpAndSettle();
+    await _selectTeacherStudent(tester);
+    final ai = find.text('✨ Autocorrect');
+    await tester.ensureVisible(ai);
+    await tester.tap(ai);
+    await tester.pumpAndSettle();
+    final next = find.text('Next \u2192');
+    await tester.ensureVisible(next);
+    await tester.tap(next);
+    await tester.pumpAndSettle();
+    pending.complete({'score': 87, 'feedback': 'Alex feedback'});
+    await tester.pumpAndSettle();
+    expect(find.text('Blair homework'), findsOneWidget);
+    expect(find.widgetWithText(TextField, 'Score (0-100)'), findsNothing);
+    expect(api.savedGrade, isNull);
+    expect(tester.takeException(), isNull);
+  });
 
   testWidgets('viewer exposes image errors instead of failing silently', (tester) async {
     await tester.pumpWidget(

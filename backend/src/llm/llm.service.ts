@@ -110,7 +110,7 @@ export class LlmService {
    */
   async query(
     promptOrMessages: string | Array<{ role: string; content: string }>,
-    opts?: { imageBase64?: string; imageBase64List?: string[] }
+    opts?: { imageBase64?: string; imageBase64List?: string[]; requireModelResponse?: boolean }
   ): Promise<string> {
     // Normalize to messages array for all providers
     const messages: Array<{ role: string; content: string }> =
@@ -124,18 +124,19 @@ export class LlmService {
         .filter(Boolean)),
       String(opts?.imageBase64 || '').trim(),
     ].filter(Boolean);
-    const uniqueImages = Array.from(new Set(imageList));
-    const hasImage = uniqueImages.length > 0;
+    // Grading prompts distinguish worksheet/answer images by position.
+    const images = opts?.requireModelResponse ? imageList : Array.from(new Set(imageList));
+    const hasImage = images.length > 0;
     const ollamaMessages = (() => {
       if (!hasImage || !messages.length) return messages;
       const out = messages.map((m) => ({ ...m })) as Array<{ role: string; content: string; images?: string[] }>;
       for (let i = out.length - 1; i >= 0; i -= 1) {
         if (out[i].role === 'user') {
-          out[i].images = uniqueImages;
+          out[i].images = images;
           return out;
         }
       }
-      out.push({ role: 'user', content: 'Please explain these images.', images: uniqueImages });
+      out.push({ role: 'user', content: 'Please explain these images.', images });
       return out;
     })();
 
@@ -144,6 +145,7 @@ export class LlmService {
       const strictRes = await this.queryOllamaWithFallback(messages, hasImage, ollamaMessages);
       if (strictRes.reply) return strictRes.reply;
       if (strictRes.error) console.warn('Ollama strict mode request failed', strictRes.error);
+      if (opts?.requireModelResponse) throw new Error('AI correction is unavailable. The configured AI model could not read the submission.');
       return hasImage
         ? 'I could not analyze the image right now. The configured vision model failed. Please keep OLLAMA_VISION_MODEL=llava:7b or install a compatible vision model for your Ollama runtime.'
         : 'Ollama is unavailable right now. Please make sure the Ollama server and model are running.';
@@ -152,6 +154,29 @@ export class LlmService {
     // ── 1. OpenAI ────────────────────────────────────────────────────────────
     if (process.env.OPENAI_API_KEY) {
       try {
+        const openAiMessages: Array<{
+          role: string;
+          content: string | Array<{ type: 'text'; text: string } | { type: 'image_url'; image_url: { url: string } }>;
+        }> = messages.map((message) => ({ ...message }));
+        if (hasImage) {
+          let userIndex = openAiMessages.map((message) => message.role).lastIndexOf('user');
+          if (userIndex < 0) {
+            openAiMessages.push({ role: 'user', content: 'Please review these images.' });
+            userIndex = openAiMessages.length - 1;
+          }
+          const text = String(openAiMessages[userIndex].content);
+          openAiMessages[userIndex].content = [
+            { type: 'text', text },
+            ...images.map((image) => {
+              const bytes = Buffer.from(image, 'base64');
+              const mime = bytes.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10])) ? 'image/png'
+                : bytes.subarray(0, 3).toString() === 'GIF' ? 'image/gif'
+                : bytes.subarray(0, 4).toString() === 'RIFF' && bytes.subarray(8, 12).toString() === 'WEBP' ? 'image/webp'
+                : 'image/jpeg';
+              return { type: 'image_url' as const, image_url: { url: `data:${mime};base64,${image}` } };
+            }),
+          ];
+        }
         const res = await fetch('https://api.openai.com/v1/chat/completions', {
           method: 'POST',
           headers: {
@@ -160,7 +185,7 @@ export class LlmService {
           },
           body: JSON.stringify({
             model: this.openAiModel,
-            messages,
+            messages: openAiMessages,
             temperature: 0.7,
             max_tokens: 512
           })
@@ -181,6 +206,10 @@ export class LlmService {
       const ollamaRes = await this.queryOllamaWithFallback(messages, hasImage, ollamaMessages);
       if (ollamaRes.reply) return ollamaRes.reply;
       if (ollamaRes.error) console.warn('Ollama request error', ollamaRes.error);
+    }
+
+    if (opts?.requireModelResponse) {
+      throw new Error('AI correction is unavailable. Please check the AI service and try again.');
     }
 
     // ── 3. Local mock server (fallback) ───────────────────────────────────────

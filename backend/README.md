@@ -85,6 +85,29 @@ Validate without database access using
 `node -r ts-node/register/transpile-only scripts/teacher_profile_test.js`
 and `npx tsc --noEmit`.
 
+### Teacher homework autocorrection
+
+`POST /teacher/homework/:hwId/ai-grade` reads the latest submitted text/images
+and the assignment's questions/worksheet images. The shared LLM service sends
+multimodal OpenAI messages with image MIME types; configured Ollama vision
+models remain supported. A working real model is required for grading:
+ordinary chat retains its fallback, but autocorrection never accepts a mock or
+service-error response as a grade.
+
+The response remains `{success, score, feedback}` on success or
+`{success: false, error}` when images cannot load, handwriting/context is
+unreadable, or the model fails to provide a valid 0-100 score and feedback.
+All submitted pages (up to the existing six-image client limit) are included.
+Teacher assignment image caches refresh when notes or URLs change.
+Autocorrect is review-only; the existing grade endpoint publishes the teacher's
+confirmed score. No schema/RLS change is needed. Deploy this backend for both
+the website and app to gain image-based correction.
+
+Validate with `npx tsc --noEmit` and
+`node -r ts-node/register/transpile-only scripts/homework_ai_grading_test.js`.
+Fixtures intercept all model/image networking; they verify payloads and
+failure handling, not live model handwriting-recognition accuracy.
+
 ### AI Tutor reply latency
 
 `POST /chat` starts independent profile, message embedding, memory, history,
