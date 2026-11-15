@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:mobile/main.dart';
@@ -41,7 +42,9 @@ class _TeacherApi extends TeacherApiService {
 }
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
   setUpAll(() => GoogleFonts.config.allowRuntimeFetching = false);
+  setUp(() => FlutterSecureStorage.setMockInitialValues({}));
   tearDown(() => AppColors.isDark = false);
 
   test(
@@ -52,16 +55,16 @@ void main() {
       );
       addTearDown(container.dispose);
       await container.read(sessionProvider.future);
-      container.read(themeModeProvider.notifier).setDark(true);
+      await container.read(themeModeProvider.notifier).setDark(true);
       expect(container.read(activeThemeModeProvider), ThemeMode.light);
-      container.read(teacherThemeModeProvider.notifier).setDark(true);
+      await container.read(teacherThemeModeProvider.notifier).setDark(true);
       expect(container.read(activeThemeModeProvider), ThemeMode.dark);
       final session = container.read(sessionProvider.notifier) as _Session;
       session.selectRole(null);
       expect(container.read(activeThemeModeProvider), ThemeMode.light);
       session.selectRole('student');
       expect(container.read(activeThemeModeProvider), ThemeMode.dark);
-      container.read(teacherThemeModeProvider.notifier).setDark(false);
+      await container.read(teacherThemeModeProvider.notifier).setDark(false);
       expect(container.read(activeThemeModeProvider), ThemeMode.dark);
       session.selectRole('teacher');
       expect(container.read(activeThemeModeProvider), ThemeMode.light);

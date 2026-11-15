@@ -6,6 +6,9 @@ import { SupabaseService } from '../supabase.service';
 import { EmbeddingsService } from '../embeddings/embeddings.service';
 import { FlashcardsService } from '../games/flashcards.service';
 import { QuizRushService } from '../games/quiz-rush.service';
+import { LlmService } from '../llm/llm.service';
+import { normalizeGrades } from '../auth/student-auth.service';
+import { decodeMultiLessonPdf, readMultiLessonPdf, validatePdfUnits, splitPdfUnits, PdfSourcePage, PdfUnit } from './multi-lesson-pdf';
 
 type VisibilityInput = {
   teacherId: string;
@@ -42,13 +45,32 @@ type AdminUploadInput = Omit<UploadInput, 'teacherId'> & {
   schoolId: string;
 };
 
+type PdfImportInput = { schoolId: string; teacherId: string; subject: string; className: string; fileName: string; data: string };
+type PdfImportResult = { lessons: Array<{ id: string; title: string; order_index: number }>; lessonCount: number };
+type PdfImportPreview = {
+  input: Omit<PdfImportInput, 'data'>;
+  buffer: Buffer;
+  pages: PdfSourcePage[];
+  units: PdfUnit[];
+  fingerprint: string;
+  firstNumber: number;
+  expiresAt: number;
+  publishing: boolean;
+  result?: PdfImportResult;
+};
+
 @Injectable()
 export class CurriculumService {
+  private readonly pdfImportPreviews = new Map<string, PdfImportPreview>();
+  private readonly pdfImportScopes = new Set<string>();
+  private pdfAnalysisCount = 0;
+
   constructor(
     private readonly db: SupabaseService,
     private readonly embeddings: EmbeddingsService,
     private readonly flashcards: FlashcardsService,
-    private readonly quizRush: QuizRushService
+    private readonly quizRush: QuizRushService,
+    private readonly llm: LlmService
   ) {}
 
   private normalizeClassNames(value: any): string[] {
@@ -168,6 +190,7 @@ export class CurriculumService {
   /** Every teacher id belonging to a school — the scope for admin operations. */
   private async schoolTeacherIds(schoolId: string): Promise<string[]> {
     const res = await this.db.client.from('teachers').select('id').eq('school_id', String(schoolId || '').trim());
+    if (res.error) throw new Error('Could not verify school curriculum scope. Please try again.');
     return (Array.isArray((res as any)?.data) ? (res as any).data : [])
       .map((row: any) => String(row?.id || '').trim())
       .filter(Boolean);
@@ -181,6 +204,7 @@ export class CurriculumService {
     const teacherIds = await this.schoolTeacherIds(schoolId);
     if (!teacherIds.length) return [] as any[];
     const res = await this.db.client.from('lessons').select('*').in('teacher_id', teacherIds);
+    if (res.error) throw new Error('Could not read existing lesson numbering. Please try again.');
     const rows: any[] = Array.isArray((res as any)?.data) ? (res as any).data : [];
     const subj = String(subject || '').trim().toLowerCase();
     const cls = String(className || '').trim().toLowerCase();
@@ -274,6 +298,9 @@ export class CurriculumService {
     await this.assertTeacherInSchool(teacherId, schoolId);
 
     const className = String(input.className || '').trim();
+    if (this.pdfImportScopes.has(this.pdfImportScope(schoolId, String(input.subject || ''), className))) {
+      throw new Error('A PDF import is being published for this subject and class. Please try adding the lesson once it finishes.');
+    }
     // Numbering is derived, not typed: lesson N is simply the Nth lesson filed
     // under this subject + class. An explicit orderIndex still wins so existing
     // callers (and the smoke tests) keep working.
@@ -293,6 +320,160 @@ export class CurriculumService {
     });
   }
 
+  private pdfImportScope(schoolId: string, subject: string, className: string) {
+    return JSON.stringify([schoolId, subject.trim().toLowerCase(), className.trim().toLowerCase()]);
+  }
+
+  private lessonFingerprint(lessons: Array<{ id: string; title: string; order_index: number }>) {
+    return JSON.stringify(lessons.map((lesson) => [lesson.id, lesson.title, lesson.order_index]));
+  }
+
+  private async assertPdfImportScope(input: Omit<PdfImportInput, 'data'>) {
+    if (!input.schoolId || !input.teacherId || !input.subject || !input.className) throw new Error('School, class, subject and assigned teacher are required.');
+    const teacher = await this.assertTeacherInSchool(input.teacherId, input.schoolId);
+    if (String(teacher.subject || '').trim().toLowerCase() !== input.subject.toLowerCase() ||
+        !normalizeGrades(teacher.grades).some((grade) => grade.toLowerCase() === input.className.toLowerCase())) {
+      throw new Error('The selected teacher must teach this subject for this class.');
+    }
+  }
+
+  async previewMultiLessonPdf(raw: PdfImportInput) {
+    for (const [id, preview] of this.pdfImportPreviews) {
+      if (!preview.publishing && preview.expiresAt < Date.now()) this.pdfImportPreviews.delete(id);
+    }
+    if ([...this.pdfImportPreviews.values()].filter((preview) => !preview.result).length + this.pdfAnalysisCount >= 8) throw new Error('Too many PDF previews are active. Please try again after they expire.');
+    this.pdfAnalysisCount++;
+    try {
+      const input = {
+        schoolId: String(raw.schoolId || '').trim(), teacherId: String(raw.teacherId || '').trim(),
+        subject: String(raw.subject || '').trim(), className: String(raw.className || '').trim(),
+        fileName: path.basename(String(raw.fileName || 'curriculum.pdf')),
+      };
+      await this.assertPdfImportScope(input);
+      const existing = await this.lessonsForSubjectClass(input.schoolId, input.subject, input.className);
+      const buffer = decodeMultiLessonPdf(raw.data);
+      const pages = await readMultiLessonPdf(buffer);
+      const units = await validatePdfUnits(pages, this.llm);
+      const normalizedTitle = (title: string) => title.trim().replace(/^(?:unit|lesson|chapter)\s*(?:\d+|[IVXLCDM]+)\b\s*[:.)-]?\s*/i, '').replace(/\s+/g, ' ').toLowerCase();
+      const names = new Set(existing.map((lesson) => normalizedTitle(String(lesson.title || ''))));
+      for (const unit of units) {
+        const name = normalizedTitle(unit.title);
+        if (names.has(name)) throw new Error(`"${unit.title}" already exists in this subject/class or repeats in this PDF. No existing lessons will be replaced.`);
+        names.add(name);
+      }
+      const previewId = randomUUID();
+      const firstNumber = existing.length + 1;
+      const expiresAt = Date.now() + 15 * 60_000;
+      this.pdfImportPreviews.set(previewId, { input, buffer, pages, units, fingerprint: this.lessonFingerprint(existing), firstNumber, expiresAt, publishing: false });
+      return {
+        previewId, fileName: input.fileName, pageCount: pages.length, expiresAt: new Date(expiresAt).toISOString(),
+        lessons: units.map((unit, i) => ({ title: unit.title, startPage: unit.page, endPage: unit.endPage, sourceNumber: unit.number, lessonNumber: firstNumber + i })),
+        excludedPages: pages.filter((page) => !units.some((unit) => page.pageNumber >= unit.page && page.pageNumber <= unit.endPage)).map((page) => page.pageNumber),
+      };
+    } finally {
+      this.pdfAnalysisCount--;
+    }
+  }
+
+  async publishMultiLessonPdf(input: { schoolId: string; previewId: string; confirmed: boolean }) {
+    const preview = this.pdfImportPreviews.get(String(input.previewId || ''));
+    if (!preview || preview.input.schoolId !== String(input.schoolId || '').trim()) throw new Error('This PDF preview is not available for your school. Analyse the PDF again.');
+    if (preview.result) return preview.result;
+    if (preview.expiresAt < Date.now()) throw new Error('This PDF preview expired. Analyse the PDF again before publishing.');
+    if (input.confirmed !== true) throw new Error('Review the lesson names and page boundaries before publishing.');
+    const scope = this.pdfImportScope(preview.input.schoolId, preview.input.subject, preview.input.className);
+    if (preview.publishing || this.pdfImportScopes.has(scope)) throw new Error('This subject already has a PDF import in progress.');
+    preview.publishing = true;
+    this.pdfImportScopes.add(scope);
+    const lessonIds: string[] = [];
+    const savedPaths: string[] = [];
+    let wroteRows = false;
+    try {
+      await this.assertPdfImportScope(preview.input);
+      const existing = await this.lessonsForSubjectClass(preview.input.schoolId, preview.input.subject, preview.input.className);
+      if (this.lessonFingerprint(existing) !== preview.fingerprint) throw new Error('The curriculum changed after this preview. Analyse the PDF again to get the correct continuation numbers.');
+      const split = await splitPdfUnits(preview.buffer, preview.pages, preview.units);
+      const lessonRows = split.map(({ unit }, i) => ({
+        id: randomUUID(), teacher_id: preview.input.teacherId, subject: preview.input.subject, class_name: preview.input.className,
+        title: unit.title, description: `Imported from ${preview.input.fileName}, source PDF pages ${unit.page}-${unit.endPage}.`,
+        order_index: preview.firstNumber + i, is_active: false,
+      }));
+      const documentRows: Array<Record<string, unknown>> = [];
+      const chunkRows: Array<Record<string, unknown>> = [];
+      for (let i = 0; i < split.length; i++) {
+        const { unit, data } = split[i];
+        const lessonId = lessonRows[i].id;
+        lessonIds.push(lessonId);
+        const docId = randomUUID();
+        const saved = this.savePdfUpload({ teacherId: preview.input.teacherId, lessonId, fileName: `${unit.title}.pdf`, data: data.toString('base64') });
+        savedPaths.push(saved.fullPath);
+        documentRows.push({ id: docId, lesson_id: lessonId, teacher_id: preview.input.teacherId, file_name: saved.fileName, file_url: saved.relativeUrl, file_size_bytes: data.length, mime_type: 'application/pdf', extraction_status: 'completed' });
+        let chunkIndex = 0;
+        for (const page of preview.pages.slice(unit.page - 1, unit.endPage)) {
+          for (const text of this.chunkText(page.text)) {
+            const embedding = await this.embeddings.embed(text, { targetDim: 384, preferSemantic: true });
+            chunkRows.push({ document_id: docId, lesson_id: lessonId, teacher_id: preview.input.teacherId, chunk_text: text, chunk_index: chunkIndex++, page_number: page.pageNumber - unit.page + 1, embedding });
+          }
+        }
+        if (!chunkIndex) throw new Error(`"${unit.title}" has no readable teaching content.`);
+      }
+      const current = await this.lessonsForSubjectClass(preview.input.schoolId, preview.input.subject, preview.input.className);
+      await this.assertPdfImportScope(preview.input);
+      if (this.lessonFingerprint(current) !== preview.fingerprint) throw new Error('The curriculum changed while this PDF was being processed. Analyse it again before publishing.');
+      wroteRows = true;
+      for (const [table, rows] of [
+        ['lessons', lessonRows], ['lesson_documents', documentRows], ['lesson_chunks', chunkRows],
+        ['lesson_class_visibility', lessonIds.map((lessonId) => ({ lesson_id: lessonId, teacher_id: preview.input.teacherId, class_name: preview.input.className, is_visible: false }))],
+      ] as const) {
+        const result = await this.db.client.from(table).insert(rows);
+        if (result.error) throw new Error(`Could not save ${table}: ${result.error.message}`);
+      }
+      const allLessons = await this.lessonsForSubjectClass(preview.input.schoolId, preview.input.subject, preview.input.className);
+      const importedIds = new Set(lessonIds);
+      const originalLessons = allLessons.filter((lesson) => !importedIds.has(String(lesson.id)));
+      const numbers = new Set(lessonRows.map((lesson) => lesson.order_index));
+      if (allLessons.length !== existing.length + lessonRows.length || this.lessonFingerprint(originalLessons) !== preview.fingerprint ||
+          originalLessons.some((lesson) => numbers.has(Number(lesson.order_index)))) {
+        throw new Error('Another curriculum change conflicted with this import. No imported lessons will be published.');
+      }
+      const active = await this.db.client.from('lessons').update({ is_active: true }).in('id', lessonIds);
+      if (active.error) throw new Error(`Could not activate imported lessons: ${active.error.message}`);
+      const visible = await this.db.client.from('lesson_class_visibility').update({ is_visible: true }).in('lesson_id', lessonIds);
+      if (visible.error) throw new Error(`Could not publish imported lessons: ${visible.error.message}`);
+      const result: PdfImportResult = { lessonCount: lessonRows.length, lessons: lessonRows.map((lesson) => ({ id: lesson.id, title: lesson.title, order_index: lesson.order_index })) };
+      preview.result = result;
+      preview.buffer = Buffer.alloc(0);
+      preview.pages = [];
+      for (const lessonId of lessonIds) {
+        this.flashcards.generateForLesson(lessonId, { force: true }).catch((error) => console.warn('Imported lesson flashcards could not be prepared', error));
+        this.quizRush.generateForLesson(lessonId, { force: true }).catch((error) => console.warn('Imported lesson quiz could not be prepared', error));
+      }
+      return result;
+    } catch (error) {
+      const cleanupErrors: string[] = [];
+      if (wroteRows && lessonIds.length) {
+        for (const [table, column] of [['lesson_chunks', 'lesson_id'], ['lesson_documents', 'lesson_id'], ['lesson_class_visibility', 'lesson_id'], ['lessons', 'id']]) {
+          try {
+            const result = await this.db.client.from(table).delete().in(column, lessonIds);
+            if (result.error) throw new Error(result.error.message);
+          } catch (cleanupError) { cleanupErrors.push(`${table}: ${(cleanupError as Error).message}`); }
+        }
+      }
+      for (const fullPath of savedPaths) {
+        try { fs.unlinkSync(fullPath); } catch (cleanupError) { cleanupErrors.push(`PDF file: ${(cleanupError as Error).message}`); }
+      }
+      if (cleanupErrors.length) {
+        this.pdfImportPreviews.delete(input.previewId);
+        console.error('PDF import cleanup incomplete', cleanupErrors);
+        throw new Error(`${(error as Error).message} Cleanup was incomplete; contact support before retrying. Imported lesson IDs: ${lessonIds.join(', ')}.`);
+      }
+      throw error;
+    } finally {
+      preview.publishing = false;
+      this.pdfImportScopes.delete(scope);
+    }
+  }
+
   /** Rename / re-describe / re-order a lesson. Admin scoped. */
   async updateLessonAsSchoolAdmin(input: {
     schoolId: string;
@@ -308,6 +489,9 @@ export class CurriculumService {
     const lesson = await this.assertLessonInSchool(lessonId, schoolId);
 
     const changes: any = { updated_at: new Date().toISOString() };
+    if (this.pdfImportScopes.has(this.pdfImportScope(schoolId, String(lesson.subject || ''), String(lesson.class_name || '')))) {
+      throw new Error('A PDF import is being published for this subject and class. Please edit the lesson after it finishes.');
+    }
     if (input.title !== undefined) {
       const title = String(input.title || '').trim();
       if (!title) throw new Error('title cannot be empty');
@@ -347,6 +531,9 @@ export class CurriculumService {
     const lesson = await this.assertLessonInSchool(lessonId, schoolId);
 
     const docs = await this.listLessonDocuments(lessonId);
+    if (this.pdfImportScopes.has(this.pdfImportScope(schoolId, String(lesson.subject || ''), String(lesson.class_name || '')))) {
+      throw new Error('A PDF import is being published for this subject and class. Please delete the lesson after it finishes.');
+    }
     for (const doc of docs.documents || []) this.removeStoredFile(doc?.file_url);
 
     await this.purgeLessonDerivedData(lessonId);
@@ -567,10 +754,16 @@ export class CurriculumService {
     }).select('*');
 
     const doc = Array.isArray((insertedDoc as any)?.data) ? (insertedDoc as any).data[0] : null;
-    if (!doc) throw new Error((insertedDoc as any)?.error?.message || 'Failed to create lesson document');
+    if (!doc) {
+      fs.unlinkSync(saved.fullPath);
+      throw new Error((insertedDoc as any)?.error?.message || 'Failed to create lesson document');
+    }
 
     try {
-      const extracted = await this.extractPdfPages(fileBuffer);
+      const extracted = mimeType === 'text/plain'
+        ? { pages: [{ pageNumber: 1, text: this.normalizeExtractedText(fileBuffer.toString('utf8')) }], pageCount: 1 }
+        : await this.extractPdfPages(fileBuffer);
+      if (mimeType === 'text/plain' && !extracted.pages[0]?.text) throw new Error('Paste readable lesson content before saving.');
       const chunkRows: any[] = [];
 
       for (const page of extracted.pages) {
@@ -597,9 +790,10 @@ export class CurriculumService {
         }
       }
 
-      await this.db.client.from('lesson_documents')
+      const completed = await this.db.client.from('lesson_documents')
         .update({ extraction_status: 'completed', error_message: null, updated_at: new Date().toISOString() })
         .eq('id', doc.id);
+      if (completed.error) throw new Error(`Could not complete lesson indexing: ${completed.error.message}`);
 
       // Fire-and-forget: pre-build this chapter's flashcards from the freshly
       // extracted content so students never wait on the AI (and we only spend
@@ -640,6 +834,20 @@ export class CurriculumService {
       fileName: input.fileName,
       data: input.data,
       mimeType: input.mimeType
+    });
+  }
+
+  async saveLessonTextAsSchoolAdmin(input: { schoolId: string; lessonId: string; content: string }) {
+    if (typeof input.content !== 'string' || !input.content.trim()) throw new Error('Paste the lesson content before saving.');
+    if (input.content.length > 200_000) throw new Error('Pasted lesson content must be at most 200,000 characters. Split longer content into separate lessons.');
+    const schoolId = String(input.schoolId || '').trim();
+    const lessonId = String(input.lessonId || '').trim();
+    if (!schoolId || !lessonId) throw new Error('School and lesson are required.');
+    const lesson = await this.assertLessonInSchool(lessonId, schoolId);
+    return this.uploadLessonDocument({
+      teacherId: String(lesson.teacher_id || '').trim(), lessonId,
+      fileName: `${lesson.title || 'lesson-content'}.txt`, mimeType: 'text/plain',
+      data: Buffer.from(input.content.trim(), 'utf8').toString('base64'),
     });
   }
 

@@ -44,6 +44,15 @@ Run `flutter test --no-pub test/strict_exam_test.dart test/quick_sam_bubble_test
 and `flutter analyze --no-pub`. Native device verification is still required
 before a school rollout; this development machine has no Android/Xcode target.
 
+## Automatically imported curriculum lessons
+
+The school website's Multi-Lesson PDF importer publishes ordinary curriculum
+lessons, each with its own unit PDF and lesson-scoped chunks. Student lesson/AI
+Tutor views and teacher lesson selectors receive the names and ordering through
+their existing curriculum APIs when refreshed. No mobile API contracts, routes,
+conversation IDs or School Admin placeholder change. Deploy the shared backend
+and refresh the app's lesson views; this feature needs no mobile rebuild.
+
 ## Student Homework and Mock Tests
 
 The Homework screen has a persistent, raised **Homework / Mock Tests** switch.
@@ -58,6 +67,17 @@ small screens and large text are covered by
 `flutter test --no-pub test/homework_layout_test.dart test/tasks_games_dark_test.dart`.
 Submission, uploads, the resubmission window, test start/review and strict-exam
 controls use their existing services and rules. No backend/schema change.
+
+Unsubmitted assignment cards have a compact raised **Ask Sam** button at the
+top right. It returns to Home (including when opened from Services), opens the
+existing Sam chat and automatically requests help for that assignment. Calculations
+and practical tasks get one guiding clue at a time; theory gets a short concept
+story and memory hook, not a ready-to-submit answer. Every follow-up retains the
+homework ID until Sam closes. Submitted cards have no help button and strict-exam
+access locks disable it. The shared backend verifies ownership/submission,
+reads teacher worksheet images and teaches only from available class materials.
+Deploy the updated backend and rebuild/install the app for this feature.
+Validate with `flutter test --no-pub test/homework_layout_test.dart test/quick_sam_bubble_test.dart test/quick_sam_audio_test.dart`.
 
 Teacher Assigned Homework History thumbnails open the same full-screen viewer
 as student subject homework history and saved submissions. Tap any image to
@@ -159,8 +179,14 @@ regressions are covered by `orchard_dark_theme_test.dart`,
 The teacher's three-dot menu has a compact Dark theme switch above Logout.
 Teacher and student theme selections are independent; switching roles no longer
 copies the previous portal's appearance, and the login screen stays light.
-The teacher selection is retained during the current app session (it defaults
-to light on a fresh launch); student saved-preference behaviour is unchanged.
+Both selections are saved separately in device secure storage and restored
+before the portal opens, including after removing the app from background apps
+or restarting the phone. Logout does not erase these device preferences.
+Fresh installations default to light. Student backend settings initialize the
+theme only when no device choice exists; older backend values cannot override
+a locally saved choice. Student settings still synchronize to the backend,
+but a failed sync does not undo the device save. Failed local reads offer Retry;
+failed writes are reported in the settings/menu rather than silently ignored.
 Teacher panels and the floating bottom bar update in place without resetting
 the current tab or form state. Dark navigation uses the same surface, muted
 icons and highlighted accent as the student bar.
@@ -178,8 +204,9 @@ report cards keep their contrasting paper-and-ink design.
 `flutter test --no-pub test/teacher_contrast_test.dart` checks action contrast
 (at least 4.5:1), light/dark switches, grading and saving report-card marks.
 
-Run `flutter test --no-pub test/teacher_theme_test.dart test/student_dark_theme_test.dart test/role_router_test.dart test/widget_test.dart`
-for role isolation, menu switching, navigation colours, retained state and logout.
+Run `flutter test --no-pub test/theme_persistence_test.dart test/teacher_theme_test.dart test/student_dark_theme_test.dart test/role_router_test.dart test/widget_test.dart`
+for cold-restart persistence, rapid toggles, storage failures, offline sync,
+role isolation, menu switching, navigation colours, retained state and logout.
 
 The top-left teacher profile chip opens a read-only account card on every tab,
 with a male/female teacher avatar (neutral when unspecified), name, school,
@@ -302,6 +329,11 @@ swift tool/build_launcher_icons.swift
 flutter test test/role_router_test.dart test/release_configuration_test.dart test/widget_test.dart
 ```
 
+Android 8+ uses a white adaptive background and a separate transparent emblem
+layer so launchers do not shrink the mark inside a second round bubble. The
+emblem fills about two-thirds of the visible circle while remaining inside
+Android's 66dp safe circle; older Android density icons use a slightly larger
+emblem. The master logo, iOS and website sizing remain unchanged.
 The script uses the illustrated logo's emblem crop; review it after any logo
 replacement. iOS icons have no alpha channel, and maskable browser icons have
 extra safe-zone padding. Rebuild/relaunch the app after replacing bundled assets;

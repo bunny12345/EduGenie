@@ -16,16 +16,20 @@ guard let input = NSBitmapImageRep(data: sourceData),
     fatalError("Cannot read the AcademiX logo emblem")
 }
 
-func pngData(_ pixels: Int, inset: Double = 0.72) -> Data {
+func pngData(_ pixels: Int, inset: Double = 0.72, transparent: Bool = false) -> Data {
     guard let context = CGContext(
         data: nil, width: pixels, height: pixels, bitsPerComponent: 8,
         bytesPerRow: pixels * 4, space: CGColorSpaceCreateDeviceRGB(),
-        bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue
+        bitmapInfo: (transparent ? CGImageAlphaInfo.premultipliedLast : CGImageAlphaInfo.noneSkipLast).rawValue
     ) else {
         fatalError("Cannot allocate launcher image")
     }
-    context.setFillColor(CGColor(gray: 1, alpha: 1))
-    context.fill(CGRect(x: 0, y: 0, width: pixels, height: pixels))
+    if transparent {
+        context.clear(CGRect(x: 0, y: 0, width: pixels, height: pixels))
+    } else {
+        context.setFillColor(CGColor(gray: 1, alpha: 1))
+        context.fill(CGRect(x: 0, y: 0, width: pixels, height: pixels))
+    }
     context.interpolationQuality = .high
     let scale = Double(pixels) * inset / Double(max(emblem.width, emblem.height))
     let width = Double(emblem.width) * scale
@@ -41,13 +45,18 @@ func pngData(_ pixels: Int, inset: Double = 0.72) -> Data {
     return data
 }
 
-func render(_ pixels: Int, to destination: URL, inset: Double = 0.72) throws {
-    try pngData(pixels, inset: inset).write(to: destination)
+func render(_ pixels: Int, to destination: URL, inset: Double = 0.72, transparent: Bool = false) throws {
+    try pngData(pixels, inset: inset, transparent: transparent).write(to: destination)
 }
 
 let android = root.appendingPathComponent("android/app/src/main/res")
 for (density, pixels) in [("mdpi", 48), ("hdpi", 72), ("xhdpi", 96), ("xxhdpi", 144), ("xxxhdpi", 192)] {
-    try render(pixels, to: android.appendingPathComponent("mipmap-\(density)/ic_launcher.png"))
+    try render(pixels, to: android.appendingPathComponent("mipmap-\(density)/ic_launcher.png"), inset: 0.80)
+    let drawable = android.appendingPathComponent("drawable-\(density)")
+    try FileManager.default.createDirectory(at: drawable, withIntermediateDirectories: true)
+    // A 108dp adaptive layer is masked to 72dp. Keep the complete emblem
+    // inside the central 66dp safe circle without legacy launcher padding.
+    try render(pixels * 108 / 48, to: drawable.appendingPathComponent("ic_launcher_foreground.png"), inset: 0.45, transparent: true)
 }
 let ios = root.appendingPathComponent("ios/Runner/Assets.xcassets/AppIcon.appiconset")
 struct IconCatalog: Decodable {

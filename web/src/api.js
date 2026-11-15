@@ -261,13 +261,13 @@ export async function sendChat(studentId, message, personality, conversationId, 
 
 // Home-page "Quick Sam" bubble: answers from all of the class's subjects,
 // with no subject/lesson filter. The backend stores nothing.
-export async function sendQuickSamChat(studentId, message, recentMessages, signal) {
+export async function sendQuickSamChat(studentId, message, recentMessages, signal, homeworkId) {
   const headers = await authHeaders();
   const res = await fetch(`${API_BASE}/chat/quick`, {
     method: 'POST',
     headers,
     signal,
-    body: JSON.stringify({ studentId, message, recentMessages })
+    body: JSON.stringify({ studentId, message, recentMessages, ...(homeworkId ? { homeworkId } : {}) })
   });
   const data = await res.json();
   return checkSuccess(data, 'sendQuickSamChat');
@@ -1311,6 +1311,22 @@ export async function createCurriculumLesson(payload) {
   return res.json();
 }
 
+export async function previewCurriculumPdfImport(payload) {
+  const res = await fetch(`${API_BASE}/curriculum/pdf-import/preview`, {
+    method: 'POST', headers: await authHeaders(), body: JSON.stringify(payload)
+  });
+  if (!res.ok) throw new Error(`Unable to analyse the PDF (${res.status}). Try a smaller PDF, up to 15 MB.`);
+  return checkSuccess(await res.json(), 'previewCurriculumPdfImport');
+}
+
+export async function publishCurriculumPdfImport(previewId) {
+  const res = await fetch(`${API_BASE}/curriculum/pdf-import/publish`, {
+    method: 'POST', headers: await authHeaders(), body: JSON.stringify({ previewId, confirmed: true })
+  });
+  if (!res.ok) throw new Error(`Unable to publish the lessons (${res.status}).`);
+  return checkSuccess(await res.json(), 'publishCurriculumPdfImport');
+}
+
 export async function listCurriculumLessons(params = {}) {
   const res = await fetch(withQuery('/curriculum/lessons', params || {}), {
     headers: await authHeaders()
@@ -1338,6 +1354,14 @@ export async function uploadCurriculumLessonDocument(lessonId, payload) {
     body: JSON.stringify(payload || {})
   });
   return res.json();
+}
+
+export async function saveCurriculumLessonText(lessonId, content) {
+  const res = await fetch(`${API_BASE}/curriculum/lessons/${encodeURIComponent(lessonId)}/content`, {
+    method: 'POST', headers: await authHeaders(), body: JSON.stringify({ content })
+  });
+  if (!res.ok) throw new Error(`Unable to save lesson content (${res.status}).`);
+  return checkSuccess(await res.json(), 'saveCurriculumLessonText');
 }
 
 export async function listCurriculumLessonDocuments(lessonId) {

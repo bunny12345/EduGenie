@@ -18,6 +18,9 @@ Module._load = function (request, parent, isMain) {
       if (url === 'https://api.openai.com/v1/chat/completions') {
         return { ok: modelAvailable, status: modelAvailable ? 200 : 503, json: async () => ({ choices: [{ message: { content: modelReply } }] }) };
       }
+      if (url === 'http://fixture.invalid/api/chat') {
+        return { ok: true, json: async () => ({ message: { content: modelReply } }) };
+      }
       if (url.endsWith('/v1/chat')) return { ok: true, json: async () => ({ reply: 'Fixture fallback' }) };
       assert.match(url, /^https:\/\/fixture\.invalid\//, 'No real networking is permitted in these tests');
       return {
@@ -66,6 +69,7 @@ async function main() {
   const result = await controller.aiGradeHomework(req, 'hw');
   assert.deepEqual(result, { success: true, score: 87, feedback: 'Good reasoning. Check the final calculation.' });
   let payload = calls.find((call) => call.url.includes('openai.com')).body;
+  assert.equal(payload.response_format, undefined, 'Existing teaching/grading calls must not be forced into JSON mode');
   assert.match(payload.messages[0].content, /FIRST 1 image/);
   assert.deepEqual(payload.messages[1].content, [
     { type: 'text', text: "Student's written answer:\nOne half.\n\nThe student submitted 1 image(s) of their work — review them closely against the assignment." },
@@ -137,6 +141,22 @@ async function main() {
   calls.length = 0;
   assert.equal(await llm.query('Ordinary chat'), 'Fixture fallback', 'Existing non-grading fallback behavior is preserved');
   assert.equal(typeof calls[0].body.messages[0].content, 'string');
+
+  modelAvailable = true;
+  modelReply = '{"homeworkIndex":0,"safe":false}';
+  calls.length = 0;
+  await llm.query([{ role: 'system', content: 'Return a JSON homework safety review.' }, { role: 'user', content: 'Fixture question' }], { responseFormat: 'json', requireModelResponse: true });
+  assert.deepEqual(calls[0].body.response_format, { type: 'json_object' });
+  assert.equal(calls[0].body.temperature, 0);
+  process.env.OLLAMA_ONLY = 'true';
+  const ollama = new LlmService();
+  calls.length = 0;
+  await ollama.query('Return JSON only.', { responseFormat: 'json', requireModelResponse: true });
+  assert.equal(calls[0].body.format, 'json');
+  calls.length = 0;
+  await ollama.query('Return JSON only for this worksheet.', { responseFormat: 'json', requireModelResponse: true, imageBase64List: [png.toString('base64')] });
+  assert.equal(calls[0].body.format, 'json');
+  assert.deepEqual(calls[0].body.messages[0].images, [png.toString('base64')]);
   console.log('Homework AI grading fixtures passed: text/images, multimodal payloads, latest attempts, cache refresh, local uploads, failure handling and review-only suggestions.');
 }
 

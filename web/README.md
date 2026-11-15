@@ -16,6 +16,30 @@ Small icons use only the emblem so the name/tagline do not become unreadable.
 Deploy the generated public assets together; the source replacement alone does
 not update the production website.
 
+## Multi-lesson curriculum PDF upload
+
+In **Add one lesson manually**, enter the lesson name and either choose PDFs,
+paste the lesson's teaching content into **Or paste lesson content**, or use both.
+Description remains an optional teacher note, not the teaching content. Pasted
+text is saved as a text document and indexed for the lesson's Sam tutor. Up to
+200,000 characters are supported; longer pastes stay intact with a visible error
+instead of being truncated. Drafts survive save failures; pasted content clears
+on success or when switching class/subject to avoid mixing lesson sources.
+
+School > Curriculum Content keeps manual Add Lesson and adds **Upload Multi-Lesson
+PDF** for the selected class/subject. Choose one PDF, select **Detect lessons**,
+review automatically filled names and first/last source-page links, confirm the
+boundaries, then create all lessons. Upload the next part separately: numbering
+continues after existing lessons; duplicate titles or a changed curriculum block
+publication rather than overwrite anything.
+
+Clear unit/chapter headings or prominent numbered titles and searchable text are
+required. Scanned teaching pages need OCR; units sharing a page or uncertain
+boundaries require manual uploads. Previews expire after 15 minutes. Each created
+lesson has a physically separate PDF and isolated tutor chunks, not a copy of the
+whole textbook. Deploy the updated backend and website together.
+Run `CI=true npm test -- --watch=false --runInBand --runTestsByPath src/components/SchoolDashboard.test.jsx`.
+
 ## Home Sam voice
 
 Home-page Sam has a top-right **Speed** selector with 1x and 2x
@@ -30,6 +54,19 @@ sequentially; mute, closing, a new question, recording or unmounting invalidates
 pending audio so old replies cannot restart. Actual startup time still depends
 on the voice service and network; this is not token-streaming chat/audio.
 Run `CI=true npm test -- --watch=false --runInBand --runTestsByPath src/components/QuickSamBubble.test.jsx`.
+
+## Homework help with Home Sam
+
+Unsubmitted homework cards, including the latest assignment, have a small raised
+**Ask Sam** button at the top right. It navigates to Home and opens the existing
+Sam bubble with the selected assignment. Calculations/tasks receive one small
+guiding clue; theory receives a memorable concept story and a check question,
+not a completed answer. Follow-ups retain the assignment until Sam closes.
+Submitted cards do not offer help; scheduled strict exams disable it.
+The backend verifies ownership and submission state, reads teacher worksheets,
+and preserves the uploaded-class-material teaching boundary. Deploy both the
+updated backend and website. No chat conversation IDs or database policies change.
+Run the Sam test above plus `src/components/StudentDashboard.performance.test.jsx`.
 
 ## Teacher homework autocorrection
 

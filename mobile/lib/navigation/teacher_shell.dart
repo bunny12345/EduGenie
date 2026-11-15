@@ -148,7 +148,16 @@ class _TeacherShellState extends ConsumerState<TeacherShell> {
                       ),
                       title: Text('Dark theme', style: TextStyle(color: AppColors.of(context).text)),
                       value: dark,
-                      onChanged: (value) => ref.read(teacherThemeModeProvider.notifier).setDark(value),
+                      onChanged: (value) async {
+                        final messenger = ScaffoldMessenger.of(context);
+                        try {
+                          await ref.read(teacherThemeModeProvider.notifier).setDark(value);
+                        } catch (_) {
+                          if (messenger.mounted) {
+                            messenger.showSnackBar(const SnackBar(content: Text('Theme applied, but could not save it on this device. Please try again.')));
+                          }
+                        }
+                      },
                     );
                   },
                 ),

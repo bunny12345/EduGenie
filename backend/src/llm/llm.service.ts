@@ -54,13 +54,15 @@ export class LlmService {
   private async queryOllamaWithFallback(
     messages: Array<{ role: string; content: string }>,
     hasImage: boolean,
-    ollamaMessages: Array<{ role: string; content: string; images?: string[] }>
+    ollamaMessages: Array<{ role: string; content: string; images?: string[] }>,
+    responseFormat?: 'json'
   ): Promise<{ reply?: string; error?: string }> {
     if (!hasImage) {
       const plain = await this.requestOllamaChat({
         model: this.ollamaModel,
         messages,
-        stream: false
+        stream: false,
+        ...(responseFormat ? { format: responseFormat } : {})
       });
       if (plain.ok && plain.reply) return { reply: plain.reply };
       return { error: plain.errorText || `status ${plain.status || 'unknown'}` };
@@ -79,7 +81,8 @@ export class LlmService {
       const res = await this.requestOllamaChat({
         model,
         messages: ollamaMessages,
-        stream: false
+        stream: false,
+        ...(responseFormat ? { format: responseFormat } : {})
       });
 
       if (res.ok && res.reply) {
@@ -110,7 +113,7 @@ export class LlmService {
    */
   async query(
     promptOrMessages: string | Array<{ role: string; content: string }>,
-    opts?: { imageBase64?: string; imageBase64List?: string[]; requireModelResponse?: boolean }
+    opts?: { imageBase64?: string; imageBase64List?: string[]; requireModelResponse?: boolean; responseFormat?: 'json' }
   ): Promise<string> {
     // Normalize to messages array for all providers
     const messages: Array<{ role: string; content: string }> =
@@ -142,7 +145,7 @@ export class LlmService {
 
     // Strict mode: Ollama only, no OpenAI or mock fallback.
     if (this.ollamaOnly) {
-      const strictRes = await this.queryOllamaWithFallback(messages, hasImage, ollamaMessages);
+      const strictRes = await this.queryOllamaWithFallback(messages, hasImage, ollamaMessages, opts?.responseFormat);
       if (strictRes.reply) return strictRes.reply;
       if (strictRes.error) console.warn('Ollama strict mode request failed', strictRes.error);
       if (opts?.requireModelResponse) throw new Error('AI correction is unavailable. The configured AI model could not read the submission.');
@@ -186,8 +189,9 @@ export class LlmService {
           body: JSON.stringify({
             model: this.openAiModel,
             messages: openAiMessages,
-            temperature: 0.7,
-            max_tokens: 512
+            temperature: opts?.responseFormat ? 0 : 0.7,
+            max_tokens: 512,
+            ...(opts?.responseFormat ? { response_format: { type: 'json_object' } } : {})
           })
         });
         if (res.ok) {
@@ -203,7 +207,7 @@ export class LlmService {
 
     // ── 2. Ollama ─────────────────────────────────────────────────────────────
     if (this.isTruthy(process.env.USE_OLLAMA) || String(process.env.LLM_PROVIDER || '').trim().toLowerCase() === 'ollama') {
-      const ollamaRes = await this.queryOllamaWithFallback(messages, hasImage, ollamaMessages);
+      const ollamaRes = await this.queryOllamaWithFallback(messages, hasImage, ollamaMessages, opts?.responseFormat);
       if (ollamaRes.reply) return ollamaRes.reply;
       if (ollamaRes.error) console.warn('Ollama request error', ollamaRes.error);
     }

@@ -4,7 +4,9 @@ import SchoolDashboard from './SchoolDashboard';
 import {
   getSchoolProgressStudents, getSchoolStudentLearningScore, getSchoolStudentReportCards,
   getSchoolProgressPeriod, saveSchoolProgressPeriod,
-  schoolDashboard, schoolTeachers, schoolStudents, schoolDeduplicateTeachers, listCurriculumSubjects
+  schoolDashboard, schoolTeachers, schoolStudents, schoolDeduplicateTeachers, listCurriculumSubjects,
+  listCurriculumLessons, listCurriculumLessonDocuments, previewCurriculumPdfImport, publishCurriculumPdfImport,
+  createCurriculumLesson, uploadCurriculumLessonDocument, saveCurriculumLessonText, deleteCurriculumLesson
 } from '../api';
 
 jest.mock('../api', () => ({
@@ -13,6 +15,14 @@ jest.mock('../api', () => ({
   schoolStudents: jest.fn().mockResolvedValue({ students: [], pagination: null }),
   schoolDeduplicateTeachers: jest.fn().mockResolvedValue({ success: true }),
   listCurriculumSubjects: jest.fn().mockResolvedValue({ classes: [] }),
+  listCurriculumLessons: jest.fn(),
+  listCurriculumLessonDocuments: jest.fn(),
+  previewCurriculumPdfImport: jest.fn(),
+  publishCurriculumPdfImport: jest.fn(),
+  createCurriculumLesson: jest.fn(),
+  uploadCurriculumLessonDocument: jest.fn(),
+  saveCurriculumLessonText: jest.fn(),
+  deleteCurriculumLesson: jest.fn(),
   getSchoolProgressStudents: jest.fn(),
   getSchoolProgressPeriod: jest.fn(),
   saveSchoolProgressPeriod: jest.fn(),
@@ -35,6 +45,29 @@ const students = [
   ...Array.from({ length: 12 }, (_, i) => ({ id: `learner-${i}`, name: `Learner ${String(i).padStart(2, '0')}`, className: 'Class 10' }))
 ];
 const session = { schoolId: 'school-a', schoolName: 'Test School' };
+const pdfPreview = {
+  previewId: 'preview-a', fileName: 'English part one.pdf', pageCount: 10, excludedPages: [1, 2, 10],
+  lessons: [
+    { title: 'The River', startPage: 3, endPage: 5, lessonNumber: 1 },
+    { title: 'The Garden', startPage: 6, endPage: 7, lessonNumber: 2 },
+    { title: 'The Bridge', startPage: 8, endPage: 9, lessonNumber: 3 }
+  ]
+};
+
+function curriculumFixture() {
+  window.location.hash = '#curriculum';
+  listCurriculumSubjects.mockResolvedValue({ classes: [
+    { className: 'Class 7', subjects: [
+      { subject: 'English', teacherId: 'english', teacherName: 'Teacher', canUpload: true },
+      { subject: 'Mathematics', teacherId: 'math', teacherName: 'Math teacher', canUpload: true }
+    ] }
+  ], allSubjects: [] });
+  listCurriculumLessons.mockResolvedValue({ lessons: [] });
+  listCurriculumLessonDocuments.mockResolvedValue({ documents: [] });
+  previewCurriculumPdfImport.mockResolvedValue(pdfPreview);
+  URL.createObjectURL = jest.fn(() => 'blob:curriculum');
+  URL.revokeObjectURL = jest.fn();
+}
 beforeEach(() => {
   jest.clearAllMocks();
   window.location.hash = '#progress';
@@ -50,6 +83,136 @@ beforeEach(() => {
   getSchoolStudentReportCards.mockResolvedValue({ success: true });
 });
 afterEach(() => { window.location.hash = ''; });
+
+test('manual lesson creation accepts pasted content without a PDF and can also attach PDFs', async () => {
+  curriculumFixture();
+  createCurriculumLesson.mockResolvedValue({ success: true, lesson: { id: 'pasted-lesson', order_index: 1 } });
+  saveCurriculumLessonText.mockResolvedValue({ success: true, chunkCount: 2 });
+  uploadCurriculumLessonDocument.mockResolvedValue({ success: true });
+  render(<SchoolDashboard session={session} onLogout={jest.fn()} />);
+  const title = await screen.findByLabelText('Lesson name');
+  const content = screen.getByLabelText(/Or paste lesson content/);
+  fireEvent.change(title, { target: { value: 'The River' } });
+  expect(screen.getByRole('button', { name: 'Add Lesson' })).toBeDisabled();
+  fireEvent.change(content, { target: { value: ' \n Rivers carry water to the sea. \n ' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Add Lesson' }));
+  await waitFor(() => expect(saveCurriculumLessonText).toHaveBeenCalledWith('pasted-lesson', 'Rivers carry water to the sea.'));
+  await waitFor(() => expect(content).toHaveValue(''));
+  expect(createCurriculumLesson).toHaveBeenCalledWith(expect.objectContaining({ teacherId: 'english', subject: 'English', className: 'Class 7', title: 'The River' }));
+  expect(uploadCurriculumLessonDocument).not.toHaveBeenCalled();
+
+  fireEvent.change(title, { target: { value: 'The Garden' } });
+  fireEvent.change(content, { target: { value: 'Plants need sunlight.' } });
+  fireEvent.change(screen.getByLabelText(/Lesson PDFs/), { target: { files: [new File(['%PDF-fixture'], 'garden.pdf', { type: 'application/pdf' })] } });
+  fireEvent.click(screen.getByRole('button', { name: 'Add Lesson' }));
+  await waitFor(() => expect(uploadCurriculumLessonDocument).toHaveBeenCalledWith('pasted-lesson', expect.objectContaining({ fileName: 'garden.pdf' })));
+  await waitFor(() => expect(content).toHaveValue(''));
+
+  fireEvent.change(title, { target: { value: 'The Bridge' } });
+  fireEvent.change(screen.getByLabelText(/Lesson PDFs/), { target: { files: [new File(['%PDF-fixture'], 'bridge.pdf', { type: 'application/pdf' })] } });
+  fireEvent.click(screen.getByRole('button', { name: 'Add Lesson' }));
+  await waitFor(() => expect(uploadCurriculumLessonDocument).toHaveBeenCalledWith('pasted-lesson', expect.objectContaining({ fileName: 'bridge.pdf' })));
+  await waitFor(() => expect(title).toHaveValue(''));
+  expect(saveCurriculumLessonText).toHaveBeenCalledTimes(2);
+});
+
+test('pasted-content indexing failures remove the empty lesson and keep the draft', async () => {
+  curriculumFixture();
+  createCurriculumLesson.mockResolvedValue({ success: true, lesson: { id: 'failed-lesson', order_index: 1 } });
+  saveCurriculumLessonText.mockRejectedValue(new Error('Lesson indexing failed'));
+  deleteCurriculumLesson.mockResolvedValue({ success: true });
+  render(<SchoolDashboard session={session} onLogout={jest.fn()} />);
+  fireEvent.change(await screen.findByLabelText('Lesson name'), { target: { value: 'The River' } });
+  const content = screen.getByLabelText(/Or paste lesson content/);
+  fireEvent.change(content, { target: { value: 'Rivers carry water.' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Add Lesson' }));
+  await waitFor(() => expect(deleteCurriculumLesson).toHaveBeenCalledWith('failed-lesson'));
+  expect(await screen.findByText('Lesson indexing failed')).toBeInTheDocument();
+  expect(content).toHaveValue('Rivers carry water.');
+  expect(screen.getByLabelText('Lesson name')).toHaveValue('The River');
+  deleteCurriculumLesson.mockResolvedValue({ success: false, error: 'Cleanup write failed' });
+  fireEvent.click(screen.getByRole('button', { name: 'Add Lesson' }));
+  expect(await screen.findByText(/Cleanup failed for lesson failed-lesson/)).toHaveTextContent('Remove that lesson before retrying');
+});
+
+test('pasted content is not silently truncated and does not carry over to another subject', async () => {
+  curriculumFixture();
+  render(<SchoolDashboard session={session} onLogout={jest.fn()} />);
+  fireEvent.change(await screen.findByLabelText('Lesson name'), { target: { value: 'The River' } });
+  const content = screen.getByLabelText(/Or paste lesson content/);
+  const tooLong = 'x'.repeat(200001);
+  fireEvent.change(content, { target: { value: tooLong } });
+  expect(content).toHaveValue(tooLong);
+  expect(screen.getByRole('alert')).toHaveTextContent('Nothing has been truncated');
+  expect(screen.getByRole('button', { name: 'Add Lesson' })).toBeDisabled();
+  expect(createCurriculumLesson).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole('tab', { name: /Mathematics/ }));
+  expect(content).toHaveValue('');
+});
+
+test('multi-lesson upload previews units and requires review before creating separate lessons', async () => {
+  curriculumFixture();
+  let published = false;
+  const lessons = pdfPreview.lessons.map((lesson) => ({
+    id: `lesson-${lesson.lessonNumber}`, teacher_id: 'english', subject: 'English',
+    class_name: 'Class 7', title: lesson.title, order_index: lesson.lessonNumber, visibleClassNames: ['Class 7']
+  }));
+  listCurriculumLessons.mockImplementation(async () => ({ lessons: published ? lessons : [] }));
+  publishCurriculumPdfImport.mockImplementation(async () => { published = true; return { lessonCount: 3, lessons }; });
+  render(<SchoolDashboard session={session} onLogout={jest.fn()} />);
+  fireEvent.click(await screen.findByRole('button', { name: /Upload Multi-Lesson PDF/ }));
+  const file = new File(['%PDF-fixture'], 'English part one.pdf', { type: 'application/pdf' });
+  fireEvent.change(screen.getByLabelText('Multi-lesson PDF (up to 15 MB)'), { target: { files: [file] } });
+  fireEvent.click(screen.getByRole('button', { name: 'Detect lessons' }));
+  expect(await screen.findByText('3 lessons detected · 10 PDF pages')).toBeInTheDocument();
+  expect(previewCurriculumPdfImport).toHaveBeenCalledWith({
+    teacherId: 'english', subject: 'English', className: 'Class 7', fileName: file.name, data: expect.stringContaining('data:application/pdf;base64,')
+  });
+  const preview = screen.getByLabelText('Detected lessons');
+  expect(within(preview).getByText('Lesson 1')).toBeInTheDocument();
+  expect(within(preview).getByText('The River')).toBeInTheDocument();
+  expect(within(preview).getAllByRole('link', { name: 'Open first page' })[0]).toHaveAttribute('href', 'blob:curriculum#page=3');
+  expect(within(preview).getAllByRole('link', { name: 'Last page' })[0]).toHaveAttribute('href', 'blob:curriculum#page=5');
+  const create = screen.getByRole('button', { name: 'Create 3 lessons' });
+  expect(create).toBeDisabled();
+  expect(publishCurriculumPdfImport).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole('checkbox', { name: /I checked the lesson names/ }));
+  fireEvent.click(create);
+  await waitFor(() => expect(publishCurriculumPdfImport).toHaveBeenCalledWith('preview-a'));
+  expect(await screen.findByText('The River')).toBeInTheDocument();
+  expect(screen.queryByLabelText('Detected lessons')).not.toBeInTheDocument();
+  expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:curriculum');
+  expect(screen.getByRole('button', { name: /Curriculum Upload/ })).toHaveClass('active');
+});
+
+test('uncertain split errors stay visible and the manual lesson draft is preserved', async () => {
+  curriculumFixture();
+  previewCurriculumPdfImport.mockRejectedValue(new Error('Two units start on page 4. No lessons were created.'));
+  render(<SchoolDashboard session={session} onLogout={jest.fn()} />);
+  await screen.findByRole('button', { name: /Upload Multi-Lesson PDF/ });
+  fireEvent.change(screen.getByLabelText('Lesson name'), { target: { value: 'My manual lesson draft' } });
+  fireEvent.click(screen.getByRole('button', { name: /Upload Multi-Lesson PDF/ }));
+  fireEvent.change(screen.getByLabelText('Multi-lesson PDF (up to 15 MB)'), { target: { files: [new File(['%PDF-fixture'], 'book.pdf', { type: 'application/pdf' })] } });
+  fireEvent.click(screen.getByRole('button', { name: 'Detect lessons' }));
+  expect(await screen.findByRole('alert')).toHaveTextContent('Two units start on page 4');
+  expect(publishCurriculumPdfImport).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole('button', { name: 'Add one lesson manually' }));
+  expect(screen.getByLabelText('Lesson name')).toHaveValue('My manual lesson draft');
+});
+
+test('changing subjects discards the previous PDF preview and cannot publish it to another subject', async () => {
+  curriculumFixture();
+  render(<SchoolDashboard session={session} onLogout={jest.fn()} />);
+  fireEvent.click(await screen.findByRole('button', { name: /Upload Multi-Lesson PDF/ }));
+  fireEvent.change(screen.getByLabelText('Multi-lesson PDF (up to 15 MB)'), { target: { files: [new File(['%PDF-fixture'], 'book.pdf', { type: 'application/pdf' })] } });
+  fireEvent.click(screen.getByRole('button', { name: 'Detect lessons' }));
+  await screen.findByText('3 lessons detected · 10 PDF pages');
+  fireEvent.click(screen.getByRole('tab', { name: /Mathematics/ }));
+  expect(screen.queryByLabelText('Detected lessons')).not.toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Detect lessons' })).toBeDisabled();
+  expect(publishCurriculumPdfImport).not.toHaveBeenCalled();
+  expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:curriculum');
+});
 
 test('school account dropdown shows registered details, dismisses and preserves logout', async () => {
   const onLogout = jest.fn();

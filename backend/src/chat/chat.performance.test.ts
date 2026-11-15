@@ -3,6 +3,7 @@ import { strict as assert } from 'node:assert';
 import { randomUUID } from 'crypto';
 import { performance } from 'perf_hooks';
 import { ChatService } from './chat.service';
+import { ChatController } from './chat.controller';
 import { LlmService } from '../llm/llm.service';
 import { SupabaseService } from '../supabase.service';
 import { EmbeddingsService } from '../embeddings/embeddings.service';
@@ -18,7 +19,7 @@ function deferred() {
   return { promise, resolve };
 }
 
-function fixture(options: { holdEmbedding?: boolean; holdPersistence?: boolean; failHistory?: boolean; failChunks?: boolean; latencyMs?: number } = {}) {
+function fixture(options: { holdEmbedding?: boolean; holdPersistence?: boolean; failHistory?: boolean; failChunks?: boolean; latencyMs?: number; unsafeReply?: boolean; invalidReview?: boolean; reviewOnceInvalid?: boolean } = {}) {
   const studentId = randomUUID();
   const conversationId = `conv-${studentId}:subject-science:lesson-lesson`;
   const embedding = deferred();
@@ -30,6 +31,7 @@ function fixture(options: { holdEmbedding?: boolean; holdPersistence?: boolean; 
   const filters: Array<{ table: string; key: string; value: unknown }> = [];
   const writes: Array<{ table: string; rows: Row[] }> = [];
   const prompts: Array<Array<{ role: string; content: string }>> = [];
+  const requestOptions: Array<Parameters<LlmService['query']>[1]> = [];
   const tables: Record<string, Row[]> = {
     students: [{ id: studentId, name: 'Learner', class_name: 'Class 8' }],
     lessons: [{ id: 'lesson', title: 'Plants', subject: 'Science' }],
@@ -84,9 +86,20 @@ function fixture(options: { holdEmbedding?: boolean; holdPersistence?: boolean; 
     },
   };
   const llm: LlmService = Object.create(LlmService.prototype);
-  llm.query = async (input) => {
+  let reviewCount = 0;
+  llm.query = async (input, opts) => {
     assert(Array.isArray(input));
     prompts.push(input);
+    requestOptions.push(opts);
+    if (input[0].content.includes('HOMEWORK ANSWER-LEAK REVIEW')) {
+      reviewCount++;
+      if (options.invalidReview || (options.reviewOnceInvalid &&
+          (reviewCount === 1 || !input[0].content.includes('FORMAT CORRECTION')))) return 'invalid review';
+      const payload = JSON.parse(input[1].content);
+      return JSON.stringify({ homeworkIndex: options.unsafeReply || payload.knownAssignedHomework ? 0 : null, safe: !options.unsafeReply });
+    }
+    if (options.unsafeReply) return 'The angles always add to 180 degrees, or half a turn.';
+    if (options.reviewOnceInvalid) return 'Think about what the leaf uses to get started. What could you look for in your lesson?';
     return 'Leaves use sunlight to make food. Why is sunlight important?';
   };
   const embeddings: EmbeddingsService = Object.create(EmbeddingsService.prototype);
@@ -113,7 +126,7 @@ function fixture(options: { holdEmbedding?: boolean; holdPersistence?: boolean; 
   });
   return {
     chat, studentId, conversationId, embedding, persistence, backgroundDone, reads, filters, writes,
-    prompts, tables, snapshots, growth: () => growth,
+    prompts, requestOptions, tables, snapshots, growth: () => growth,
   };
 }
 
@@ -155,6 +168,69 @@ test('parallel retrieval still blocks direct answers to locked homework and drop
   assert.equal(f.prompts[0].length, 2);
   assert(f.prompts[0][0].content.includes('Do NOT solve this specific problem'));
   assert(!JSON.stringify(f.prompts[0]).includes('An old direct homework answer'));
+});
+
+test('image questions and short follow-ups cannot leak a homework constant or repeat old answers', async () => {
+  const f = fixture({ unsafeReply: true });
+  f.tables.homework[0].note = 'Using the Polygon tool, draw a triangle and mark its angles. What is the sum of all angles?';
+  const sharedHeader = 'fixture-worksheet-image-header'.repeat(4);
+  const imageBase64 = Buffer.from(sharedHeader + '-first').toString('base64');
+  const secondImageBase64 = Buffer.from(sharedHeader + '-second').toString('base64');
+  const image = 'data:image/png;base64,' + imageBase64;
+  const first = await f.chat.handleMessage(f.studentId, 'Please explain these images.', {
+    conversationId: f.conversationId, lessonId: 'lesson', lessonSubject: 'Science', imageDataUrls: [image, 'data:image/png;base64,' + secondImageBase64],
+  });
+  await f.backgroundDone.promise;
+  assert(!/180|half a turn/.test(first.reply));
+  assert.deepEqual(f.requestOptions[0].imageBase64List, [imageBase64, secondImageBase64], 'Different worksheets with matching image headers must not be collapsed');
+  const priorCallCount = f.prompts.length;
+  assert.deepEqual(first.followups, ['Give me one more small hint', 'Explain the concept as a story', 'Ask me a check question']);
+  const second = await f.chat.handleMessage(f.studentId, 'What is the sum?', {
+    conversationId: f.conversationId, lessonId: 'lesson', lessonSubject: 'Science',
+    recentMessages: [{ role: 'assistant', content: 'The answer is 180 degrees.' }],
+  });
+  assert(!/180|half a turn/.test(second.reply));
+  const followupReviewIndex = f.prompts.findIndex((prompt, index) => index >= priorCallCount && prompt[0].content.includes('HOMEWORK ANSWER-LEAK REVIEW'));
+  assert.deepEqual(f.requestOptions[followupReviewIndex].imageBase64List, [imageBase64, secondImageBase64], 'Image context must remain available for short text follow-ups');
+  assert(f.prompts.filter((prompt) => prompt[0].content.includes('HOMEWORK ANSWER-LEAK REVIEW')).length >= 4);
+  assert(f.writes.filter((write) => write.table === 'messages').flatMap((write) => write.rows)
+    .filter((row) => row.role === 'ai').every((row) => !String(row.message).includes('180')));
+});
+
+test('an invalid homework reply review fails explicitly instead of returning the unchecked answer', async () => {
+  const f = fixture({ invalidReview: true });
+  await assert.rejects(f.chat.handleMessage(f.studentId, 'Describe the function of a leaf', {
+    conversationId: f.conversationId, lessonId: 'lesson', lessonSubject: 'Science',
+  }), /could not verify a safe homework hint/);
+  assert.equal(f.writes.filter((write) => write.table === 'messages').flatMap((write) => write.rows)
+    .filter((row) => row.role === 'ai').length, 0);
+});
+
+test('a transient malformed safety review retries in JSON mode and returns only the approved hint', async () => {
+  const f = fixture({ reviewOnceInvalid: true });
+  const result = await f.chat.handleMessage(f.studentId, 'Describe the function of a leaf', {
+    conversationId: f.conversationId, lessonId: 'lesson', lessonSubject: 'Science',
+  });
+  await f.backgroundDone.promise;
+  assert(result.reply.includes('get started'));
+  const reviews = f.prompts.map((prompt, index) => ({ prompt, opts: f.requestOptions[index] }))
+    .filter(({ prompt }) => prompt[0].content.includes('HOMEWORK ANSWER-LEAK REVIEW'));
+  assert.equal(reviews.length, 2);
+  assert(reviews.every(({ opts }) => opts.responseFormat === 'json' && opts.requireModelResponse));
+});
+
+test('the tutor controller surfaces safety-check failures without a generic 500 or an AI reply', async () => {
+  const f = fixture({ invalidReview: true });
+  const feed: LocalFeedService = Object.create(LocalFeedService.prototype);
+  feed.logStudentActivity = () => { throw new Error('A failed chat must not log a successful send'); };
+  const controller = new ChatController(f.chat, feed);
+  const response = await controller.chat({ studentId: f.studentId }, {
+    message: 'Describe the function of a leaf', conversationId: f.conversationId, lessonId: 'lesson', lessonSubject: 'Science',
+  });
+  assert.equal(response.success, false);
+  assert('error' in response);
+  assert.match(response.error, /could not verify a safe homework hint/);
+  assert(!('reply' in response));
 });
 
 test('subject resolved from lesson metadata still scopes homework checks', async () => {

@@ -18,6 +18,7 @@ import 'package:mobile/screens/student/test_taking_screen.dart';
 import 'package:mobile/services/api_client.dart';
 import 'package:mobile/services/student_api_service.dart';
 import 'package:mobile/state/student_providers.dart';
+import 'package:mobile/state/exam_access_provider.dart';
 import 'package:mobile/theme/app_colors.dart';
 import 'package:mobile/theme/subject_background.dart';
 
@@ -145,6 +146,7 @@ ThemeData _theme(bool dark) {
 
 Widget _app(Widget child, ValueNotifier<bool> dark) => ProviderScope(
   overrides: [
+    examAccessProvider.overrideWith((ref) => Stream.value(const ExamAccess())),
     studentApiServiceProvider.overrideWithValue(_Api()),
     studentSubjectsProvider.overrideWith((ref) => [_subject]),
     homeworkProvider.overrideWith(

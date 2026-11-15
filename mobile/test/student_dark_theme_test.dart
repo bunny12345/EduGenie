@@ -2,6 +2,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:mobile/models/dashboard.dart';
@@ -54,7 +55,9 @@ double _contrast(Color foreground, Color background) {
 }
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
   setUpAll(() => GoogleFonts.config.allowRuntimeFetching = false);
+  setUp(() => FlutterSecureStorage.setMockInitialValues({}));
   tearDown(() => AppColors.isDark = false);
 
   test('dark palette normal text and accent meet 4.5:1 contrast', () {
@@ -70,21 +73,21 @@ void main() {
     }
   });
 
-  test('a manual theme selection wins over late saved preferences', () {
+  test('a manual theme selection wins over late saved preferences', () async {
     final container = ProviderContainer();
     addTearDown(container.dispose);
     final notifier = container.read(themeModeProvider.notifier);
-    notifier.setDark(false);
-    notifier.hydrateFromPrefs('Dark');
+    await notifier.setDark(false);
+    await notifier.hydrateFromPrefs('Dark');
     expect(container.read(themeModeProvider), ThemeMode.light);
   });
 
-  test('saved dark preference is hydrated only once', () {
+  test('saved dark preference is hydrated only once', () async {
     final container = ProviderContainer();
     addTearDown(container.dispose);
     final notifier = container.read(themeModeProvider.notifier);
-    notifier.hydrateFromPrefs('Dark');
-    notifier.hydrateFromPrefs('Light');
+    await notifier.hydrateFromPrefs('Dark');
+    await notifier.hydrateFromPrefs('Light');
     expect(container.read(themeModeProvider), ThemeMode.dark);
   });
 
@@ -155,15 +158,8 @@ void main() {
         tester.widget<Text>(find.text('School Services')).style?.color,
         AppColors.textDark,
       );
-      final serviceImage = find.byWidgetPredicate(
-        (widget) =>
-            widget is Image &&
-            widget.image is AssetImage &&
-            (widget.image as AssetImage).assetName ==
-                'assets/branding/services.png',
-      );
       expect(
-        tester.widget<Image>(serviceImage).color,
+        tester.widget<Icon>(find.byIcon(Icons.grid_view_rounded)).color,
         const AppPalette(true).accent,
       );
       container.read(themeModeProvider.notifier).setDark(false);

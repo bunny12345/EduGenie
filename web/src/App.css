@@ -1550,6 +1550,53 @@ textarea {
               inset 0 1px 0 rgba(255, 255, 255, 0.4);
 }
 
+.eg-cc-upload-modes { display: flex; flex-wrap: wrap; gap: 12px; margin: 18px 0; }
+.eg-cc-upload-modes button { padding: 12px 18px; border: 1px solid #c7d2fe; border-radius: 14px; background: #f8faff; color: #3730a3; font-weight: 800; cursor: pointer; box-shadow: 0 3px 0 #c7d2fe, 0 5px 12px rgba(49,46,129,.1); }
+.eg-cc-upload-modes button[aria-pressed="true"] { background: linear-gradient(135deg,#4f46e5,#2563eb); color: #fff; border-color: #3730a3; box-shadow: 0 3px 0 #312e81, 0 6px 14px rgba(49,46,129,.2); }
+.eg-cc-upload-modes button:focus-visible { outline: 3px solid #818cf8; outline-offset: 4px; }
+.eg-cc-upload-modes button:disabled { opacity: .6; cursor: not-allowed; }
+.eg-cc-import-heading { display: flex; gap: 14px; align-items: flex-start; }
+.eg-cc-import-heading h4 { margin: 0 0 6px; color: #27345f; font-size: 19px; }
+.eg-cc-import-heading p, .eg-cc-import-preview p { color: #526187; font-size: 13px; line-height: 1.6; margin: 0 0 12px; }
+.eg-cc-import-icon { flex-shrink: 0; padding: 16px 10px; border-radius: 15px; background: #e0e7ff; color: #4338ca; font-weight: 900; }
+.eg-cc-import-safety { padding: 12px 14px; border-radius: 12px; border: 1px solid #bbf7d0; background: #f0fdf4; color: #166534; font-size: 13px; line-height: 1.6; }
+.eg-cc-import-hint { color: #526187; font-size: 12px; line-height: 1.6; }
+.eg-cc-import-error { border: 1px solid #fecaca; background: #fef2f2; color: #991b1b; padding: 12px; border-radius: 12px; margin: 12px 0; }
+.eg-cc-import-preview { min-width: 0; margin-top: 22px; padding-top: 18px; border-top: 1px solid #c7d2fe; }
+.eg-cc-import-preview h4 { color: #27345f; }
+.eg-cc-import-table { overflow-x: auto; border: 1px solid #dbe4ff; border-radius: 12px; margin-bottom: 12px; }
+.eg-cc-import-table table { width: 100%; min-width: 580px; border-collapse: collapse; text-align: left; font-size: 13px; }
+.eg-cc-import-table th { padding: 12px; background: #eef2ff; color: #3730a3; }
+.eg-cc-import-table td { padding: 12px; border-top: 1px solid #e0e7ff; color: #27345f; }
+.eg-cc-import-table a { color: #1d4ed8; font-weight: 700; }
+.eg-cc-import-preview .eg-cc-import-excluded { padding: 10px; background: #fffbeb; border-radius: 10px; color: #92400e; }
+.eg-cc-import-review { display: flex; align-items: flex-start; gap: 10px; margin: 18px 0; color: #27345f; font-size: 13px; line-height: 1.5; cursor: pointer; }
+.eg-cc-import-review input { width: 18px; height: 18px; flex-shrink: 0; accent-color: #4f46e5; }
+.eg-cc-paste { padding: 16px; border: 1px solid #dbe4ff; border-radius: 14px; background: #f8faff; min-width: 0; }
+.eg-cc-paste p { margin: 0; color: #526187; font-size: 13px; line-height: 1.6; }
+.eg-cc-paste textarea { resize: vertical; min-height: 160px; }
+.eg-cc-content-count { color: #526187; font-size: 12px; line-height: 1.5; overflow-wrap: anywhere; }
+
+.eg-subject-hw-card .eg-hw-help-btn {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-left: 8px;
+  min-height: 40px;
+  padding: 8px 12px;
+  border: 1px solid #312e81;
+  border-radius: 14px;
+  background: linear-gradient(145deg, #6366f1, #4338ca);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 800;
+  cursor: pointer;
+  box-shadow: 0 4px 0 #312e81, 0 6px 12px rgba(67, 56, 202, .22);
+}
+.eg-subject-hw-card .eg-hw-help-btn:focus-visible { outline: 3px solid #818cf8; outline-offset: 4px; }
+.eg-subject-hw-card .eg-hw-help-btn:disabled { opacity: .6; cursor: not-allowed; }
+
 /* Every clickable button (and role="button" toggle) inside the Homework panel
    gets the same 3D frame + hover/press zoom used in the sidebar.
    border-radius here matters — role="button" divs (e.g. the homework title

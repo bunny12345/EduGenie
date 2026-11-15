@@ -1,6 +1,8 @@
 import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
+import 'dart:ui' as ui;
+import 'dart:math' as math;
 
 import 'package:flutter_test/flutter_test.dart';
 
@@ -163,4 +165,37 @@ void main() {
       }
     },
   );
+
+  test('Android adaptive emblem fills the round icon without clipping its safe zone', () async {
+    final adaptive = File('android/app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml').readAsStringSync();
+    expect(adaptive, contains('<adaptive-icon'));
+    expect(adaptive, contains('@android:color/white'));
+    expect(adaptive, contains('@drawable/ic_launcher_foreground'));
+    for (final entry in {'mdpi': 108, 'hdpi': 162, 'xhdpi': 216, 'xxhdpi': 324, 'xxxhdpi': 432}.entries) {
+      final bytes = File('android/app/src/main/res/drawable-${entry.key}/ic_launcher_foreground.png').readAsBytesSync();
+      final codec = await ui.instantiateImageCodec(bytes);
+      final image = (await codec.getNextFrame()).image;
+      final rgba = (await image.toByteData(format: ui.ImageByteFormat.rawRgba))!;
+      expect(image.width, entry.value);
+      expect(image.height, entry.value);
+      expect(rgba.getUint8(3), 0, reason: 'Adaptive foreground corners must be transparent');
+      var minY = image.height;
+      var maxY = 0;
+      var radius = 0.0;
+      final center = image.width / 2;
+      for (var y = 0; y < image.height; y++) {
+        for (var x = 0; x < image.width; x++) {
+          if (rgba.getUint8((y * image.width + x) * 4 + 3) <= 32) continue;
+          minY = math.min(minY, y);
+          maxY = math.max(maxY, y);
+          radius = math.max(radius, math.sqrt(math.pow(x + 0.5 - center, 2) + math.pow(y + 0.5 - center, 2)));
+        }
+      }
+      final visibleDiameter = image.width * 72 / 108;
+      expect((maxY - minY + 1) / visibleDiameter, inInclusiveRange(0.63, 0.70), reason: 'The emblem should visibly fill about two-thirds of the round icon');
+      expect(radius, lessThanOrEqualTo(image.width * 33 / 108 + 1), reason: 'All artwork must remain inside the adaptive 66dp safe circle');
+      image.dispose();
+      codec.dispose();
+    }
+  });
 }

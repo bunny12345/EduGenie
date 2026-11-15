@@ -52,13 +52,20 @@ class _Chat extends ChatApiService {
   _Chat() : super(ApiClient());
   String reply = 'First short sentence. Then the rest of the answer.';
   final requests = <({String text, Completer<Map<String, dynamic>> result})>[];
+  final quickRequests = <({String? homeworkId, List<Map<String, String>> history})>[];
+  String? failure;
   @override
   Future<Map<String, dynamic>> sendQuickChat({
     required String studentId,
     required String message,
     List<Map<String, String>> recentMessages = const [],
     CancelToken? cancelToken,
-  }) async => {'reply': reply};
+    String? homeworkId,
+  }) async {
+    quickRequests.add((homeworkId: homeworkId, history: recentMessages));
+    if (failure != null) throw Exception(failure);
+    return {'reply': reply};
+  }
   @override
   Future<Map<String, dynamic>> generateLocalTtsAudio(
     String text,
@@ -113,6 +120,29 @@ void main() {
     expect(chunks.first.length, lessThanOrEqualTo(240));
     expect(chunks.skip(1).every((chunk) => chunk.length <= 600), isTrue);
     expect(chunks.join(' '), text);
+  });
+
+  test('selected homework stays on every follow-up and is forgotten when Sam closes', () async {
+    await notifier.toggleMute();
+    notifier.open(homeworkId: 'homework-a');
+    await notifier.send('Give me a hint');
+    await notifier.send('I tried a factor. What should I check?');
+    expect(chat.quickRequests.map((request) => request.homeworkId), ['homework-a', 'homework-a']);
+    expect(chat.quickRequests.last.history.first['content'], 'Give me a hint');
+    await notifier.close();
+    expect(container.read(quickSamProvider).homeworkId, isNull);
+    notifier.open();
+    await notifier.send('Teach me about leaves');
+    expect(chat.quickRequests.last.homeworkId, isNull);
+    expect(chat.quickRequests.last.history, isEmpty);
+  });
+
+  test('homework refusal reports the backend reason to the student', () async {
+    chat.failure = 'This homework has already been submitted.';
+    notifier.open(homeworkId: 'done');
+    await notifier.send('Help');
+    expect(container.read(quickSamProvider).error, chat.failure);
+    expect(chat.requests, isEmpty);
   });
 
   test('first audio starts before remaining synthesis completes; prefetched audio waits for completion', () async {

@@ -20,25 +20,35 @@ class _StudentSettingsScreenState extends ConsumerState<StudentSettingsScreen> {
   Future<void> _toggleTheme(Map<String, dynamic> currentPrefs, bool currentlyDark) async {
     final studentId = ref.read(sessionProvider).value?.userId ?? '';
     final nextDark = !currentlyDark;
-    // Apply immediately and treat this as the source of truth for the rest
-    // of the session — the backend save below is best-effort persistence
-    // for next login only, it must never be what the UI displays/toggles
-    // off of (its save endpoint is known to silently no-op on a 2nd save).
-    ref.read(themeModeProvider.notifier).setDark(nextDark);
-    if (studentId.isEmpty) return;
     setState(() {
       _saving = true;
       _error = null;
     });
+    var savedOnDevice = false;
     try {
+      await ref.read(themeModeProvider.notifier).setDark(nextDark);
+      savedOnDevice = true;
+      if (studentId.isEmpty) return;
       await ref.read(studentApiServiceProvider).saveSettings(studentId, {
         ...currentPrefs,
         'theme': nextDark ? 'Dark' : 'Light',
       });
     } catch (e) {
-      setState(() => _error = 'Theme applied, but could not save your preference: $e');
+      if (mounted) {
+        setState(() => _error = savedOnDevice
+            ? 'Theme saved on this device, but could not sync your preference: $e'
+            : 'Theme applied, but could not save it on this device: $e');
+      }
     } finally {
       if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  Future<void> _hydrateTheme(String? theme) async {
+    try {
+      await ref.read(themeModeProvider.notifier).hydrateFromPrefs(theme);
+    } catch (error) {
+      if (mounted) setState(() => _error = 'Could not save your theme on this device: $error');
     }
   }
 
@@ -60,7 +70,7 @@ class _StudentSettingsScreenState extends ConsumerState<StudentSettingsScreen> {
             // Apply the saved preference once per app session (a manual
             // toggle below always wins afterwards for the rest of the session).
             WidgetsBinding.instance.addPostFrameCallback((_) {
-              ref.read(themeModeProvider.notifier).hydrateFromPrefs(prefs['theme']?.toString());
+              if (mounted) _hydrateTheme(prefs['theme']?.toString());
             });
             return ListView(
               padding: const EdgeInsets.all(16),

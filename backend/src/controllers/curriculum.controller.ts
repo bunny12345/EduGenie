@@ -209,6 +209,34 @@ export class CurriculumController {
     } catch (error: any) {
       return { success: false, error: String(error?.message || error || 'Failed to create lesson') };
     }
+
+  }
+
+  @Post('pdf-import/preview')
+  async previewPdfImport(@Req() req: any, @Body() body: any) {
+    try {
+      this.ensureSchoolAdmin(req);
+      const result = await this.curriculum.previewMultiLessonPdf({
+        schoolId: this.schoolIdFromReq(req), teacherId: body?.teacherId, subject: body?.subject,
+        className: body?.className, fileName: body?.fileName, data: body?.data,
+      });
+      return { success: true, ...result };
+    } catch (error: any) {
+      return { success: false, error: String(error?.message || 'Unable to analyse this PDF') };
+    }
+  }
+
+  @Post('pdf-import/publish')
+  async publishPdfImport(@Req() req: any, @Body() body: any) {
+    try {
+      this.ensureSchoolAdmin(req);
+      const result = await this.curriculum.publishMultiLessonPdf({
+        schoolId: this.schoolIdFromReq(req), previewId: body?.previewId, confirmed: body?.confirmed,
+      });
+      return { success: true, ...result };
+    } catch (error: any) {
+      return { success: false, error: String(error?.message || 'Unable to publish these lessons') };
+    }
   }
 
   @Patch('lessons/:lessonId')
@@ -336,6 +364,19 @@ export class CurriculumController {
       };
     } catch (error: any) {
       return { success: false, error: String(error?.message || error || 'Failed to upload document') };
+    }
+  }
+
+  @Post('lessons/:lessonId/content')
+  async saveLessonText(@Req() req: any, @Param('lessonId') lessonId: string, @Body() body: any) {
+    try {
+      this.ensureSchoolAdmin(req);
+      const result = await this.curriculum.saveLessonTextAsSchoolAdmin({
+        schoolId: this.schoolIdFromReq(req), lessonId, content: body?.content,
+      });
+      return { success: !result.error, ...result, publicFileUrl: this.buildPublicUrl(req, result.fileUrl) };
+    } catch (error: any) {
+      return { success: false, error: String(error?.message || 'Unable to save lesson content') };
     }
   }
 

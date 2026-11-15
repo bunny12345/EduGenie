@@ -9,6 +9,7 @@ import '../../../models/homework_item.dart';
 import '../../../models/test_item.dart';
 import '../../../state/session_provider.dart';
 import '../../../state/student_providers.dart';
+import '../../../state/exam_access_provider.dart';
 import '../../../theme/app_colors.dart';
 import '../../../widgets/section_card.dart';
 import '../test_taking_screen.dart';
@@ -17,6 +18,7 @@ import 'homework_state.dart';
 import 'lightbox.dart';
 import '../../../widgets/pressable_scale.dart';
 import '../../../widgets/image_source_sheet.dart';
+import '../../../widgets/quick_sam_bubble.dart';
 
 enum _HwFilter { all, submitted, notSubmitted, overdue }
 
@@ -689,6 +691,7 @@ class _HomeworkScreenState extends ConsumerState<HomeworkScreen> {
                                           onPickImages: () => _pickAndUploadImages(h),
                                           onRemoveImage: (url) => _removeAttachment(h, url),
                                           onSubmit: () => _submit(h),
+                                          onAskSam: () => openHomeSam(context, ref, homeworkId: h.id),
                                         ),
                                     if (visible.isEmpty)
                                       Padding(
@@ -1184,6 +1187,7 @@ class _HomeworkCard extends StatelessWidget {
   final VoidCallback onPickImages;
   final void Function(String) onRemoveImage;
   final VoidCallback onSubmit;
+  final VoidCallback onAskSam;
 
   const _HomeworkCard({
     required this.homework,
@@ -1204,6 +1208,7 @@ class _HomeworkCard extends StatelessWidget {
     required this.onPickImages,
     required this.onRemoveImage,
     required this.onSubmit,
+    required this.onAskSam,
   });
 
   @override
@@ -1250,9 +1255,35 @@ class _HomeworkCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              h.title,
-              style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16, color: AppColors.of(context).text),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(child: Text(h.title, style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16, color: AppColors.of(context).text))),
+                if (!st.submitted && !h.submitted && h.submittedAt == null && h.id.isNotEmpty) ...[
+                  const SizedBox(width: 8),
+                  Consumer(builder: (context, ref, _) {
+                    final access = ref.watch(examAccessProvider);
+                    final allowed = access.hasValue && !access.value!.blocked;
+                    return Tooltip(
+                      message: allowed ? 'Get a hint or a concept story, not the answer' : 'Sam is unavailable while exam access is locked',
+                      child: ElevatedButton.icon(
+                        onPressed: allowed ? onAskSam : null,
+                        icon: const Icon(Icons.psychology_alt_rounded, size: 17),
+                        label: const Text('Ask Sam'),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFF4F46E5),
+                          foregroundColor: Colors.white,
+                          elevation: 4,
+                          minimumSize: const Size(0, 44),
+                          padding: const EdgeInsets.symmetric(horizontal: 10),
+                          textStyle: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14), side: BorderSide(color: AppColors.of(context).line)),
+                        ),
+                      ),
+                    );
+                  }),
+                ],
+              ],
             ),
             const SizedBox(height: 8),
             Wrap(

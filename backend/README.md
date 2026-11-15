@@ -108,6 +108,119 @@ Validate with `npx tsc --noEmit` and
 Fixtures intercept all model/image networking; they verify payloads and
 failure handling, not live model handwriting-recognition accuracy.
 
+### Pasted curriculum lesson content
+
+School-admin-only `POST /curriculum/lessons/:lessonId/content` accepts
+`{content}` for a lesson belonging to the authenticated school. The manual school
+curriculum form can use pasted text without a PDF, or text alongside its PDFs.
+Content must be nonempty and at most 200,000 characters. Original Unicode text is
+stored as a UTF-8 `.txt` document; the existing chunk/embedding pipeline indexes
+it under that lesson only. No PDF parser or model segmentation is needed.
+Indexing errors return `success:false`; the web form removes its newly created
+lesson and retains the draft on failure, reporting any cleanup failure explicitly.
+Normal document/lesson APIs serve the result to existing web/mobile clients.
+No schema or RLS changes are needed. Validate with the curriculum fixtures below.
+
+### Multi-lesson curriculum PDF import
+
+School-admin-only `POST /curriculum/pdf-import/preview` accepts `{teacherId,
+subject, className, fileName, data}`. The authenticated school determines scope;
+the teacher must teach that subject/class. It returns a private 15-minute preview
+with detected lesson names, source page ranges, continuation numbers and excluded
+pages. `POST /curriculum/pdf-import/publish` accepts `{previewId, confirmed:true}`.
+Source boundaries cannot be changed by the client; publish is idempotent.
+
+The new workflow uses modern PDF.js (Node >=22.13 required; Docker uses Node 22)
+without upgrading the legacy manual-upload parser. It preserves physical blank
+pages, identifies top-level unit/chapter/numbered headings, checks every page's
+headers for missed units with a real model, validates boundary excerpts and
+source-anchored titles, then verifies each physically split PDF against its source
+pages. Covers/contents and recognized end-matter are explicitly excluded.
+An admin must also review the preview: model checks are not a guarantee of perfect
+semantic segmentation. Unclear/shared-page boundaries or scanned teaching pages
+fail safely; OCR/manual uploads remain necessary for those documents.
+
+Limits: 15 MB, 400 pages, 50 units; eight active previews per backend process.
+Previews are in memory, so a restart/different worker requires re-analysis.
+All embeddings/documents are prepared before publication; only newly generated
+lesson IDs/files are rolled back on failure, without resequencing older lessons.
+Existing records are fingerprinted to reject concurrent changes, and scoped
+in-process publication blocks conflicting curriculum edits. Visibility is
+published in one batch only after all unit documents/chunks have been saved.
+Normal lesson/document/visibility APIs serve the web/mobile clients unchanged.
+No schema or RLS changes are required.
+
+Run `npx tsc --noEmit` and
+`node -r ts-node/register/transpile-only scripts/curriculum_pdf_import_test.js`.
+Tests generate actual PDFs and check page/content isolation, continuation,
+app API compatibility, scope, duplicate/uncertain units, rollback and idempotency.
+Model responses are fixture-controlled; live accuracy requires representative
+school PDFs and administrator review.
+
+### Homework help in Home Sam
+
+`POST /chat/quick` accepts an optional `homeworkId` alongside the existing
+message/history payload. The server loads the student's own assignment and
+checks current submission attempts on every turn; it rejects inaccessible or
+already-submitted work. Local-feed fallback remains supported. Teacher worksheet
+images (up to six) are included; partial image-loading failures are explicit.
+
+Homework help always stays hint-only: calculations/tasks get one small guiding
+clue; conceptual tasks get a short memorable story and a check question, never
+a ready-to-submit answer. Follow-up history cannot override these system rules.
+Facts/formulas still come only from the assigned subject's uploaded class
+materials; missing materials do not unlock general-knowledge answers. This mode
+requires a real model and surfaces model failures, rather than accepting mock
+responses. Existing `/chat/quick` authentication and scheduled-exam tutor locks
+apply unchanged. No schema/RLS change is needed; deploy this backend with the
+updated clients.
+
+Run `npx tsc --noEmit` and
+`node -r ts-node/register/transpile-only scripts/homework_sam_help_test.js`.
+Fixtures verify request scoping, prompt rules, submission rejection, worksheets
+and exam guards without live networking; they do not measure real-model pedagogy.
+
+### Assigned-homework answer protection in both Sam chats
+
+AI Tutor (`POST /chat`) and ordinary Home Sam (`POST /chat/quick`, even without an
+Ask Sam button/homework ID) now verify draft replies against locked assignments.
+The review includes image questions, paraphrases, short follow-ups and prior
+conversation context. Tutor follow-ups retain the previous worksheet images.
+Definitions/formulas/constants can themselves be the requested answer: describing
+an angle sum as "half a turn" or demonstrating the same constant with another
+triangle is not an acceptable hint.
+
+Only small first-step/concept hints are allowed for calculation/practical tasks.
+Theory help uses a memorable story about one underlying idea, not a finished
+paragraph or a complete answer disguised as a story. A flagged draft is discarded,
+rewritten with the concept-only prompt and reviewed again. A second unsafe draft
+is withheld with an explicit homework-help boundary and a starter question.
+Reviews request JSON mode from OpenAI/Ollama and retry malformed review output
+once. Persistently invalid/unavailable reviews fail explicitly; unchecked answers
+are never returned on that path. Tutor errors use the existing
+`{success:false,error}` envelope rather than an uncaught generic HTTP 500.
+Only the approved reply is used for chat persistence and voice.
+
+Submission lookups are scoped by student ID, not an `IN` filter containing local
+homework IDs (which may be invalid for Supabase UUID columns).
+Assignment/submission reads are fresh rather than cached, and no longer select
+only the latest 6/20 entries. Successful teacher-worksheet transcription is cached
+by assignment and attachment URLs; transcription failures are not cached as empty
+questions. Local-feed assignments still merge with DB rows. A failed guard lookup
+blocks ordinary chat; explicit Homework Help can keep using its independently
+verified assignment/submission context. The existing one-hour post-submission
+lock, lesson/source boundaries, conversation IDs and scheduled-exam guard remain.
+Reviews add model calls only when locked homework exists; this can increase reply
+latency. Both web and mobile use the same backend protection without client changes.
+
+Validate with `npx tsc --noEmit`,
+`node -r ts-node/register/transpile-only scripts/homework_sam_help_test.js` and
+`node --test -r ts-node/register/transpile-only src/chat/chat.performance.test.ts`.
+Fixtures inject unsafe drafts and test image/follow-up blocking, story rewrites,
+fresh/all-assignment lookup, review failures and persistence. They do not prove
+perfect semantic detection by the deployed model; live school examples still
+need checking after backend deployment.
+
 ### AI Tutor reply latency
 
 `POST /chat` starts independent profile, message embedding, memory, history,

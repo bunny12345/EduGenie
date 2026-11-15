@@ -4,14 +4,24 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mobile/models/dashboard.dart';
+import 'package:mobile/models/homework_item.dart';
+import 'package:mobile/models/session.dart';
+import 'package:mobile/screens/student/homework/homework_screen.dart';
 import 'package:mobile/state/quick_sam_provider.dart';
 import 'package:mobile/state/exam_access_provider.dart';
 import 'package:mobile/state/student_providers.dart';
+import 'package:mobile/state/session_provider.dart';
+import 'package:mobile/state/student_navigation_provider.dart';
 import 'package:mobile/widgets/quick_sam_bubble.dart';
 
 class _QuickSamStub extends QuickSamNotifier {
   String? sent;
   int closeCalls = 0;
+
+  @override
+  void open({String firstName = '', String? homeworkId}) {
+    state = QuickSamState(open: true, homeworkId: homeworkId);
+  }
 
   @override
   QuickSamState build() => const QuickSamState(
@@ -36,7 +46,70 @@ class _QuickSamStub extends QuickSamNotifier {
   }
 }
 
+class _Session extends SessionNotifier {
+  @override
+  Future<Session?> build() async => const Session(role: 'student', userId: 'student', token: 'fixture', name: 'Learner');
+}
+
 void main() {
+  for (final blocked in [false, true]) {
+    testWidgets('homework help returns to Home and opens Sam only when exam access permits (blocked=$blocked)', (tester) async {
+      final notifier = _QuickSamStub();
+      await tester.pumpWidget(ProviderScope(
+        overrides: [
+          sessionProvider.overrideWith(_Session.new),
+          quickSamProvider.overrideWith(() => notifier),
+          examAccessProvider.overrideWith((ref) => Stream.value(blocked ? const ExamAccess(exams: [{'testId': 'strict'}]) : const ExamAccess())),
+          dashboardProvider.overrideWith((ref) async => const DashboardData()),
+          studentSubjectsProvider.overrideWith((ref) => ['Mathematics']),
+          homeworkProvider.overrideWith((ref) async => const [
+            HomeworkItem(id: 'pending', title: 'Fractions practice', subject: 'Mathematics'),
+            HomeworkItem(id: 'done', title: 'Completed worksheet', subject: 'Mathematics', status: 'submitted'),
+          ]),
+          testsProvider.overrideWith((ref) async => []),
+        ],
+        child: MaterialApp(home: Consumer(builder: (context, ref, _) => Scaffold(
+          body: Column(children: [
+            Text('Home tab ${ref.watch(studentNavigationProvider)}'),
+            ElevatedButton(onPressed: () {
+              ref.read(studentNavigationProvider.notifier).select(1);
+              Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const HomeworkScreen()));
+            }, child: const Text('Open homework from Services')),
+          ]),
+        ))),
+      ));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Open homework from Services'));
+      await tester.pumpAndSettle();
+      final help = find.widgetWithText(ElevatedButton, 'Ask Sam');
+      expect(help, findsOneWidget);
+      expect(tester.widget<ElevatedButton>(help).onPressed != null, !blocked);
+      if (blocked) {
+        await tester.tap(help);
+        await tester.pump();
+        expect(find.byType(QuickSamScreen), findsNothing);
+        expect(notifier.sent, isNull);
+      } else {
+        await tester.tap(help);
+        await tester.pump(const Duration(milliseconds: 300));
+        await tester.pump();
+        expect(find.byType(QuickSamScreen), findsOneWidget);
+        expect(notifier.sent, homeworkHelpPrompt);
+        final container = ProviderScope.containerOf(tester.element(find.byType(QuickSamScreen)));
+        expect(container.read(quickSamProvider).homeworkId, 'pending');
+        expect(container.read(studentNavigationProvider), 0);
+        Navigator.of(tester.element(find.byType(QuickSamScreen))).pop();
+        await tester.pump(const Duration(milliseconds: 300));
+        await tester.pump();
+        expect(find.byType(HomeworkScreen), findsNothing);
+        expect(find.text('Home tab 0'), findsOneWidget);
+        expect(notifier.closeCalls, greaterThanOrEqualTo(1));
+      }
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox.shrink());
+    });
+  }
+
   testWidgets('a scheduled exam closes an already-open Quick Sam session', (
     tester,
   ) async {

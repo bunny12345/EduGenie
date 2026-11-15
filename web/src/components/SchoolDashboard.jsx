@@ -26,7 +26,10 @@ import {
   schoolDeleteTeacher,
   schoolDeduplicateTeachers,
   updateCurriculumLesson,
-  uploadCurriculumLessonDocument
+  uploadCurriculumLessonDocument,
+  saveCurriculumLessonText,
+  previewCurriculumPdfImport,
+  publishCurriculumPdfImport
 } from '../api';
 import './CurriculumContent.css';
 
@@ -192,9 +195,37 @@ export default function SchoolDashboard({ session, onLogout }) {
   const [curriculumAllSubjects, setCurriculumAllSubjects] = useState([]);
   const [curriculumLoadError, setCurriculumLoadError] = useState('');
   const [curriculumPdfFiles, setCurriculumPdfFiles] = useState([]);
+  const [curriculumLessonContent, setCurriculumLessonContent] = useState('');
   const [curriculumEditing, setCurriculumEditing] = useState(null);
   const [curriculumRowBusy, setCurriculumRowBusy] = useState('');
   const [curriculumConfirmDelete, setCurriculumConfirmDelete] = useState(null);
+  const [curriculumImportMode, setCurriculumImportMode] = useState(false);
+  const [curriculumImportFile, setCurriculumImportFile] = useState(null);
+  const [curriculumImportPreview, setCurriculumImportPreview] = useState(null);
+  const [curriculumImportReviewed, setCurriculumImportReviewed] = useState(false);
+  const [curriculumImportBusy, setCurriculumImportBusy] = useState('');
+  const [curriculumImportError, setCurriculumImportError] = useState('');
+  const [curriculumImportUrl, setCurriculumImportUrl] = useState('');
+  const curriculumImportRequest = useRef(0);
+  const curriculumImportInput = useRef(null);
+
+  useEffect(() => {
+    curriculumImportRequest.current++;
+    setCurriculumLessonContent('');
+    setCurriculumImportFile(null);
+    setCurriculumImportPreview(null);
+    setCurriculumImportReviewed(false);
+    setCurriculumImportError('');
+    setCurriculumImportBusy('');
+    if (curriculumImportInput.current) curriculumImportInput.current.value = '';
+  }, [curriculumClassName, curriculumSubject]);
+
+  useEffect(() => {
+    if (!curriculumImportFile) { setCurriculumImportUrl(''); return undefined; }
+    const url = URL.createObjectURL(curriculumImportFile);
+    setCurriculumImportUrl(url);
+    return () => URL.revokeObjectURL(url);
+  }, [curriculumImportFile]);
 
   const [exportFormat, setExportFormat] = useState(null);
 
@@ -549,8 +580,60 @@ export default function SchoolDashboard({ session, onLogout }) {
     });
   }
 
+  async function onPreviewCurriculumPdf() {
+    if (!curriculumImportFile || !curriculumSubjectMatch) {
+      setCurriculumImportError('Choose a PDF and a subject with an assigned teacher first.');
+      return;
+    }
+    const request = ++curriculumImportRequest.current;
+    setCurriculumImportBusy('analyse');
+    setCurriculumImportError('');
+    setCurriculumImportPreview(null);
+    setCurriculumImportReviewed(false);
+    try {
+      const preview = await previewCurriculumPdfImport({
+        teacherId: curriculumSubjectMatch.teacherId, subject: curriculumSubjectMatch.subject,
+        className: curriculumClassName, fileName: curriculumImportFile.name, data: await readFileAsDataUrl(curriculumImportFile)
+      });
+      if (request !== curriculumImportRequest.current) return;
+      if (!preview?.previewId || !Array.isArray(preview.lessons) || !preview.lessons.length) throw new Error('No validated lesson split was returned. No lessons were created.');
+      setCurriculumImportPreview(preview);
+    } catch (error) {
+      if (request === curriculumImportRequest.current) setCurriculumImportError(error?.message || 'Unable to analyse this PDF.');
+    } finally {
+      if (request === curriculumImportRequest.current) setCurriculumImportBusy('');
+    }
+  }
+
+  async function onPublishCurriculumPdf() {
+    if (!curriculumImportPreview || !curriculumImportReviewed) {
+      setCurriculumImportError('Review the detected lesson names and page boundaries first.');
+      return;
+    }
+    const request = ++curriculumImportRequest.current;
+    const className = curriculumClassName;
+    const subject = curriculumSubjectMatch.subject;
+    setCurriculumImportBusy('publish');
+    setCurriculumImportError('');
+    try {
+      const result = await publishCurriculumPdfImport(curriculumImportPreview.previewId);
+      if (request !== curriculumImportRequest.current) return;
+      if (!Array.isArray(result?.lessons) || !result.lessons.length || result.lessonCount !== result.lessons.length) throw new Error('The server did not confirm the imported lessons. Refresh the curriculum before retrying.');
+      setNote(`${result.lessonCount} lessons added to ${subject} · ${className}. Each lesson has its own PDF and AI Tutor content.`);
+      setCurriculumImportFile(null);
+      setCurriculumImportPreview(null);
+      setCurriculumImportReviewed(false);
+      if (curriculumImportInput.current) curriculumImportInput.current.value = '';
+      await loadCurriculumPanel({ className });
+    } catch (error) {
+      if (request === curriculumImportRequest.current) setCurriculumImportError(error?.message || 'Unable to publish these lessons.');
+    } finally {
+      if (request === curriculumImportRequest.current) setCurriculumImportBusy('');
+    }
+  }
+
   /**
-   * One action for the admin: create the lesson record and attach the PDF.
+   * One action for the admin: create the lesson and index its PDF or pasted text.
    * Numbering, orchard chapters, flashcards and the tutor index all follow from
    * this single upload, so there is no separate "create lesson" step.
    */
@@ -568,8 +651,12 @@ export default function SchoolDashboard({ session, onLogout }) {
       setNote('Enter a lesson name.');
       return;
     }
-    if (!curriculumPdfFiles.length) {
-      setNote('Choose at least one lesson PDF to upload.');
+    if (!curriculumPdfFiles.length && !curriculumLessonContent.trim()) {
+      setNote('Choose a lesson PDF or paste the lesson content.');
+      return;
+    }
+    if (curriculumLessonContent.length > 200000) {
+      setNote('Pasted lesson content must be at most 200,000 characters. Split longer content into separate lessons.');
       return;
     }
 
@@ -590,6 +677,10 @@ export default function SchoolDashboard({ session, onLogout }) {
       createdLessonId = String(created?.lesson?.id || '');
       if (!createdLessonId) throw new Error('Lesson was created without an id');
 
+      if (curriculumLessonContent.trim()) {
+        const saved = await saveCurriculumLessonText(createdLessonId, curriculumLessonContent.trim());
+        if (saved?.success === false || saved?.error) throw new Error(saved?.error || 'Unable to save the pasted lesson content');
+      }
       const errors = [];
       for (const file of curriculumPdfFiles) {
         const dataUrl = await readFileAsDataUrl(file);
@@ -605,21 +696,28 @@ export default function SchoolDashboard({ session, onLogout }) {
       setNote(
         errors.length
           ? `Lesson added with warnings: ${errors.join('; ')}`
-          : `Lesson ${lessonNumber || ''} "${curriculumLessonTitle.trim()}" added with ${curriculumPdfFiles.length} doc(s) to ${curriculumSubjectMatch.subject} · ${curriculumClassName}.`.replace('  ', ' ')
+          : `Lesson ${lessonNumber || ''} "${curriculumLessonTitle.trim()}" added with ${curriculumPdfFiles.length + (curriculumLessonContent.trim() ? 1 : 0)} doc(s) to ${curriculumSubjectMatch.subject} · ${curriculumClassName}.`.replace('  ', ' ')
       );
       setCurriculumLessonTitle('');
       setCurriculumLessonDescription('');
+      setCurriculumLessonContent('');
       setCurriculumPdfFiles([]);
       setCurriculumSubject(curriculumSubjectMatch.subject);
       await loadCurriculumPanel();
     } catch (e2) {
       // Never leave a lesson behind with no content — that would show up as an
       // empty chapter in the orchard.
+      let cleanupMessage = '';
       if (createdLessonId) {
-        try { await deleteCurriculumLesson(createdLessonId); } catch { /* best-effort */ }
+        try {
+          const deleted = await deleteCurriculumLesson(createdLessonId);
+          if (deleted?.success === false) throw new Error(deleted.error || 'Lesson cleanup failed');
+        } catch (cleanupError) {
+          cleanupMessage = ` Cleanup failed for lesson ${createdLessonId}: ${cleanupError?.message || 'unknown error'}. Remove that lesson before retrying.`;
+        }
         await loadCurriculumPanel();
       }
-      setNote(e2?.message || 'Unable to add the lesson.');
+      setNote(`${e2?.message || 'Unable to add the lesson.'}${cleanupMessage}`);
     } finally {
       setCurriculumPdfUploading(false);
     }
@@ -1170,7 +1268,7 @@ export default function SchoolDashboard({ session, onLogout }) {
     },
     curriculum: {
       title: 'Curriculum Upload',
-      subtitle: 'Pick a class, pick a subject, upload the lesson PDF. Everything else follows.'
+      subtitle: 'Pick a class, pick a subject, then upload PDFs or paste lesson content.'
     },
     studentRegistration: {
       title: 'Student Registration',
@@ -1466,7 +1564,7 @@ export default function SchoolDashboard({ session, onLogout }) {
             <div>
               <h3>Curriculum Content</h3>
               <p>
-                Upload a lesson PDF and everything follows automatically — lesson numbering,
+                Upload PDFs or paste lesson content and everything follows automatically — lesson numbering,
                 the student&apos;s orchard chapters, flashcard games and the AI tutor.
               </p>
             </div>
@@ -1475,7 +1573,7 @@ export default function SchoolDashboard({ session, onLogout }) {
               <select
                 value={curriculumClassName}
                 onChange={(e) => setCurriculumClassName(e.target.value)}
-                disabled={!classOptions.length}
+                disabled={!classOptions.length || !!curriculumImportBusy}
               >
                 {!classOptions.length ? <option value="">No classes yet</option> : null}
                 {classOptions.map((className) => (
@@ -1511,6 +1609,7 @@ export default function SchoolDashboard({ session, onLogout }) {
                           type="button"
                           role="tab"
                           aria-selected={active}
+                          disabled={!!curriculumImportBusy}
                           className={`eg-cc-subject-btn${active ? ' is-active' : ''}${entry.canUpload ? '' : ' is-orphan'}`}
                           onClick={() => {
                             setCurriculumSubject(entry.subject);
@@ -1582,6 +1681,74 @@ export default function SchoolDashboard({ session, onLogout }) {
 
               {curriculumSelectedSubject ? (
                 <>
+              <div className="eg-cc-upload-modes" role="group" aria-label="Curriculum upload method">
+                <button type="button" aria-pressed={!curriculumImportMode} disabled={!!curriculumImportBusy || curriculumPdfUploading} onClick={() => setCurriculumImportMode(false)}>
+                  Add one lesson manually
+                </button>
+                <button type="button" aria-pressed={curriculumImportMode} disabled={!!curriculumImportBusy || curriculumPdfUploading} onClick={() => setCurriculumImportMode(true)}>
+                  <span aria-hidden="true">✦</span> Upload Multi-Lesson PDF
+                </button>
+              </div>
+              {curriculumImportMode ? (
+                <section className="eg-cc-form eg-cc-import" aria-label="Multi-lesson PDF upload">
+                  <div className="eg-cc-import-heading">
+                    <span className="eg-cc-import-icon" aria-hidden="true">PDF</span>
+                    <div>
+                      <h4>One PDF. Separate lessons.</h4>
+                      <p>Upload a book or part containing several units. Detect and review the lesson names, then add them in order to {curriculumSelectedSubject.subject} · {curriculumClassName}.</p>
+                    </div>
+                  </div>
+                  <p className="eg-cc-import-safety">Each lesson gets only its own pages—not the whole book—to keep lesson-based Sam teaching correctly scoped. Existing lessons stay unchanged.</p>
+                  <div className="eg-cc-field">
+                    <label htmlFor="cc-multi-pdf">Multi-lesson PDF (up to 15 MB)</label>
+                    <input id="cc-multi-pdf" ref={curriculumImportInput} type="file" accept="application/pdf,.pdf" disabled={!!curriculumImportBusy || !curriculumSubjectMatch}
+                      onChange={(e) => {
+                        const file = e.target.files?.[0] || null;
+                        setCurriculumImportPreview(null);
+                        setCurriculumImportReviewed(false);
+                        setCurriculumImportError('');
+                        if (file && (!/\.pdf$/i.test(file.name) || file.size > 15 * 1024 * 1024)) {
+                          setCurriculumImportFile(null);
+                          setCurriculumImportError('Choose one PDF no larger than 15 MB.');
+                          e.target.value = '';
+                        } else setCurriculumImportFile(file);
+                      }}
+                    />
+                    <span className="eg-cc-import-hint">Use searchable PDFs with clear unit/chapter headings. Scanned pages need OCR first; units sharing a page need separate manual uploads.</span>
+                  </div>
+                  {!curriculumSubjectMatch ? <p className="eg-cc-msg is-error">Register a {curriculumSelectedSubject.subject} teacher for {curriculumClassName} before importing.</p> : null}
+                  {curriculumImportError ? <div className="eg-cc-import-error" role="alert">{curriculumImportError}</div> : null}
+                  <button type="button" className="eg-cc-primary" disabled={!curriculumImportFile || !curriculumSubjectMatch || !!curriculumImportBusy} onClick={onPreviewCurriculumPdf}>
+                    {curriculumImportBusy === 'analyse' ? 'Analysing & validating…' : 'Detect lessons'}
+                  </button>
+                  {curriculumImportPreview ? (
+                    <div className="eg-cc-import-preview" aria-label="Detected lessons">
+                      <h4>{curriculumImportPreview.lessons.length} lessons detected · {curriculumImportPreview.pageCount} PDF pages</h4>
+                      <p>No lessons have been created yet. Check each unit&apos;s first and last page before publishing. Preview expires after 15 minutes.</p>
+                      <p><a href={`${curriculumImportUrl}#page=1`} target="_blank" rel="noopener noreferrer">Review complete source PDF, including excluded pages</a></p>
+                      <div className="eg-cc-import-table">
+                        <table>
+                          <thead><tr><th>Continues as</th><th>Lesson name</th><th>Source PDF pages</th><th>Review</th></tr></thead>
+                          <tbody>{curriculumImportPreview.lessons.map((lesson) => (
+                            <tr key={lesson.startPage}>
+                              <td>Lesson {lesson.lessonNumber}</td><td>{lesson.title}</td><td>{lesson.startPage}–{lesson.endPage}</td>
+                              <td><a href={`${curriculumImportUrl}#page=${lesson.startPage}`} target="_blank" rel="noopener noreferrer">Open first page</a>{' · '}<a href={`${curriculumImportUrl}#page=${lesson.endPage}`} target="_blank" rel="noopener noreferrer">Last page</a></td>
+                            </tr>
+                          ))}</tbody>
+                        </table>
+                      </div>
+                      {curriculumImportPreview.excludedPages?.length ? <p className="eg-cc-import-excluded">Not imported: PDF pages {curriculumImportPreview.excludedPages.join(', ')}. Check that these are only cover/contents/end-matter pages.</p> : null}
+                      <label className="eg-cc-import-review">
+                        <input type="checkbox" checked={curriculumImportReviewed} disabled={!!curriculumImportBusy} onChange={(e) => setCurriculumImportReviewed(e.target.checked)} />
+                        <span>I checked the lesson names, page boundaries and excluded pages. Each lesson contains only its own unit.</span>
+                      </label>
+                      <button type="button" className="eg-cc-primary" disabled={!curriculumImportReviewed || !!curriculumImportBusy} onClick={onPublishCurriculumPdf}>
+                        {curriculumImportBusy === 'publish' ? 'Creating separate lessons…' : `Create ${curriculumImportPreview.lessons.length} lessons`}
+                      </button>
+                    </div>
+                  ) : null}
+                </section>
+              ) : (
               <form className="eg-cc-form" onSubmit={onAddCurriculumLesson}>
                 <div className="eg-cc-field">
                   <label>Subject</label>
@@ -1640,11 +1807,29 @@ export default function SchoolDashboard({ session, onLogout }) {
                   )}
                 </div>
 
+                <div className="eg-cc-field eg-cc-paste">
+                  <label htmlFor="cc-content">Or paste lesson content <em>(no PDF required)</em></label>
+                  <p id="cc-content-help">Paste only this lesson&apos;s teaching content, including any questions or examples. Sam will use it as this lesson&apos;s source material. You can also attach PDFs above.</p>
+                  <textarea
+                    id="cc-content"
+                    rows={8}
+                    value={curriculumLessonContent}
+                    onChange={(e) => setCurriculumLessonContent(e.target.value)}
+                    placeholder="Copy and paste the complete content of this lesson here..."
+                    aria-describedby="cc-content-help"
+                    disabled={curriculumPdfUploading}
+                  />
+                  <span className="eg-cc-content-count">{curriculumLessonContent.length.toLocaleString()} / 200,000 characters · Saved as a text document and indexed for Sam</span>
+                  {curriculumLessonContent.length > 200000 ? (
+                    <span className="eg-cc-import-error" role="alert">This content exceeds 200,000 characters. Nothing has been truncated; split it into separate lessons before saving.</span>
+                  ) : null}
+                </div>
+
                 <div className="eg-cc-submit">
                   <button
                     type="submit"
                     className="eg-cc-primary"
-                    disabled={curriculumPdfUploading || !curriculumSubjectMatch || !curriculumLessonTitle.trim() || !curriculumPdfFiles.length}
+                    disabled={curriculumPdfUploading || !curriculumSubjectMatch || !curriculumLessonTitle.trim() || curriculumLessonContent.length > 200000 || (!curriculumPdfFiles.length && !curriculumLessonContent.trim())}
                   >
                     {curriculumPdfUploading ? 'Adding lesson…' : 'Add Lesson'}
                   </button>
@@ -1655,6 +1840,7 @@ export default function SchoolDashboard({ session, onLogout }) {
                   ) : null}
                 </div>
               </form>
+              )}
 
               <div className="eg-cc-library">
                 <div className="eg-cc-library-head">

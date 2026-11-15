@@ -9,6 +9,7 @@ import 'package:mobile/services/api_client.dart';
 import 'package:mobile/services/student_api_service.dart';
 import 'package:mobile/state/session_provider.dart';
 import 'package:mobile/state/student_providers.dart';
+import 'package:mobile/state/exam_access_provider.dart';
 import 'package:mobile/theme/app_theme.dart';
 
 class _Session extends SessionNotifier {
@@ -86,6 +87,7 @@ void main() {
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
+            examAccessProvider.overrideWith((ref) => Stream.value(const ExamAccess())),
             sessionProvider.overrideWith(_Session.new),
             studentApiServiceProvider.overrideWithValue(api),
             studentSubjectsProvider.overrideWith((ref) => ['Mathematics']),
@@ -175,6 +177,7 @@ void main() {
             await tester.pumpWidget(
               ProviderScope(
                 overrides: [
+                  examAccessProvider.overrideWith((ref) => Stream.value(const ExamAccess())),
                   studentSubjectsProvider.overrideWith(
                     (ref) => ['Mathematics', 'Science'],
                   ),
@@ -219,6 +222,11 @@ void main() {
             );
             await tester.pumpAndSettle();
             expect(find.text('Fractions practice'), findsOneWidget);
+            final help = find.widgetWithText(ElevatedButton, 'Ask Sam');
+            expect(help, findsOneWidget);
+            expect(tester.widget<ElevatedButton>(help).onPressed, isNotNull);
+            expect(tester.getRect(help).right, lessThanOrEqualTo(width));
+            expect(tester.getRect(help).top, lessThanOrEqualTo(tester.getRect(find.text('Fractions practice')).top + 12));
             expect(find.text('Fractions mock exam'), findsNothing);
             final homeworkTab = find.widgetWithText(ElevatedButton, 'Homework');
             final testsTab = find.widgetWithText(ElevatedButton, 'Mock Tests');
@@ -276,6 +284,7 @@ void main() {
           overrides: [
             sessionProvider.overrideWith(_Session.new),
             studentApiServiceProvider.overrideWithValue(api),
+            examAccessProvider.overrideWith((ref) => Stream.value(const ExamAccess())),
             studentSubjectsProvider.overrideWith(
               (ref) => ['Mathematics', 'Science'],
             ),
@@ -317,6 +326,7 @@ void main() {
       await tester.tap(find.text('Submitted: 1'));
       await tester.pumpAndSettle();
       expect(find.text('Fractions practice'), findsNothing);
+      expect(find.text('Ask Sam'), findsNothing);
       await tester.scrollUntilVisible(
         find.text('View submission'),
         100,

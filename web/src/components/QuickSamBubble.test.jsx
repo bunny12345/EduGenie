@@ -1,6 +1,6 @@
 import React from 'react';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
-import QuickSamBubble, { splitSamSpeech } from './QuickSamBubble';
+import QuickSamBubble, { HOMEWORK_HELP_PROMPT, splitSamSpeech } from './QuickSamBubble';
 import { generateLocalTtsAudio, sendQuickSamChat } from '../api';
 
 jest.mock('../api');
@@ -41,6 +41,40 @@ function open() {
   render(<QuickSamBubble studentId="student" />);
   fireEvent.click(screen.getByRole('button', { name: 'Ask Sam a quick question' }));
 }
+
+test('homework help opens automatically, retains its id on follow-ups, and clears it on close', async () => {
+  const started = jest.fn();
+  const view = render(<QuickSamBubble studentId="student" homeworkHelpRequest={{ homeworkId: 'homework-a' }} onHomeworkHelpStarted={started} />);
+  await waitFor(() => expect(sendQuickSamChat).toHaveBeenCalledTimes(1));
+  expect(sendQuickSamChat).toHaveBeenLastCalledWith('student', HOMEWORK_HELP_PROMPT, [], expect.any(AbortSignal), 'homework-a');
+  expect(started).toHaveBeenCalledTimes(1);
+  view.rerender(<QuickSamBubble studentId="student" onHomeworkHelpStarted={started} />);
+  expect(await screen.findByText('First short sentence. Then the rest of the answer.')).toBeInTheDocument();
+  await ask('I tried a factor. Give me one more hint.');
+  await waitFor(() => expect(sendQuickSamChat).toHaveBeenCalledTimes(2));
+  expect(sendQuickSamChat.mock.calls[1][4]).toBe('homework-a');
+  expect(sendQuickSamChat.mock.calls[1][2][0].content).toBe(HOMEWORK_HELP_PROMPT);
+  fireEvent.click(screen.getByRole('button', { name: 'Close Sam' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Ask Sam a quick question' }));
+  await ask('Teach me about leaves');
+  await waitFor(() => expect(sendQuickSamChat).toHaveBeenCalledTimes(3));
+  expect(sendQuickSamChat.mock.calls[2][4]).toBeUndefined();
+  expect(sendQuickSamChat.mock.calls[2][2]).toEqual([]);
+});
+
+test('homework availability errors are visible rather than replaced with a generic failure', async () => {
+  sendQuickSamChat.mockRejectedValue(new Error('This homework has already been submitted.'));
+  render(<QuickSamBubble studentId="student" homeworkHelpRequest={{ homeworkId: 'done' }} />);
+  expect(await screen.findByText('This homework has already been submitted.')).toBeInTheDocument();
+});
+
+test('closing before homework help starts cancels the automatic request', async () => {
+  const started = jest.fn();
+  render(<QuickSamBubble studentId="student" homeworkHelpRequest={{ homeworkId: 'pending' }} onHomeworkHelpStarted={started} />);
+  fireEvent.click(screen.getByRole('button', { name: 'Close Sam' }));
+  await waitFor(() => expect(started).toHaveBeenCalledTimes(1));
+  expect(sendQuickSamChat).not.toHaveBeenCalled();
+});
 
 test('splits a short first segment and bounded remaining segments without losing text', () => {
   const text = `A quick introduction. ${'More explanation without sentence breaks '.repeat(60)}`;

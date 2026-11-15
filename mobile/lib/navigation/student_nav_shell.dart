@@ -6,6 +6,7 @@ import '../screens/student/student_home_screen.dart';
 import '../screens/student/student_more_screen.dart';
 import '../screens/student/student_services_screen.dart';
 import '../state/focus_lock_provider.dart';
+import '../state/student_navigation_provider.dart';
 import '../theme/app_colors.dart';
 
 /// The site-wide "3D button" frame — a light-black ring border + soft drop
@@ -51,7 +52,6 @@ class _NavItem {
 }
 
 class _StudentShellState extends State<StudentShell> {
-  int _index = 0;
   bool _compact = false;
 
   static const _screens = [
@@ -97,6 +97,7 @@ class _StudentShellState extends State<StudentShell> {
     return Consumer(
       builder: (context, ref, _) {
         final focusLock = ref.watch(focusLockProvider);
+        final index = ref.watch(studentNavigationProvider);
         return PopScope(
           canPop: !focusLock.enabled,
           onPopInvokedWithResult: (didPop, result) async {
@@ -107,15 +108,15 @@ class _StudentShellState extends State<StudentShell> {
           child: Scaffold(
             body: NotificationListener<ScrollNotification>(
               onNotification: _onScrollNotification,
-              child: IndexedStack(index: _index, children: _screens),
+              child: IndexedStack(index: index, children: _screens),
             ),
             bottomNavigationBar: SafeArea(
               minimum: const EdgeInsets.fromLTRB(16, 0, 16, 10),
               child: _FloatingNavBar(
                 compact: _compact,
-                selectedIndex: _index,
+                selectedIndex: index,
                 items: _navItems,
-                onSelected: (i) => setState(() => _index = i),
+                onSelected: (i) => ref.read(studentNavigationProvider.notifier).select(i),
               ),
             ),
           ),

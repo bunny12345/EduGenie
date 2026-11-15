@@ -37,6 +37,7 @@ class QuickSamState {
   final bool muted;
   final int speechRate;
   final String? error;
+  final String? homeworkId;
 
   const QuickSamState({
     this.open = false,
@@ -49,6 +50,7 @@ class QuickSamState {
     this.muted = false,
     this.speechRate = 1,
     this.error,
+    this.homeworkId,
   });
 
   QuickSamState copyWith({
@@ -74,6 +76,7 @@ class QuickSamState {
     muted: muted ?? this.muted,
     speechRate: speechRate ?? this.speechRate,
     error: clearError ? null : (error ?? this.error),
+    homeworkId: homeworkId,
   );
 }
 
@@ -151,13 +154,14 @@ class QuickSamNotifier extends Notifier<QuickSamState> {
     return env.at(_anchorPosition + Duration(milliseconds: sinceAnchor));
   }
 
-  void open({String firstName = ''}) {
+  void open({String firstName = '', String? homeworkId}) {
     _session++;
     final hi = firstName.isNotEmpty ? 'Hi $firstName!' : 'Hi!';
     state = QuickSamState(
       open: true,
       muted: state.muted,
       speechRate: state.speechRate,
+      homeworkId: homeworkId,
       messages: [
         QuickSamMessage(
           isUser: false,
@@ -208,7 +212,7 @@ class QuickSamNotifier extends Notifier<QuickSamState> {
     try {
       final res = await ref
           .read(chatApiServiceProvider)
-          .sendQuickChat(studentId: studentId, message: text, recentMessages: history, cancelToken: cancel);
+          .sendQuickChat(studentId: studentId, message: text, recentMessages: history, cancelToken: cancel, homeworkId: state.homeworkId);
       if (session != _session) return;
       var reply = (res['reply'] as String? ?? '').trim();
       if (reply.isEmpty) reply = "Sorry, I couldn't come up with an answer. Try asking in a different way.";
@@ -222,9 +226,10 @@ class QuickSamNotifier extends Notifier<QuickSamState> {
         sending: false,
       );
       unawaited(_speak(reply, session));
-    } catch (_) {
+    } catch (error, stack) {
       if (session != _session) return;
-      state = state.copyWith(sending: false, error: 'Sam could not answer right now. Please try again.');
+      debugPrint('Quick Sam chat failed: $error\n$stack');
+      state = state.copyWith(sending: false, error: error.toString().replaceFirst('Exception: ', ''));
     } finally {
       if (identical(_cancel, cancel)) _cancel = null;
     }

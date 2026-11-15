@@ -30,25 +30,30 @@ export class ChatController {
   ) {
     const { message, personality, conversationId, recentMessages, imageDataUrl, imageDataUrls, imageNames, lessonId, lessonTitle, lessonSubject } = payload;
     const studentId = req.studentId || payload.studentId || 'anon';
-    const response = await this.chatService.handleMessage(studentId, message, {
-      personality,
-      conversationId,
-      recentMessages,
-      imageDataUrl,
-      imageDataUrls,
-      imageNames,
-      lessonId,
-      lessonTitle,
-      lessonSubject,
-    });
-    this.localFeed.logStudentActivity(studentId, {
-      type: 'chat',
-      action: 'sent',
-      title: 'Chat message',
-      details: String(message || '').slice(0, 120),
-      meta: { conversationId: conversationId || null }
-    });
-    return { success: true, ...response };
+    try {
+      const response = await this.chatService.handleMessage(studentId, message, {
+        personality,
+        conversationId,
+        recentMessages,
+        imageDataUrl,
+        imageDataUrls,
+        imageNames,
+        lessonId,
+        lessonTitle,
+        lessonSubject,
+      });
+      this.localFeed.logStudentActivity(studentId, {
+        type: 'chat',
+        action: 'sent',
+        title: 'Chat message',
+        details: String(message || '').slice(0, 120),
+        meta: { conversationId: conversationId || null }
+      });
+      return { success: true, ...response };
+    } catch (error) {
+      console.warn('AI Tutor request failed', error);
+      return { success: false, error: error instanceof Error ? error.message : 'Sam could not answer right now. Please try again.' };
+    }
   }
 
   // Home-page "Quick Sam" bubble: class-wide answers, nothing persisted.
@@ -56,12 +61,13 @@ export class ChatController {
   @UseGuards(AuthGuard)
   async quickChat(
     @Req() req: any,
-    @Body() payload: { studentId?: string; message: string; recentMessages?: Array<{ role: string; content: string }> }
+    @Body() payload: { studentId?: string; message: string; recentMessages?: Array<{ role: string; content: string }>; homeworkId?: string }
   ) {
     const studentId = req.studentId || payload?.studentId || 'anon';
     try {
       const response = await this.chatService.handleQuickMessage(studentId, payload?.message, {
         recentMessages: payload?.recentMessages,
+        homeworkId: payload?.homeworkId,
       });
       return { success: true, ...response };
     } catch (e: any) {

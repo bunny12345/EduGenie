@@ -59,7 +59,9 @@ function blobToBase64(blob) {
   });
 }
 
-export default function QuickSamBubble({ studentId, schoolName = '', greetingName = '' }) {
+export const HOMEWORK_HELP_PROMPT = 'Help me understand this homework without giving the answer. Give me one small guiding hint for calculations or tasks, or explain the underlying theory as a short memorable story, then ask me to try the next step myself.';
+
+export default function QuickSamBubble({ studentId, schoolName = '', greetingName = '', homeworkHelpRequest, onHomeworkHelpStarted }) {
   const [open, setOpen] = useState(false);
   const [messages, setMessages] = useState([]);
   const [followups, setFollowups] = useState([]);
@@ -74,6 +76,8 @@ export default function QuickSamBubble({ studentId, schoolName = '', greetingNam
 
   // Bumped on every close so late replies/audio from a closed session are dropped.
   const sessionRef = useRef(0);
+  const homeworkIdRef = useRef(null);
+  const sendRef = useRef(null);
   const abortRef = useRef(null);
   const audioRef = useRef(null);
   const audioUrlRef = useRef('');
@@ -286,7 +290,7 @@ export default function QuickSamBubble({ studentId, schoolName = '', greetingNam
     const controller = new AbortController();
     abortRef.current = controller;
     try {
-      const res = await sendQuickSamChat(studentId, text, history, controller.signal);
+      const res = await sendQuickSamChat(studentId, text, history, controller.signal, homeworkIdRef.current || undefined);
       if (session !== sessionRef.current) return;
       const reply = String(res?.reply || '').trim() || "Sorry, I couldn't come up with an answer. Try asking in a different way.";
       setMessages((prev) => [...prev, { role: 'ai', text: reply }]);
@@ -294,7 +298,8 @@ export default function QuickSamBubble({ studentId, schoolName = '', greetingNam
       speak(reply);
     } catch (e) {
       if (session !== sessionRef.current || e?.name === 'AbortError') return;
-      setError('Sam could not answer right now. Please try again.');
+      console.warn('Quick Sam chat failed', e);
+      setError(e?.message || 'Sam could not answer right now. Please try again.');
     } finally {
       if (session === sessionRef.current) {
         setBusy(false);
@@ -302,6 +307,8 @@ export default function QuickSamBubble({ studentId, schoolName = '', greetingNam
       }
     }
   }
+
+  sendRef.current = send;
 
   async function toggleRecording() {
     if (recording) {
@@ -355,20 +362,41 @@ export default function QuickSamBubble({ studentId, schoolName = '', greetingNam
     }
   }
 
-  function openSam() {
+  const openSam = useCallback((homeworkId = null) => {
+    sessionRef.current += 1;
+    abortRef.current?.abort();
+    abortRef.current = null;
+    stopSpeaking();
+    stopRecorder(true);
+    homeworkIdRef.current = homeworkId;
     setOpen(true);
-    setMessages([{
+    const greeting = [{
       role: 'ai',
       local: true,
       text: `Hi${firstName ? ` ${firstName}` : ''}! 👋 I'm Sam. Ask me anything from your class subjects — no need to pick a subject or lesson.`,
-    }]);
+    }];
+    messagesRef.current = greeting;
+    setMessages(greeting);
+    setBusy(false);
+    setTranscribing(false);
     setFollowups([]);
     setError('');
     setInput('');
-  }
+  }, [firstName, stopSpeaking, stopRecorder]);
+
+  useEffect(() => {
+    if (!homeworkHelpRequest?.homeworkId) return undefined;
+    openSam(homeworkHelpRequest.homeworkId);
+    const timer = setTimeout(() => {
+      if (homeworkIdRef.current === homeworkHelpRequest.homeworkId) sendRef.current(HOMEWORK_HELP_PROMPT);
+      onHomeworkHelpStarted?.();
+    }, 0);
+    return () => clearTimeout(timer);
+  }, [homeworkHelpRequest, onHomeworkHelpStarted, openSam]);
 
   // Closing wipes the whole conversation: nothing about it is kept.
   const closeSam = useCallback(() => {
+    homeworkIdRef.current = null;
     sessionRef.current += 1;
     if (abortRef.current) {
       try { abortRef.current.abort(); } catch { /* ignore */ }
@@ -432,7 +460,7 @@ export default function QuickSamBubble({ studentId, schoolName = '', greetingNam
   return (
     <>
       {!open && (
-        <button type="button" className="eg-quick-sam-fab" onClick={openSam} aria-label="Ask Sam a quick question" title="Ask Sam a quick question">
+        <button type="button" className="eg-quick-sam-fab" onClick={() => openSam()} aria-label="Ask Sam a quick question" title="Ask Sam a quick question">
           <span className="eg-quick-sam-ring" aria-hidden="true" />
           <span className="eg-quick-sam-core">Sam</span>
         </button>
@@ -446,7 +474,7 @@ export default function QuickSamBubble({ studentId, schoolName = '', greetingNam
           <header className="eg-sam-live-top">
             <div className="eg-sam-live-title">
               <strong>Sam</strong>
-              <span>Quick help · all your class subjects</span>
+              <span>{homeworkIdRef.current ? 'Homework help · hints & stories' : 'Quick help · all your class subjects'}</span>
             </div>
             {schoolName ? <div className="eg-sam-live-school">🏫 {schoolName}</div> : <span />}
             <div className="eg-sam-live-actions">

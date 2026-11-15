@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
@@ -8,9 +9,47 @@ import '../state/exam_access_provider.dart';
 import 'exam_tutor_notice.dart';
 import '../state/session_provider.dart';
 import '../state/student_providers.dart';
+import '../state/student_navigation_provider.dart';
 import '../utils/tutor_text.dart';
 import 'pressable_scale.dart';
 import 'sam_avatar.dart';
+
+const homeworkHelpPrompt = 'Help me understand this homework without giving the answer. Give me one small guiding hint for calculations or tasks, or explain the underlying theory as a short memorable story, then ask me to try the next step myself.';
+
+Future<void> openHomeSam(BuildContext context, WidgetRef ref, {String? homeworkId}) async {
+  final access = ref.read(examAccessProvider);
+  if (!access.hasValue || access.value!.blocked) {
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(
+      access.value?.error ?? (access.hasValue
+          ? 'Sam is unavailable during your scheduled mock test.'
+          : 'Exam access must be verified before Sam can open. Please try again.'),
+    )));
+    return;
+  }
+  final navigator = Navigator.of(context, rootNavigator: true);
+  final notifier = ref.read(quickSamProvider.notifier);
+  final name = (ref.read(sessionProvider).value?.name ?? '').trim();
+  if (homeworkId != null) {
+    ref.read(studentNavigationProvider.notifier).select(0);
+  }
+  notifier.open(firstName: name.split(RegExp(r'\s+')).first, homeworkId: homeworkId);
+  if (homeworkId != null) unawaited(notifier.send(homeworkHelpPrompt));
+  final route = PageRouteBuilder<void>(
+    opaque: true,
+    transitionDuration: const Duration(milliseconds: 260),
+    pageBuilder: (_, _, _) => const QuickSamScreen(),
+    transitionsBuilder: (_, anim, _, child) => FadeTransition(
+      opacity: anim,
+      child: ScaleTransition(scale: Tween(begin: 0.94, end: 1.0).animate(CurvedAnimation(parent: anim, curve: Curves.easeOutCubic)), child: child),
+    ),
+  );
+  if (homeworkId != null) {
+    await navigator.pushAndRemoveUntil(route, (route) => route.isFirst);
+  } else {
+    await navigator.push(route);
+  }
+  await notifier.close();
+}
 
 /// Floating blue "Sam" bubble on the student Home tab — mirrors
 /// `.eg-quick-sam-fab` on web. Opens [QuickSamScreen].
@@ -37,21 +76,7 @@ class _QuickSamBubbleState extends ConsumerState<QuickSamBubble> with SingleTick
   }
 
   Future<void> _open() async {
-    final name = (ref.read(sessionProvider).value?.name ?? '').trim();
-    ref.read(quickSamProvider.notifier).open(firstName: name.split(RegExp(r'\s+')).first);
-    await Navigator.of(context, rootNavigator: true).push(
-      PageRouteBuilder<void>(
-        opaque: true,
-        transitionDuration: const Duration(milliseconds: 260),
-        pageBuilder: (_, _, _) => const QuickSamScreen(),
-        transitionsBuilder: (_, anim, _, child) => FadeTransition(
-          opacity: anim,
-          child: ScaleTransition(scale: Tween(begin: 0.94, end: 1.0).animate(CurvedAnimation(parent: anim, curve: Curves.easeOutCubic)), child: child),
-        ),
-      ),
-    );
-    // However the screen was left (close button, back gesture), the chat is forgotten.
-    await ref.read(quickSamProvider.notifier).close();
+    await openHomeSam(context, ref);
   }
 
   @override
@@ -231,13 +256,13 @@ class _QuickSamScreenState extends ConsumerState<QuickSamScreen> {
                 padding: const EdgeInsets.fromLTRB(16, 8, 12, 0),
                 child: Row(
                   children: [
-                    const Expanded(
+                    Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text('Sam', style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w800)),
-                          Text('Quick help · all your class subjects',
-                              maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: Color(0xCCDCE4FF), fontSize: 12)),
+                          const Text('Sam', style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w800)),
+                          Text(s.homeworkId != null ? 'Homework help · hints & stories' : 'Quick help · all your class subjects',
+                              maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Color(0xCCDCE4FF), fontSize: 12)),
                         ],
                       ),
                     ),

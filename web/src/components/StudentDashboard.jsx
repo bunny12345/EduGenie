@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import SubjectBackground, { getPalette } from './SubjectBackground';
 import {
@@ -422,6 +422,16 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
     SIDEBAR_TABS.includes(initialHashTab) ? initialHashTab : 'Home'
   ));
   const [selectedSchoolService, setSelectedSchoolService] = useState(null);
+  const [homeworkHelpRequest, setHomeworkHelpRequest] = useState(null);
+  const clearHomeworkHelpRequest = useCallback(() => setHomeworkHelpRequest(null), []);
+
+  function askSamForHomework(homeworkId) {
+    if (examAccess.blocked || activeMockTest) return;
+    setSelectedSchoolService(null);
+    setActiveSidebarTab('Home');
+    setActiveView('home');
+    setHomeworkHelpRequest({ homeworkId });
+  }
 
   useEffect(() => {
     function onHashChange() {
@@ -4940,6 +4950,19 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
                     borderLeft: `4px solid ${state.color}`
                   }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                      {!state.submitted && !h.submitted && homeworkId ? (
+                        <button
+                          type="button"
+                          className="eg-hw-help-btn"
+                          style={{ order: 2 }}
+                          disabled={examAccess.blocked || !!activeMockTest}
+                          onClick={() => askSamForHomework(homeworkId)}
+                          title={examAccess.blocked || activeMockTest ? 'Sam is unavailable during scheduled mock exams' : 'Get a hint or a memorable concept story, not the answer'}
+                          aria-label={`Ask Sam for help with ${h.title || 'this homework'}`}
+                        >
+                          <span aria-hidden="true">✦</span> Ask Sam
+                        </button>
+                      ) : null}
                       <div style={{ flex: 1 }}>
                         <div
                           role="button"
@@ -5492,7 +5515,7 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
         </div>
       ) : null}
       {!examAccess.blocked && !activeMockTest && activeSidebarTab === 'Home' && activeView === 'home' && selectedSchoolService?.type !== 'query' && studentId ? (
-        <QuickSamBubble studentId={studentId} schoolName={schoolName} greetingName={dashboard?.greetingName || sessionProfile?.name || ''} />
+        <QuickSamBubble studentId={studentId} schoolName={schoolName} greetingName={dashboard?.greetingName || sessionProfile?.name || ''} homeworkHelpRequest={homeworkHelpRequest} onHomeworkHelpStarted={clearHomeworkHelpRequest} />
       ) : null}
     </div>
   );

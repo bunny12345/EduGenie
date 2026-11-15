@@ -1,6 +1,7 @@
 import React from 'react';
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import StudentDashboard from './StudentDashboard';
+import QuickSamBubble from './QuickSamBubble';
 import * as api from '../api';
 
 jest.mock('../api');
@@ -9,14 +10,16 @@ jest.mock('./StudentGames', () => () => null);
 jest.mock('./StudentProgress', () => () => null);
 jest.mock('./StudentReportCard', () => () => null);
 jest.mock('./SamAvatar', () => () => null);
-jest.mock('./QuickSamBubble', () => () => null);
+jest.mock('./QuickSamBubble', () => jest.fn(() => null));
 jest.mock('./MathMarkdown', () => ({ children }) => <span>{children}</span>);
 
 beforeEach(() => {
+  QuickSamBubble.mockClear();
   window.location.hash = '';
   Object.values(api).forEach((fn) => {
     if (jest.isMockFunction(fn)) fn.mockReset().mockResolvedValue({});
   });
+
   api.getDashboard.mockResolvedValue({
     greetingName: 'Student', className: 'Class 8',
     classTeachers: [{ id: 'teacher', name: 'Teacher', subject: 'Science' }],
@@ -31,6 +34,35 @@ beforeEach(() => {
   api.getCalendar.mockResolvedValue({ events: [] });
   api.getSettings.mockResolvedValue({ prefs: {} });
   api.checkInReward.mockResolvedValue({ alreadyCheckedIn: true });
+});
+
+test('unsubmitted homework offers help and opens the existing Home Sam without changing the sidebar', async () => {
+  window.location.hash = 'Home/Science';
+  api.getHomework.mockResolvedValue({ homework: [
+    { id: 'pending', title: 'Plant worksheet', subject: 'Science', status: 'pending', note: 'Explain how leaves work.' },
+    { id: 'done', title: 'Completed worksheet', subject: 'Science', status: 'submitted' },
+  ] });
+  render(<StudentDashboard studentId="student" onLogout={() => {}} />);
+  const help = await screen.findByRole('button', { name: 'Ask Sam for help with Plant worksheet' });
+  await waitFor(() => expect(help).toBeEnabled());
+  expect(screen.queryByRole('button', { name: 'Ask Sam for help with Completed worksheet' })).not.toBeInTheDocument();
+  fireEvent.click(help);
+  await waitFor(() => expect(QuickSamBubble).toHaveBeenCalled());
+  expect(QuickSamBubble.mock.calls.at(-1)[0].homeworkHelpRequest).toEqual({ homeworkId: 'pending' });
+  expect(window.location.hash).toBe('#Home');
+  expect(screen.getByRole('complementary')).toHaveClass('eg-sidebar');
+});
+
+test('scheduled exam access disables homework help before a test is started', async () => {
+  window.location.hash = 'Home/Science';
+  api.getHomework.mockResolvedValue({ homework: [{ id: 'pending', title: 'Plant worksheet', subject: 'Science', status: 'pending' }] });
+  api.getExamAccess.mockResolvedValue({ exams: [{ testId: 'strict', title: 'Strict science exam' }] });
+  render(<StudentDashboard studentId="student" onLogout={() => {}} />);
+  const help = await screen.findByRole('button', { name: 'Ask Sam for help with Plant worksheet' });
+  await waitFor(() => expect(help).toBeDisabled());
+  fireEvent.click(help);
+  expect(QuickSamBubble).not.toHaveBeenCalled();
+  expect(window.location.hash).toBe('#Science');
 });
 
 test('Home preserves summary data but does not fetch unopened library, calendar or tutor panels', async () => {

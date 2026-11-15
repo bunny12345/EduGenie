@@ -80,12 +80,14 @@ class ChatApiService {
     required String message,
     List<Map<String, String>> recentMessages = const [],
     CancelToken? cancelToken,
+    String? homeworkId,
   }) async {
     try {
       final res = await _client.dio.post('/chat/quick', cancelToken: cancelToken, data: {
         'studentId': studentId,
         'message': message,
         'recentMessages': recentMessages,
+        'homeworkId': ?homeworkId,
       });
       final data = Map<String, dynamic>.from(res.data as Map);
       if (data['success'] == false || data['reply'] == null) {
