@@ -20,6 +20,15 @@ npm run start:dev
 
 The server starts on `PORT` from `.env` (default 3000) and exposes `POST /chat`.
 
+### Mock test answer options
+
+When teachers add a question (`POST /tests/:testId/questions`), the backend
+shuffles its options and saves the remapped correct-answer index together with
+them. Web and mobile therefore use the same saved order for teacher review,
+student attempts and grading. Reopening or resuming a test does not reshuffle
+options. Existing questions and explicit teacher edits keep their saved order;
+no migration or client update is needed.
+
 ### Optional strict mock exams
 
 Install `db/migrations/20261112_strict_mock_exams.sql` before deploying this

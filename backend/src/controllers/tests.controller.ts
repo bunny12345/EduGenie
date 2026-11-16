@@ -570,11 +570,20 @@ export class TestsController {
     await this.requireEditableTest(req, testId);
     try {
       const options = Array.isArray(body.options) ? body.options : [];
+      const correctOption = body.correctOption ?? body.correct_option;
+      if (options.length < 2 || !Number.isInteger(correctOption) || correctOption < 0 || correctOption >= options.length) {
+        throw new BadRequestException('Provide at least two options and select a valid correct answer.');
+      }
+      const optionOrder = options.map((_: unknown, index: number) => index);
+      for (let i = optionOrder.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [optionOrder[i], optionOrder[j]] = [optionOrder[j], optionOrder[i]];
+      }
       const row = {
         test_id: testId,
         text: String(body.text || body.question || '').slice(0, 500),
-        options,
-        correct_option: body.correctOption ?? body.correct_option ?? null,
+        options: optionOrder.map((index: number) => options[index]),
+        correct_option: optionOrder.indexOf(correctOption),
         marks: Math.max(0, Number(body.marks || 1)),
         created_at: new Date().toISOString()
       };

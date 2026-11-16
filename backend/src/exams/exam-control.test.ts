@@ -66,6 +66,77 @@ function fixture() {
   return { exam, tables, failures, db, feed, service, controller, req, teacher, start, control };
 }
 
+test('new question options are shuffled once with the answer key preserved through listing, start and grading', async (t) => {
+  const drawsByPosition = [[0.99, 0.99, 0.99], [0.99, 0.99, 0], [0.99, 0, 0.99], [0, 0.99, 0.99]];
+  for (const [position, draws] of drawsByPosition.entries()) {
+    await t.test(`correct answer can be saved at option ${position + 1}`, async (t) => {
+      const f = fixture();
+      f.exam.status = 'draft';
+      f.tables.test_questions = [];
+      const cached: Row[] = [];
+      f.feed.upsertQuestion = (_testId, question) => { cached.push(question); };
+      let draw = 0;
+      const random = t.mock.method(Math, 'random', () => draws[draw++ % draws.length]);
+      const options = ['2', '3', '4', '5'];
+      const added = await f.controller.addQuestion(f.teacher, f.exam.id, {
+        text: '1 + 1?', options, correctOption: 0,
+      });
+      random.mock.restore();
+      assert.equal(added.success, true);
+      assert.ok(added.question);
+      const question = added.question;
+      assert.equal(question.correctOption, position);
+      assert.equal(question.options[position], '2');
+      assert.deepEqual([...question.options].sort(), [...options].sort());
+      assert.deepEqual(options, ['2', '3', '4', '5']);
+      assert.deepEqual(cached[0].options, question.options);
+      assert.equal(cached[0].correct_option, position);
+      const listed = await f.controller.listQuestions(f.teacher, f.exam.id);
+      assert.deepEqual(listed.questions[0].options, question.options);
+      assert.equal(listed.questions[0].correctOption, position);
+
+      f.exam.status = 'assigned';
+      const started = await f.start();
+      assert.equal(started.success, true);
+      assert.deepEqual(started.questions[0].options, question.options);
+      assert.deepEqual((await f.start()).questions[0].options, question.options);
+      const graded = await f.controller.submit(f.req(), started.attemptId, {
+        clientId: 'browser-client-a', answers: { [question.id]: position },
+      });
+      assert.equal(graded.score, 100);
+      assert.equal(graded.perQuestionFeedback[0].correctOption, position);
+      const other = await f.start('student-b');
+      const wrong = await f.controller.submit(f.req('student-b'), other.attemptId, {
+        clientId: 'browser-client-a', answers: { [question.id]: (position + 1) % options.length },
+      });
+      assert.equal(wrong.score, 0);
+    });
+  }
+});
+
+test('shuffling tracks the selected option by index even with duplicate text and rejects invalid answer keys', async (t) => {
+  const f = fixture();
+  f.exam.status = 'draft';
+  f.feed.upsertQuestion = () => {};
+  const random = t.mock.method(Math, 'random', () => 0);
+  const added = await f.controller.addQuestion(f.teacher, f.exam.id, {
+    text: 'Pick the selected entry', options: ['same', 'other', 'same', 'last'], correct_option: 2,
+  });
+  random.mock.restore();
+  assert.equal(added.success, true);
+  assert.equal(added.question?.correctOption, 1);
+  assert.deepEqual(added.question?.options, ['other', 'same', 'last', 'same']);
+  const count = f.tables.test_questions.length;
+  for (const correctOption of [-1, 4, 1.5, null]) {
+    const invalid = await f.controller.addQuestion(f.teacher, f.exam.id, {
+      text: 'Invalid key', options: ['a', 'b', 'c', 'd'], correctOption,
+    });
+    assert.equal(invalid.success, false);
+    assert.match(invalid.error || '', /select a valid correct answer/);
+  }
+  assert.equal(f.tables.test_questions.length, count);
+});
+
 test('only the affected student is paused; saved answers and timer survive resume and controller recreation', async () => {
   const f = fixture();
   const a = await f.start(); const b = await f.start('student-b');
