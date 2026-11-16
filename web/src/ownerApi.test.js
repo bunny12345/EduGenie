@@ -1,4 +1,7 @@
-import { getOwnerAccess, schoolRegisterRequestOtp, schoolRegisterVerifyOtp, setRuntimeDevToken } from './api';
+import {
+  getOwnerAccess, schoolRegisterRequestOtp, schoolRegisterVerifyOtp, setRuntimeDevToken,
+  requestRegistrationPhoneCode, verifyRegistrationPhoneCode, requestRegistrationEmailCode, schoolRegisterStudent
+} from './api';
 
 jest.mock('./supabaseClient', () => ({ auth: {} }));
 
@@ -51,4 +54,24 @@ test('owner API displays the actionable Nest error message instead of its generi
     status: 503,
     message: 'Owner access is not configured. Contact the site operator.',
   });
+});
+
+test.each([
+  [requestRegistrationPhoneCode, 503, 'SMS verification is not configured. Please contact your administrator.', 'Service Unavailable'],
+  [verifyRegistrationPhoneCode, 400, 'The code is incorrect, expired or used. Please request a new code.', 'Bad Request'],
+  [requestRegistrationEmailCode, 503, 'Email verification is not configured. Please contact your administrator.', 'Service Unavailable'],
+])('registration shows the specific backend error rather than its HTTP label (%#)', async (request, status, message, error) => {
+  setRuntimeDevToken('school-portal-token');
+  global.fetch.mockResolvedValue({
+    ok: false, status, json: async () => ({ statusCode: status, message, error }),
+  });
+  await expect(request({})).rejects.toThrow(message);
+});
+
+test('registration still displays business errors returned in success-false envelopes', async () => {
+  setRuntimeDevToken('school-portal-token');
+  global.fetch.mockResolvedValue({
+    ok: true, status: 200, json: async () => ({ success: false, error: 'Login ID already exists' }),
+  });
+  await expect(schoolRegisterStudent({})).rejects.toThrow('Login ID already exists');
 });

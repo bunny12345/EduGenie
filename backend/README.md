@@ -20,6 +20,109 @@ npm run start:dev
 
 The server starts on `PORT` from `.env` (default 3000) and exposes `POST /chat`.
 
+### Mobile or email verification for manual school registration
+
+The school's manual teacher/student registration accepts **either verified SMS
+or verified email**, not necessarily both. A valid mobile number must still be
+entered even when email is used for verification. India (+91) is selected
+initially; other countries are available. Mobile numbers are validated with
+`libphonenumber-js` and saved in international E.164 format.
+Student date of birth is required, must be a real date and cannot be in the future;
+teacher email remains required, and student email is optional when using SMS.
+A parent/guardian contact may be used for students. Each registration requires
+a new verification proof.
+
+Before deploying the updated backend and website:
+
+1. Apply `db/migrations/20261116_registration_phone_verification.sql`. It adds
+   the approved nullable `teachers.phone` column and a new service-role-only
+   `registration_phone_verifications` table. Existing rows and RLS policies are
+   not changed. Also apply `db/migrations/20261116_registration_email_verification.sql`
+   to create the new service-role-only email verification table. It does not
+   alter any existing tables or policies. No migration is run automatically.
+2. For SMS, configure backend-only `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN` and
+   `TWILIO_VERIFY_SERVICE_SID` using your deployment secret manager. Create an
+   SMS-enabled Twilio Verify service with six-digit codes and the default
+   ten-minute validity. Enable the required destination countries and complete
+   Twilio's sender/regulatory setup (including India requirements). Trial accounts
+   may send only to approved recipients. Never put these credentials in web/mobile.
+   The names beginning `AC_your_...`, `VA_your_...` and `your_actual_auth_token`
+   shown in setup examples are placeholders, not usable credentials. Set actual
+   values in the deployed backend's environment/secrets dashboard as well as local
+   development configuration; editing a local environment file alone does not
+   update hosting-provider secrets. Restart/redeploy the backend after changes.
+3. Configure Twilio Fraud Guard and account/service sending limits before enabling
+   real traffic. Backend resend/actor/number rate limits are process-local;
+   Twilio's controls must also cover aggregate traffic across backend replicas.
+4. For email, configure the existing SMTP mail service on the backend:
+
+   ```env
+   SMTP_HOST=your_smtp_host
+   SMTP_PORT=587
+   SMTP_SECURE=false
+   SMTP_USER=your_smtp_username
+   SMTP_PASS=your_smtp_password_or_app_password
+   SMTP_FROM=AcademiX <your_verified_sender@example.com>
+   ```
+
+   Use the sending provider's required settings (port 465 uses TLS). For Gmail,
+   use `smtp.gmail.com`, your Gmail address and an App Password if supported
+   by your account, not your normal Google password. Respect provider sending
+   quotas. Restart/redeploy the backend after changing settings. Never commit
+   credentials or place SMTP settings in React/mobile. Email verification uses
+   the same `EmailService` as school registration; no new mail dependency is
+   required. Email-only verification does not call Twilio, and SMS verification
+   does not require SMTP configuration.
+
+School-admin-only endpoints:
+
+- `POST /school/registration/phone/request`: `{role: "teacher" | "student",
+  country: "IN", phone}` -> `{success, challengeId, expiresAt, resendAfter}`.
+  `country` defaults to `IN`; phone may be national or international.
+- `POST /school/registration/phone/verify`: same phone/country/role plus
+  `{challengeId, code}` -> `{success, verificationId, phone, expiresAt}`.
+- `POST /school/registration/email/request`: `{role, email}` ->
+  `{success, challengeId, expiresAt, resendAfter}`.
+- `POST /school/registration/email/verify`: `{role, email, challengeId, code}` ->
+  `{success, verificationId, email, expiresAt}`. Email addresses are normalized
+  by trimming and lowercasing.
+- Both `/school/teachers/register` and `/school/students/register` now require
+  `{phone, country}` and either `phoneVerificationId` or `emailVerificationId`
+  alongside their existing payloads. An email proof must match the submitted
+  email address. The UI sends only the selected, currently valid proof (email
+  takes precedence if both contacts are verified). Student registration also
+  requires `dateOfBirth` (`YYYY-MM-DD`).
+
+Codes have at most five checks and a 60-second resend cooldown. Resending SMS
+does not reset code expiry or attempt count. Email resends create a new challenge
+and code; each challenge expires independently. Only a keyed hash of an email OTP
+is stored, never its plaintext code. An approved proof expires after
+ten minutes and is atomically consumed before registration; it is bound to the
+school, admin, role and contact (plus country for SMS). Proofs survive backend
+restarts and cannot be reused concurrently across replicas. Email code hashes
+use the existing backend JWT signing secret; rotating it invalidates pending
+email codes. Changing a contact clears only that contact's verification; a valid
+proof for the other contact can still authorize registration.
+A failed/uncertain account-creation request requires
+verifying again before retrying. Expired verification rows can be removed by
+periodic maintenance (`DELETE FROM public.registration_phone_verifications
+WHERE expires_at < now()` and the equivalent for
+`public.registration_email_verifications`); they cannot authorize registration.
+Email request limits are process-local as well; enforce aggregate mail quotas
+at the SMTP provider when deploying multiple backend replicas.
+
+Missing configuration, delivery errors and storage failures are explicit and
+never treated as successful verification. There is no fake SMS/email OTP bypass,
+including in local mock-database mode. Existing login, invite-link registration
+and teacher-managed legacy registration are unchanged; these requirements apply
+to the school's two manual registration endpoints/forms. The mobile school-admin
+placeholder remains unchanged.
+
+Validate without SMS/email/database access:
+`node --test -r ts-node/register/transpile-only src/auth/registration-phone.test.ts`
+and `npx tsc --noEmit`. Tests mock all provider and storage operations; real
+delivery still needs deployment configuration and live recipient checks.
+
 ### Mock test answer options
 
 When teachers add a question (`POST /tests/:testId/questions`), the backend

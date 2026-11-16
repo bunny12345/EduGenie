@@ -16,6 +16,32 @@ Small icons use only the emblem so the name/tagline do not become unreadable.
 Deploy the generated public assets together; the source replacement alone does
 not update the production website.
 
+## School registration contact verification
+
+Manual Teacher Registration and Manual Student Registration accept either a
+verified mobile number **or a verified email address**. A valid mobile number
+must still be entered even when email is verified. Teacher email remains required;
+student email is optional if SMS is used.
+
+For SMS, India (+91) is the default; choose another country when needed. Enter
+the national number, select **Send SMS code**, enter the six-digit code, then
+select **Verify number**. Alternatively, enter an email, select **Send email code**,
+enter its six-digit code, then select **Verify email**. Either verification unlocks
+registration. Changing one contact clears only its verification, not the other.
+Codes expire after ten minutes; resend is available after 60 seconds.
+Verification itself lasts ten minutes and is one-use;
+after a failed or uncertain registration request, verify again before retrying.
+Students must also have a valid date of birth; their email remains optional.
+Use a parent/guardian contact for students where appropriate.
+
+Deploy both backend verification migrations and configure Twilio Verify (SMS)
+and/or the existing SMTP service (email) as described in
+[`backend/README.md`](../backend/README.md#mobile-or-email-verification-for-manual-school-registration)
+before deploying this website. There is no test-code bypass for an unconfigured
+channel; the other configured channel remains usable. Existing login and invite
+registration are unchanged.
+Run `CI=true npm test -- --watchAll=false --runInBand src/components/SchoolDashboard.test.jsx`.
+
 ## Multi-lesson curriculum PDF upload
 
 In **Add one lesson manually**, enter the lesson name and either choose PDFs,

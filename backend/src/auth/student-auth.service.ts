@@ -35,6 +35,7 @@ type TeacherAccount = {
   name?: string;
   subject?: string;
   gender?: string;
+  phone?: string;
   schoolId: string;
   grades?: string[];
 };
@@ -231,6 +232,7 @@ export class StudentAuthService implements OnModuleInit {
       school_id: account.schoolId || null,
       name: account.name || 'Teacher',
       email: account.email || null,
+      ...(account.phone ? { phone: account.phone } : {}),
       subject: account.subject || 'General',
       login_id: account.loginId,
       password_salt: account.passwordSalt,
@@ -753,6 +755,7 @@ export class StudentAuthService implements OnModuleInit {
     loginId: string;
     password: string;
     gender?: string;
+    phone?: string;
     grades?: string[];
     createdBy?: string;
   }) {
@@ -792,6 +795,7 @@ export class StudentAuthService implements OnModuleInit {
       subject,
       schoolId,
       grades,
+      phone: payload.phone,
       gender: String(payload.gender || '').trim().toLowerCase() || undefined
     };
     this.rememberTeacher(account);
@@ -805,6 +809,7 @@ export class StudentAuthService implements OnModuleInit {
       email,
       subject,
       gender,
+      ...(payload.phone ? { phone: payload.phone } : {}),
       login_id: loginId,
       password_salt: passwordSalt,
       password_hash: passwordHash,
@@ -843,7 +848,8 @@ export class StudentAuthService implements OnModuleInit {
         email,
         subject,
         loginId,
-        grades
+        grades,
+        phone: account.phone || null
       }
     };
   }
@@ -870,6 +876,7 @@ export class StudentAuthService implements OnModuleInit {
           name: row.name,
           subject: row.subject,
           gender: row.gender || undefined,
+          phone: row.phone || undefined,
           schoolId: row.school_id,
           grades: normalizeGrades(row.grades)
         };
@@ -1108,6 +1115,7 @@ export class StudentAuthService implements OnModuleInit {
             name: row.name,
             subject: row.subject,
             gender: row.gender || undefined,
+            phone: row.phone || undefined,
             schoolId: row.school_id,
             grades: normalizeGrades(row.grades)
           };

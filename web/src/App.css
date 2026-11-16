@@ -6890,6 +6890,30 @@ textarea {
   margin-top: 2px;
 }
 
+.sd-phone-verification {
+  min-width: 0;
+  margin: 4px 0;
+  padding: 12px;
+  border: 1px solid #dfe5f7;
+  border-radius: 12px;
+  background: rgba(42, 102, 180, 0.04);
+}
+.sd-phone-verification legend { padding: 0 5px; font-size: 12px; font-weight: 700; color: #2d3465; }
+.sd-phone-required { margin-left: 6px; font-size: 10px; color: #526092; }
+.sd-phone-inputs { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.3fr); gap: 8px; }
+.sd-phone-verification label { display: grid; gap: 5px; min-width: 0; }
+.sd-phone-verification input { width: 100%; min-width: 0; box-sizing: border-box; }
+.sd-phone-help { margin: 8px 0; font-size: 11px; color: #526092; }
+.sd-phone-send { width: 100%; }
+.sd-phone-code { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: end; gap: 8px; margin-top: 10px; }
+.sd-phone-code button { padding: 8px 14px; }
+.sd-phone-verified { margin: 10px 0 0; color: #116548; font-size: 12px; font-weight: 700; }
+.sd-phone-error { margin: 8px 0 0; color: #a32032; font-size: 12px; }
+.sd-phone-verification button:disabled { opacity: 0.6; cursor: not-allowed; }
+@media (max-width: 480px) {
+  .sd-phone-inputs, .sd-phone-code { grid-template-columns: minmax(0, 1fr); }
+}
+
 .sd-grade-select {
   position: relative;
 }

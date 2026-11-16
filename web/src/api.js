@@ -1043,15 +1043,37 @@ export async function getSchoolStudentReportCards(studentId) {
   return getJsonChecked(`${API_BASE}/school/students/${encodeURIComponent(studentId)}/report-cards`, 'getSchoolStudentReportCards');
 }
 
-export async function schoolRegisterTeacher(payload) {
-  const headers = await authHeaders();
-  const url = `${API_BASE}/school/teachers/register`;
-  const res = await fetch(url, {
+async function schoolRegistrationRequest(path, payload) {
+  const res = await fetch(`${API_BASE}/school/${path}`, {
     method: 'POST',
-    headers,
+    headers: await authHeaders(),
     body: JSON.stringify(payload || {})
   });
-  return res.json();
+  const data = await res.json();
+  if (!res.ok || data?.success !== true) {
+    throw new Error(data?.message || data?.error || 'The registration request failed. Please try again.');
+  }
+  return data;
+}
+
+export async function schoolRegisterTeacher(payload) {
+  return schoolRegistrationRequest('teachers/register', payload);
+}
+
+export async function requestRegistrationPhoneCode(payload) {
+  return schoolRegistrationRequest('registration/phone/request', payload);
+}
+
+export async function verifyRegistrationPhoneCode(payload) {
+  return schoolRegistrationRequest('registration/phone/verify', payload);
+}
+
+export async function requestRegistrationEmailCode(payload) {
+  return schoolRegistrationRequest('registration/email/request', payload);
+}
+
+export async function verifyRegistrationEmailCode(payload) {
+  return schoolRegistrationRequest('registration/email/verify', payload);
 }
 
 export async function schoolDeduplicateTeachers() {
@@ -1123,14 +1145,7 @@ export async function resendSchoolTeacherInvite(token, payload) {
 }
 
 export async function schoolRegisterStudent(payload) {
-  const headers = await authHeaders();
-  const url = `${API_BASE}/school/students/register`;
-  const res = await fetch(url, {
-    method: 'POST',
-    headers,
-    body: JSON.stringify(payload || {})
-  });
-  return res.json();
+  return schoolRegistrationRequest('students/register', payload);
 }
 
 export async function schoolUpdateStudent(studentId, payload) {

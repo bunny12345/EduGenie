@@ -6,7 +6,9 @@ import {
   getSchoolProgressPeriod, saveSchoolProgressPeriod,
   schoolDashboard, schoolTeachers, schoolStudents, schoolDeduplicateTeachers, listCurriculumSubjects,
   listCurriculumLessons, listCurriculumLessonDocuments, previewCurriculumPdfImport, publishCurriculumPdfImport,
-  createCurriculumLesson, uploadCurriculumLessonDocument, saveCurriculumLessonText, deleteCurriculumLesson
+  createCurriculumLesson, uploadCurriculumLessonDocument, saveCurriculumLessonText, deleteCurriculumLesson,
+  requestRegistrationPhoneCode, verifyRegistrationPhoneCode, requestRegistrationEmailCode, verifyRegistrationEmailCode,
+  schoolRegisterTeacher, schoolRegisterStudent
 } from '../api';
 
 jest.mock('../api', () => ({
@@ -23,6 +25,12 @@ jest.mock('../api', () => ({
   uploadCurriculumLessonDocument: jest.fn(),
   saveCurriculumLessonText: jest.fn(),
   deleteCurriculumLesson: jest.fn(),
+  requestRegistrationPhoneCode: jest.fn(),
+  verifyRegistrationPhoneCode: jest.fn(),
+  requestRegistrationEmailCode: jest.fn(),
+  verifyRegistrationEmailCode: jest.fn(),
+  schoolRegisterTeacher: jest.fn(),
+  schoolRegisterStudent: jest.fn(),
   getSchoolProgressStudents: jest.fn(),
   getSchoolProgressPeriod: jest.fn(),
   saveSchoolProgressPeriod: jest.fn(),
@@ -81,8 +89,221 @@ beforeEach(() => {
   saveSchoolProgressPeriod.mockResolvedValue({ success: true, period: { startDate: '2026-06-15', endDate: '2027-03-20' } });
   getSchoolStudentLearningScore.mockResolvedValue({ success: true });
   getSchoolStudentReportCards.mockResolvedValue({ success: true });
+  requestRegistrationPhoneCode.mockResolvedValue({ success: true, challengeId: 'phone-challenge', resendAfter: 60 });
+  verifyRegistrationPhoneCode.mockResolvedValue({
+    success: true, verificationId: 'phone-proof', phone: '+919876543210', expiresAt: new Date(Date.now() + 600000).toISOString()
+  });
+  requestRegistrationEmailCode.mockResolvedValue({ success: true, challengeId: 'email-challenge', resendAfter: 60 });
+  verifyRegistrationEmailCode.mockResolvedValue({
+    success: true, verificationId: 'email-proof', email: 'person@example.test', expiresAt: new Date(Date.now() + 600000).toISOString()
+  });
 });
 afterEach(() => { window.location.hash = ''; });
+
+test('teacher registration defaults to India and requires successful SMS verification before saving', async () => {
+  window.location.hash = '#teachers';
+  schoolRegisterTeacher.mockResolvedValue({ success: true, teacher: { id: 'new-teacher', name: 'Teacher', phone: '+919876543210' } });
+  render(<SchoolDashboard session={session} onLogout={jest.fn()} />);
+  const country = await screen.findByLabelText('Teacher country code');
+  const phone = screen.getByLabelText('Teacher mobile number');
+  const create = screen.getByRole('button', { name: 'Create Teacher Account' });
+  expect(country).toHaveValue('IN');
+  expect(phone).toBeRequired();
+  expect(create).toBeDisabled();
+  fireEvent.change(phone, { target: { value: '123' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Send SMS code' }));
+  expect(await screen.findByRole('alert')).toHaveTextContent('Enter a valid mobile number');
+  expect(requestRegistrationPhoneCode).not.toHaveBeenCalled();
+  fireEvent.change(phone, { target: { value: '9876543210' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Send SMS code' }));
+  const code = await screen.findByLabelText('SMS verification code');
+  expect(requestRegistrationPhoneCode).toHaveBeenCalledWith({ role: 'teacher', country: 'IN', phone: '+919876543210' });
+  expect(create).toBeDisabled();
+  verifyRegistrationPhoneCode.mockRejectedValueOnce(new Error('Incorrect verification code.'));
+  fireEvent.change(code, { target: { value: '111111' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Verify number' }));
+  expect(await screen.findByRole('alert')).toHaveTextContent('Incorrect verification code.');
+  expect(create).toBeDisabled();
+  fireEvent.change(code, { target: { value: '123456' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Verify number' }));
+  expect(await screen.findByRole('status')).toHaveTextContent('Verified +919876543210');
+  expect(verifyRegistrationPhoneCode).toHaveBeenLastCalledWith({
+    role: 'teacher', country: 'IN', phone: '+919876543210', challengeId: 'phone-challenge', code: '123456'
+  });
+  expect(create).toBeEnabled();
+  fireEvent.change(screen.getByPlaceholderText('Teacher name'), { target: { value: 'Teacher' } });
+  fireEvent.change(screen.getByPlaceholderText('Teacher email'), { target: { value: 'teacher@example.test' } });
+  fireEvent.change(screen.getByPlaceholderText('Teacher login ID'), { target: { value: 'teacher-test' } });
+  fireEvent.change(screen.getByPlaceholderText('Strong password'), { target: { value: 'fixture-password' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Select classes this teacher handles' }));
+  fireEvent.click(screen.getByRole('checkbox', { name: 'Class 7' }));
+  fireEvent.click(create);
+  await waitFor(() => expect(schoolRegisterTeacher).toHaveBeenCalledWith(expect.objectContaining({
+    phone: '+919876543210', country: 'IN', phoneVerificationId: 'phone-proof'
+  })));
+  await waitFor(() => expect(phone).toHaveValue(''));
+  expect(create).toBeDisabled();
+  await waitFor(() => expect(screen.queryByLabelText('SMS verification code')).not.toBeInTheDocument());
+});
+
+test('changing the mobile number or country invalidates verification and supports other country codes', async () => {
+  window.location.hash = '#teachers';
+  render(<SchoolDashboard session={session} onLogout={jest.fn()} />);
+  const phone = await screen.findByLabelText('Teacher mobile number');
+  fireEvent.change(phone, { target: { value: '9876543210' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Send SMS code' }));
+  fireEvent.change(await screen.findByLabelText('SMS verification code'), { target: { value: '123456' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Verify number' }));
+  await screen.findByRole('status');
+  fireEvent.change(phone, { target: { value: '9123456789' } });
+  expect(screen.queryByRole('status')).not.toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Create Teacher Account' })).toBeDisabled();
+  fireEvent.change(screen.getByLabelText('Teacher country code'), { target: { value: 'US' } });
+  fireEvent.change(phone, { target: { value: '2025550123' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Send SMS code' }));
+  await waitFor(() => expect(requestRegistrationPhoneCode).toHaveBeenLastCalledWith({ role: 'teacher', country: 'US', phone: '+12025550123' }));
+});
+
+test('student registration requires date of birth and verified mobile while email remains optional', async () => {
+  window.location.hash = '#studentRegistration';
+  schoolRegisterStudent.mockResolvedValue({ success: true, student: { id: 'new-student', name: 'Student', phone: '+919876543210' } });
+  render(<SchoolDashboard session={session} onLogout={jest.fn()} />);
+  const dob = await screen.findByLabelText('Date of Birth');
+  expect(dob).toBeRequired();
+  const phone = screen.getByLabelText('Student mobile number');
+  expect(phone).toBeRequired();
+  expect(screen.getByLabelText('Student country code')).toHaveValue('IN');
+  expect(screen.queryByText('Date of Birth (optional)')).not.toBeInTheDocument();
+  expect(screen.queryByText('Mobile Number (optional)')).not.toBeInTheDocument();
+  expect(screen.getByText('Email Address (optional)')).toBeInTheDocument();
+  const create = screen.getByRole('button', { name: 'Create Student Account' });
+  expect(create).toBeDisabled();
+  fireEvent.change(phone, { target: { value: '9876543210' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Send SMS code' }));
+  fireEvent.change(await screen.findByLabelText('SMS verification code'), { target: { value: '123456' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Verify number' }));
+  await screen.findByRole('status');
+  fireEvent.click(create);
+  expect(schoolRegisterStudent).not.toHaveBeenCalled();
+  fireEvent.change(dob, { target: { value: '2014-06-15' } });
+  fireEvent.change(screen.getByPlaceholderText('Student name'), { target: { value: 'Student' } });
+  fireEvent.change(screen.getByPlaceholderText('Student login ID'), { target: { value: 'student-test' } });
+  fireEvent.change(screen.getByPlaceholderText('Strong password (min 8 characters)'), { target: { value: 'fixture-password' } });
+  fireEvent.change(screen.getByLabelText('Class'), { target: { value: 'Class 7' } });
+  fireEvent.click(create);
+  await waitFor(() => expect(schoolRegisterStudent).toHaveBeenCalledWith(expect.objectContaining({
+    phone: '+919876543210', country: 'IN', phoneVerificationId: 'phone-proof', dateOfBirth: '2014-06-15'
+  })));
+  await waitFor(() => expect(phone).toHaveValue(''));
+  expect(create).toBeDisabled();
+});
+
+test('SMS delivery errors stay visible and do not enable account registration', async () => {
+  window.location.hash = '#teachers';
+  requestRegistrationPhoneCode.mockRejectedValueOnce(new Error('SMS verification is not configured.'));
+  render(<SchoolDashboard session={session} onLogout={jest.fn()} />);
+  fireEvent.change(await screen.findByLabelText('Teacher mobile number'), { target: { value: '9876543210' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Send SMS code' }));
+  expect(await screen.findByRole('alert')).toHaveTextContent('SMS verification is not configured.');
+  expect(screen.getByRole('button', { name: 'Create Teacher Account' })).toBeDisabled();
+  expect(schoolRegisterTeacher).not.toHaveBeenCalled();
+});
+
+test('expired mobile verification disables registration and asks for a new code', async () => {
+  jest.useFakeTimers();
+  try {
+    window.location.hash = '#teachers';
+    verifyRegistrationPhoneCode.mockResolvedValue({
+      success: true, verificationId: 'short-proof', phone: '+919876543210', expiresAt: new Date(Date.now() + 2000).toISOString()
+    });
+    render(<SchoolDashboard session={session} onLogout={jest.fn()} />);
+    fireEvent.change(await screen.findByLabelText('Teacher mobile number'), { target: { value: '9876543210' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Send SMS code' }));
+    fireEvent.change(await screen.findByLabelText('SMS verification code'), { target: { value: '123456' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Verify number' }));
+    await screen.findByRole('status');
+    expect(screen.getByRole('button', { name: 'Create Teacher Account' })).toBeEnabled();
+    act(() => { jest.advanceTimersByTime(2001); });
+    expect(screen.getByRole('button', { name: 'Create Teacher Account' })).toBeDisabled();
+    expect(screen.getByRole('alert')).toHaveTextContent('Mobile verification expired');
+    expect(schoolRegisterTeacher).not.toHaveBeenCalled();
+  } finally { jest.useRealTimers(); }
+});
+
+test.each(['teacher', 'student'])('%s can register with email verification, while a valid mobile number is still required', async (role) => {
+  const isTeacher = role === 'teacher';
+  const label = isTeacher ? 'Teacher' : 'Student';
+  window.location.hash = isTeacher ? '#teachers' : '#studentRegistration';
+  schoolRegisterTeacher.mockResolvedValue({ success: true, teacher: { id: 'email-teacher', name: 'Teacher' } });
+  schoolRegisterStudent.mockResolvedValue({ success: true, student: { id: 'email-student', name: 'Student' } });
+  render(<SchoolDashboard session={session} onLogout={jest.fn()} />);
+  const email = await screen.findByLabelText(`${label} email address`);
+  const phone = screen.getByLabelText(`${label} mobile number`);
+  const create = screen.getByRole('button', { name: `Create ${label} Account` });
+  expect(create).toBeDisabled();
+  fireEvent.change(email, { target: { value: 'Person@Example.test' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Send email code' }));
+  const code = await screen.findByLabelText('Email verification code');
+  expect(requestRegistrationEmailCode).toHaveBeenCalledWith({ role, email: 'person@example.test' });
+  verifyRegistrationEmailCode.mockRejectedValueOnce(new Error('Incorrect email verification code.'));
+  fireEvent.change(code, { target: { value: '000000' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Verify email' }));
+  expect(await screen.findByRole('alert')).toHaveTextContent('Incorrect email verification code');
+  expect(create).toBeDisabled();
+  fireEvent.change(code, { target: { value: '123456' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Verify email' }));
+  expect(await screen.findByRole('status')).toHaveTextContent('Verified person@example.test');
+  expect(phone).toBeRequired();
+  fireEvent.change(screen.getByPlaceholderText(`${label} name`), { target: { value: label } });
+  fireEvent.change(screen.getByPlaceholderText(`${label} login ID`), { target: { value: `${role}-email-test` } });
+  fireEvent.change(screen.getByPlaceholderText(isTeacher ? 'Strong password' : 'Strong password (min 8 characters)'), { target: { value: 'fixture-password' } });
+  if (isTeacher) {
+    fireEvent.click(screen.getByRole('button', { name: 'Select classes this teacher handles' }));
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Class 7' }));
+  } else {
+    fireEvent.change(screen.getByLabelText('Class'), { target: { value: 'Class 7' } });
+    fireEvent.change(screen.getByLabelText('Date of Birth'), { target: { value: '2014-06-15' } });
+  }
+  const register = isTeacher ? schoolRegisterTeacher : schoolRegisterStudent;
+  fireEvent.click(create);
+  expect(register).not.toHaveBeenCalled();
+  fireEvent.change(phone, { target: { value: '123' } });
+  fireEvent.click(create);
+  expect(await screen.findByText(new RegExp(`Enter a valid ${role} mobile number`))).toBeInTheDocument();
+  expect(register).not.toHaveBeenCalled();
+  fireEvent.change(phone, { target: { value: '9876543210' } });
+  fireEvent.click(create);
+  await waitFor(() => expect(register).toHaveBeenCalledWith(expect.objectContaining({
+    phone: '+919876543210', country: 'IN', email: 'person@example.test', emailVerificationId: 'email-proof'
+  })));
+  expect(register.mock.calls[0][0]).not.toHaveProperty('phoneVerificationId');
+  expect(requestRegistrationPhoneCode).not.toHaveBeenCalled();
+  expect(verifyRegistrationPhoneCode).not.toHaveBeenCalled();
+});
+
+test('changing email invalidates email verification, and SMS remains available after SMTP failure', async () => {
+  window.location.hash = '#teachers';
+  render(<SchoolDashboard session={session} onLogout={jest.fn()} />);
+  const email = await screen.findByLabelText('Teacher email address');
+  fireEvent.change(email, { target: { value: 'person@example.test' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Send email code' }));
+  fireEvent.change(await screen.findByLabelText('Email verification code'), { target: { value: '123456' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Verify email' }));
+  await screen.findByRole('status');
+  fireEvent.change(email, { target: { value: 'other@example.test' } });
+  expect(screen.queryByRole('status')).not.toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Create Teacher Account' })).toBeDisabled();
+  requestRegistrationEmailCode.mockRejectedValueOnce(new Error('Email verification is not configured.'));
+  fireEvent.click(screen.getByRole('button', { name: 'Send email code' }));
+  expect(await screen.findByRole('alert')).toHaveTextContent('Email verification is not configured.');
+  expect(screen.getByRole('button', { name: 'Create Teacher Account' })).toBeDisabled();
+  fireEvent.change(screen.getByLabelText('Teacher mobile number'), { target: { value: '9876543210' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Send SMS code' }));
+  fireEvent.change(await screen.findByLabelText('SMS verification code'), { target: { value: '123456' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Verify number' }));
+  expect(await screen.findByRole('status')).toHaveTextContent('Verified +919876543210');
+  expect(screen.getByRole('button', { name: 'Create Teacher Account' })).toBeEnabled();
+});
 
 test('manual lesson creation accepts pasted content without a PDF and can also attach PDFs', async () => {
   curriculumFixture();

@@ -1,8 +1,8 @@
 import { Injectable } from '@nestjs/common';
 import * as nodemailer from 'nodemailer';
 
-// Thin SMTP wrapper used for real transactional email (currently: school
-// registration OTP codes). Reads connection details from env vars so no
+// Thin SMTP wrapper used for transactional verification emails.
+// Reads connection details from env vars so no
 // credentials are ever hard-coded — see backend/README.md for setup.
 @Injectable()
 export class EmailService {

@@ -1,7 +1,9 @@
-import { Body, Controller, Delete, ForbiddenException, Get, Param, Patch, Post, Query, Req, UseGuards } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Delete, ForbiddenException, Get, Param, Patch, Post, Query, Req, UseGuards } from '@nestjs/common';
 import { AuthGuard } from '../auth/auth.guard';
 import { StudentAuthService } from '../auth/student-auth.service';
 import { LearningScoreService } from '../progress/learning-score.service';
+import { RegistrationPhoneService } from '../auth/registration-phone.service';
+import { RegistrationEmailService } from '../auth/registration-email.service';
 
 function isSchoolAdmin(role: any) {
   const raw = String(role || '').toLowerCase();
@@ -13,13 +15,29 @@ function isSchoolAdmin(role: any) {
 export class SchoolController {
   constructor(
     private readonly authFlow: StudentAuthService,
-    private readonly learningScore: LearningScoreService
+    private readonly learningScore: LearningScoreService,
+    private readonly registrationPhone: RegistrationPhoneService,
+    private readonly registrationEmail: RegistrationEmailService
   ) {}
 
   private ensureSchoolAdmin(req: any) {
     if (!isSchoolAdmin(req?.user?.role)) {
       throw new ForbiddenException('School admin access required');
     }
+  }
+
+  private async registrationContact(req: any, role: 'teacher' | 'student', body: any) {
+    const scope = { schoolId: req.user.schoolId || req.user.sub, actorId: req.user.sub };
+    const phone = this.registrationPhone.normalize(scope, role, body);
+    const email = this.registrationEmail.normalizeEmail(body?.email, role === 'teacher');
+    if (body?.emailVerificationId) {
+      await this.registrationEmail.consume(scope, role, body);
+    } else if (body?.phoneVerificationId) {
+      await this.registrationPhone.consume(scope, role, body);
+    } else {
+      throw new BadRequestException('Verify either the mobile number or email address before registering.');
+    }
+    return { phone, email };
   }
 
   @Get('dashboard')
@@ -149,6 +167,13 @@ export class SchoolController {
   async registerStudent(@Req() req: any, @Body() body: any) {
     this.ensureSchoolAdmin(req);
     const schoolId = req?.user?.schoolId || req?.user?.sub;
+    const dob = body?.dateOfBirth;
+    const date = typeof dob === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(dob) ? new Date(`${dob}T00:00:00Z`) : null;
+    if (!date || !Number.isFinite(date.getTime()) || date.toISOString().slice(0, 10) !== dob
+      || dob > new Date().toISOString().slice(0, 10)) {
+      throw new BadRequestException('A valid date of birth is required and cannot be in the future.');
+    }
+    const { phone, email } = await this.registrationContact(req, 'student', body);
     const res = await this.authFlow.registerStudentBySchool({
       schoolId,
       name: body?.name,
@@ -157,8 +182,8 @@ export class SchoolController {
       password: body?.password,
       gender: body?.gender || null,
       dateOfBirth: body?.dateOfBirth || null,
-      phone: body?.phone || null,
-      email: body?.email || null,
+      phone,
+      email,
       createdBy: req?.user?.sub || null
     });
     if (!res.ok) return { success: false, error: res.error };
@@ -245,19 +270,45 @@ export class SchoolController {
   async registerTeacher(@Req() req: any, @Body() body: any) {
     this.ensureSchoolAdmin(req);
     const schoolId = req?.user?.schoolId || req?.user?.sub;
+    const { phone, email } = await this.registrationContact(req, 'teacher', body);
     const res = await this.authFlow.registerTeacherBySchool({
       schoolId,
       name: body?.name,
-      email: body?.email,
+      email,
       subject: body?.subject,
       loginId: body?.loginId,
       password: body?.password,
       gender: body?.gender || null,
+      phone,
       grades: body?.grades,
       createdBy: req?.user?.sub || null
     });
     if (!res.ok) return { success: false, error: res.error };
     return { success: true, teacher: res.teacher };
+  }
+
+  @Post('registration/phone/request')
+  async requestRegistrationPhone(@Req() req: any, @Body() body: any) {
+    this.ensureSchoolAdmin(req);
+    return this.registrationPhone.request({ schoolId: req.user.schoolId || req.user.sub, actorId: req.user.sub }, body);
+  }
+
+  @Post('registration/phone/verify')
+  async verifyRegistrationPhone(@Req() req: any, @Body() body: any) {
+    this.ensureSchoolAdmin(req);
+    return this.registrationPhone.verify({ schoolId: req.user.schoolId || req.user.sub, actorId: req.user.sub }, body);
+  }
+
+  @Post('registration/email/request')
+  async requestRegistrationEmail(@Req() req: any, @Body() body: any) {
+    this.ensureSchoolAdmin(req);
+    return this.registrationEmail.request({ schoolId: req.user.schoolId || req.user.sub, actorId: req.user.sub }, body);
+  }
+
+  @Post('registration/email/verify')
+  async verifyRegistrationEmail(@Req() req: any, @Body() body: any) {
+    this.ensureSchoolAdmin(req);
+    return this.registrationEmail.verify({ schoolId: req.user.schoolId || req.user.sub, actorId: req.user.sub }, body);
   }
 
   @Patch('teachers/:id')
