@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -5,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/session.dart';
 import '../services/api_client.dart';
 import '../services/auth_service.dart';
+import '../services/push_notification_service.dart';
 import '../services/secure_storage_service.dart';
 
 final apiClientProvider = Provider<ApiClient>((ref) => ApiClient());
@@ -28,6 +30,7 @@ class SessionNotifier extends AsyncNotifier<Session?> {
     try {
       final session = Session.fromJson(jsonDecode(raw) as Map<String, dynamic>);
       ref.read(apiClientProvider).authToken = session.token;
+      _registerPush(session);
       return session;
     } catch (_) {
       await storage.clearSession();
@@ -40,10 +43,20 @@ class SessionNotifier extends AsyncNotifier<Session?> {
     await storage.writeSessionJson(jsonEncode(session.toJson()));
     ref.read(apiClientProvider).authToken = session.token;
     state = AsyncData(session);
+    _registerPush(session);
+  }
+
+  /// Students get the 6:30 PM plan / 9:00 PM recap pushes on this phone.
+  void _registerPush(Session session) {
+    if (!session.isStudent) return;
+    unawaited(PushNotificationService.instance.registerStudent(ref.read(apiClientProvider)));
   }
 
   Future<void> logout() async {
     final storage = ref.read(secureStorageServiceProvider);
+    if (state.value?.isStudent ?? false) {
+      await PushNotificationService.instance.unregister(ref.read(apiClientProvider));
+    }
     await storage.clearSession();
     ref.read(apiClientProvider).authToken = null;
     state = const AsyncData(null);

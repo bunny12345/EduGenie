@@ -38,6 +38,10 @@ import { SupportService } from './support/support.service';
 import { SupportController, OwnerSupportController } from './support/support.controller';
 import { VisitorController, OwnerEnquiriesController } from './support/visitor.controller';
 import { VisitorService } from './support/visitor.service';
+import { FcmService } from './notifications/fcm.service';
+import { StudentDigestService } from './notifications/student-digest.service';
+import { NotificationsService } from './notifications/notifications.service';
+import { NotificationsController } from './notifications/notifications.controller';
 
 @Module({
   imports: [ExamControlModule, ChatModule, SharedModule],
@@ -61,8 +65,9 @@ import { VisitorService } from './support/visitor.service';
     AuthController,
     SchoolController,
     OrchardController,
-    GamesController
+    GamesController,
+    NotificationsController
   ],
-  providers: [SupabaseService, AuthGuard, OwnerAuthService, OwnerGuard, OwnerIdentityGuard, StudentAuthService, EmailService, RegistrationPhoneService, RegistrationEmailService, PasswordResetService, CurriculumService, EmbeddingsService, OrchardService, FlashcardsService, QuizRushService, LlmService, LearningScoreService, SupportService, VisitorService]
+  providers: [SupabaseService, AuthGuard, OwnerAuthService, OwnerGuard, OwnerIdentityGuard, StudentAuthService, EmailService, RegistrationPhoneService, RegistrationEmailService, PasswordResetService, CurriculumService, EmbeddingsService, OrchardService, FlashcardsService, QuizRushService, LlmService, LearningScoreService, SupportService, VisitorService, FcmService, StudentDigestService, NotificationsService]
 })
 export class AppModule {}

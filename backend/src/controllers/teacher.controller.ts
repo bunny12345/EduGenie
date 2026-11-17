@@ -1,10 +1,11 @@
-import { Body, Controller, Delete, ForbiddenException, Get, Param, Post, Query, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, ForbiddenException, Get, Optional, Param, Post, Query, Req, UseGuards } from '@nestjs/common';
 import { SupabaseService } from '../supabase.service';
 import { AuthGuard } from '../auth/auth.guard';
 import { StudentAuthService } from '../auth/student-auth.service';
 import { LocalFeedService } from '../shared/local-feed.service';
 import { LearningScoreService } from '../progress/learning-score.service';
 import { LlmService } from '../llm/llm.service';
+import { NotificationsService } from '../notifications/notifications.service';
 import { normalizeSubjectKey } from '../orchard/orchard.constants';
 import { METRIC_ORDER_COLUMN, metricAt, metricScore } from '../progress/progress-metric.util';
 import fetch from 'node-fetch';
@@ -28,7 +29,8 @@ export class TeacherController {
     private readonly studentAuth: StudentAuthService,
     private readonly localFeed: LocalFeedService,
     private readonly learningScore: LearningScoreService,
-    private readonly llm: LlmService
+    private readonly llm: LlmService,
+    @Optional() private readonly notifications?: NotificationsService
   ) {}
 
   private sampleStudents() {
@@ -1470,6 +1472,7 @@ export class TeacherController {
       if (!inserted.length) throw new Error('DB insert failed for all schema variants');
 
       this.localFeed.addHomework(inserted);
+      this.notifications?.notifyHomeworkAssigned(inserted);
       return {
         success: true,
         created: inserted.length,
@@ -1491,6 +1494,7 @@ export class TeacherController {
     } catch (e) {
       const inserted = rows.map((r: any, idx: number) => ({ ...r, id: `local-hw-${Date.now()}-${idx}`, created_at: new Date().toISOString() }));
       this.localFeed.addHomework(inserted);
+      this.notifications?.notifyHomeworkAssigned(inserted);
       return {
         success: true,
         created: inserted.length,
@@ -1864,6 +1868,13 @@ export class TeacherController {
     try {
       const res = await this.db.client.from('announcements').insert([row]).select();
       const inserted = (res as any)?.data?.[0] || row;
+      this.notifications?.notifyAnnouncement({
+        schoolId: req?.user?.schoolId,
+        className: targetClass,
+        title: inserted.title || row.title,
+        message: inserted.message || row.message,
+        startAt: inserted.start_at ?? row.start_at
+      });
       this.localFeed.addAnnouncements([
         {
           id: inserted.id || null,

@@ -5,6 +5,7 @@ import '../../state/session_provider.dart';
 import '../../state/student_providers.dart';
 import '../../state/theme_provider.dart';
 import '../../widgets/section_card.dart';
+import 'student_notifications_screen.dart';
 
 class StudentSettingsScreen extends ConsumerStatefulWidget {
   const StudentSettingsScreen({super.key});
@@ -95,6 +96,21 @@ class _StudentSettingsScreenState extends ConsumerState<StudentSettingsScreen> {
                       ),
                       if (_error != null) Padding(padding: const EdgeInsets.only(top: 8), child: ErrorInline(message: _error!)),
                     ],
+                  ),
+                ),
+                SectionCard(
+                  child: Material(
+                    type: MaterialType.transparency,
+                    child: ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: const Icon(Icons.notifications_active_rounded),
+                    title: const Text('Notifications'),
+                    subtitle: const Text('6:30 PM study plan, 9:00 PM recap & school updates'),
+                    trailing: const Icon(Icons.chevron_right_rounded),
+                    onTap: () => Navigator.of(context).push(
+                      MaterialPageRoute(builder: (_) => const StudentNotificationsScreen()),
+                    ),
+                  ),
                   ),
                 ),
               ],

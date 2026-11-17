@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../state/session_provider.dart';
 import '../../theme/app_colors.dart';
 import '../shared/parental_lock_screen.dart';
+import 'student_notifications_screen.dart';
 import 'student_settings_screen.dart';
 
 /// "More" tab — Settings + Logout. Orchard/Games/Rewards/Calendar/Library
@@ -17,6 +18,7 @@ class StudentMoreScreen extends ConsumerWidget {
     final session = ref.watch(sessionProvider).value;
 
     final items = <_MoreItem>[
+      _MoreItem(Icons.notifications_active_rounded, 'Notifications', (ctx) => const StudentNotificationsScreen()),
       _MoreItem(Icons.settings_rounded, 'Settings', (ctx) => const StudentSettingsScreen()),
       _MoreItem(Icons.lock_outline_rounded, 'Parental Lock', (ctx) => const ParentalLockScreen()),
     ];

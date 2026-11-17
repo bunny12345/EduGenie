@@ -73,6 +73,29 @@ class StudentApiService {
     return DashboardData.fromJson(json);
   }
 
+  /// Today's personalised 6:30 PM / 9:00 PM push messages + preferences.
+  Future<Map<String, dynamic>> getNotificationPreview() => _get('/notifications/preview', const {});
+
+  Future<Map<String, dynamic>> updateNotificationPreferences(Map<String, bool> prefs) async {
+    try {
+      final res = await _client.dio.patch('/notifications/preferences', data: prefs);
+      return Map<String, dynamic>.from(res.data as Map);
+    } on DioException catch (e) {
+      final data = e.response?.data;
+      throw Exception(data is Map && data['message'] != null ? data['message'].toString() : (e.message ?? 'Network error'));
+    }
+  }
+
+  /// Returns the server's result map; `success` is false with an `error` when nothing was delivered.
+  Future<Map<String, dynamic>> sendTestNotification() async {
+    try {
+      final res = await _client.dio.post('/notifications/test');
+      return Map<String, dynamic>.from(res.data as Map);
+    } on DioException catch (e) {
+      throw Exception(e.message ?? 'Network error');
+    }
+  }
+
   Future<List<HomeworkItem>> getHomework(String studentId) async {
     final json = await _get('/homework', {'studentId': studentId});
     final list = json['homework'] as List? ?? [];

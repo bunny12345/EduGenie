@@ -1,8 +1,9 @@
-import { Controller, Get, Post, Patch, Delete, Param, Body, Query, UseGuards, Req, BadRequestException, ForbiddenException, NotFoundException, ServiceUnavailableException } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Delete, Param, Body, Query, UseGuards, Req, BadRequestException, ForbiddenException, NotFoundException, Optional, ServiceUnavailableException } from '@nestjs/common';
 import { ExamControlService, ExamSession } from '../exams/exam-control.service';
 import { SupabaseService } from '../supabase.service';
 import { AuthGuard } from '../auth/auth.guard';
 import { LocalFeedService } from '../shared/local-feed.service';
+import { NotificationsService } from '../notifications/notifications.service';
 import { StudentAuthService } from '../auth/student-auth.service';
 import { requireStudentIdentity } from '../auth/student-identity';
 import { latestCompletedTests, mergeTestAttempts, testPercentage } from '../progress/test-results.util';
@@ -15,7 +16,8 @@ export class TestsController {
     private readonly db: SupabaseService,
     private readonly localFeed: LocalFeedService,
     private readonly studentAuth: StudentAuthService,
-    private readonly exams: ExamControlService
+    private readonly exams: ExamControlService,
+    @Optional() private readonly notifications?: NotificationsService
   ) {}
 
   onModuleInit() {
@@ -414,6 +416,7 @@ export class TestsController {
         if (!localTest) return { success: false, error: 'Test not found', test: null };
         const updated = { ...localTest, status: 'assigned', start_at: startAt, end_at: endAt };
         this.localFeed.upsertTest(updated);
+        if (ownedTest.status !== 'assigned') this.notifications?.notifyTestAssigned(updated);
         return { success: true, test: { id: updated.id, title: updated.title, subject: updated.subject, status: 'assigned', startAt, endAt } };
       }
       this.localFeed.upsertTest({
@@ -428,6 +431,16 @@ export class TestsController {
         start_at: test.start_at || startAt,
         end_at: test.end_at || endAt
       });
+      if (ownedTest.status !== 'assigned') {
+        this.notifications?.notifyTestAssigned({
+          school_id: ownedTest.school_id,
+          class_name: test.class_name || test.className || ownedTest.class_name || '',
+          title: test.title,
+          subject: test.subject,
+          start_at: test.start_at || startAt,
+          duration_minutes: test.duration_minutes
+        });
+      }
       return { success: true, test: { id: test.id || testId, title: test.title, subject: test.subject, status: 'assigned', startAt: test.start_at || startAt, endAt: test.end_at || endAt } };
     } catch (e) {
       return { success: false, error: String((e as any)?.message || e || 'test assign failed'), test: null };

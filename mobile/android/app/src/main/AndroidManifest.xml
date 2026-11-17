@@ -7,12 +7,17 @@
     <!-- Required by image_picker's camera capture option (homework photo
          attachments, student submission + teacher assignment). -->
     <uses-permission android:name="android.permission.CAMERA" />
+    <!-- Android 13+ runtime permission for study-reminder push notifications. -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-feature android:name="android.hardware.camera" android:required="false" />
     <application
         android:label="AcademiX"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher"
         android:requestLegacyExternalStorage="true">
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_channel_id"
+            android:value="academix_daily" />
         <activity
             android:name=".MainActivity"
             android:exported="true"

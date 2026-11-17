@@ -2,9 +2,15 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../screens/student/homework/homework_screen.dart';
+import '../screens/student/student_ai_tutor_screen.dart';
+import '../screens/student/student_announcements_screen.dart';
 import '../screens/student/student_home_screen.dart';
 import '../screens/student/student_more_screen.dart';
+import '../screens/student/student_progress_screen.dart';
 import '../screens/student/student_services_screen.dart';
+import '../screens/student/subject_detail_screen.dart';
+import '../services/push_notification_service.dart';
 import '../state/focus_lock_provider.dart';
 import '../state/student_navigation_provider.dart';
 import '../theme/app_colors.dart';
@@ -53,6 +59,36 @@ class _NavItem {
 
 class _StudentShellState extends State<StudentShell> {
   bool _compact = false;
+  final _push = PushNotificationService.instance;
+
+  @override
+  void initState() {
+    super.initState();
+    _push.openedRoute.addListener(_openPushRoute);
+    // A notification that cold-started the app is waiting already.
+    WidgetsBinding.instance.addPostFrameCallback((_) => _openPushRoute());
+  }
+
+  @override
+  void dispose() {
+    _push.openedRoute.removeListener(_openPushRoute);
+    super.dispose();
+  }
+
+  void _openPushRoute() {
+    final target = _push.openedRoute.value;
+    if (target == null || !mounted) return;
+    _push.openedRoute.value = null;
+    final Widget? screen = switch (target.route) {
+      'homework' => const HomeworkScreen(),
+      'tests' => target.subject != null ? SubjectDetailScreen(subject: target.subject!) : const HomeworkScreen(),
+      'ai_tutor' => const StudentAiTutorScreen(),
+      'announcements' => const StudentAnnouncementsScreen(),
+      'progress' => const StudentProgressScreen(),
+      _ => null,
+    };
+    if (screen != null) Navigator.of(context).push(MaterialPageRoute(builder: (_) => screen));
+  }
 
   static const _screens = [
     StudentHomeScreen(),

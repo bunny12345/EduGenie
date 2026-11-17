@@ -963,3 +963,39 @@ Notes about keys
 Files added:
 - `db/init.sql` — creates `students`, `messages`, `memories`, and `homework` tables.
 - `scripts/run_migrations.sh` — helper script to run the SQL using `psql`.
+
+### Student push notifications (mobile app)
+
+Students using the Flutter app get real phone notifications through Firebase
+Cloud Messaging (no SMS or email):
+
+- **6:30 PM study plan:** pending homework count, what's due today or overdue, or a revision idea with Sam when nothing is assigned.
+- **6:30 PM test reminder:** sent when a mock test opens or closes tomorrow.
+- **9:00 PM recap:** that day's real activity on app or web (homework submitted, tests attempted, Sam chats, orchard, check-ins, progress), with praise and the streak, or a gentle nudge.
+- **Instant pushes:** sent when a teacher assigns homework, assigns a test, or posts an announcement. Future-scheduled announcements are skipped.
+
+Times use each phone's own timezone, and each type is sent at most once per
+day per device. The scheduler runs inside the backend every minute. It catches
+up until 21:00 for the plan and 23:00 for the recap after a restart.
+
+Setup:
+
+1. Run `db/migrations/20261118_student_push_devices.sql` in Supabase. It creates one new table and doesn't change any existing ones.
+2. In Firebase console › Project settings › Service accounts, generate a private key. Set it on the backend as `FIREBASE_SERVICE_ACCOUNT_JSON` (raw JSON or base64). Alternatively, set `FIREBASE_PROJECT_ID`, `FIREBASE_CLIENT_EMAIL` and `FIREBASE_PRIVATE_KEY`.
+3. Optional settings:
+   - `PUSH_DEFAULT_TIMEZONE` (default `Asia/Kolkata`).
+   - `PUSH_SCHEDULER_DISABLED=true` to pause the scheduler, for example on extra replicas.
+
+Without Firebase credentials, everything except sending still works: device
+registration, preferences and previews.
+
+Student-only endpoints:
+
+| Method | Path | Purpose |
+|--------|------|---------|
+| `POST` | `/notifications/devices` | Register or refresh this phone's token |
+| `POST` | `/notifications/devices/remove` | Remove this phone's token (sent on logout) |
+| `GET` | `/notifications/preferences` | Get the reminder toggles |
+| `PATCH` | `/notifications/preferences` | Update the reminder toggles |
+| `GET` | `/notifications/preview` | Get today's personalised messages and summary |
+| `POST` | `/notifications/test` | Send a test push to this student's phones |

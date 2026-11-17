@@ -374,6 +374,31 @@ includes nine existing failures in `test/natural_tree_art_test.dart` caused by
 casting `ResizeImage` to `AssetImage`; they are not changed by release setup and
 must be resolved before treating the full regression suite as green.
 
+## Student push notifications
+
+Students turn reminders on from **More › Notifications** (also linked from
+Settings). The screen shows:
+
+- the phone's permission status;
+- a lock-screen-style preview of today's personalised 6:30 PM plan, test reminder and 9:00 PM recap;
+- toggles for each reminder type;
+- a button to send a test notification.
+
+Logging in registers the phone. Logging out removes the token, so the next
+student on a shared phone never gets the previous student's reminders. Tapping
+a notification opens Homework, the test's subject, AI Tutor, Announcements or
+Progress.
+
+Firebase setup:
+
+1. Create a Firebase project.
+2. Add the Android app `now.academix.app` and put `google-services.json` in `android/app/`. The Google Services plugin only applies when that file exists, so builds without it still succeed and push stays off.
+3. Add the iOS app and put `GoogleService-Info.plist` in `ios/Runner/` (add it to the Runner target in Xcode).
+4. In Xcode, enable the **Push Notifications** capability and the **Background Modes › Remote notifications** capability, and upload an APNs auth key in Firebase › Cloud Messaging. The iOS minimum is 15.0, as the Firebase SDK requires.
+5. Configure the backend's Firebase service account (see `backend/README.md`).
+
+Push is a no-op on Flutter web.
+
 ## Student navigation icon
 
 Services uses an outlined grid when inactive and a filled rounded grid when
