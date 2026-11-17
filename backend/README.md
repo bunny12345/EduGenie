@@ -168,6 +168,15 @@ Gender supports `male`, `female`, `other`, or an empty unspecified value.
 Updates preserve login credentials, teacher subject/grade rules and student
 class reassignment; student profile updates are mirrored to both student tables.
 
+Edit-form data is resolved field by field: saved roster details take precedence,
+missing student fields are filled from the same school's `student_accounts` row,
+and remaining gaps use the persisted local registration account. Teacher rows
+also retain local registration fields when the database row is incomplete.
+The same resolution is used for contact-change checks so unchanged recovered
+contacts do not require OTP. No schema change or automatic data rewrite is
+needed for this read-path repair. Details absent from every saved source cannot
+be reconstructed.
+
 ### Mock test answer options
 
 When teachers add a question (`POST /tests/:testId/questions`), the backend

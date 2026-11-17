@@ -9,6 +9,22 @@ import { jwtSecret } from './jwt-secret';
 import { parsePhoneNumberFromString } from 'libphonenumber-js/max';
 
 type ProfileFields = { phone?: string; email?: string; gender?: string; dateOfBirth?: string };
+type StoredProfileFields = {
+  phone?: string | null; email?: string | null; gender?: string | null; date_of_birth?: string | null;
+};
+type StudentProfileRow = StoredProfileFields & { student_id: string; school_id: string; login_id?: string };
+
+function storedProfile(row?: StoredProfileFields | null): ProfileFields {
+  return { phone: row?.phone, email: row?.email, gender: row?.gender, dateOfBirth: row?.date_of_birth };
+}
+
+function mergeAccountProfile(...sources: Array<ProfileFields | null | undefined>): ProfileFields {
+  const profile: ProfileFields = {};
+  for (const key of ['phone', 'email', 'gender', 'dateOfBirth'] as const) {
+    profile[key] = sources.map((source) => source?.[key]).find((value) => typeof value === 'string' && value.trim())?.trim();
+  }
+  return profile;
+}
 
 export function normalizeProfileFields(payload: ProfileFields) {
   const fields: ProfileFields = {};
@@ -925,39 +941,38 @@ export class StudentAuthService implements OnModuleInit {
   }
 
   /**
-   * Load a teacher by id, preferring the in-memory store and falling back to the
-   * DB. Returns a normalized TeacherAccount (grades included) or null.
+   * Resolve saved database profile fields with the local registration fallback.
    */
   private async loadTeacherAccount(teacherId: string): Promise<TeacherAccount | null> {
     const local = this.findTeacherById(teacherId);
-    if (local) return local;
     const id = String(teacherId || '').trim();
     if (!id) return null;
     try {
       const res = await this.db.client.from('teachers').select('*').eq('id', id);
+      if (res?.error) throw new Error('Teacher profile query failed');
       const row = Array.isArray((res as any)?.data) ? (res as any).data[0] : null;
       if (row) {
+        const fallback = local?.schoolId === row.school_id ? local : null;
+        const profile = mergeAccountProfile(storedProfile(row), fallback);
         const account: TeacherAccount = {
           teacherId: row.id,
-          loginId: row.login_id,
-          email: row.email,
-          passwordSalt: row.password_salt,
-          passwordHash: row.password_hash,
-          name: row.name,
-          subject: row.subject,
-          gender: row.gender || undefined,
-          phone: row.phone || undefined,
-          dateOfBirth: row.date_of_birth || undefined,
+          loginId: row.login_id || fallback?.loginId || '',
+          passwordSalt: row.password_salt || fallback?.passwordSalt || '',
+          passwordHash: row.password_hash || fallback?.passwordHash || '',
+          name: row.name || fallback?.name,
+          subject: row.subject || fallback?.subject,
+          ...profile,
+          email: profile.email || '',
           schoolId: row.school_id,
-          grades: normalizeGrades(row.grades)
+          grades: normalizeGrades(row.grades).length ? normalizeGrades(row.grades) : normalizeGrades(fallback?.grades)
         };
         this.rememberTeacher(account);
         return account;
       }
     } catch (_e) {
-      // fallback only.
+      Logger.warn('Unable to read the teacher profile; using the local registration record where available.', 'StudentAuth');
     }
-    return null;
+    return local;
   }
 
   async updateTeacherBySchool(payload: {
@@ -1613,23 +1628,25 @@ export class StudentAuthService implements OnModuleInit {
       const rows = Array.isArray((res as any)?.data) ? (res as any).data : [];
       // Local grades fallback: when the `grades` column hasn't been migrated,
       // DB rows carry no grades, so fill them in from the local account store.
-      const localGradesById = new Map<string, string[]>();
+      const localTeachersById = new Map<string, TeacherAccount>();
       for (const t of StudentAuthService.teacherAccounts.values()) {
-        localGradesById.set(String(t.teacherId || ''), normalizeGrades(t.grades));
+        if (t.schoolId === schoolId) localTeachersById.set(String(t.teacherId || ''), t);
       }
 
       const byId = new Map<string, any>();
       for (const r of rows) {
         const dbGrades = normalizeGrades(r.grades);
-        const grades = dbGrades.length ? dbGrades : (localGradesById.get(String(r.id || '')) || []);
+        const local = localTeachersById.get(String(r.id || ''));
+        const profile = mergeAccountProfile(storedProfile(r), local);
+        const grades = dbGrades.length ? dbGrades : normalizeGrades(local?.grades);
         byId.set(String(r.id || ''), {
           id: r.id,
           schoolId: r.school_id,
           name: r.name || 'Teacher',
-          email: r.email || null,
-          phone: r.phone || null,
-          gender: r.gender || null,
-          dateOfBirth: r.date_of_birth || null,
+          email: profile.email || null,
+          phone: profile.phone || null,
+          gender: profile.gender || null,
+          dateOfBirth: profile.dateOfBirth || null,
           subject: r.subject || 'General',
           loginId: r.login_id || null,
           grades,
@@ -1818,9 +1835,9 @@ export class StudentAuthService implements OnModuleInit {
 
       // The login ID is what an admin has to hand back to a student after a
       // password reset, so carry it through from whichever store holds it.
-      const localLoginById = new Map<string, string>();
+      const localAccountsById = new Map<string, StudentAccount>();
       for (const s of StudentAuthService.localAccounts.values()) {
-        localLoginById.set(String(s.studentId || ''), String(s.loginId || ''));
+        localAccountsById.set(String(s.studentId || ''), s);
       }
 
       const dbStudents = rows.map((r: any) => ({
@@ -1829,7 +1846,8 @@ export class StudentAuthService implements OnModuleInit {
         teacherId: r.teacher_id || null,
         name: r.name || r.full_name || 'Student',
         className: r.class_name || r.class || r.grade || 'Class',
-        loginId: localLoginById.get(String(r.id || '')) || null,
+        loginId: localAccountsById.get(String(r.id || ''))?.schoolId === r.school_id
+          ? localAccountsById.get(String(r.id || ''))?.loginId || null : null,
         email: r.email || null,
         phone: r.phone || null,
         gender: r.gender || null,
@@ -1842,20 +1860,17 @@ export class StudentAuthService implements OnModuleInit {
       const totalPages = Math.max(1, Math.ceil(total / limit));
       const paged = allStudents.slice(from, from + limit);
 
-      const missingLogin = paged.filter((s: any) => !s.loginId).map((s: any) => String(s.id || '')).filter(Boolean);
-      if (missingLogin.length) {
-        try {
-          const accRes = await this.db.client
-            .from('student_accounts')
-            .select('student_id, login_id')
-            .in('student_id', missingLogin);
-          for (const row of (Array.isArray((accRes as any)?.data) ? (accRes as any).data : [])) {
-            const target = paged.find((s: any) => String(s.id || '') === String(row.student_id || ''));
-            if (target) (target as any).loginId = row.login_id || null;
-          }
-        } catch (_e) {
-          /* login id is display-only here */
-        }
+      const accounts = await this.studentProfileRows(paged.map((student) => String(student.id || '')).filter(Boolean), schoolId);
+      for (const student of paged) {
+        const account = accounts.find((row) => row.student_id === student.id && row.school_id === student.schoolId);
+        const candidate = this.findStudentById(student.id);
+        const local = candidate?.schoolId === student.schoolId ? candidate : null;
+        const profile = mergeAccountProfile(student, storedProfile(account), local);
+        student.loginId = student.loginId || account?.login_id || null;
+        student.phone = profile.phone || null;
+        student.email = profile.email || null;
+        student.gender = profile.gender || null;
+        student.dateOfBirth = profile.dateOfBirth || null;
       }
 
       return {
@@ -2188,6 +2203,21 @@ export class StudentAuthService implements OnModuleInit {
     this.persistStudentAccounts();
   }
 
+  private async studentProfileRows(studentIds: string[], schoolId?: string): Promise<StudentProfileRow[]> {
+    if (!studentIds.length) return [];
+    try {
+      let query = this.db.client.from('student_accounts')
+        .select('student_id, school_id, login_id, phone, email, gender, date_of_birth').in('student_id', studentIds);
+      if (schoolId) query = query.eq('school_id', schoolId);
+      const result = await query;
+      if (result?.error) throw new Error('Student account profile query failed');
+      return Array.isArray(result?.data) ? result.data : [];
+    } catch (_e) {
+      Logger.warn('Unable to read student account profiles; using roster and local registration details where available.', 'StudentAuth');
+      return [];
+    }
+  }
+
   /**
    * Resolve a student for admin operations from whichever store has them —
    * the local account file, `student_accounts` or the `students` roster. A
@@ -2211,54 +2241,33 @@ export class StudentAuthService implements OnModuleInit {
     const sid = String(schoolId || '').trim();
     if (!id || !sid) return null;
 
-    const local = this.findStudentById(id);
-    if (local && String(local.schoolId || '').trim() === sid) {
-      return {
-        id,
-        schoolId: sid,
-        name: local.name || 'Student',
-        className: local.className || '',
-        teacherId: local.teacherId || '',
-        loginId: local.loginId || '',
-        phone: local.phone,
-        email: local.email,
-        gender: local.gender,
-        dateOfBirth: local.dateOfBirth,
-        local
-      };
-    }
-
+    const candidate = this.findStudentById(id);
+    const local = candidate?.schoolId === sid ? candidate : null;
+    let row: (StoredProfileFields & {
+      school_id: string; name?: string; full_name?: string; class_name?: string;
+      class?: string; grade?: string; teacher_id?: string;
+    }) | null = null;
     try {
-      const res = await this.db.client.from('students').select('*').eq('id', id).limit(1);
-      const row = Array.isArray((res as any)?.data) ? (res as any).data[0] : null;
-      if (row && String(row.school_id || '').trim() === sid) {
-        let loginId = local?.loginId || '';
-        if (!loginId) {
-          try {
-            const acc = await this.db.client.from('student_accounts').select('login_id').eq('student_id', id).limit(1);
-            loginId = String((Array.isArray((acc as any)?.data) ? (acc as any).data[0]?.login_id : '') || '');
-          } catch (_e) {
-            /* login id is display-only here */
-          }
-        }
-        return {
-          id,
-          schoolId: sid,
-          name: row.name || row.full_name || 'Student',
-          className: row.class_name || row.class || row.grade || '',
-          teacherId: row.teacher_id || '',
-          loginId,
-          phone: row.phone || undefined,
-          email: row.email || undefined,
-          gender: row.gender || undefined,
-          dateOfBirth: row.date_of_birth || undefined,
-          local: local || null
-        };
-      }
+      const res = await this.db.client.from('students').select('*').eq('id', id).eq('school_id', sid).limit(1);
+      if (res?.error) throw new Error('Student profile query failed');
+      const found = Array.isArray(res?.data) ? res.data[0] : null;
+      if (found?.school_id === sid) row = found;
     } catch (_e) {
-      /* fall through to "not found" */
+      Logger.warn('Unable to read the student profile; using the local registration record where available.', 'StudentAuth');
     }
-    return null;
+    if (!row && !local) return null;
+    const accounts = await this.studentProfileRows([id], sid);
+    const account = accounts.find((entry) => entry.student_id === id && entry.school_id === sid);
+    return {
+      id,
+      schoolId: sid,
+      name: local?.name || row?.name || row?.full_name || 'Student',
+      className: local?.className || row?.class_name || row?.class || row?.grade || '',
+      teacherId: local ? local.teacherId || '' : row?.teacher_id || '',
+      loginId: local?.loginId || account?.login_id || '',
+      ...mergeAccountProfile(storedProfile(row), storedProfile(account), local),
+      local
+    };
   }
 
   async registerStudentBySchool(payload: {

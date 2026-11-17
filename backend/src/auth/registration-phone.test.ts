@@ -291,6 +291,114 @@ test('profile edits persist and reload for teachers and both student records whi
   assert.equal((await auth.updateStudentBySchool({ schoolId: scope.schoolId, studentId: 'profile-student', gender: 'other' })).ok, false);
 });
 
+test('edit profiles recover saved registration details behind minimal roster rows without crossing schools or requiring unchanged-contact OTPs', async (t) => {
+  const savedStudents = Reflect.get(StudentAuthService, 'localAccounts');
+  const savedTeachers = Reflect.get(StudentAuthService, 'teacherAccounts');
+  t.after(() => {
+    Reflect.set(StudentAuthService, 'localAccounts', savedStudents);
+    Reflect.set(StudentAuthService, 'teacherAccounts', savedTeachers);
+  });
+  const profile = { phone: '+919876543210', email: 'registered@example.test', gender: 'female', dateOfBirth: '2000-02-29' };
+  const columns = { phone: profile.phone, email: profile.email, gender: profile.gender, date_of_birth: profile.dateOfBirth };
+  const student = (id: string, schoolId = scope.schoolId) => ({
+    studentId: id, schoolId, loginId: `${id}-login`, name: 'Student', className: 'Class 7',
+    passwordSalt: 'fixture-salt', passwordHash: 'fixture-hash', ...profile
+  });
+  const teacher = (id: string, schoolId = scope.schoolId) => ({
+    teacherId: id, schoolId, loginId: `${id}-login`, name: 'Teacher', subject: 'English', grades: ['Class 7'],
+    passwordSalt: 'fixture-salt', passwordHash: 'fixture-hash', ...profile
+  });
+  const localStudents = new Map([
+    ['local-login', student('local-profile')],
+    ['mixed-login', { ...student('mixed-profile'), phone: '+919123456789', gender: 'male' }],
+    ['foreign-login', student('foreign-profile', 'another-school')]
+  ]);
+  const localTeachers = new Map([
+    ['teacher-login', teacher('local-teacher')],
+    ['foreign-teacher-login', teacher('foreign-teacher', 'another-school')],
+    ['incomplete-teacher-login', { ...teacher('full-teacher'), grades: ['Class 8'], email: '', phone: undefined, gender: undefined, dateOfBirth: undefined }]
+  ]);
+  Reflect.set(StudentAuthService, 'localAccounts', localStudents);
+  Reflect.set(StudentAuthService, 'teacherAccounts', localTeachers);
+  const tables: Record<string, Row[]> = {
+    students: ['local-profile', 'mirror-profile', 'mixed-profile', 'foreign-profile', 'full-profile'].map((id) => ({
+      id, school_id: scope.schoolId, name: 'Student', class_name: 'Class 7',
+      phone: null, email: null, gender: null, date_of_birth: null
+    })),
+    student_accounts: [
+      { student_id: 'mirror-profile', school_id: scope.schoolId, login_id: 'mirror-login', ...columns },
+      { student_id: 'mixed-profile', school_id: scope.schoolId, ...columns },
+      { student_id: 'full-profile', school_id: scope.schoolId, ...columns },
+      { student_id: 'foreign-profile', school_id: 'another-school', login_id: 'foreign-login', ...columns }
+    ],
+    teachers: [
+      { id: 'local-teacher', school_id: scope.schoolId, name: 'Teacher', email: null, phone: null, gender: null, date_of_birth: null },
+      { id: 'foreign-teacher', school_id: scope.schoolId, name: 'Teacher' },
+      { id: 'full-teacher', school_id: scope.schoolId, name: 'Teacher', ...columns }
+    ]
+  };
+  Object.assign(tables.students.find((row) => row.id === 'mixed-profile'), { email: 'current@example.test' });
+  Object.assign(tables.students.find((row) => row.id === 'full-profile'), { ...columns, email: 'current@example.test', gender: 'other' });
+  let accountFailure = false;
+  const db: SupabaseService = Object.create(SupabaseService.prototype);
+  db.client = { from(table: string) {
+    assert.ok(table in tables, `Unexpected query to ${table}; unchanged contacts must not consume an OTP`);
+    const filters: Array<(row: Row) => boolean> = [];
+    let patch: Row | undefined;
+    const query = {
+      select() { return query; }, order() { return query; }, range() { return query; }, limit() { return query; },
+      eq(key: string, value: unknown) { filters.push((row) => row[key] === value); return query; },
+      in(key: string, values: unknown[]) { filters.push((row) => values.includes(row[key])); return query; },
+      update(value: Row) { patch = value; return query; },
+      then(resolve: (result: { data: Row[]; error: unknown }) => void) {
+        const rows = tables[table].filter((row) => filters.every((filter) => filter(row)));
+        if (patch) rows.forEach((row) => Object.assign(row, patch));
+        resolve({ data: rows.map((row) => ({ ...row })), error: accountFailure && table === 'student_accounts' ? { message: 'Fixture unavailable' } : null });
+      }
+    };
+    return query;
+  } };
+  const auth = new StudentAuthService(db, Object.create(EmailService.prototype));
+  Reflect.set(auth, 'rememberTeacher', () => undefined);
+  Reflect.set(auth, 'persistStudentAccounts', () => undefined);
+  const students = (await auth.listStudentsByScope({ schoolId: scope.schoolId })).students;
+  const teachers = (await auth.listTeachersBySchool(scope.schoolId)).teachers;
+  for (const id of ['local-profile', 'mirror-profile']) {
+    const result = students.find((row) => row.id === id);
+    assert.deepEqual({ phone: result.phone, email: result.email, gender: result.gender, dateOfBirth: result.dateOfBirth }, profile);
+    assert.deepEqual(await auth.schoolAccountContact(scope.schoolId, 'student', id), { phone: profile.phone, email: profile.email });
+  }
+  const mixed = students.find((row) => row.id === 'mixed-profile');
+  assert.equal(mixed.email, 'current@example.test');
+  assert.equal(mixed.phone, profile.phone);
+  assert.equal(mixed.gender, profile.gender);
+  assert.deepEqual(await auth.schoolAccountContact(scope.schoolId, 'student', 'mixed-profile'), {
+    phone: profile.phone, email: 'current@example.test'
+  });
+  const full = students.find((row) => row.id === 'full-profile');
+  assert.equal(full.email, 'current@example.test');
+  assert.equal(full.gender, 'other');
+  const localTeacher = teachers.find((row) => row.id === 'local-teacher');
+  assert.deepEqual({ phone: localTeacher.phone, email: localTeacher.email, gender: localTeacher.gender, dateOfBirth: localTeacher.dateOfBirth }, profile);
+  assert.deepEqual(await auth.schoolAccountContact(scope.schoolId, 'teacher', 'full-teacher'), { phone: profile.phone, email: profile.email });
+  for (const foreign of [students.find((row) => row.id === 'foreign-profile'), teachers.find((row) => row.id === 'foreign-teacher')]) {
+    assert.equal(foreign.phone, null);
+    assert.equal(foreign.email, null);
+    assert.equal(foreign.gender, null);
+    assert.equal(foreign.dateOfBirth, null);
+  }
+  assert.equal(students.find((row) => row.id === 'foreign-profile').loginId, null);
+  const controller = new SchoolController(auth, Object.create(LearningScoreService.prototype),
+    new RegistrationPhoneService(db), Object.create(RegistrationEmailService.prototype));
+  const req = { user: { sub: scope.actorId, schoolId: scope.schoolId, role: 'school_admin' } };
+  assert.equal((await controller.updateTeacher(req, 'local-teacher', { ...profile, country: 'IN' })).success, true);
+  assert.equal((await controller.updateStudent(req, 'mirror-profile', { ...profile, country: 'IN' })).success, true);
+  accountFailure = true;
+  assert.equal((await auth.listStudentsByScope({ schoolId: scope.schoolId })).students.find((row) => row.id === 'local-profile').phone, profile.phone);
+  const restarted = new StudentAuthService(db, Object.create(EmailService.prototype));
+  assert.equal((await restarted.listTeachersBySchool(scope.schoolId)).teachers.find((row) => row.id === 'local-teacher').phone, profile.phone);
+});
+
 test('account-specific challenges retain the admin-wide SMS and email send limits', async (t) => {
   const f = fixture(t);
   for (let i = 0; i < 10; i++) {
