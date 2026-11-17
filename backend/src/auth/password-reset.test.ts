@@ -19,10 +19,12 @@ function fixture(t: TestContext) {
   process.env.SUPABASE_JWT_SECRET = 'fixture-password-reset-signing-key';
   const savedStudents = Reflect.get(StudentAuthService, 'localAccounts');
   const savedTeachers = Reflect.get(StudentAuthService, 'teacherAccounts');
+  const savedSchools = Reflect.get(StudentAuthService, 'schoolAccounts');
   t.after(() => {
     keys.forEach((key, index) => { if (original[index] === undefined) delete process.env[key]; else process.env[key] = original[index]; });
     Reflect.set(StudentAuthService, 'localAccounts', savedStudents);
     Reflect.set(StudentAuthService, 'teacherAccounts', savedTeachers);
+    Reflect.set(StudentAuthService, 'schoolAccounts', savedSchools);
   });
   let now = Date.now();
   t.mock.method(Date, 'now', () => now);
@@ -37,7 +39,8 @@ function fixture(t: TestContext) {
 
   Reflect.set(StudentAuthService, 'localAccounts', new Map());
   Reflect.set(StudentAuthService, 'teacherAccounts', new Map());
-  const tables: Record<string, Row[]> = { teachers: [], student_accounts: [], students: [] };
+  Reflect.set(StudentAuthService, 'schoolAccounts', new Map());
+  const tables: Record<string, Row[]> = { teachers: [], student_accounts: [], students: [], schools: [] };
   const db: SupabaseService = Object.create(SupabaseService.prototype);
   db.client = { from(table: string) {
     assert.ok(table in tables, `Unexpected table ${table}`);
@@ -135,6 +138,32 @@ test('student without an email is told to use the registered mobile number and r
   await f.controller.forgotPasswordReset({}, { ...base, challengeId: sid, code: '123456', newPassword: 'New#Pass1', confirmPassword: 'New#Pass1' });
   assert.equal((await f.auth.loginStudent('stu1', 'New#Pass1')).ok, true);
   assert.equal((await f.auth.loginStudent('stu1', 'Old#Pass1')).ok, false);
+});
+
+test('school admin resets by mobile number, and a cached login uses the new password', async (t) => {
+  const f = fixture(t);
+  f.tables.schools.push({
+    id: 'school-a', email: 'admin@school.test', school_name: 'School', branch: 'Main', location: 'City',
+    phone: '+919876543210', password_salt: 'salt-x', password_hash: f.hash('Old#Pass1', 'salt-x')
+  });
+  assert.equal((await f.auth.loginSchool('admin@school.test', 'Old#Pass1')).ok, true);
+  const base = { role: 'school', loginId: ' Admin@School.test ' };
+
+  await assert.rejects(f.service.request({ ...base, loginId: 'other@school.test', channel: 'email', email: 'other@school.test' }),
+    /No school account was found with that email address/);
+  await assert.rejects(f.service.request({ ...base, channel: 'email', email: 'wrong@school.test' }),
+    /not valid for this account\. You can verify with your registered mobile number/);
+  const requested = await f.service.request({ ...base, channel: 'phone', country: 'IN', phone: '9876543210' });
+  assert.equal(f.sms[0].fields.get('To'), '+919876543210');
+  const reset = { ...base, challengeId: requested.challengeId, code: '123456' };
+  await assert.rejects(f.service.reset({ ...reset, role: 'teacher', newPassword: 'New#Pass1', confirmPassword: 'New#Pass1' }), /expired/);
+  await assert.rejects(f.service.reset({ ...reset, newPassword: 'Old#Pass1', confirmPassword: 'Old#Pass1' }), /different from your current password/);
+  await f.service.reset({ ...reset, newPassword: 'New#Pass1', confirmPassword: 'New#Pass1' });
+
+  assert.equal((await f.auth.loginSchool('admin@school.test', 'Old#Pass1')).ok, false);
+  assert.equal((await f.auth.loginSchool('admin@school.test', 'New#Pass1')).ok, true);
+  const row = f.tables.schools[0];
+  assert.equal(f.hash('New#Pass1', row.password_salt), row.password_hash);
 });
 
 test('a reset code cannot be used for a different account or after it expires', async (t) => {

@@ -10,12 +10,14 @@ export const PASSWORD_RULES = [
 ];
 
 /**
- * Self-service password recovery for teacher/student logins. Step 1 checks the
- * login ID against the registered email or mobile number and sends a code;
+ * Self-service password recovery for school, teacher and student logins. Step 1
+ * checks the login against the registered email or mobile number and sends a code;
  * step 2 verifies the code and sets a new, policy-compliant password.
  */
 export default function ForgotPasswordPanel({ role, initialLoginId = '', PasswordField, onDone, onCancel }) {
-  const label = role === 'teacher' ? 'Teacher' : 'Student';
+  const isSchool = role === 'school';
+  const label = isSchool ? 'School' : role === 'teacher' ? 'Teacher' : 'Student';
+  const loginLabel = isSchool ? 'School Email' : `${label} Login ID`;
   const [step, setStep] = useState('request');
   const [loginId, setLoginId] = useState(initialLoginId);
   const [channel, setChannel] = useState('email');
@@ -41,7 +43,7 @@ export default function ForgotPasswordPanel({ role, initialLoginId = '', Passwor
   const otherChannel = channel === 'email' ? 'phone' : 'email';
   const suggestsOther = !!error && step === 'request'
     && (channel === 'email' ? /mobile number/i.test(error) : /email/i.test(error))
-    && !/contact your school admin/i.test(error);
+    && !/contact (your school admin|AcademiX support)/i.test(error);
   const rulesMet = PASSWORD_RULES.every((rule) => rule.test(newPassword));
   const matches = !!newPassword && newPassword === confirmPassword;
 
@@ -53,8 +55,9 @@ export default function ForgotPasswordPanel({ role, initialLoginId = '', Passwor
   async function sendCode(e) {
     if (e) e.preventDefault();
     const id = loginId.trim();
-    if (!id) return setError(`Enter your ${label.toLowerCase()} login ID.`);
-    if (channel === 'email' && !/^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/.test(email.trim())) {
+    if (!id) return setError(`Enter your ${loginLabel.toLowerCase()}.`);
+    const contactEmail = isSchool ? id : email.trim();
+    if (channel === 'email' && !/^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/.test(contactEmail)) {
       return setError('Enter a valid email address, or verify with your registered mobile number instead.');
     }
     if (channel === 'phone' && !/^[0-9 ()+-]{4,20}$/.test(phone.trim())) {
@@ -65,7 +68,7 @@ export default function ForgotPasswordPanel({ role, initialLoginId = '', Passwor
     try {
       const res = await requestPasswordResetCode({
         role, loginId: id, channel,
-        ...(channel === 'email' ? { email: email.trim() } : { country, phone: phone.trim() })
+        ...(channel === 'email' ? { email: contactEmail } : { country, phone: phone.trim() })
       });
       if (!res?.success) return setError(res?.error || 'Could not send the verification code.');
       setChallenge(res);
@@ -160,21 +163,34 @@ export default function ForgotPasswordPanel({ role, initialLoginId = '', Passwor
   return (
     <form className="rg-form rg-forgot" onSubmit={sendCode}>
       <h2>Forgot password</h2>
-      <p className="rg-forgot-intro">Verify the email address or mobile number registered on your {label.toLowerCase()} account to set a new password.</p>
+      <p className="rg-forgot-intro">
+        {isSchool
+          ? 'Get a verification code at your school email or the mobile number registered for your school to set a new password.'
+          : `Verify the email address or mobile number registered on your ${label.toLowerCase()} account to set a new password.`}
+      </p>
       <label>
-        {label} Login ID
-        <input value={loginId} onChange={(e) => setLoginId(e.target.value)} placeholder={`${label.toLowerCase()} login id`} />
+        {loginLabel}
+        <input
+          type={isSchool ? 'email' : 'text'}
+          value={loginId}
+          onChange={(e) => setLoginId(e.target.value)}
+          placeholder={isSchool ? 'admin@school.edu' : `${label.toLowerCase()} login id`}
+        />
       </label>
       <div className="rg-inline-toggle" role="group" aria-label="Verify with">
         <button type="button" className={channel === 'email' ? 'active' : ''} onClick={() => switchChannel('email')}>Email</button>
         <button type="button" className={channel === 'phone' ? 'active' : ''} onClick={() => switchChannel('phone')}>Mobile number</button>
       </div>
-      {channel === 'email' ? (
+      {channel === 'email' && isSchool ? (
+        <p className="rg-otp-note">We'll send the code to the school email above.</p>
+      ) : null}
+      {channel === 'email' && !isSchool ? (
         <label>
           Registered email
           <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@example.com" />
         </label>
-      ) : (
+      ) : null}
+      {channel === 'phone' ? (
         <label>
           Registered mobile number
           <div className="rg-phone-row">
@@ -186,7 +202,7 @@ export default function ForgotPasswordPanel({ role, initialLoginId = '', Passwor
             <input type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="mobile number" inputMode="tel" />
           </div>
         </label>
-      )}
+      ) : null}
       {error ? <p className="rg-error" role="alert">{error}</p> : null}
       {suggestsOther ? (
         <button type="button" className="rg-link" onClick={() => switchChannel(otherChannel)}>

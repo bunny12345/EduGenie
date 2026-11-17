@@ -59,7 +59,7 @@ export function normalizeProfileFields(payload: ProfileFields) {
 }
 
 export type PasswordResetAccount = {
-  role: 'teacher' | 'student';
+  role: 'teacher' | 'student' | 'school';
   accountId: string;
   schoolId: string;
   loginId: string;
@@ -2542,9 +2542,10 @@ export class StudentAuthService implements OnModuleInit {
    * gathering every registered contact and current credential without
    * changing the cached login records.
    */
-  async findPasswordResetAccount(role: 'teacher' | 'student', loginIdRaw: unknown): Promise<PasswordResetAccount | null> {
+  async findPasswordResetAccount(role: 'teacher' | 'student' | 'school', loginIdRaw: unknown): Promise<PasswordResetAccount | null> {
     const loginId = String(loginIdRaw || '').trim().toLowerCase();
     if (!loginId || loginId.length > 254) return null;
+    if (role === 'school') return this.findSchoolPasswordResetAccount(loginId);
     const table = role === 'teacher' ? 'teachers' : 'student_accounts';
     let row: any = null;
     try {
@@ -2594,8 +2595,55 @@ export class StudentAuthService implements OnModuleInit {
     return account.credentials.some((entry) => this.hashPassword(password, entry.salt) === entry.hash);
   }
 
+  // School admins log in with their school email, which is also their recovery email.
+  private async findSchoolPasswordResetAccount(email: string): Promise<PasswordResetAccount | null> {
+    let row: any = null;
+    try {
+      const res: any = await this.db.client.from('schools').select('*').eq('email', email).limit(1);
+      if (!res?.error && Array.isArray(res?.data)) row = res.data[0] || null;
+    } catch (_e) {
+      /* local store remains the fallback */
+    }
+    const local = this.findSchoolByEmail(email);
+    if (local && row && String(row.id) !== String(local.schoolId)) row = null;
+    if (!local && !row) return null;
+    const schoolId = String(local?.schoolId || row.id);
+    return {
+      role: 'school',
+      accountId: schoolId,
+      schoolId,
+      loginId: email,
+      phones: resetPhones([row?.phone, local?.phone]),
+      emails: resetEmails([email], email),
+      credentials: [local, row && { passwordSalt: row.password_salt, passwordHash: row.password_hash }]
+        .filter((entry): entry is { passwordSalt: string; passwordHash: string } => !!entry?.passwordSalt && !!entry?.passwordHash)
+        .map((entry) => ({ salt: entry.passwordSalt, hash: entry.passwordHash }))
+    };
+  }
+
+  private async resetSchoolPassword(account: PasswordResetAccount, password: string) {
+    const passwordSalt = randomBytes(12).toString('hex');
+    const passwordHash = this.hashPassword(password, passwordSalt);
+    let saved = false;
+    try {
+      const res: any = await this.db.client.from('schools')
+        .update({ password_salt: passwordSalt, password_hash: passwordHash })
+        .eq('id', account.schoolId);
+      saved = !res?.error;
+    } catch (_e) {
+      saved = false;
+    }
+    if (!saved && process.env.SUPABASE_URL && (process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY)) {
+      return { ok: false, error: 'Could not save the new password. Please try again.' };
+    }
+    const local = this.findSchoolByEmail(account.loginId);
+    if (local && local.schoolId === account.schoolId) this.rememberSchool({ ...local, passwordSalt, passwordHash });
+    return { ok: true };
+  }
+
   async applyPasswordReset(account: PasswordResetAccount, password: string) {
     if (!account.schoolId) return { ok: false, error: 'This account is not linked to a school. Please contact your school admin.' };
+    if (account.role === 'school') return this.resetSchoolPassword(account, password);
     return account.role === 'teacher'
       ? this.resetTeacherPassword({ schoolId: account.schoolId, teacherId: account.accountId, password })
       : this.resetStudentPassword({ schoolId: account.schoolId, studentId: account.accountId, password });

@@ -6,7 +6,7 @@ import { jwtSecret } from './jwt-secret';
 import { RegistrationPhoneService } from './registration-phone.service';
 import { PasswordResetAccount, StudentAuthService, passwordPolicyError } from './student-auth.service';
 
-type Role = 'teacher' | 'student';
+type Role = 'teacher' | 'student' | 'school';
 type Channel = 'email' | 'phone';
 type Challenge = {
   id: string; role: Role; loginId: string; accountId: string; channel: Channel;
@@ -61,13 +61,17 @@ export class PasswordResetService {
   }
 
   private role(value: unknown): Role {
-    if (value !== 'teacher' && value !== 'student') throw new BadRequestException('Select teacher or student.');
+    if (value !== 'teacher' && value !== 'student' && value !== 'school') throw new BadRequestException('Select school, teacher or student.');
     return value;
   }
 
   private async account(role: Role, loginId: unknown) {
     const account = await this.accounts.findPasswordResetAccount(role, loginId);
-    if (!account) throw new NotFoundException(`No ${role} account was found with that login ID.`);
+    if (!account) {
+      throw new NotFoundException(role === 'school'
+        ? 'No school account was found with that email address.'
+        : `No ${role} account was found with that login ID.`);
+    }
     return account;
   }
 
@@ -75,7 +79,9 @@ export class PasswordResetService {
     const hasEmail = account.emails.length > 0;
     const hasPhone = account.phones.length > 0;
     if (!hasEmail && !hasPhone) {
-      throw new BadRequestException('No email or mobile number is registered for this account. Please contact your school admin to reset your password.');
+      throw new BadRequestException(account.role === 'school'
+        ? 'No email or mobile number is registered for this school. Please contact AcademiX support to reset your password.'
+        : 'No email or mobile number is registered for this account. Please contact your school admin to reset your password.');
     }
     if (body?.channel === 'email') {
       const entered = typeof body.email === 'string' ? body.email.trim().toLowerCase() : '';

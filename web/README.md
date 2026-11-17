@@ -71,18 +71,21 @@ described in the backend README. This code does not run production migrations.
 Verify both flows with
 `CI=true npm test -- --watchAll=false --runInBand src/components/OwnerPortal.test.jsx src/components/SchoolDashboard.test.jsx src/ownerApi.test.js`.
 
-## Teacher and student forgot password
+## School, teacher and student forgot password
 
-The Teacher and Student login forms include a **Forgot password?** link that
-opens `ForgotPasswordPanel`. Users enter their login ID and choose **Email** or
+The School, Teacher and Student login forms include a **Forgot password?** link that
+opens `ForgotPasswordPanel`. School admins use their school email as the login
+and choose between a code sent to that email or to the school's verified mobile
+number. Teachers and students enter their login ID and choose **Email** or
 **Mobile number**, with India (+91) selected by default. If the email isn't
 valid for the account, the message offers a one-click switch to mobile
 verification. After the 6-digit code arrives, users set a new password. A live
 checklist shows the rules: at least 8 characters, a letter, a number, a special
 character, and different from the current password. On success, the login form
-returns with the login ID filled in and a confirmation message. School login is
-unchanged. The Flutter app has the same flow in
-`mobile/lib/screens/auth/forgot_password_screen.dart`. Test with
+returns with the login ID filled in and a confirmation message. The Flutter app
+has the same teacher/student flow in
+`mobile/lib/screens/auth/forgot_password_screen.dart`. It has no school login.
+Test with
 `CI=true npm test -- --watchAll=false src/components/RoleGateway.test.jsx`.
 
 ## Multi-lesson curriculum PDF upload

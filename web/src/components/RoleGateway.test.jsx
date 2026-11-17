@@ -65,11 +65,30 @@ test('teacher is guided from an invalid email to phone verification and resets w
   expect(screen.getByRole('button', { name: 'Login as Teacher' })).toBeInTheDocument();
 });
 
-test('school login has no forgot-password link and student reset errors stay visible', async () => {
-  resetForgottenPassword.mockResolvedValue({ success: false, error: 'The new password must be different from your current password.' });
-  requestPasswordResetCode.mockResolvedValue({ success: true, challengeId: 'id', channel: 'email', destination: 'st••@example.com', resendAfter: 60 });
+test('school admin resets with the school email, and student reset errors stay visible', async () => {
+  resetForgottenPassword
+    .mockResolvedValueOnce({ success: true, message: 'Your password has been changed. You can now log in with your new password.' })
+    .mockResolvedValue({ success: false, error: 'The new password must be different from your current password.' });
+  requestPasswordResetCode.mockResolvedValue({ success: true, challengeId: 'id', channel: 'email', destination: 'ad••@school.edu', resendAfter: 60 });
   render(<RoleGateway onLogin={jest.fn()} />);
-  expect(screen.queryByRole('button', { name: 'Forgot password?' })).not.toBeInTheDocument();
+
+  fireEvent.click(screen.getByRole('button', { name: 'School' }));
+  fireEvent.change(screen.getByPlaceholderText('admin@school.edu'), { target: { value: 'admin@school.edu' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Forgot password?' }));
+  expect(screen.getByLabelText('School Email')).toHaveValue('admin@school.edu');
+  expect(screen.queryByPlaceholderText('you@example.com')).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: 'Send verification code' }));
+  await screen.findByText('Set a new password');
+  expect(requestPasswordResetCode).toHaveBeenLastCalledWith({
+    role: 'school', loginId: 'admin@school.edu', channel: 'email', email: 'admin@school.edu'
+  });
+  fireEvent.change(screen.getByPlaceholderText('6-digit code'), { target: { value: '123456' } });
+  fireEvent.change(screen.getByPlaceholderText('new password'), { target: { value: 'New#Pass1' } });
+  fireEvent.change(screen.getByPlaceholderText('re-enter new password'), { target: { value: 'New#Pass1' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Change password' }));
+  expect(await screen.findByRole('status')).toHaveTextContent('Your password has been changed');
+  expect(screen.getByRole('button', { name: 'Login as School Admin' })).toBeInTheDocument();
+  expect(screen.getByPlaceholderText('admin@school.edu')).toHaveValue('admin@school.edu');
 
   fireEvent.click(screen.getByRole('button', { name: 'Student' }));
   fireEvent.click(screen.getByRole('button', { name: 'Forgot password?' }));

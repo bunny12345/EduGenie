@@ -75,8 +75,13 @@ export default function RoleGateway({ onLogin }) {
 
   function finishForgot(resetLoginId, message) {
     setForgotOpen(false);
-    setLoginId(resetLoginId);
-    setPassword('');
+    if (role === 'school') {
+      setSchoolEmail(resetLoginId);
+      setSchoolPassword('');
+    } else {
+      setLoginId(resetLoginId);
+      setPassword('');
+    }
     setError('');
     setNotice(message);
   }
@@ -117,6 +122,7 @@ export default function RoleGateway({ onLogin }) {
     e.preventDefault();
     setBusy(true);
     setError('');
+    setNotice('');
     try {
       const res = await schoolLogin(schoolEmail, schoolPassword);
       if (!res?.success || !res?.token) {
@@ -249,7 +255,7 @@ export default function RoleGateway({ onLogin }) {
           <button type="button" className={role === 'student' ? 'active' : ''} onClick={() => selectRole('student')}>Student</button>
         </div>
 
-        {role === 'school' ? (
+        {role === 'school' && !forgotOpen ? (
           <form className="rg-form" onSubmit={submitSchool}>
             <h2>School Login</h2>
             <label>
@@ -267,6 +273,8 @@ export default function RoleGateway({ onLogin }) {
                 onHide={() => setShowSchoolPassword(false)}
               />
             </label>
+            <button type="button" className="rg-link rg-forgot-link" onClick={openForgot}>Forgot password?</button>
+            {notice ? <p className="rg-success" role="status">{notice}</p> : null}
 
             {error ? <p className="rg-error">{error}</p> : null}
             <button className="rg-submit" type="submit" disabled={busy}>
@@ -275,11 +283,11 @@ export default function RoleGateway({ onLogin }) {
           </form>
         ) : null}
 
-        {(role === 'teacher' || role === 'student') && forgotOpen ? (
+        {(role === 'school' || role === 'teacher' || role === 'student') && forgotOpen ? (
           <ForgotPasswordPanel
             key={role}
             role={role}
-            initialLoginId={loginId}
+            initialLoginId={role === 'school' ? schoolEmail : loginId}
             PasswordField={PasswordField}
             onDone={finishForgot}
             onCancel={() => setForgotOpen(false)}
