@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../../models/session.dart';
 import '../../state/session_provider.dart';
@@ -26,15 +27,60 @@ class _RoleGatewayScreenState extends ConsumerState<RoleGatewayScreen> {
   bool _showPassword = false;
   String _error = '';
   String _notice = '';
+  bool _remember = true;
 
   final _loginIdCtrl = TextEditingController();
   final _passwordCtrl = TextEditingController();
+
+  String get _roleName => _role == _Role.teacher ? 'teacher' : 'student';
+
+  @override
+  void initState() {
+    super.initState();
+    _restoreSavedLogin(initial: true);
+  }
 
   @override
   void dispose() {
     _loginIdCtrl.dispose();
     _passwordCtrl.dispose();
     super.dispose();
+  }
+
+  /// Prefills the last successful login for the selected role. Storage
+  /// failures just leave the form empty.
+  Future<void> _restoreSavedLogin({bool initial = false}) async {
+    final storage = ref.read(secureStorageServiceProvider);
+    try {
+      if (initial) {
+        final lastRole = await storage.readLastLoginRole();
+        if (!mounted || _loginIdCtrl.text.isNotEmpty) return;
+        if (lastRole == 'teacher') setState(() => _role = _Role.teacher);
+      }
+      final role = _roleName;
+      final saved = await storage.readSavedLogin(role);
+      if (!mounted || saved == null || role != _roleName || _loginIdCtrl.text.isNotEmpty) return;
+      _loginIdCtrl.text = saved.loginId;
+      _passwordCtrl.text = saved.password;
+      setState(() => _remember = true);
+    } catch (_) {
+      // Secure storage unavailable — the user can still type their login.
+    }
+  }
+
+  Future<void> _rememberLogin(String role, String loginId, String password) async {
+    final storage = ref.read(secureStorageServiceProvider);
+    try {
+      if (_remember) {
+        await storage.writeSavedLogin(role, loginId, password);
+      } else {
+        await storage.clearSavedLogin(role);
+      }
+      await storage.writeLastLoginRole(role);
+    } catch (_) {
+      // Remembering is best-effort and must never block login.
+    }
+    TextInput.finishAutofillContext(shouldSave: _remember);
   }
 
   Future<void> _submitTeacher() async {
@@ -50,6 +96,7 @@ class _RoleGatewayScreenState extends ConsumerState<RoleGatewayScreen> {
         return;
       }
       final teacher = res['teacher'] as Map? ?? {};
+      await _rememberLogin('teacher', _loginIdCtrl.text.trim(), _passwordCtrl.text);
       await ref.read(sessionProvider.notifier).login(Session(
             role: 'teacher',
             token: res['token'].toString(),
@@ -76,6 +123,7 @@ class _RoleGatewayScreenState extends ConsumerState<RoleGatewayScreen> {
         return;
       }
       final student = res['student'] as Map? ?? {};
+      await _rememberLogin('student', _loginIdCtrl.text.trim(), _passwordCtrl.text);
       await ref.read(sessionProvider.notifier).login(Session(
             role: 'student',
             token: res['token'].toString(),
@@ -103,6 +151,14 @@ class _RoleGatewayScreenState extends ConsumerState<RoleGatewayScreen> {
     _loginIdCtrl.text = result.loginId;
     _passwordCtrl.clear();
     setState(() => _notice = result.message);
+    // The remembered password is now stale; keep only the login ID.
+    final role = _roleName;
+    try {
+      final storage = ref.read(secureStorageServiceProvider);
+      if (await storage.readSavedLogin(role) != null) await storage.writeSavedLogin(role, result.loginId, '');
+    } catch (_) {
+      // Best-effort.
+    }
   }
 
   @override
@@ -174,11 +230,17 @@ class _RoleGatewayScreenState extends ConsumerState<RoleGatewayScreen> {
         ButtonSegment(value: _Role.teacher, label: Text('Teacher')),
       ],
       selected: {_role},
-      onSelectionChanged: (s) => setState(() {
-        _role = s.first;
-        _error = '';
-        _notice = '';
-      }),
+      onSelectionChanged: (s) {
+        if (s.first == _role) return;
+        setState(() {
+          _role = s.first;
+          _error = '';
+          _notice = '';
+          _loginIdCtrl.clear();
+          _passwordCtrl.clear();
+        });
+        _restoreSavedLogin();
+      },
     );
   }
 
@@ -209,14 +271,22 @@ class _RoleGatewayScreenState extends ConsumerState<RoleGatewayScreen> {
   }
 
   Widget _buildSimpleLoginForm({required Future<void> Function() onSubmit, required String label}) {
-    return Column(
+    return AutofillGroup(
+      child: Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        TextField(controller: _loginIdCtrl, decoration: const InputDecoration(labelText: 'Login ID')),
+        TextField(
+          key: const Key('login-id'),
+          controller: _loginIdCtrl,
+          autofillHints: const [AutofillHints.username],
+          decoration: const InputDecoration(labelText: 'Login ID'),
+        ),
         const SizedBox(height: 10),
         TextField(
+          key: const Key('login-password'),
           controller: _passwordCtrl,
           obscureText: !_showPassword,
+          autofillHints: const [AutofillHints.password],
           decoration: InputDecoration(
             labelText: 'Password',
             suffixIcon: GestureDetector(
@@ -232,12 +302,29 @@ class _RoleGatewayScreenState extends ConsumerState<RoleGatewayScreen> {
             ),
           ),
         ),
-        Align(
-          alignment: Alignment.centerRight,
-          child: TextButton(
-            onPressed: _busy ? null : _openForgotPassword,
-            child: const Text('Forgot password?'),
-          ),
+        Row(
+          children: [
+            Expanded(
+              child: InkWell(
+                onTap: _busy ? null : () => setState(() => _remember = !_remember),
+                borderRadius: BorderRadius.circular(8),
+                child: Row(
+                  children: [
+                    Checkbox(
+                      key: const Key('remember-me'),
+                      value: _remember,
+                      onChanged: _busy ? null : (v) => setState(() => _remember = v ?? false),
+                    ),
+                    const Flexible(child: Text('Remember me', style: TextStyle(fontSize: 13))),
+                  ],
+                ),
+              ),
+            ),
+            TextButton(
+              onPressed: _busy ? null : _openForgotPassword,
+              child: const Text('Forgot password?'),
+            ),
+          ],
         ),
         const SizedBox(height: 4),
         ElevatedButton(
@@ -247,6 +334,7 @@ class _RoleGatewayScreenState extends ConsumerState<RoleGatewayScreen> {
               : Text('$label Log In'),
         ),
       ],
+      ),
     );
   }
 }

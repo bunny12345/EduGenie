@@ -1,6 +1,9 @@
+import 'dart:convert';
+
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 typedef StoredThemePreferences = ({bool? studentDark, bool? teacherDark});
+typedef SavedLogin = ({String loginId, String password});
 
 /// Wraps flutter_secure_storage for the persisted session and device preferences —
 /// mobile equivalent of the web app's `localStorage['AcademiX.session']`.
@@ -11,6 +14,8 @@ class SecureStorageService {
   static const _focusUnlockAtKey = 'academix_focus_lock_unlock_at';
   static const _studentThemeKey = 'academix_theme_student';
   static const _teacherThemeKey = 'academix_theme_teacher';
+  static const _savedLoginPrefix = 'academix_saved_login_';
+  static const _lastLoginRoleKey = 'academix_last_login_role';
 
   final FlutterSecureStorage _storage;
 
@@ -22,6 +27,31 @@ class SecureStorageService {
   Future<String?> readSessionJson() => _storage.read(key: _sessionKey);
 
   Future<void> clearSession() => _storage.delete(key: _sessionKey);
+
+  // ─── Remembered login (per role, kept across logout) ─────────────────────
+  Future<SavedLogin?> readSavedLogin(String role) async {
+    final raw = await _storage.read(key: '$_savedLoginPrefix$role');
+    if (raw == null) return null;
+    try {
+      final data = jsonDecode(raw);
+      if (data is! Map) return null;
+      final loginId = data['loginId'];
+      final password = data['password'];
+      if (loginId is! String || loginId.isEmpty) return null;
+      return (loginId: loginId, password: password is String ? password : '');
+    } on FormatException {
+      return null;
+    }
+  }
+
+  Future<void> writeSavedLogin(String role, String loginId, String password) =>
+      _storage.write(key: '$_savedLoginPrefix$role', value: jsonEncode({'loginId': loginId, 'password': password}));
+
+  Future<void> clearSavedLogin(String role) => _storage.delete(key: '$_savedLoginPrefix$role');
+
+  Future<String?> readLastLoginRole() => _storage.read(key: _lastLoginRoleKey);
+
+  Future<void> writeLastLoginRole(String role) => _storage.write(key: _lastLoginRoleKey, value: role);
 
   Future<StoredThemePreferences> readThemePreferences() async {
     bool? parse(String? value) => switch (value) {
