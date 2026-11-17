@@ -1,6 +1,7 @@
 import {
   getOwnerAccess, schoolRegisterRequestOtp, schoolRegisterVerifyOtp, setRuntimeDevToken,
-  requestRegistrationPhoneCode, verifyRegistrationPhoneCode, requestRegistrationEmailCode, schoolRegisterStudent
+  requestRegistrationPhoneCode, verifyRegistrationPhoneCode, requestRegistrationEmailCode, schoolRegisterStudent,
+  requestSchoolPhoneCode, verifySchoolPhoneCode, schoolUpdateTeacher, schoolUpdateStudent
 } from './api';
 
 jest.mock('./supabaseClient', () => ({ auth: {} }));
@@ -38,6 +39,31 @@ test('owner API preserves authorization failures for the login screen', async ()
   await expect(getOwnerAccess('password-only-token')).rejects.toMatchObject({
     status: 403, message: 'Verify MFA first.',
   });
+});
+
+test('school mobile OTP uses the explicit owner token and final registration includes its proof', async () => {
+  setRuntimeDevToken('ordinary-school-token');
+  await expect(requestSchoolPhoneCode({ phone: '+919876543210' })).rejects.toThrow('Owner sign-in required.');
+  expect(global.fetch).not.toHaveBeenCalled();
+  for (const [request, endpoint] of [[requestSchoolPhoneCode, 'request'], [verifySchoolPhoneCode, 'verify']]) {
+    await request({ phone: '+919876543210', country: 'IN' }, 'owner-mfa-token');
+    expect(global.fetch).toHaveBeenLastCalledWith(expect.stringContaining(`/auth/school/register/phone/${endpoint}`), expect.objectContaining({
+      headers: expect.objectContaining({ Authorization: 'Bearer owner-mfa-token' })
+    }));
+  }
+  await schoolRegisterVerifyOtp('school@example.test', '123456', 'owner-mfa-token', 'school-phone-proof');
+  expect(global.fetch).toHaveBeenLastCalledWith(expect.stringContaining('/auth/school/register/verify-otp'), expect.objectContaining({
+    body: JSON.stringify({ email: 'school@example.test', otp: '123456', phoneVerificationId: 'school-phone-proof' })
+  }));
+});
+
+test.each([schoolUpdateTeacher, schoolUpdateStudent])('profile edits show the actionable verification error (%#)', async (update) => {
+  setRuntimeDevToken('school-token');
+  global.fetch.mockResolvedValue({
+    ok: false, status: 400, json: async () => ({ message: 'Verify the email address before saving.', error: 'Bad Request' })
+  });
+  await expect(update('account-a', { email: 'new@example.test' })).rejects.toThrow('Verify the email address before saving.');
+  expect(global.fetch).toHaveBeenLastCalledWith(expect.stringContaining('/account-a'), expect.objectContaining({ method: 'PATCH' }));
 });
 
 test('owner API displays the actionable Nest error message instead of its generic status label', async () => {

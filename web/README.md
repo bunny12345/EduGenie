@@ -42,6 +42,30 @@ channel; the other configured channel remains usable. Existing login and invite
 registration are unchanged.
 Run `CI=true npm test -- --watchAll=false --runInBand src/components/SchoolDashboard.test.jsx`.
 
+### School mobile verification and account editing
+
+The private owner **Register a school** form requires both a verified mobile
+number and school email. Select a country (India is the default), verify the
+mobile by SMS, then send and enter the school email code to create the account.
+Changing the number invalidates its verification. The existing owner MFA session
+remains separate from the created school's login. Both existing backend SMTP
+and Twilio settings must be configured.
+
+In the school portal, use **Edit teacher** or **Edit student** to update mobile,
+email, gender and date of birth alongside the existing fields. Each changed
+contact must be verified separately before Save; changing one contact does not
+clear verification of the other. Unchanged contacts do not require OTP, and
+legacy accounts can still edit other details without filling absent contacts.
+Dates must be valid and not in the future. Existing contacts cannot be removed.
+Save errors are displayed and failed/uncertain saves require fresh verification
+for changed contacts.
+
+Before deploying, also apply the approved
+`backend/db/migrations/20261117_school_phone_and_profile_fields.sql` migration
+described in the backend README. This code does not run production migrations.
+Verify both flows with
+`CI=true npm test -- --watchAll=false --runInBand src/components/OwnerPortal.test.jsx src/components/SchoolDashboard.test.jsx src/ownerApi.test.js`.
+
 ## Multi-lesson curriculum PDF upload
 
 In **Add one lesson manually**, enter the lesson name and either choose PDFs,

@@ -3,6 +3,7 @@ import { getOwnerAccess, schoolRegisterRequestOtp, schoolRegisterVerifyOtp } fro
 import { createOwnerClient } from '../ownerAuthClient';
 import TechnicalSupport from './TechnicalSupport';
 import SchoolEnquiriesInbox from './SchoolEnquiriesInbox';
+import RegistrationContactField, { EMPTY_REGISTRATION_PHONE, isRegistrationVerified, registrationPhoneNumber } from './RegistrationContactField';
 
 function OwnerPasswordField({ label, ...inputProps }) {
   const id = useId();
@@ -222,9 +223,10 @@ function OwnerSchoolRegistration({ token, onSessionExpired }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [note, setNote] = useState('');
+  const [phone, setPhone] = useState(EMPTY_REGISTRATION_PHONE);
 
   async function requestCode() {
-    await schoolRegisterRequestOtp(school, token);
+    await schoolRegisterRequestOtp({ ...school, country: phone.country, phone: registrationPhoneNumber(phone) }, token);
     setSchool((value) => ({ ...value, password: '' }));
     setOtp('');
     setNote(`A school email verification code was sent to ${school.email}. It expires in 10 minutes.`);
@@ -233,15 +235,20 @@ function OwnerSchoolRegistration({ token, onSessionExpired }) {
 
   async function submit(e) {
     e.preventDefault();
+    if (!isRegistrationVerified(phone)) {
+      setError('Verify the school mobile number by SMS before continuing.');
+      return;
+    }
     setBusy(true);
     setError('');
     try {
       if (step === 'details') {
         await requestCode();
       } else {
-        const result = await schoolRegisterVerifyOtp(school.email, otp, token);
+        const result = await schoolRegisterVerifyOtp(school.email, otp, token, phone.verificationId);
         setNote(`${result.school.schoolName} was registered successfully. Its administrator can now use School Login with the school email and password you set.`);
         setSchool(emptySchool);
+        setPhone(EMPTY_REGISTRATION_PHONE);
         setOtp('');
         setStep('details');
       }
@@ -260,6 +267,8 @@ function OwnerSchoolRegistration({ token, onSessionExpired }) {
     <form className="rg-form" onSubmit={submit}>
       <p>Your owner session stays separate from the school account you create.</p>
       {note ? <p className="rg-otp-note" role="status">{note}</p> : null}
+      <RegistrationContactField role="school" value={phone} onChange={setPhone} token={token}
+        verificationMode="required" disabled={busy || step !== 'details'} onAuthError={onSessionExpired} />
       {step === 'details' ? (
         <>
           {[
@@ -275,12 +284,13 @@ function OwnerSchoolRegistration({ token, onSessionExpired }) {
               <label key={field}>{label}<input required type={type} autoComplete="off" value={school[field]} onChange={(e) => setSchool({ ...school, [field]: e.target.value })} /></label>
             )
           ))}
-          <button type="submit" className="rg-submit" disabled={busy}>{busy ? 'Sending code...' : 'Send school verification code'}</button>
+          <p className="sd-phone-help">Both mobile and email verification are required. Verify the mobile number above, then send the school email code.</p>
+          <button type="submit" className="rg-submit" disabled={busy || !isRegistrationVerified(phone)}>{busy ? 'Sending code...' : 'Send school verification code'}</button>
         </>
       ) : (
         <>
           <label>School email verification code<input required inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6}" maxLength={6} value={otp} onChange={(e) => setOtp(e.target.value.replace(/\D/g, '').slice(0, 6))} /></label>
-          <button type="submit" className="rg-submit" disabled={busy || otp.length !== 6}>{busy ? 'Creating school...' : 'Verify & register school'}</button>
+          <button type="submit" className="rg-submit" disabled={busy || otp.length !== 6 || !isRegistrationVerified(phone)}>{busy ? 'Creating school...' : 'Verify & register school'}</button>
           <button type="button" className="rg-link-btn" disabled={busy} onClick={() => { setStep('details'); setOtp(''); setNote('Re-enter the school password and submit the details to send a new code.'); setError(''); }}>Change details / request a new code</button>
         </>
       )}

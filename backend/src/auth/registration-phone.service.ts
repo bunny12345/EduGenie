@@ -2,8 +2,8 @@ import { BadRequestException, ForbiddenException, HttpException, Injectable, Log
 import { getCountries, parsePhoneNumberFromString } from 'libphonenumber-js/max';
 import { SupabaseService } from '../supabase.service';
 
-type RegistrationRole = 'teacher' | 'student';
-type Scope = { schoolId: string; actorId: string };
+type RegistrationRole = 'teacher' | 'student' | 'school';
+type Scope = { schoolId: string; actorId: string; rateLimitActorId?: string };
 type PhoneInput = { role?: unknown; country?: unknown; phone?: unknown };
 type Verification = {
   id: string; school_id: string; actor_id: string; role: RegistrationRole;
@@ -27,17 +27,21 @@ export class RegistrationPhoneService {
     this.limits.set(key, entry);
   }
 
-  normalize(scope: Scope, role: 'teacher' | 'student', body: PhoneInput) {
+  private table(role: RegistrationRole) {
+    return role === 'school' ? 'school_registration_phone_verifications' : 'registration_phone_verifications';
+  }
+
+  normalize(scope: Scope, role: RegistrationRole, body: PhoneInput) {
     return this.input(scope, { ...body, role }).phone;
   }
 
-  private input(scope: Scope, body: PhoneInput) {
+  private input(scope: Scope, body: PhoneInput): { role: RegistrationRole; country: string; phone: string } {
     if (!scope.schoolId || !scope.actorId) throw new ForbiddenException('School admin identity is required.');
     if (!body || typeof body !== 'object' || Array.isArray(body)) {
       throw new BadRequestException('Select a country and enter a valid mobile number.');
     }
     const role = body.role;
-    if (role !== 'teacher' && role !== 'student') throw new BadRequestException('Select teacher or student registration.');
+    if (role !== 'teacher' && role !== 'student' && role !== 'school') throw new BadRequestException('Select a valid registration role.');
     const country = getCountries().find((item) => item === (body.country ?? 'IN'));
     if (!country || typeof body.phone !== 'string' || body.phone.length > 32) {
       throw new BadRequestException('Select a country and enter a valid mobile number.');
@@ -107,7 +111,7 @@ export class RegistrationPhoneService {
 
   async request(scope: Scope, body: PhoneInput) {
     const input = this.input(scope, body);
-    this.limit(`actor:${scope.schoolId}:${scope.actorId}`, 10, 10 * 60000);
+    this.limit(`actor:${scope.schoolId}:${scope.rateLimitActorId || scope.actorId}`, 10, 10 * 60000);
     this.limit(`phone:${input.phone}`, 3, 10 * 60000);
     this.limit(`cooldown:${scope.schoolId}:${scope.actorId}:${input.phone}`, 1, 60000);
     const result = await this.twilio('Verifications', { To: input.phone, Channel: 'sms' });
@@ -115,7 +119,7 @@ export class RegistrationPhoneService {
     const expiresAt = new Date(Date.now() + 10 * 60000).toISOString();
     // Twilio reuses its SID when resending a pending code. Never transfer an
     // existing verification to another school, admin, phone or registration role.
-    const existing = await this.database<Verification[]>(this.db.client.from('registration_phone_verifications')
+    const existing = await this.database<Verification[]>(this.db.client.from(this.table(input.role))
       .select('*').eq('id', result.sid).limit(1));
     if (existing.length) {
       const row = existing[0];
@@ -126,7 +130,7 @@ export class RegistrationPhoneService {
       }
       return { success: true, challengeId: row.id, expiresAt: row.expires_at, resendAfter: 60 };
     }
-    await this.database(this.db.client.from('registration_phone_verifications').insert([{
+    await this.database(this.db.client.from(this.table(input.role)).insert([{
       id: result.sid, school_id: scope.schoolId, actor_id: scope.actorId, ...input,
       expires_at: expiresAt, status: 'pending', attempts: 0,
     }]).select('id'));
@@ -139,21 +143,21 @@ export class RegistrationPhoneService {
       || typeof body.code !== 'string' || !/^\d{6}$/.test(body.code)) {
       throw new BadRequestException('Enter the six-digit SMS verification code.');
     }
-    this.limit(`verify:${scope.schoolId}:${scope.actorId}`, 30, 10 * 60000);
-    const rows = await this.database<Verification[]>(this.db.client.from('registration_phone_verifications')
+    this.limit(`verify:${scope.schoolId}:${scope.rateLimitActorId || scope.actorId}`, 30, 10 * 60000);
+    const rows = await this.database<Verification[]>(this.db.client.from(this.table(input.role))
       .select('*').eq('id', body.challengeId).eq('school_id', scope.schoolId).eq('actor_id', scope.actorId)
       .eq('role', input.role).eq('phone', input.phone).eq('country', input.country).limit(1));
     const row = rows[0];
     if (!row || row.status !== 'pending' || Date.parse(row.expires_at) <= Date.now() || row.attempts >= 5) {
       throw new BadRequestException('This verification has expired, is used or has too many attempts. Please request a new code.');
     }
-    const claimed = await this.database<Verification[]>(this.db.client.from('registration_phone_verifications')
+    const claimed = await this.database<Verification[]>(this.db.client.from(this.table(input.role))
       .update({ attempts: row.attempts + 1 }).eq('id', row.id).eq('status', 'pending').eq('attempts', row.attempts).select('*'));
     if (!claimed.length) throw new BadRequestException('Another verification request is in progress. Please try again.');
     const result = await this.twilio('VerificationCheck', { VerificationSid: row.id, Code: body.code });
     if (result.sid !== row.id || result.status !== 'approved') throw new BadRequestException('Incorrect verification code. Please try again.');
     const expiresAt = new Date(Date.now() + 10 * 60000).toISOString();
-    const verified = await this.database<Verification[]>(this.db.client.from('registration_phone_verifications')
+    const verified = await this.database<Verification[]>(this.db.client.from(this.table(input.role))
       .update({ status: 'verified', expires_at: expiresAt }).eq('id', row.id).eq('status', 'pending').select('*'));
     if (!verified.length) throw new BadRequestException('This verification is no longer available. Please request a new code.');
     return { success: true, verificationId: row.id, phone: input.phone, expiresAt };
@@ -164,7 +168,7 @@ export class RegistrationPhoneService {
     if (typeof body.phoneVerificationId !== 'string' || !/^VE[a-f0-9]{32}$/i.test(body.phoneVerificationId)) {
       throw new BadRequestException('Verify the mobile number by SMS before registering.');
     }
-    const rows = await this.database<Verification[]>(this.db.client.from('registration_phone_verifications')
+    const rows = await this.database<Verification[]>(this.db.client.from(this.table(role))
       .update({ status: 'used' }).eq('id', body.phoneVerificationId)
       .eq('school_id', scope.schoolId).eq('actor_id', scope.actorId).eq('role', role)
       .eq('phone', input.phone).eq('country', input.country).eq('status', 'verified')

@@ -8,7 +8,7 @@ import {
   listCurriculumLessons, listCurriculumLessonDocuments, previewCurriculumPdfImport, publishCurriculumPdfImport,
   createCurriculumLesson, uploadCurriculumLessonDocument, saveCurriculumLessonText, deleteCurriculumLesson,
   requestRegistrationPhoneCode, verifyRegistrationPhoneCode, requestRegistrationEmailCode, verifyRegistrationEmailCode,
-  schoolRegisterTeacher, schoolRegisterStudent
+  schoolRegisterTeacher, schoolRegisterStudent, schoolUpdateTeacher, schoolUpdateStudent
 } from '../api';
 
 jest.mock('../api', () => ({
@@ -31,6 +31,8 @@ jest.mock('../api', () => ({
   verifyRegistrationEmailCode: jest.fn(),
   schoolRegisterTeacher: jest.fn(),
   schoolRegisterStudent: jest.fn(),
+  schoolUpdateTeacher: jest.fn(),
+  schoolUpdateStudent: jest.fn(),
   getSchoolProgressStudents: jest.fn(),
   getSchoolProgressPeriod: jest.fn(),
   saveSchoolProgressPeriod: jest.fn(),
@@ -99,6 +101,72 @@ beforeEach(() => {
   });
 });
 afterEach(() => { window.location.hash = ''; });
+
+test.each(['teacher', 'student'])('%s profile editing requires separate OTPs for changed contacts and saves all profile fields', async (role) => {
+  const isTeacher = role === 'teacher';
+  const label = isTeacher ? 'Teacher' : 'Student';
+  const account = {
+    id: 'edit-account', name: `${label} profile`, subject: 'English', grades: ['Class 7'], className: 'Class 7',
+    phone: '+919123456789', email: 'old@example.test', gender: 'male', dateOfBirth: '2000-06-15'
+  };
+  window.location.hash = isTeacher ? '#teachers' : '#studentRegistration';
+  schoolTeachers.mockResolvedValue({ teachers: isTeacher ? [account] : [], pagination: null });
+  schoolStudents.mockResolvedValue({ students: isTeacher ? [] : [account], pagination: null });
+  const update = isTeacher ? schoolUpdateTeacher : schoolUpdateStudent;
+  update.mockResolvedValue({ success: true });
+  render(<SchoolDashboard session={session} onLogout={jest.fn()} />);
+  fireEvent.click(await screen.findByTitle(`Edit ${role}`));
+  const editor = screen.getByRole('group', { name: 'Contact & personal details' });
+  const fields = within(editor);
+  expect(fields.getByLabelText(`${label} mobile number`)).toHaveValue('9123456789');
+  expect(fields.getByLabelText(`${label} email address`)).toHaveValue('old@example.test');
+  expect(fields.getByLabelText(`${label} gender`)).toHaveValue('male');
+  expect(fields.getByLabelText(`${label} date of birth`)).toHaveValue('2000-06-15');
+  expect(fields.queryByRole('button', { name: 'Send SMS code' })).not.toBeInTheDocument();
+  fireEvent.change(fields.getByLabelText(`${label} mobile number`), { target: { value: '9876543210' } });
+  fireEvent.change(fields.getByLabelText(`${label} email address`), { target: { value: 'person@example.test' } });
+  fireEvent.change(fields.getByLabelText(`${label} gender`), { target: { value: 'female' } });
+  fireEvent.change(fields.getByLabelText(`${label} date of birth`), { target: { value: '2001-02-28' } });
+  const save = screen.getByRole('button', { name: 'Save' });
+  expect(save).toBeDisabled();
+  fireEvent.click(fields.getByRole('button', { name: 'Send SMS code' }));
+  fireEvent.change(await fields.findByLabelText('SMS verification code'), { target: { value: '123456' } });
+  fireEvent.click(fields.getByRole('button', { name: 'Verify number' }));
+  await fields.findByText('Verified +919876543210');
+  expect(requestRegistrationPhoneCode).toHaveBeenLastCalledWith({
+    role, accountId: account.id, phone: '+919876543210', country: 'IN'
+  });
+  expect(save).toBeDisabled();
+  fireEvent.click(fields.getByRole('button', { name: 'Send email code' }));
+  fireEvent.change(await fields.findByLabelText('Email verification code'), { target: { value: '654321' } });
+  fireEvent.click(fields.getByRole('button', { name: 'Verify email' }));
+  await fields.findByText('Verified person@example.test');
+  expect(requestRegistrationEmailCode).toHaveBeenLastCalledWith({ role, accountId: account.id, email: 'person@example.test' });
+  expect(save).toBeEnabled();
+  fireEvent.click(save);
+  await waitFor(() => expect(update).toHaveBeenCalledWith(account.id, expect.objectContaining({
+    phone: '+919876543210', country: 'IN', phoneVerificationId: 'phone-proof',
+    email: 'person@example.test', emailVerificationId: 'email-proof', gender: 'female', dateOfBirth: '2001-02-28'
+  })));
+});
+
+test('legacy accounts can update personal details without adding or verifying absent contacts', async () => {
+  window.location.hash = '#teachers';
+  schoolTeachers.mockResolvedValue({ teachers: [{ id: 'legacy-teacher', name: 'Legacy', subject: 'English', grades: ['Class 7'] }], pagination: null });
+  schoolUpdateTeacher.mockRejectedValueOnce(new Error('Could not save teacher profile. Check the profile migrations and try again.'));
+  render(<SchoolDashboard session={session} onLogout={jest.fn()} />);
+  fireEvent.click(await screen.findByTitle('Edit teacher'));
+  fireEvent.change(screen.getByLabelText('Teacher gender'), { target: { value: 'other' } });
+  fireEvent.change(screen.getByLabelText('Teacher date of birth'), { target: { value: '1980-02-28' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+  await waitFor(() => expect(schoolUpdateTeacher).toHaveBeenCalledWith('legacy-teacher', {
+    name: 'Legacy', subject: 'English', grades: ['Class 7'], gender: 'other', dateOfBirth: '1980-02-28'
+  }));
+  expect(await screen.findByText(/Could not save teacher profile/)).toBeInTheDocument();
+  expect(screen.getByLabelText('Teacher date of birth')).toHaveValue('1980-02-28');
+  expect(requestRegistrationPhoneCode).not.toHaveBeenCalled();
+  expect(requestRegistrationEmailCode).not.toHaveBeenCalled();
+});
 
 test('teacher registration defaults to India and requires successful SMS verification before saving', async () => {
   window.location.hash = '#teachers';

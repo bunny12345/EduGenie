@@ -6910,6 +6910,14 @@ textarea {
 .sd-phone-verified { margin: 10px 0 0; color: #116548; font-size: 12px; font-weight: 700; }
 .sd-phone-error { margin: 8px 0 0; color: #a32032; font-size: 12px; }
 .sd-phone-verification button:disabled { opacity: 0.6; cursor: not-allowed; }
+.sd-profile-edit-fields { border: 1px solid #dce1f0; border-radius: 12px; padding: 12px; margin: 4px 0; min-width: 0; }
+.sd-profile-edit-fields > legend { font-weight: 700; font-size: 12px; color: #2d3465; padding: 0 5px; }
+.sd-profile-edit-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.sd-profile-edit-grid > label { display: grid; gap: 5px; min-width: 0; }
+.sd-profile-edit-fields select, .sd-phone-verification select { width: 100%; min-width: 0; box-sizing: border-box; }
+@media (max-width: 700px) {
+  .sd-profile-edit-grid { grid-template-columns: minmax(0, 1fr); }
+}
 @media (max-width: 480px) {
   .sd-phone-inputs, .sd-phone-code { grid-template-columns: minmax(0, 1fr); }
 }

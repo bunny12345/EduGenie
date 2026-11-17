@@ -1,11 +1,55 @@
-import { ForbiddenException, Injectable, Logger, OnModuleInit, ServiceUnavailableException } from '@nestjs/common';
-import { randomBytes, randomUUID, createHash } from 'crypto';
+import { BadRequestException, ForbiddenException, Injectable, Logger, OnModuleInit, ServiceUnavailableException } from '@nestjs/common';
+import { randomBytes, randomUUID, createHash, randomInt } from 'crypto';
 import * as jwt from 'jsonwebtoken';
 import { SupabaseService } from '../supabase.service';
 import { EmailService } from './email.service';
 import * as fs from 'fs';
 import * as path from 'path';
 import { jwtSecret } from './jwt-secret';
+import { parsePhoneNumberFromString } from 'libphonenumber-js/max';
+
+type ProfileFields = { phone?: string; email?: string; gender?: string; dateOfBirth?: string };
+
+export function normalizeProfileFields(payload: ProfileFields) {
+  const fields: ProfileFields = {};
+  if (payload.phone !== undefined) {
+    const phone = typeof payload.phone === 'string' ? parsePhoneNumberFromString(payload.phone) : undefined;
+    if (!phone?.isValid() || !['MOBILE', 'FIXED_LINE_OR_MOBILE'].includes(phone.getType() || '')) {
+      throw new BadRequestException('Enter a valid mobile number with its country code.');
+    }
+    fields.phone = phone.number;
+  }
+  if (payload.email !== undefined) {
+    if (typeof payload.email !== 'string' || payload.email.length > 254 || !/^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/.test(payload.email.trim())) {
+      throw new BadRequestException('Enter a valid email address. Existing contact details cannot be cleared.');
+    }
+    fields.email = payload.email.trim().toLowerCase();
+  }
+  if (payload.gender !== undefined) {
+    if (typeof payload.gender !== 'string' || !['', 'male', 'female', 'other'].includes(payload.gender)) {
+      throw new BadRequestException('Select a valid gender.');
+    }
+    fields.gender = payload.gender;
+  }
+  if (payload.dateOfBirth !== undefined) {
+    const dob = payload.dateOfBirth;
+    const date = typeof dob === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(dob) ? new Date(`${dob}T00:00:00Z`) : null;
+    if (!date || !Number.isFinite(date.getTime()) || date.toISOString().slice(0, 10) !== dob || dob > new Date().toISOString().slice(0, 10)) {
+      throw new BadRequestException('Enter a valid date of birth that is not in the future.');
+    }
+    fields.dateOfBirth = dob;
+  }
+  return fields;
+}
+
+function profileColumns(fields: ProfileFields) {
+  return {
+    ...(fields.phone !== undefined ? { phone: fields.phone } : {}),
+    ...(fields.email !== undefined ? { email: fields.email } : {}),
+    ...(fields.gender !== undefined ? { gender: fields.gender || null } : {}),
+    ...(fields.dateOfBirth !== undefined ? { date_of_birth: fields.dateOfBirth } : {})
+  };
+}
 
 const ACCOUNTS_DIR = path.join(process.cwd(), 'local-data');
 const STUDENT_ACCOUNTS_FILE = path.join(ACCOUNTS_DIR, 'student-accounts.json');
@@ -36,6 +80,7 @@ type TeacherAccount = {
   subject?: string;
   gender?: string;
   phone?: string;
+  dateOfBirth?: string;
   schoolId: string;
   grades?: string[];
 };
@@ -65,6 +110,7 @@ type SchoolAccount = {
   schoolName: string;
   branch: string;
   location: string;
+  phone?: string;
   passwordSalt: string;
   passwordHash: string;
 };
@@ -92,12 +138,13 @@ export class StudentAuthService implements OnModuleInit {
   // hashed code plus the registration payload so verifyOtp can finish creating
   // the account without asking the admin to re-enter everything.
   private static pendingSchoolOtps = new Map<string, {
+    ownerId: string;
     otpSalt: string;
     otpHash: string;
     expiresAt: number;
     attempts: number;
     lastSentAt: number;
-    payload: { schoolName: string; branch: string; location: string; passwordSalt: string; passwordHash: string };
+    payload: { schoolName: string; branch: string; location: string; passwordSalt: string; passwordHash: string; phone: string; country: string };
   }>();
 
   // Bumped on every teacher add / edit / removal. Cached, teacher-derived
@@ -233,6 +280,8 @@ export class StudentAuthService implements OnModuleInit {
       name: account.name || 'Teacher',
       email: account.email || null,
       ...(account.phone ? { phone: account.phone } : {}),
+      ...(account.gender ? { gender: account.gender } : {}),
+      ...(account.dateOfBirth ? { date_of_birth: account.dateOfBirth } : {}),
       subject: account.subject || 'General',
       login_id: account.loginId,
       password_salt: account.passwordSalt,
@@ -523,6 +572,7 @@ export class StudentAuthService implements OnModuleInit {
         school_name: school.schoolName,
         branch: school.branch,
         location: school.location,
+        phone: school.phone || null,
         password_salt: school.passwordSalt,
         password_hash: school.passwordHash,
         created_at: new Date().toISOString(),
@@ -592,6 +642,9 @@ export class StudentAuthService implements OnModuleInit {
     branch: string;
     location: string;
     password: string;
+    phone: string;
+    country: string;
+    ownerId: string;
   }) {
     const email = String(payload.email || '').trim().toLowerCase();
     const schoolName = String(payload.schoolName || '').trim();
@@ -617,7 +670,10 @@ export class StudentAuthService implements OnModuleInit {
       return { ok: false, error: 'Please wait a few seconds before requesting another code.' };
     }
 
-    const otp = String(Math.floor(100000 + Math.random() * 900000));
+    if (!payload.ownerId || !payload.phone || !payload.country) {
+      return { ok: false, error: 'Owner identity and a valid mobile number are required.' };
+    }
+    const otp = String(randomInt(100000, 1000000));
     const otpSalt = randomBytes(8).toString('hex');
     const passwordSalt = randomBytes(12).toString('hex');
 
@@ -634,25 +690,29 @@ export class StudentAuthService implements OnModuleInit {
     }
 
     StudentAuthService.pendingSchoolOtps.set(email, {
+      ownerId: payload.ownerId,
       otpSalt,
       otpHash: this.hashPassword(otp, otpSalt),
       expiresAt: Date.now() + 10 * 60 * 1000,
       attempts: 0,
       lastSentAt: Date.now(),
-      payload: { schoolName, branch, location, passwordSalt, passwordHash: this.hashPassword(password, passwordSalt) }
+      payload: { schoolName, branch, location, passwordSalt, passwordHash: this.hashPassword(password, passwordSalt), phone: payload.phone, country: payload.country }
     });
 
     return { ok: true };
   }
 
   // Step 2: check the code and, if correct, actually create the school account.
-  async verifySchoolRegistrationOtp(emailRaw: string, otpRaw: string) {
+  async verifySchoolRegistrationOtp(
+    emailRaw: string, otpRaw: string, ownerId: string,
+    verifyPhone: (contact: { phone: string; country: string }) => Promise<void>
+  ) {
     const email = String(emailRaw || '').trim().toLowerCase();
     const otp = String(otpRaw || '').trim();
     if (!email || !otp) return { ok: false, error: 'email and otp are required' };
 
     const pending = StudentAuthService.pendingSchoolOtps.get(email);
-    if (!pending) return { ok: false, error: 'No pending verification for this email. Please request a new code.' };
+    if (!pending || !ownerId || pending.ownerId !== ownerId) return { ok: false, error: 'No pending verification for this owner and email. Please request a new code.' };
     if (Date.now() > pending.expiresAt) {
       StudentAuthService.pendingSchoolOtps.delete(email);
       return { ok: false, error: 'This code has expired. Please request a new one.' };
@@ -672,6 +732,12 @@ export class StudentAuthService implements OnModuleInit {
       return { ok: false, error: 'This email is already registered. Please log in instead.' };
     }
 
+    // Claim this email code before awaiting SMS consumption or persistence.
+    if (StudentAuthService.pendingSchoolOtps.get(email) !== pending) {
+      return { ok: false, error: 'This verification changed or was used. Please request a new code.' };
+    }
+    StudentAuthService.pendingSchoolOtps.delete(email);
+    await verifyPhone({ phone: pending.payload.phone, country: pending.payload.country });
     const schoolId = randomUUID();
     const school: SchoolAccount = {
       schoolId,
@@ -679,6 +745,7 @@ export class StudentAuthService implements OnModuleInit {
       schoolName: pending.payload.schoolName,
       branch: pending.payload.branch,
       location: pending.payload.location,
+      phone: pending.payload.phone,
       passwordSalt: pending.payload.passwordSalt,
       passwordHash: pending.payload.passwordHash
     };
@@ -696,7 +763,8 @@ export class StudentAuthService implements OnModuleInit {
         email,
         schoolName: school.schoolName,
         branch: school.branch,
-        location: school.location
+        location: school.location,
+        phone: school.phone
       }
     };
   }
@@ -718,6 +786,7 @@ export class StudentAuthService implements OnModuleInit {
             schoolName: row.school_name,
             branch: row.branch,
             location: row.location,
+            phone: row.phone || undefined,
             passwordSalt: row.password_salt,
             passwordHash: row.password_hash
           };
@@ -742,7 +811,8 @@ export class StudentAuthService implements OnModuleInit {
         email: school.email,
         schoolName: school.schoolName,
         branch: school.branch,
-        location: school.location
+        location: school.location,
+        phone: school.phone || null
       }
     };
   }
@@ -877,6 +947,7 @@ export class StudentAuthService implements OnModuleInit {
           subject: row.subject,
           gender: row.gender || undefined,
           phone: row.phone || undefined,
+          dateOfBirth: row.date_of_birth || undefined,
           schoolId: row.school_id,
           grades: normalizeGrades(row.grades)
         };
@@ -896,6 +967,9 @@ export class StudentAuthService implements OnModuleInit {
     email?: string;
     subject?: string;
     grades?: string[];
+    phone?: string;
+    gender?: string;
+    dateOfBirth?: string;
   }) {
     const schoolId = String(payload.schoolId || '').trim();
     const teacherId = String(payload.teacherId || '').trim();
@@ -916,36 +990,36 @@ export class StudentAuthService implements OnModuleInit {
     const grades = payload.grades !== undefined ? normalizeGrades(payload.grades) : normalizeGrades(existing.grades);
 
     if (!name) return { ok: false, error: 'Name is required' };
+    const profile = normalizeProfileFields(payload);
 
     const conflict = this.findSubjectGradeConflict(schoolId, subject, grades, teacherId);
     if (conflict) {
       return { ok: false, error: `${subject} teacher already exists for ${conflict.grade}.` };
     }
 
-    const updated: TeacherAccount = { ...existing, name, email, subject, grades };
-    this.rememberTeacher(updated);
+    const updated: TeacherAccount = { ...existing, ...profile, name, email, subject, grades };
+    const columns = { name, email, subject, ...profileColumns(profile), updated_at: new Date().toISOString() };
 
     try {
       const res: any = await this.db.client
         .from('teachers')
-        .update({ name, email, subject, grades, updated_at: new Date().toISOString() })
-        .eq('id', teacherId);
+        .update({ ...columns, grades })
+        .eq('id', teacherId).eq('school_id', schoolId);
       if (res && res.error) {
-        await this.db.client
+        const retry = await this.db.client
           .from('teachers')
-          .update({ name, email, subject, updated_at: new Date().toISOString() })
-          .eq('id', teacherId);
+          .update(columns)
+          .eq('id', teacherId).eq('school_id', schoolId);
+        if (retry?.error) throw new Error('Teacher update failed');
       }
     } catch (_e) {
-      try {
-        await this.db.client
-          .from('teachers')
-          .update({ name, email, subject, updated_at: new Date().toISOString() })
-          .eq('id', teacherId);
-      } catch (_e2) {
-        // fallback only.
+      if (Object.keys(profile).length && process.env.SUPABASE_URL && (process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY)) {
+        console.error('Teacher profile update could not be persisted.');
+        return { ok: false, error: 'Could not save teacher profile. Check the profile migrations and try again.' };
       }
+      console.warn('Teacher update using the local account fallback.');
     }
+    this.rememberTeacher(updated);
 
     return {
       ok: true,
@@ -954,6 +1028,9 @@ export class StudentAuthService implements OnModuleInit {
         schoolId,
         name,
         email,
+        phone: updated.phone || null,
+        gender: updated.gender || null,
+        dateOfBirth: updated.dateOfBirth || null,
         subject,
         loginId: updated.loginId,
         grades
@@ -1116,6 +1193,7 @@ export class StudentAuthService implements OnModuleInit {
             subject: row.subject,
             gender: row.gender || undefined,
             phone: row.phone || undefined,
+            dateOfBirth: row.date_of_birth || undefined,
             schoolId: row.school_id,
             grades: normalizeGrades(row.grades)
           };
@@ -1549,6 +1627,9 @@ export class StudentAuthService implements OnModuleInit {
           schoolId: r.school_id,
           name: r.name || 'Teacher',
           email: r.email || null,
+          phone: r.phone || null,
+          gender: r.gender || null,
+          dateOfBirth: r.date_of_birth || null,
           subject: r.subject || 'General',
           loginId: r.login_id || null,
           grades,
@@ -1571,6 +1652,9 @@ export class StudentAuthService implements OnModuleInit {
           schoolId: t.schoolId,
           name: t.name || 'Teacher',
           email: t.email || null,
+          phone: t.phone || null,
+          gender: t.gender || null,
+          dateOfBirth: t.dateOfBirth || null,
           subject: t.subject || 'General',
           loginId: t.loginId || null,
           grades: normalizeGrades(t.grades),
@@ -1617,6 +1701,9 @@ export class StudentAuthService implements OnModuleInit {
           schoolId: t.schoolId,
           name: t.name || 'Teacher',
           email: t.email || null,
+          phone: t.phone || null,
+          gender: t.gender || null,
+          dateOfBirth: t.dateOfBirth || null,
           subject: t.subject || 'General',
           loginId: t.loginId,
           grades: normalizeGrades(t.grades),
@@ -1722,7 +1809,10 @@ export class StudentAuthService implements OnModuleInit {
           name: s.name || 'Student',
           className: s.className || 'Class',
           loginId: s.loginId || null,
-          email: null,
+          email: s.email || null,
+          phone: s.phone || null,
+          gender: s.gender || null,
+          dateOfBirth: s.dateOfBirth || null,
           createdAt: null
         }));
 
@@ -1741,6 +1831,9 @@ export class StudentAuthService implements OnModuleInit {
         className: r.class_name || r.class || r.grade || 'Class',
         loginId: localLoginById.get(String(r.id || '')) || null,
         email: r.email || null,
+        phone: r.phone || null,
+        gender: r.gender || null,
+        dateOfBirth: r.date_of_birth || null,
         createdAt: r.created_at || null
       }));
 
@@ -1791,7 +1884,10 @@ export class StudentAuthService implements OnModuleInit {
           name: s.name || 'Student',
           className: s.className || 'Class',
           loginId: s.loginId || null,
-          email: null,
+          email: s.email || null,
+          phone: s.phone || null,
+          gender: s.gender || null,
+          dateOfBirth: s.dateOfBirth || null,
           createdAt: null
         }));
       const total = locals.length;
@@ -1980,6 +2076,7 @@ export class StudentAuthService implements OnModuleInit {
       className,
       schoolId: payload.schoolId,
       teacherId: payload.teacherId,
+      gender: gender || undefined,
       dateOfBirth: dateOfBirth || undefined,
       phone: phone || undefined,
       email: email || undefined
@@ -2104,6 +2201,10 @@ export class StudentAuthService implements OnModuleInit {
     className: string;
     teacherId: string;
     loginId: string;
+    phone?: string;
+    email?: string;
+    gender?: string;
+    dateOfBirth?: string;
     local: StudentAccount | null;
   } | null> {
     const id = String(studentId || '').trim();
@@ -2119,6 +2220,10 @@ export class StudentAuthService implements OnModuleInit {
         className: local.className || '',
         teacherId: local.teacherId || '',
         loginId: local.loginId || '',
+        phone: local.phone,
+        email: local.email,
+        gender: local.gender,
+        dateOfBirth: local.dateOfBirth,
         local
       };
     }
@@ -2143,6 +2248,10 @@ export class StudentAuthService implements OnModuleInit {
           className: row.class_name || row.class || row.grade || '',
           teacherId: row.teacher_id || '',
           loginId,
+          phone: row.phone || undefined,
+          email: row.email || undefined,
+          gender: row.gender || undefined,
+          dateOfBirth: row.date_of_birth || undefined,
           local: local || null
         };
       }
@@ -2198,11 +2307,23 @@ export class StudentAuthService implements OnModuleInit {
     });
   }
 
+  async schoolAccountContact(schoolId: string, role: 'teacher' | 'student', id: string) {
+    const account = role === 'teacher'
+      ? await this.loadTeacherAccount(id)
+      : await this.loadStudentForSchool(id, schoolId);
+    if (!account || account.schoolId !== schoolId) throw new ForbiddenException('Account not found in this school.');
+    return { phone: account.phone || '', email: account.email || '' };
+  }
+
   async updateStudentBySchool(payload: {
     schoolId: string;
     studentId: string;
     name?: string;
     className?: string;
+    phone?: string;
+    email?: string;
+    gender?: string;
+    dateOfBirth?: string;
   }) {
     const schoolId = String(payload.schoolId || '').trim();
     const studentId = String(payload.studentId || '').trim();
@@ -2217,6 +2338,7 @@ export class StudentAuthService implements OnModuleInit {
       : existing.className;
     if (!name) return { ok: false, error: 'Name is required' };
     if (!className) return { ok: false, error: 'Class is required' };
+    const profile = normalizeProfileFields(payload);
 
     // Moving a student to another class must re-point them at that class's
     // teacher, otherwise teacher-scoped views keep the student in the old class.
@@ -2231,30 +2353,41 @@ export class StudentAuthService implements OnModuleInit {
       }
     }
 
-    if (existing.local) {
-      this.remember({ ...existing.local, name, className, teacherId: teacherId || undefined });
-    }
-
     try {
-      await this.db.client
+      const roster = await this.db.client
         .from('students')
-        .update({ name, class_name: className, teacher_id: teacherId || null })
-        .eq('id', studentId);
+        .update({ name, class_name: className, teacher_id: teacherId || null, ...profileColumns(profile) })
+        .eq('id', studentId).eq('school_id', schoolId);
+      if (roster?.error) throw new Error('Student roster update failed');
     } catch (_e) {
-      /* local store remains the fallback */
+      if (Object.keys(profile).length && process.env.SUPABASE_URL && (process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY)) {
+        console.error('Student profile update could not be persisted.');
+        return { ok: false, error: 'Could not save student profile. Check the profile migrations and try again.' };
+      }
+      console.warn('Student update using the local account fallback.');
     }
     try {
-      await this.db.client
+      const account = await this.db.client
         .from('student_accounts')
-        .update({ name, class_name: className, teacher_id: teacherId || null })
-        .eq('student_id', studentId);
+        .update({ name, class_name: className, teacher_id: teacherId || null, ...profileColumns(profile) })
+        .eq('student_id', studentId).eq('school_id', schoolId);
+      if (account?.error) throw new Error('Student account update failed');
     } catch (_e) {
-      /* optional table */
+      if (Object.keys(profile).length && process.env.SUPABASE_URL && (process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY)) {
+        console.error('Student login profile update could not be persisted.');
+        return { ok: false, error: 'The roster was updated, but the login profile could not be saved. Please retry and verify changed contacts again.' };
+      }
+      console.warn('Student login profile using the local account fallback.');
+    }
+    if (existing.local) {
+      this.remember({ ...existing.local, ...profile, name, className, teacherId: teacherId || undefined });
     }
 
     return {
       ok: true,
-      student: { id: studentId, schoolId, name, className, teacherId: teacherId || null, loginId: existing.loginId }
+      student: { id: studentId, schoolId, name, className, teacherId: teacherId || null, loginId: existing.loginId,
+        phone: profile.phone ?? existing.phone ?? null, email: profile.email ?? existing.email ?? null,
+        gender: profile.gender ?? existing.gender ?? null, dateOfBirth: profile.dateOfBirth ?? existing.dateOfBirth ?? null }
     };
   }
 
@@ -2283,7 +2416,11 @@ export class StudentAuthService implements OnModuleInit {
         name: existing.name,
         className: existing.className,
         schoolId,
-        teacherId: existing.teacherId || undefined
+        teacherId: existing.teacherId || undefined,
+        phone: existing.phone,
+        email: existing.email,
+        gender: existing.gender,
+        dateOfBirth: existing.dateOfBirth
       });
     }
 
@@ -2360,7 +2497,11 @@ export class StudentAuthService implements OnModuleInit {
             name: row.name,
             className: row.class_name,
             schoolId: row.school_id,
-            teacherId: row.teacher_id
+            teacherId: row.teacher_id,
+            phone: row.phone || undefined,
+            email: row.email || undefined,
+            gender: row.gender || undefined,
+            dateOfBirth: row.date_of_birth || undefined
           };
           this.remember(account);
         }

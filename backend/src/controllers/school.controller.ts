@@ -1,6 +1,6 @@
 import { BadRequestException, Body, Controller, Delete, ForbiddenException, Get, Param, Patch, Post, Query, Req, UseGuards } from '@nestjs/common';
 import { AuthGuard } from '../auth/auth.guard';
-import { StudentAuthService } from '../auth/student-auth.service';
+import { normalizeProfileFields, StudentAuthService } from '../auth/student-auth.service';
 import { LearningScoreService } from '../progress/learning-score.service';
 import { RegistrationPhoneService } from '../auth/registration-phone.service';
 import { RegistrationEmailService } from '../auth/registration-email.service';
@@ -38,6 +38,33 @@ export class SchoolController {
       throw new BadRequestException('Verify either the mobile number or email address before registering.');
     }
     return { phone, email };
+  }
+
+  private async contactScope(req: any, body: any) {
+    const scope = { schoolId: req.user.schoolId || req.user.sub, actorId: req.user.sub };
+    if (body?.role !== 'teacher' && body?.role !== 'student') throw new BadRequestException('Select teacher or student verification.');
+    if (body?.accountId === undefined) return scope;
+    if (typeof body.accountId !== 'string' || !body.accountId || (body.role !== 'teacher' && body.role !== 'student')) {
+      throw new BadRequestException('Select a valid account to edit.');
+    }
+    await this.authFlow.schoolAccountContact(scope.schoolId, body.role, body.accountId);
+    return { ...scope, actorId: JSON.stringify([scope.actorId, 'profile', body.role, body.accountId]), rateLimitActorId: scope.actorId };
+  }
+
+  private async changedContacts(req: any, role: 'teacher' | 'student', id: string, body: any) {
+    const schoolId = req.user.schoolId || req.user.sub;
+    const existing = await this.authFlow.schoolAccountContact(schoolId, role, id);
+    const scope = { schoolId, actorId: JSON.stringify([req.user.sub, 'profile', role, id]) };
+    const phone = body?.phone === undefined ? undefined : this.registrationPhone.normalize(scope, role, body);
+    const email = body?.email === undefined ? undefined : this.registrationEmail.normalizeEmail(body.email);
+    const profile = normalizeProfileFields({ ...body, phone, email });
+    if (phone !== undefined && phone !== existing.phone) {
+      await this.registrationPhone.consume(scope, role, { ...body, phone });
+    }
+    if (email !== undefined && email !== existing.email.trim().toLowerCase()) {
+      await this.registrationEmail.consume(scope, role, { ...body, email });
+    }
+    return profile;
   }
 
   @Get('dashboard')
@@ -194,11 +221,13 @@ export class SchoolController {
   async updateStudent(@Req() req: any, @Param('id') id: string, @Body() body: any) {
     this.ensureSchoolAdmin(req);
     const schoolId = req?.user?.schoolId || req?.user?.sub;
+    const contact = await this.changedContacts(req, 'student', id, body);
     const res = await this.authFlow.updateStudentBySchool({
       schoolId,
       studentId: id,
       name: body?.name,
-      className: body?.className
+      className: body?.className,
+      ...contact
     });
     if (!res.ok) return { success: false, error: res.error };
     return { success: true, student: res.student };
@@ -290,36 +319,37 @@ export class SchoolController {
   @Post('registration/phone/request')
   async requestRegistrationPhone(@Req() req: any, @Body() body: any) {
     this.ensureSchoolAdmin(req);
-    return this.registrationPhone.request({ schoolId: req.user.schoolId || req.user.sub, actorId: req.user.sub }, body);
+    return this.registrationPhone.request(await this.contactScope(req, body), body);
   }
 
   @Post('registration/phone/verify')
   async verifyRegistrationPhone(@Req() req: any, @Body() body: any) {
     this.ensureSchoolAdmin(req);
-    return this.registrationPhone.verify({ schoolId: req.user.schoolId || req.user.sub, actorId: req.user.sub }, body);
+    return this.registrationPhone.verify(await this.contactScope(req, body), body);
   }
 
   @Post('registration/email/request')
   async requestRegistrationEmail(@Req() req: any, @Body() body: any) {
     this.ensureSchoolAdmin(req);
-    return this.registrationEmail.request({ schoolId: req.user.schoolId || req.user.sub, actorId: req.user.sub }, body);
+    return this.registrationEmail.request(await this.contactScope(req, body), body);
   }
 
   @Post('registration/email/verify')
   async verifyRegistrationEmail(@Req() req: any, @Body() body: any) {
     this.ensureSchoolAdmin(req);
-    return this.registrationEmail.verify({ schoolId: req.user.schoolId || req.user.sub, actorId: req.user.sub }, body);
+    return this.registrationEmail.verify(await this.contactScope(req, body), body);
   }
 
   @Patch('teachers/:id')
   async updateTeacher(@Req() req: any, @Param('id') id: string, @Body() body: any) {
     this.ensureSchoolAdmin(req);
     const schoolId = req?.user?.schoolId || req?.user?.sub;
+    const contact = await this.changedContacts(req, 'teacher', id, body);
     const res = await this.authFlow.updateTeacherBySchool({
       schoolId,
       teacherId: id,
       name: body?.name,
-      email: body?.email,
+      ...contact,
       subject: body?.subject,
       grades: body?.grades
     });

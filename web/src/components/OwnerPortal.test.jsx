@@ -3,13 +3,15 @@ import { act, fireEvent, render, screen } from '@testing-library/react';
 import OwnerPortal from './OwnerPortal';
 import RoleGateway from './RoleGateway';
 import { createOwnerClient } from '../ownerAuthClient';
-import { getOwnerAccess, schoolRegisterRequestOtp, schoolRegisterVerifyOtp } from '../api';
+import { getOwnerAccess, schoolRegisterRequestOtp, schoolRegisterVerifyOtp, requestSchoolPhoneCode, verifySchoolPhoneCode } from '../api';
 
 jest.mock('../ownerAuthClient', () => ({ createOwnerClient: jest.fn() }));
 jest.mock('../api', () => ({
   getOwnerAccess: jest.fn(),
   schoolRegisterRequestOtp: jest.fn(),
   schoolRegisterVerifyOtp: jest.fn(),
+  requestSchoolPhoneCode: jest.fn(),
+  verifySchoolPhoneCode: jest.fn(),
 }));
 
 let client;
@@ -32,6 +34,10 @@ beforeEach(() => {
   } };
   createOwnerClient.mockReturnValue(client);
   getOwnerAccess.mockImplementation(async (token) => ({ success: true, mfaVerified: token === 'mfa-token' }));
+  requestSchoolPhoneCode.mockResolvedValue({ success: true, challengeId: 'school-sms', resendAfter: 60 });
+  verifySchoolPhoneCode.mockResolvedValue({
+    success: true, verificationId: 'school-phone-proof', phone: '+919876543210', expiresAt: new Date(Date.now() + 600000).toISOString()
+  });
 });
 
 async function login() {
@@ -45,6 +51,16 @@ async function verify() {
   fireEvent.change(screen.getByLabelText('Authenticator code'), { target: { value: '123456' } });
   fireEvent.click(screen.getByRole('button', { name: 'Verify & continue' }));
   await screen.findByRole('heading', { name: 'Register a school' });
+}
+
+async function verifySchoolMobile() {
+  expect(screen.getByLabelText('School country code')).toHaveValue('IN');
+  expect(screen.getByLabelText('School mobile number')).toBeRequired();
+  fireEvent.change(screen.getByLabelText('School mobile number'), { target: { value: '9876543210' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Send SMS code' }));
+  fireEvent.change(await screen.findByLabelText('SMS verification code'), { target: { value: '123456' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Verify number' }));
+  await screen.findByText('Verified +919876543210');
 }
 
 test('owner password eye toggles visibility without submitting or changing the password', () => {
@@ -81,6 +97,7 @@ test('school password eye toggles visibility and resets for the next registratio
   for (const [label, value] of [
     ['School name', 'Test school'], ['Location', 'City'], ['School email', 'school@example.test'],
   ]) fireEvent.change(screen.getByLabelText(label), { target: { value } });
+  await verifySchoolMobile();
   fireEvent.click(screen.getByRole('button', { name: 'Send school verification code' }));
   await screen.findByLabelText('School email verification code');
   fireEvent.click(screen.getByRole('button', { name: 'Change details / request a new code' }));
@@ -129,7 +146,7 @@ test('invalid MFA does not expose the registration form', async () => {
   expect(screen.queryByLabelText('School name')).not.toBeInTheDocument();
 });
 
-test('MFA owner verifies the school email and stays in the owner portal', async () => {
+test('MFA owner must verify both school mobile and email and stays in the owner portal', async () => {
   schoolRegisterRequestOtp.mockResolvedValue({ success: true });
   schoolRegisterVerifyOtp.mockResolvedValue({ success: true, school: { schoolName: 'Test school' } });
   render(<OwnerPortal />);
@@ -139,13 +156,16 @@ test('MFA owner verifies the school email and stays in the owner portal', async 
     ['School name', 'Test school'], ['Branch', 'Main'], ['Location', 'City'],
     ['School email', 'school@example.test'], ['School password', 'school-password'],
   ]) fireEvent.change(screen.getByLabelText(label), { target: { value } });
+  expect(screen.getByRole('button', { name: 'Send school verification code' })).toBeDisabled();
+  await verifySchoolMobile();
+  expect(requestSchoolPhoneCode).toHaveBeenCalledWith({ role: 'school', country: 'IN', phone: '+919876543210' }, 'mfa-token');
   fireEvent.click(screen.getByRole('button', { name: 'Send school verification code' }));
   await screen.findByLabelText('School email verification code');
-  expect(schoolRegisterRequestOtp).toHaveBeenCalledWith(expect.objectContaining({ email: 'school@example.test' }), 'mfa-token');
+  expect(schoolRegisterRequestOtp).toHaveBeenCalledWith(expect.objectContaining({ email: 'school@example.test', phone: '+919876543210', country: 'IN' }), 'mfa-token');
   fireEvent.change(screen.getByLabelText('School email verification code'), { target: { value: '654321' } });
   fireEvent.click(screen.getByRole('button', { name: 'Verify & register school' }));
   await screen.findByText(/Test school was registered successfully/);
-  expect(schoolRegisterVerifyOtp).toHaveBeenCalledWith('school@example.test', '654321', 'mfa-token');
+  expect(schoolRegisterVerifyOtp).toHaveBeenCalledWith('school@example.test', '654321', 'mfa-token', 'school-phone-proof');
   expect(screen.getByRole('button', { name: 'Owner sign out' })).toBeInTheDocument();
   expect(localStorage.getItem('AcademiX.session')).toBeNull();
   // MFA returns expires_in, not expires_at: the elevated session must not expire immediately.

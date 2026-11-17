@@ -4,9 +4,9 @@ import { SupabaseService } from '../supabase.service';
 import { EmailService } from './email.service';
 import { jwtSecret } from './jwt-secret';
 
-type Scope = { schoolId: string; actorId: string };
+type Scope = { schoolId: string; actorId: string; rateLimitActorId?: string };
 type Role = 'teacher' | 'student';
-type EmailInput = { role?: unknown; email?: unknown };
+type EmailInput = { role?: unknown; email?: unknown; accountId?: unknown };
 type Verification = {
   id: string; school_id: string; actor_id: string; role: Role; email: string;
   status: string; code_hash: string; attempts: number; expires_at: string;
@@ -68,7 +68,7 @@ export class RegistrationEmailService {
       this.logger.error('Registration email delivery is not configured.');
       throw new ServiceUnavailableException('Email verification is not configured. Please contact your administrator.');
     }
-    this.limit(`actor:${scope.schoolId}:${scope.actorId}`, 10, 10 * 60000);
+    this.limit(`actor:${scope.schoolId}:${scope.rateLimitActorId || scope.actorId}`, 10, 10 * 60000);
     this.limit(`email:${input.email}`, 3, 10 * 60000);
     this.limit(`cooldown:${scope.schoolId}:${scope.actorId}:${input.email}`, 1, 60000);
     const id = randomUUID();
@@ -78,7 +78,8 @@ export class RegistrationEmailService {
       id, school_id: scope.schoolId, actor_id: scope.actorId, ...input,
       code_hash: this.hash(id, code), expires_at: expiresAt, status: 'sending', attempts: 0,
     }]).select('id'));
-    const text = `Your AcademiX ${input.role} registration verification code is ${code}. It expires in 10 minutes. Share it only with your school's administrator if you requested this registration. Otherwise, ignore this email.`;
+    const purpose = body.accountId ? 'contact update' : 'registration';
+    const text = `Your AcademiX ${input.role} ${purpose} verification code is ${code}. It expires in 10 minutes. Share it only with your school's administrator if you requested this ${purpose}. Otherwise, ignore this email.`;
     let delivery: { ok: boolean; error?: string };
     try {
       delivery = await this.email.sendMail(input.email, 'Your AcademiX registration verification code', `<p>${text}</p>`, text);
@@ -103,7 +104,7 @@ export class RegistrationEmailService {
       || typeof body.code !== 'string' || !/^\d{6}$/.test(body.code)) {
       throw new BadRequestException('Enter the six-digit email verification code.');
     }
-    this.limit(`verify:${scope.schoolId}:${scope.actorId}`, 30, 10 * 60000);
+    this.limit(`verify:${scope.schoolId}:${scope.rateLimitActorId || scope.actorId}`, 30, 10 * 60000);
     const rows = await this.database<Verification[]>(this.db.client.from('registration_email_verifications')
       .select('*').eq('id', body.challengeId).eq('school_id', scope.schoolId).eq('actor_id', scope.actorId)
       .eq('role', input.role).eq('email', input.email).limit(1));

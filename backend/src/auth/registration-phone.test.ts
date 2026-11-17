@@ -8,6 +8,7 @@ import { EmailService } from './email.service';
 import { SchoolController } from '../controllers/school.controller';
 import { StudentAuthService } from './student-auth.service';
 import { LearningScoreService } from '../progress/learning-score.service';
+import { AuthController } from '../controllers/auth.controller';
 
 type Row = Record<string, any>;
 const sid = `VE${'a'.repeat(32)}`;
@@ -28,6 +29,8 @@ function fixture(t: TestContext) {
   t.mock.method(Date, 'now', () => now);
   const rows: Row[] = [];
   const emailRows: Row[] = [];
+  const schoolPhoneRows: Row[] = [];
+  const schools: Row[] = [];
   const sentEmails: Array<{ to: string; code: string }> = [];
   let databaseFailure = false;
   const calls: Array<{ url: string; fields: URLSearchParams }> = [];
@@ -41,8 +44,12 @@ function fixture(t: TestContext) {
   });
   const db: SupabaseService = Object.create(SupabaseService.prototype);
   db.client = { from(table: string) {
-    assert.ok(['registration_phone_verifications', 'registration_email_verifications'].includes(table));
-    const source = table === 'registration_phone_verifications' ? rows : emailRows;
+    const tables: Record<string, Row[]> = {
+      registration_phone_verifications: rows, registration_email_verifications: emailRows,
+      school_registration_phone_verifications: schoolPhoneRows, schools
+    };
+    assert.ok(table in tables);
+    const source = tables[table];
     let insert: Row[] | undefined;
     let patch: Row | undefined;
     const filters: Array<(row: Row) => boolean> = [];
@@ -77,7 +84,7 @@ function fixture(t: TestContext) {
   };
   const emailService = new RegistrationEmailService(db, email);
   return {
-    service, emailService, email, db, rows, emailRows, sentEmails, calls,
+    service, emailService, email, db, rows, emailRows, schoolPhoneRows, schools, sentEmails, calls,
     advance(milliseconds: number) { now += milliseconds; },
     failDatabase() { databaseFailure = true; },
     provider(status: number, result?: unknown) { providerStatus = status; providerResult = result; },
@@ -119,6 +126,184 @@ test('SMS verification normalizes India numbers, checks OTP, and persists one-us
   assert.equal(concurrent.filter((result) => result.status === 'fulfilled').length, 1);
   assert.equal(concurrent.filter((result) => result.status === 'rejected').length, 1);
   assert.equal(f.rows[0].status, 'used');
+});
+
+test('school registration binds both email and SMS to the owner and pending mobile number', async (t) => {
+  const f = fixture(t);
+  const auth = new StudentAuthService(f.db, f.email);
+  const controller = new AuthController(auth, f.service);
+  const req = { owner: { id: 'owner-school-test' } };
+  const details = {
+    schoolName: 'Verified school', branch: 'Main', location: 'City', email: 'dual-school@example.test',
+    password: 'fixture-password', phone: input.phone, country: 'IN'
+  };
+  assert.throws(() => controller.schoolRegister(), /both email and SMS/);
+  await controller.schoolRegisterRequestOtp(req, details);
+  await assert.rejects(controller.schoolRegisterVerifyOtp(req, {
+    email: details.email, otp: f.sentEmails[0].code
+  }), /Verify the mobile number/);
+  assert.equal(f.schools.length, 0);
+
+  f.advance(31000);
+  await controller.schoolRegisterRequestOtp(req, details);
+  const phoneRequest = await controller.requestSchoolPhone(req, input);
+  const phone = await controller.verifySchoolPhone(req, { ...input, challengeId: phoneRequest.challengeId, code: '123456' });
+  assert.equal(f.schoolPhoneRows.length, 1);
+  assert.equal(f.rows.length, 0);
+  const body = { email: details.email, otp: f.sentEmails[1].code, phoneVerificationId: phone.verificationId };
+  assert.equal((await controller.schoolRegisterVerifyOtp({ owner: { id: 'other-owner' } }, body)).success, false);
+  assert.equal((await controller.schoolRegisterVerifyOtp(req, { ...body, otp: 'invalid' })).success, false);
+  assert.equal(f.schools.length, 0);
+  await assert.rejects(f.service.consume(scope, 'teacher', { ...input, phoneVerificationId: phone.verificationId }), /missing, expired or used/);
+  const result = await controller.schoolRegisterVerifyOtp(req, body);
+  assert.equal(result.success, true);
+  assert.equal(f.schools.length, 1);
+  assert.equal(f.schools[0].phone, '+919876543210');
+  assert.equal(f.schoolPhoneRows[0].status, 'used');
+  assert.equal((await controller.schoolRegisterVerifyOtp(req, body)).success, false);
+});
+
+for (const role of ['teacher', 'student'] as const) {
+  test(`${role} edits require each changed contact's account-scoped proof, not a registration or another account's proof`, async (t) => {
+    const f = fixture(t);
+    const auth: StudentAuthService = Object.create(StudentAuthService.prototype);
+    t.mock.method(auth, 'schoolAccountContact', async (schoolId: string, _role: string, id: string) => {
+      if (schoolId !== scope.schoolId || !['account-a', 'account-b'].includes(id)) throw new ForbiddenException();
+      return { phone: '+919123456789', email: 'old@example.test' };
+    });
+    const teacher = t.mock.method(auth, 'updateTeacherBySchool', async (payload: Row) => ({ ok: true, teacher: payload }));
+    const student = t.mock.method(auth, 'updateStudentBySchool', async (payload: Row) => ({ ok: true, student: payload }));
+    const controller = new SchoolController(auth, Object.create(LearningScoreService.prototype), f.service, f.emailService);
+    const req = { user: { sub: scope.actorId, schoolId: scope.schoolId, role: 'school_admin' } };
+    const update = (id: string, body: Row) => role === 'teacher' ? controller.updateTeacher(req, id, body) : controller.updateStudent(req, id, body);
+    const body = { ...input, role, accountId: 'account-a', email: 'person@example.test', gender: 'female', dateOfBirth: '2000-06-15' };
+    await assert.rejects(update('account-a', body), /Verify the mobile number/);
+    const registration = await f.verified(role);
+    await assert.rejects(update('account-a', { ...body, phoneVerificationId: registration.verificationId }), /missing, expired or used/);
+    f.rows.length = 0;
+    f.advance(60001);
+    const request = await controller.requestRegistrationPhone(req, body);
+    const phone = await controller.verifyRegistrationPhone(req, { ...body, challengeId: request.challengeId, code: '123456' });
+    await assert.rejects(update('account-b', { ...body, phoneVerificationId: phone.verificationId }), /missing, expired or used/);
+    await assert.rejects(update('account-a', { ...body, phoneVerificationId: phone.verificationId, dateOfBirth: '2000-02-31' }), /valid date of birth/);
+    assert.equal(f.rows[0].status, 'verified');
+    await assert.rejects(update('account-a', { ...body, phone: undefined, phoneVerificationId: phone.verificationId }), /Verify the email address/);
+    const emailRequest = await controller.requestRegistrationEmail(req, body);
+    const email = await controller.verifyRegistrationEmail(req, { ...body, challengeId: emailRequest.challengeId, code: f.sentEmails[0].code });
+    assert.equal(teacher.mock.callCount() + student.mock.callCount(), 0);
+    const result = await update('account-a', { ...body, phoneVerificationId: phone.verificationId, emailVerificationId: email.verificationId });
+    assert.equal(result.success, true);
+    const spy = role === 'teacher' ? teacher : student;
+    assert.equal(spy.mock.calls[0].arguments[0].phone, '+919876543210');
+    assert.equal(spy.mock.calls[0].arguments[0].email, 'person@example.test');
+    assert.equal(spy.mock.calls[0].arguments[0].gender, 'female');
+    assert.equal(spy.mock.calls[0].arguments[0].dateOfBirth, '2000-06-15');
+    await assert.rejects(update('account-a', { ...body, phoneVerificationId: phone.verificationId, emailVerificationId: email.verificationId }), /used/);
+    await assert.rejects(controller.requestRegistrationPhone(req, { ...body, accountId: 'foreign-account' }), ForbiddenException);
+  });
+}
+
+test('unchanged contacts and personal-only edits require no OTP and reject non-admin callers', async (t) => {
+  const f = fixture(t);
+  const auth: StudentAuthService = Object.create(StudentAuthService.prototype);
+  t.mock.method(auth, 'schoolAccountContact', async () => ({ phone: '+919876543210', email: 'person@example.test' }));
+  const update = t.mock.method(auth, 'updateTeacherBySchool', async (payload: Row) => ({ ok: true, teacher: payload }));
+  const controller = new SchoolController(auth, Object.create(LearningScoreService.prototype), f.service, f.emailService);
+  const req = { user: { sub: scope.actorId, schoolId: scope.schoolId, role: 'school_admin' } };
+  assert.equal((await controller.updateTeacher(req, 'teacher-a', { ...input, email: ' Person@Example.test ', gender: 'other' })).success, true);
+  assert.equal((await controller.updateTeacher(req, 'teacher-a', { dateOfBirth: '1990-02-28' })).success, true);
+  await assert.rejects(controller.updateTeacher({ user: { ...req.user, role: 'student' } }, 'teacher-a', {}), ForbiddenException);
+  assert.equal(update.mock.callCount(), 2);
+  assert.equal(f.calls.length, 0);
+  assert.equal(f.sentEmails.length, 0);
+});
+
+test('profile edits persist and reload for teachers and both student records while retaining class assignment and credentials', async (t) => {
+  const tables: Record<string, Row[]> = {
+    teachers: [{
+      id: 'profile-teacher', school_id: scope.schoolId, name: 'Teacher', subject: 'English', grades: ['Class 7'],
+      email: 'old@example.test', login_id: 'profile-teacher-login', password_salt: 'salt', password_hash: 'hash'
+    }],
+    students: [{ id: 'profile-student', school_id: scope.schoolId, name: 'Student', class_name: 'Class 7' }],
+    student_accounts: [{ student_id: 'profile-student', school_id: scope.schoolId, login_id: 'profile-student-login', password_hash: 'hash' }]
+  };
+  let failure = false;
+  const db: SupabaseService = Object.create(SupabaseService.prototype);
+  db.client = { from(table: string) {
+    assert.ok(table in tables);
+    const filters: Array<(row: Row) => boolean> = [];
+    let patch: Row | undefined;
+    const query = {
+      select() { return query; }, order() { return query; }, range() { return query; }, limit() { return query; },
+      eq(key: string, value: unknown) { filters.push((row) => row[key] === value); return query; },
+      in(key: string, values: unknown[]) { filters.push((row) => values.includes(row[key])); return query; },
+      update(value: Row) { patch = value; return query; },
+      then(resolve: (result: { data: Row[]; error: unknown }) => void) {
+        const rows = tables[table].filter((row) => filters.every((filter) => filter(row)));
+        if (patch && !failure) rows.forEach((row) => Object.assign(row, patch));
+        resolve({ data: rows.map((row) => ({ ...row })), error: failure ? { message: 'fixture database failure' } : null });
+      }
+    };
+    return query;
+  } };
+  const auth = new StudentAuthService(db, Object.create(EmailService.prototype));
+  const remembered: Row[] = [];
+  Reflect.set(auth, 'rememberTeacher', (account: Row) => remembered.push(account));
+  t.mock.method(auth, 'listClassTeachers', async () => [{ id: 'next-class-teacher' }]);
+  const fields = { phone: '+919876543210', email: 'new@example.test', gender: 'female', dateOfBirth: '2000-02-29' };
+  assert.equal((await auth.updateTeacherBySchool({ schoolId: scope.schoolId, teacherId: 'profile-teacher', ...fields })).ok, true);
+  assert.equal((await auth.updateStudentBySchool({ schoolId: scope.schoolId, studentId: 'profile-student', className: 'Class 8', ...fields })).ok, true);
+  for (const row of [tables.teachers[0], tables.students[0], tables.student_accounts[0]]) {
+    assert.equal(row.phone, fields.phone);
+    assert.equal(row.email, fields.email);
+    assert.equal(row.gender, fields.gender);
+    assert.equal(row.date_of_birth, fields.dateOfBirth);
+  }
+  assert.equal(tables.student_accounts[0].password_hash, 'hash');
+  assert.equal(tables.students[0].teacher_id, 'next-class-teacher');
+  assert.equal(tables.student_accounts[0].teacher_id, 'next-class-teacher');
+  assert.equal(remembered[remembered.length - 1].dateOfBirth, fields.dateOfBirth);
+
+  const restarted = new StudentAuthService(db, Object.create(EmailService.prototype));
+  Reflect.set(restarted, 'rememberTeacher', () => undefined);
+  assert.deepEqual(await restarted.schoolAccountContact(scope.schoolId, 'teacher', 'profile-teacher'), { phone: fields.phone, email: fields.email });
+  assert.deepEqual(await restarted.schoolAccountContact(scope.schoolId, 'student', 'profile-student'), { phone: fields.phone, email: fields.email });
+  const teacher = (await restarted.listTeachersBySchool(scope.schoolId)).teachers[0];
+  const student = (await restarted.listStudentsByScope({ schoolId: scope.schoolId })).students[0];
+  assert.equal(teacher.dateOfBirth, fields.dateOfBirth);
+  assert.equal(student.dateOfBirth, fields.dateOfBirth);
+  assert.equal(teacher.gender, fields.gender);
+  assert.equal(student.gender, fields.gender);
+  await assert.rejects(restarted.schoolAccountContact('another-school', 'teacher', 'profile-teacher'), ForbiddenException);
+  await assert.rejects(restarted.schoolAccountContact('another-school', 'student', 'profile-student'), ForbiddenException);
+  for (const invalid of [{ dateOfBirth: '2001-02-29' }, { dateOfBirth: '2999-01-01' }, { gender: 'invalid' }, { phone: '123' }, { email: '' }]) {
+    await assert.rejects(auth.updateTeacherBySchool({ schoolId: scope.schoolId, teacherId: 'profile-teacher', ...invalid }), BadRequestException);
+    await assert.rejects(auth.updateStudentBySchool({ schoolId: scope.schoolId, studentId: 'profile-student', ...invalid }), BadRequestException);
+  }
+  const saved = [process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY];
+  process.env.SUPABASE_URL = 'https://fixture.example.test';
+  process.env.SUPABASE_SERVICE_ROLE_KEY = 'fixture-only-key';
+  t.after(() => ['SUPABASE_URL', 'SUPABASE_SERVICE_ROLE_KEY'].forEach((key, index) => {
+    if (saved[index] === undefined) delete process.env[key]; else process.env[key] = saved[index];
+  }));
+  failure = true;
+  assert.equal((await auth.updateTeacherBySchool({ schoolId: scope.schoolId, teacherId: 'profile-teacher', gender: 'other' })).ok, false);
+  assert.equal((await auth.updateStudentBySchool({ schoolId: scope.schoolId, studentId: 'profile-student', gender: 'other' })).ok, false);
+});
+
+test('account-specific challenges retain the admin-wide SMS and email send limits', async (t) => {
+  const f = fixture(t);
+  for (let i = 0; i < 10; i++) {
+    const editScope = { ...scope, actorId: `account-${i}`, rateLimitActorId: scope.actorId };
+    f.provider(200, { sid: `VE${i.toString(16).padStart(32, '0')}`, status: 'pending' });
+    await f.service.request(editScope, { ...input, phone: `98765432${String(i).padStart(2, '0')}` });
+    await f.emailService.request(editScope, { role: 'teacher', email: `account-${i}@example.test` });
+  }
+  const anotherAccount = { ...scope, actorId: 'another-account', rateLimitActorId: scope.actorId };
+  await assert.rejects(f.service.request(anotherAccount, { ...input, phone: '9876543299' }), /Please wait/);
+  await assert.rejects(f.emailService.request(anotherAccount, { role: 'teacher', email: 'another@example.test' }), /Please wait/);
+  assert.equal(f.calls.length, 10);
+  assert.equal(f.sentEmails.length, 10);
 });
 
 test('country, OTP attempt limits, expiry and resend cooldown are enforced', async (t) => {

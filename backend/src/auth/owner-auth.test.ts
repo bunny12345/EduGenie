@@ -8,6 +8,7 @@ import { AuthController } from '../controllers/auth.controller';
 import { OwnerAuthService } from './owner-auth.service';
 import { OwnerGuard, OwnerIdentityGuard } from './owner.guard';
 import { StudentAuthService } from './student-auth.service';
+import { RegistrationPhoneService } from './registration-phone.service';
 
 function envelope(value: unknown): Record<string, unknown> {
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('Expected a JSON response object');
@@ -54,6 +55,11 @@ test('school registration requires the configured Supabase owner and verified TO
     providers: [
       OwnerGuard, OwnerIdentityGuard,
       { provide: OwnerAuthService, useValue: ownerAuth },
+      { provide: RegistrationPhoneService, useValue: {
+        normalize: () => '+919876543210',
+        request: () => ({ success: true, challengeId: 'school-phone' }),
+        verify: () => ({ success: true, verificationId: 'school-phone' }),
+      } },
       { provide: StudentAuthService, useValue: {
         registerSchool: schoolResult,
         requestSchoolRegistrationOtp: schoolResult,
@@ -72,7 +78,7 @@ test('school registration requires the configured Supabase owner and verified TO
     headers: token ? { Authorization: `Bearer ${token}` } : {},
   });
 
-  for (const path of ['school/register', 'school/register/request-otp', 'school/register/verify-otp']) {
+  for (const path of ['school/register', 'school/register/request-otp', 'school/register/verify-otp', 'school/register/phone/request', 'school/register/phone/verify']) {
     await t.test(`${path} denies missing, forged, non-owner and non-MFA tokens`, async () => {
       for (const [token, expected] of [
         [undefined, 401], ['forged-token', 401], [otherUser, 403],
@@ -95,14 +101,15 @@ test('school registration requires the configured Supabase owner and verified TO
     assert.equal((await request('owner/access', otherUser, 'GET')).status, 403);
   });
   await t.test('MFA owner can register without receiving a school login token', async () => {
-    for (const path of ['school/register', 'school/register/request-otp', 'school/register/verify-otp']) {
+    assert.equal((await request('school/register', ownerMfa)).status, 400);
+    for (const path of ['school/register/request-otp', 'school/register/verify-otp', 'school/register/phone/request', 'school/register/phone/verify']) {
       const response = await request(path, ownerMfa);
       assert.equal(response.status, 201);
       const body = envelope(await response.json());
       assert.equal(body.success, true);
       assert.equal(body.token, undefined);
     }
-    assert.equal(registrations, 3);
+    assert.equal(registrations, 2);
   });
   await t.test('school login remains public and still returns its token', async () => {
     const response = await request('school/login');

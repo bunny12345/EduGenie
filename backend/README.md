@@ -123,6 +123,51 @@ Validate without SMS/email/database access:
 and `npx tsc --noEmit`. Tests mock all provider and storage operations; real
 delivery still needs deployment configuration and live recipient checks.
 
+### School mobile registration and verified profile editing
+
+Apply `db/migrations/20261117_school_phone_and_profile_fields.sql` before deploying
+these changes (after the existing contact-verification migrations). It adds the
+approved nullable `schools.phone`, `teachers.date_of_birth`, and gender columns on
+`teachers`, `students`, and `student_accounts`. It also creates a separate
+service-role-only `school_registration_phone_verifications` table. Existing rows
+and RLS policies are unchanged. No production migration is run automatically.
+
+Owner school registration now requires **both email and SMS verification**.
+India is the default country; other countries are supported. All school
+registration endpoints still require the configured owner with TOTP MFA:
+
+- `POST /auth/school/register/phone/request`: `{country, phone}`.
+- `POST /auth/school/register/phone/verify`: `{country, phone, challengeId, code}`.
+- `POST /auth/school/register/request-otp`: existing school details plus
+  `{country, phone}`; sends the school email code and binds the pending details
+  and mobile number to the authenticated owner.
+- `POST /auth/school/register/verify-otp`: `{email, otp, phoneVerificationId}`;
+  consumes the matching owner's one-use SMS proof before creating the school.
+  The unchecked `/auth/school/register` endpoint now rejects requests and directs
+  callers to this verified flow; it cannot bypass either verification.
+
+The existing SMTP and Twilio settings are reused; both must be configured for
+school registration. School email OTPs retain the existing in-process storage:
+request a new email code after a backend restart, and route both email steps to
+the same replica. If creation fails after verification starts, request a new
+email code; if the SMS proof was consumed or expired, verify the number again.
+Existing school login and teacher/student registration's either-channel rule
+remain unchanged.
+
+School admins can edit phone, email, gender and date of birth through the
+existing teacher/student PATCH endpoints. Each **changed** contact requires its
+own new OTP; unchanged contacts and personal-only edits do not need OTP. Include
+`accountId` in the existing `/school/registration/{phone|email}/{request|verify}`
+requests when editing. These proofs are bound to school, acting admin, role,
+specific account and contact, and cannot authorize registration or another
+account's edit. Send changed `phone`/`country`/`phoneVerificationId` and/or
+`email`/`emailVerificationId` in the PATCH payload. Contact removal is rejected.
+Omitted profile fields retain their existing values, including for legacy
+accounts with no contact or DOB. DOB changes must be real, nonfuture ISO dates.
+Gender supports `male`, `female`, `other`, or an empty unspecified value.
+Updates preserve login credentials, teacher subject/grade rules and student
+class reassignment; student profile updates are mirrored to both student tables.
+
 ### Mock test answer options
 
 When teachers add a question (`POST /tests/:testId/questions`), the backend

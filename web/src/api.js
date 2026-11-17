@@ -121,7 +121,9 @@ export const setSchoolEnquiryStatus = (id, status, token) =>
   enquiryRequest(`/owner/support/enquiries/${encodeURIComponent(id)}/status`, { token, owner: true, body: { status } });
 export const schoolRegister = (payload, token) => ownerRequest('school/register', token, payload);
 export const schoolRegisterRequestOtp = (payload, token) => ownerRequest('school/register/request-otp', token, payload);
-export const schoolRegisterVerifyOtp = (email, otp, token) => ownerRequest('school/register/verify-otp', token, { email, otp });
+export const schoolRegisterVerifyOtp = (email, otp, token, phoneVerificationId) => ownerRequest('school/register/verify-otp', token, { email, otp, phoneVerificationId });
+export const requestSchoolPhoneCode = (payload, token) => ownerRequest('school/register/phone/request', token, payload);
+export const verifySchoolPhoneCode = (payload, token) => ownerRequest('school/register/phone/verify', token, payload);
 
 async function supportRequest(path, { token, body, signal } = {}) {
   const headers = token ? { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' } : await authHeaders();
@@ -1043,9 +1045,9 @@ export async function getSchoolStudentReportCards(studentId) {
   return getJsonChecked(`${API_BASE}/school/students/${encodeURIComponent(studentId)}/report-cards`, 'getSchoolStudentReportCards');
 }
 
-async function schoolRegistrationRequest(path, payload) {
+async function schoolRegistrationRequest(path, payload, method = 'POST') {
   const res = await fetch(`${API_BASE}/school/${path}`, {
-    method: 'POST',
+    method,
     headers: await authHeaders(),
     body: JSON.stringify(payload || {})
   });
@@ -1098,14 +1100,7 @@ export async function schoolInviteTeacher(payload) {
 }
 
 export async function schoolUpdateTeacher(teacherId, payload) {
-  const headers = await authHeaders();
-  const url = `${API_BASE}/school/teachers/${encodeURIComponent(teacherId)}`;
-  const res = await fetch(url, {
-    method: 'PATCH',
-    headers,
-    body: JSON.stringify(payload || {})
-  });
-  return res.json();
+  return schoolRegistrationRequest(`teachers/${encodeURIComponent(teacherId)}`, payload, 'PATCH');
 }
 
 export async function schoolResetTeacherPassword(teacherId, password) {
@@ -1149,14 +1144,7 @@ export async function schoolRegisterStudent(payload) {
 }
 
 export async function schoolUpdateStudent(studentId, payload) {
-  const headers = await authHeaders();
-  const url = `${API_BASE}/school/students/${encodeURIComponent(studentId)}`;
-  const res = await fetch(url, {
-    method: 'PATCH',
-    headers,
-    body: JSON.stringify(payload || {})
-  });
-  return res.json();
+  return schoolRegistrationRequest(`students/${encodeURIComponent(studentId)}`, payload, 'PATCH');
 }
 
 export async function schoolResetStudentPassword(studentId, password) {

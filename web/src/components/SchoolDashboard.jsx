@@ -1,5 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { getCountries, getCountryCallingCode, parsePhoneNumberFromString } from 'libphonenumber-js/max';
+import RegistrationContactField, {
+  EMPTY_REGISTRATION_PHONE, EMPTY_REGISTRATION_EMAIL, registrationPhoneNumber,
+  isRegistrationVerified, phoneFieldValue
+} from './RegistrationContactField';
 import SupportBubble from './SupportBubble';
 import StudentProgress from './StudentProgress';
 import StudentReportCard from './StudentReportCard';
@@ -18,10 +21,6 @@ import {
   schoolDeleteStudent,
   schoolRegisterStudent,
   schoolRegisterTeacher,
-  requestRegistrationPhoneCode,
-  verifyRegistrationPhoneCode,
-  requestRegistrationEmailCode,
-  verifyRegistrationEmailCode,
   schoolResetStudentPassword,
   schoolStudents,
   schoolTeachers,
@@ -46,156 +45,68 @@ function shortDate(value) {
 }
 
 const GRADE_OPTIONS = [5, 6, 7, 8, 9, 10, 11, 12];
-const countryNames = new Intl.DisplayNames(['en'], { type: 'region' });
-const PHONE_COUNTRIES = getCountries().map((country) => ({
-  country, name: countryNames.of(country), code: getCountryCallingCode(country)
-})).sort((a, b) => a.name.localeCompare(b.name));
-const EMPTY_REGISTRATION_PHONE = { country: 'IN', number: '', phone: '', verificationId: '', expiresAt: '' };
-const EMPTY_REGISTRATION_EMAIL = { number: '', email: '', verificationId: '', expiresAt: '' };
-
-function registrationPhoneNumber(value) {
-  const phone = /^[0-9 ()-]+$/.test(value.number)
-    ? parsePhoneNumberFromString(value.number, { defaultCountry: value.country, extract: false }) : null;
-  const type = phone?.getType();
-  return phone?.isValid() && phone.country === value.country && (type === 'MOBILE' || type === 'FIXED_LINE_OR_MOBILE') ? phone.number : '';
+function profileEditForm(account = {}) {
+  const phone = phoneFieldValue(account.phone);
+  const email = String(account.email || '').trim().toLowerCase();
+  return {
+    phone, email: { ...EMPTY_REGISTRATION_EMAIL, number: email },
+    originalPhone: registrationPhoneNumber(phone) || account.phone || '', originalEmail: email,
+    gender: account.gender || '', dateOfBirth: account.dateOfBirth || '',
+    originalDob: account.dateOfBirth || ''
+  };
 }
 
-function isRegistrationVerified(value) {
-  return !!value.verificationId && Date.parse(value.expiresAt) > Date.now();
+function phoneChanged(form) {
+  return registrationPhoneNumber(form.phone) !== form.originalPhone || (!!form.phone.number.trim() && !registrationPhoneNumber(form.phone));
 }
 
-function RegistrationContactField({ role, channel = 'phone', value, onChange, disabled }) {
-  const isEmail = channel === 'email';
-  const method = isEmail ? 'email' : 'SMS';
-  const contactLabel = isEmail ? 'Email' : 'Mobile';
+function emailChanged(form) {
+  return form.email.number.trim().toLowerCase() !== form.originalEmail;
+}
+
+function profileContactsReady(form) {
+  return (!phoneChanged(form) || isRegistrationVerified(form.phone)) && (!emailChanged(form) || isRegistrationVerified(form.email));
+}
+
+function profileEditPayload(form) {
+  if (!profileContactsReady(form)) throw new Error('Verify each changed mobile number and email address before saving.');
+  return {
+    gender: form.gender,
+    ...(form.dateOfBirth !== form.originalDob ? { dateOfBirth: form.dateOfBirth } : {}),
+    ...(phoneChanged(form) ? { phone: registrationPhoneNumber(form.phone), country: form.phone.country, phoneVerificationId: form.phone.verificationId } : {}),
+    ...(emailChanged(form) ? { email: form.email.number.trim().toLowerCase(), emailVerificationId: form.email.verificationId } : {})
+  };
+}
+
+function clearEditProofs(form) {
+  return { ...form, phone: { ...form.phone, verificationId: '', expiresAt: '' }, email: { ...form.email, verificationId: '', expiresAt: '' } };
+}
+
+function ProfileEditFields({ role, accountId, form, setForm, disabled }) {
   const label = role === 'teacher' ? 'Teacher' : 'Student';
-  const [challenge, setChallenge] = useState('');
-  const [code, setCode] = useState('');
-  const [error, setError] = useState('');
-  const [busy, setBusy] = useState('');
-  const [resendAt, setResendAt] = useState(0);
-  const [now, setNow] = useState(Date.now);
-  const operation = useRef(0);
-  const verified = !!value.verificationId && Date.parse(value.expiresAt) > now;
-  const resendSeconds = Math.max(0, Math.ceil((resendAt - now) / 1000));
-
-  useEffect(() => () => { operation.current += 1; }, []);
-  useEffect(() => {
-    if (!value.number) {
-      operation.current += 1;
-      setChallenge('');
-      setCode('');
-      setError('');
-      setResendAt(0);
-    }
-  }, [value.number]);
-  useEffect(() => {
-    if (disabled) {
-      operation.current += 1;
-      setBusy('');
-    }
-  }, [disabled]);
-  useEffect(() => {
-    if (!challenge && !value.verificationId) return undefined;
-    const timer = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(timer);
-  }, [challenge, value.verificationId]);
-  useEffect(() => {
-    if (value.verificationId && Date.parse(value.expiresAt) <= now) {
-      onChange({ ...value, verificationId: '', expiresAt: '' });
-      setChallenge('');
-      setError(`${contactLabel} verification expired. Please request a new code.`);
-    }
-  }, [now, value, onChange, contactLabel]);
-
-  function change(patch) {
-    operation.current += 1;
-    onChange({ ...value, ...patch, ...(isEmail ? { email: '' } : { phone: '' }), verificationId: '', expiresAt: '' });
-    setChallenge('');
-    setCode('');
-    setError('');
-    setResendAt(0);
-    setBusy('');
-  }
-
-  async function sendCode() {
-    const phone = isEmail ? '' : registrationPhoneNumber(value);
-    const email = value.number.trim().toLowerCase();
-    if (isEmail && (email.length > 254 || !/^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/.test(email))) {
-      setError('Enter a valid email address.');
-      return;
-    }
-    if (!isEmail && !phone) {
-      setError('Enter a valid mobile number for the selected country, without the country code.');
-      return;
-    }
-    const request = ++operation.current;
-    setBusy('send');
-    setError('');
-    try {
-      const result = isEmail
-        ? await requestRegistrationEmailCode({ role, email })
-        : await requestRegistrationPhoneCode({ role, country: value.country, phone });
-      if (request !== operation.current) return;
-      setChallenge(result.challengeId);
-      setCode('');
-      setNow(Date.now());
-      setResendAt(Date.now() + result.resendAfter * 1000);
-    } catch (e) {
-      if (request === operation.current) setError(e.message || `Could not send an ${method} code. Please try again.`);
-    } finally { if (request === operation.current) setBusy(''); }
-  }
-
-  async function verifyCode() {
-    if (!/^\d{6}$/.test(code.trim())) { setError(`Enter the six-digit ${method} verification code.`); return; }
-    const request = ++operation.current;
-    setBusy('verify');
-    setError('');
-    try {
-      const result = isEmail
-        ? await verifyRegistrationEmailCode({ role, email: value.number.trim().toLowerCase(), challengeId: challenge, code: code.trim() })
-        : await verifyRegistrationPhoneCode({ role, country: value.country, phone: registrationPhoneNumber(value), challengeId: challenge, code: code.trim() });
-      if (request !== operation.current) return;
-      onChange({ ...value, ...(isEmail ? { email: result.email } : { phone: result.phone }), verificationId: result.verificationId, expiresAt: result.expiresAt });
-      setCode('');
-      setNow(Date.now());
-    } catch (e) {
-      if (request === operation.current) setError(e.message || `Could not verify the ${method} code. Please try again.`);
-    } finally { if (request === operation.current) setBusy(''); }
-  }
-
-  return <fieldset className="sd-phone-verification" disabled={disabled || !!busy}>
-    <legend>{isEmail ? role === 'student' ? 'Email Address (optional)' : 'Email address' : 'Mobile number'}
-      {!isEmail || role === 'teacher' ? <span className="sd-phone-required">Required</span> : null}
-    </legend>
-    {isEmail ? <label className="sd-field-label" htmlFor={`${role}-email-address`}>Email address
-      <input id={`${role}-email-address`} aria-label={`${label} email address`} type="email" autoComplete="email" required={role === 'teacher'}
-        value={value.number} onChange={(e) => change({ number: e.target.value })} placeholder={role === 'teacher' ? 'Teacher email' : 'Email address'} />
-    </label> : <div className="sd-phone-inputs">
-      <label className="sd-field-label" htmlFor={`${role}-phone-country`}>Country code
-        <select id={`${role}-phone-country`} aria-label={`${label} country code`} value={value.country} onChange={(e) => change({ country: e.target.value })}>
-          {PHONE_COUNTRIES.map(({ country, name, code: callingCode }) => <option key={country} value={country}>{name} (+{callingCode})</option>)}
+  return <fieldset className="sd-profile-edit-fields" disabled={disabled}>
+    <legend>Contact & personal details</legend>
+    <p className="sd-phone-help">Each changed contact needs its own verification code. Unchanged contacts do not need verification.</p>
+    <div className="sd-profile-edit-grid">
+      <RegistrationContactField key={`${accountId}-phone`} role={role} accountId={accountId} value={form.phone}
+        onChange={(phone) => setForm((value) => ({ ...value, phone }))} disabled={disabled}
+        required={!!form.originalPhone || !!form.phone.number}
+        verificationMode={phoneChanged(form) ? 'required' : 'unchanged'} />
+      <RegistrationContactField key={`${accountId}-email`} role={role} accountId={accountId} channel="email" value={form.email}
+        onChange={(email) => setForm((value) => ({ ...value, email }))} disabled={disabled}
+        required={!!form.originalEmail || !!form.email.number}
+        verificationMode={emailChanged(form) ? 'required' : 'unchanged'} />
+      <label className="sd-field-label">{label} gender
+        <select value={form.gender} onChange={(e) => setForm((value) => ({ ...value, gender: e.target.value }))}>
+          <option value="">Not specified</option>
+          <option value="male">Male</option><option value="female">Female</option><option value="other">Other</option>
         </select>
       </label>
-      <label className="sd-field-label" htmlFor={`${role}-phone-number`}>Mobile number
-        <input id={`${role}-phone-number`} aria-label={`${label} mobile number`} type="tel" inputMode="tel" autoComplete="tel-national" required
-          value={value.number} onChange={(e) => change({ number: e.target.value })} placeholder="Mobile number" />
+      <label className="sd-field-label">{label} date of birth
+        <input type="date" max={new Date().toISOString().slice(0, 10)} value={form.dateOfBirth}
+          onChange={(e) => setForm((value) => ({ ...value, dateOfBirth: e.target.value }))} />
       </label>
-    </div>}
-    {verified ? <p className="sd-phone-verified" role="status">Verified {isEmail ? value.email : value.phone}</p> : <>
-      <p className="sd-phone-help">{!isEmail && role === 'student' ? 'Use a parent or guardian mobile number. ' : ''}Verify by {method}, or verify your {isEmail ? 'mobile number' : 'email address'} instead.</p>
-      <button type="button" className="sd-phone-send" disabled={!value.number.trim() || !!busy || resendSeconds > 0} onClick={sendCode}>
-        {busy === 'send' ? 'Sending code...' : resendSeconds > 0 ? `Resend in ${resendSeconds}s` : challenge ? `Resend ${method} code` : `Send ${method} code`}
-      </button>
-      {challenge ? <div className="sd-phone-code">
-        <label className="sd-field-label" htmlFor={`${role}-${channel}-code`}>{isEmail ? 'Email' : 'SMS'} verification code
-          <input id={`${role}-${channel}-code`} inputMode="numeric" autoComplete="one-time-code" value={code}
-            onChange={(e) => setCode(e.target.value)} placeholder="6-digit code" />
-        </label>
-        <button type="button" disabled={!!busy || !code.trim()} onClick={verifyCode}>{busy === 'verify' ? 'Verifying...' : isEmail ? 'Verify email' : 'Verify number'}</button>
-      </div> : null}
-    </>}
-    {error ? <p className="sd-phone-error" role="alert">{error}</p> : null}
+    </div>
   </fieldset>;
 }
 
@@ -306,7 +217,7 @@ export default function SchoolDashboard({ session, onLogout }) {
   const [teacherTotalPages, setTeacherTotalPages] = useState(1);
   // Teacher management (edit / reset password / delete)
   const [editingTeacherId, setEditingTeacherId] = useState('');
-  const [editTeacherForm, setEditTeacherForm] = useState({ name: '', email: '', subject: '', grades: [] });
+  const [editTeacherForm, setEditTeacherForm] = useState(() => ({ name: '', subject: '', grades: [], ...profileEditForm() }));
   const [resetTeacher, setResetTeacher] = useState(null);
   const [resetPasswordValue, setResetPasswordValue] = useState('');
   const [deleteTeacher, setDeleteTeacher] = useState(null);
@@ -331,7 +242,7 @@ export default function SchoolDashboard({ session, onLogout }) {
   const [createdStudent, setCreatedStudent] = useState(null);
   // Student management (edit / reset password / delete) — mirrors the teacher list.
   const [editingStudentId, setEditingStudentId] = useState('');
-  const [editStudentForm, setEditStudentForm] = useState({ name: '', className: '' });
+  const [editStudentForm, setEditStudentForm] = useState(() => ({ name: '', className: '', ...profileEditForm() }));
   const [resetStudent, setResetStudent] = useState(null);
   const [resetStudentPasswordValue, setResetStudentPasswordValue] = useState('');
   const [deleteStudent, setDeleteStudent] = useState(null);
@@ -1155,8 +1066,8 @@ export default function SchoolDashboard({ session, onLogout }) {
     setTeacherActionNote('');
     setEditingTeacherId(t.id || t.loginId || '');
     setEditTeacherForm({
+      ...profileEditForm(t),
       name: t.name || '',
-      email: t.email || '',
       subject: t.subject || '',
       grades: (Array.isArray(t.grades) ? t.grades : [])
         .map((g) => parseInt(String(g).replace(/\D/g, ''), 10))
@@ -1183,11 +1094,12 @@ export default function SchoolDashboard({ session, onLogout }) {
     try {
       const res = await schoolUpdateTeacher(teacherId, {
         name: editTeacherForm.name,
-        email: editTeacherForm.email,
+        ...profileEditPayload(editTeacherForm),
         subject: editTeacherForm.subject,
         grades: editTeacherForm.grades.map((g) => `Class ${g}`)
       });
       if (!res?.success) {
+        setEditTeacherForm(clearEditProofs);
         setTeacherActionNote(res?.error || 'Could not update teacher.');
         return;
       }
@@ -1195,7 +1107,8 @@ export default function SchoolDashboard({ session, onLogout }) {
       await loadTeachers({ q: teacherSearch, page: teacherPage, limit: TEACHERS_PER_PAGE });
       setNote('Teacher details updated.');
     } catch (e2) {
-      setTeacherActionNote('Unable to update teacher right now.');
+      setEditTeacherForm(clearEditProofs);
+      setTeacherActionNote(`${e2?.message || 'Unable to update teacher right now.'} Verify changed contacts again before retrying.`);
     } finally {
       setTeacherActionBusy('');
     }
@@ -1347,7 +1260,7 @@ export default function SchoolDashboard({ session, onLogout }) {
   function startEditStudent(s) {
     setStudentActionNote('');
     setEditingStudentId(s.id || '');
-    setEditStudentForm({ name: s.name || '', className: s.className || '' });
+    setEditStudentForm({ name: s.name || '', className: s.className || '', ...profileEditForm(s) });
   }
 
   function cancelEditStudent() {
@@ -1369,9 +1282,11 @@ export default function SchoolDashboard({ session, onLogout }) {
     try {
       const res = await schoolUpdateStudent(studentId, {
         name: editStudentForm.name,
-        className: editStudentForm.className
+        className: editStudentForm.className,
+        ...profileEditPayload(editStudentForm)
       });
       if (!res?.success) {
+        setEditStudentForm(clearEditProofs);
         setStudentActionNote(res?.error || 'Could not update student.');
         return;
       }
@@ -1379,7 +1294,8 @@ export default function SchoolDashboard({ session, onLogout }) {
       await refreshStudentsSection();
       setNote('Student details updated.');
     } catch (e2) {
-      setStudentActionNote('Unable to update student right now.');
+      setEditStudentForm(clearEditProofs);
+      setStudentActionNote(`${e2?.message || 'Unable to update student right now.'} Verify changed contacts again before retrying.`);
     } finally {
       setStudentActionBusy('');
     }
@@ -2278,11 +2194,6 @@ export default function SchoolDashboard({ session, onLogout }) {
                         placeholder="Teacher name"
                       />
                       <input
-                        value={editTeacherForm.email}
-                        onChange={(e) => setEditTeacherForm((f) => ({ ...f, email: e.target.value }))}
-                        placeholder="Teacher email"
-                      />
-                      <input
                         value={editTeacherForm.subject}
                         onChange={(e) => setEditTeacherForm((f) => ({ ...f, subject: e.target.value }))}
                         placeholder="Subject"
@@ -2292,13 +2203,15 @@ export default function SchoolDashboard({ session, onLogout }) {
                         onChange={(grades) => setEditTeacherForm((f) => ({ ...f, grades }))}
                         disabled={teacherActionBusy === `edit-${tid}`}
                       />
+                      <ProfileEditFields role="teacher" accountId={tid} form={editTeacherForm} setForm={setEditTeacherForm}
+                        disabled={teacherActionBusy === `edit-${tid}`} />
                       {teacherActionNote ? <p className="sd-teacher-action-note">{teacherActionNote}</p> : null}
                       <div className="sd-teacher-edit-actions">
                         <button
                           type="button"
                           className="sd-inline-btn primary"
                           onClick={() => onSaveTeacherEdit(tid)}
-                          disabled={teacherActionBusy === `edit-${tid}`}
+                          disabled={teacherActionBusy === `edit-${tid}` || !profileContactsReady(editTeacherForm)}
                         >
                           {teacherActionBusy === `edit-${tid}` ? 'Saving...' : 'Save'}
                         </button>
@@ -2486,13 +2399,15 @@ export default function SchoolDashboard({ session, onLogout }) {
                           <option key={cls} value={cls}>{cls}</option>
                         ))}
                       </select>
+                      <ProfileEditFields role="student" accountId={sid} form={editStudentForm} setForm={setEditStudentForm}
+                        disabled={studentActionBusy === `edit-${sid}`} />
                       {studentActionNote ? <p className="sd-teacher-action-note">{studentActionNote}</p> : null}
                       <div className="sd-teacher-edit-actions">
                         <button
                           type="button"
                           className="sd-inline-btn primary"
                           onClick={() => onSaveStudentEdit(sid)}
-                          disabled={studentActionBusy === `edit-${sid}`}
+                          disabled={studentActionBusy === `edit-${sid}` || !profileContactsReady(editStudentForm)}
                         >
                           {studentActionBusy === `edit-${sid}` ? 'Saving...' : 'Save'}
                         </button>
