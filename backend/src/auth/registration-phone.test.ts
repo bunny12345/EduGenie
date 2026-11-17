@@ -486,9 +486,14 @@ test('manual registration requires verified phone for both roles and a real, non
   assert.equal(teacher.mock.callCount(), 0);
   assert.equal(student.mock.callCount(), 0);
   const verified = await f.verified();
-  const result = await controller.registerTeacher(req, { ...body, phoneVerificationId: verified.verificationId });
+  for (const dateOfBirth of ['2020-02-31', '2099-01-01', 'not-a-date']) {
+    await assert.rejects(controller.registerTeacher(req, { ...body, dateOfBirth, phoneVerificationId: verified.verificationId }), /valid date of birth/);
+  }
+  assert.equal(f.rows[0].status, 'verified');
+  const result = await controller.registerTeacher(req, { ...body, dateOfBirth: '1988-02-29', phoneVerificationId: verified.verificationId });
   assert.equal(result.success, true);
   assert.equal(teacher.mock.calls[0].arguments[0].phone, '+919876543210');
+  assert.equal(teacher.mock.calls[0].arguments[0].dateOfBirth, '1988-02-29');
   await assert.rejects(controller.registerTeacher(req, { ...body, phoneVerificationId: verified.verificationId }), /used/);
   assert.equal(teacher.mock.callCount(), 1);
 });
@@ -509,7 +514,7 @@ test('student registration passes the verified international number and required
   assert.equal(student.mock.calls[0].arguments[0].dateOfBirth, '2014-06-15');
 });
 
-test('teacher creation saves the verified phone in both the account fallback and database row', async () => {
+test('teacher creation validates and saves the phone and optional DOB in the account fallback and database row', async () => {
   const inserted: Row[] = [];
   let remembered: Row | undefined;
   const db: SupabaseService = Object.create(SupabaseService.prototype);
@@ -521,14 +526,22 @@ test('teacher creation saves the verified phone in both the account fallback and
   Reflect.set(auth, 'db', db);
   Reflect.set(auth, 'rememberTeacher', (account: Row) => { remembered = account; });
   Reflect.set(auth, 'ensureTeacherRowInDb', async () => true);
-  const result = await auth.registerTeacherBySchool({
+  const payload = {
     schoolId: 'school-fixture', name: 'Test Teacher', email: 'teacher@example.test',
     loginId: 'phone-persistence-fixture', password: 'fixture-password', phone: '+919876543210', grades: ['Class 7'],
-  });
+  };
+  for (const dateOfBirth of ['2001-02-29', '2999-01-01']) {
+    await assert.rejects(auth.registerTeacherBySchool({ ...payload, dateOfBirth }), /valid date of birth/);
+  }
+  assert.equal(inserted.length, 0);
+  const result = await auth.registerTeacherBySchool({ ...payload, dateOfBirth: '1988-02-29' });
   assert.equal(result.ok, true);
   assert.equal(result.teacher?.phone, '+919876543210');
   assert.equal(remembered?.phone, '+919876543210');
   assert.equal(inserted[0].phone, '+919876543210');
+  assert.equal(result.teacher?.dateOfBirth, '1988-02-29');
+  assert.equal(remembered?.dateOfBirth, '1988-02-29');
+  assert.equal(inserted[0].date_of_birth, '1988-02-29');
 });
 
 test('email OTPs are scoped, hashed, checked and atomically consumed across service instances', async (t) => {

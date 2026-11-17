@@ -299,6 +299,9 @@ export class SchoolController {
   async registerTeacher(@Req() req: any, @Body() body: any) {
     this.ensureSchoolAdmin(req);
     const schoolId = req?.user?.schoolId || req?.user?.sub;
+    const { dateOfBirth } = normalizeProfileFields({
+      dateOfBirth: body?.dateOfBirth === '' ? undefined : body?.dateOfBirth ?? undefined
+    });
     const { phone, email } = await this.registrationContact(req, 'teacher', body);
     const res = await this.authFlow.registerTeacherBySchool({
       schoolId,
@@ -308,6 +311,7 @@ export class SchoolController {
       loginId: body?.loginId,
       password: body?.password,
       gender: body?.gender || null,
+      dateOfBirth,
       phone,
       grades: body?.grades,
       createdBy: req?.user?.sub || null

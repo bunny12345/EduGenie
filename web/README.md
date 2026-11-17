@@ -44,6 +44,11 @@ Run `CI=true npm test -- --watchAll=false --runInBand src/components/SchoolDashb
 
 ### School mobile verification and account editing
 
+Manual Teacher Registration includes an optional **Date of Birth** field.
+The saved date is prefilled in **Edit teacher**, where it can be updated.
+Future or invalid dates are rejected; leaving it blank during registration
+preserves the existing registration behavior.
+
 The private owner **Register a school** form requires both a verified mobile
 number and school email. Select a country (India is the default), verify the
 mobile by SMS, then send and enter the school email code to create the account.

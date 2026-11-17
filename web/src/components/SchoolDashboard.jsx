@@ -193,6 +193,7 @@ export default function SchoolDashboard({ session, onLogout }) {
   const [teacherPassword, setTeacherPassword] = useState('');
   const [teacherGrades, setTeacherGrades] = useState([]);
   const [teacherGender, setTeacherGender] = useState('');
+  const [teacherDob, setTeacherDob] = useState('');
   const [teacherPhone, setTeacherPhone] = useState(EMPTY_REGISTRATION_PHONE);
   const [note, setNote] = useState('');
   const [busy, setBusy] = useState('');
@@ -1020,6 +1021,7 @@ export default function SchoolDashboard({ session, onLogout }) {
         loginId: teacherLoginId,
         password: teacherPassword,
         gender: teacherGender || undefined,
+        dateOfBirth: teacherDob || undefined,
         phone,
         country: teacherPhone.country,
         ...(isRegistrationVerified(teacherEmail) ? { emailVerificationId: teacherEmail.verificationId } : { phoneVerificationId: teacherPhone.verificationId }),
@@ -1051,6 +1053,7 @@ export default function SchoolDashboard({ session, onLogout }) {
       setTeacherPassword('');
       setTeacherGrades([]);
       setTeacherGender('');
+      setTeacherDob('');
       setTeacherPhone(EMPTY_REGISTRATION_PHONE);
       setNote('Teacher account created. Share login credentials manually.');
     } catch (e2) {
@@ -2112,6 +2115,10 @@ export default function SchoolDashboard({ session, onLogout }) {
               <option value="female">Female</option>
               <option value="other">Other</option>
             </select>
+            <label className="sd-field-label" htmlFor="school-teacher-dob">Date of Birth (optional)</label>
+            <input id="school-teacher-dob" type="date" value={teacherDob}
+              max={new Date().toISOString().slice(0, 10)} onChange={(e) => setTeacherDob(e.target.value)}
+              disabled={busy === 'manual'} />
             <input required value={teacherLoginId} onChange={(e) => setTeacherLoginId(e.target.value)} placeholder="Teacher login ID" />
             <input required minLength={8} type="password" value={teacherPassword} onChange={(e) => setTeacherPassword(e.target.value)} placeholder="Strong password" />
             <label className="sd-field-label">Classes (grades this teacher handles)</label>

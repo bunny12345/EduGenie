@@ -170,7 +170,11 @@ test('legacy accounts can update personal details without adding or verifying ab
 
 test('teacher registration defaults to India and requires successful SMS verification before saving', async () => {
   window.location.hash = '#teachers';
-  schoolRegisterTeacher.mockResolvedValue({ success: true, teacher: { id: 'new-teacher', name: 'Teacher', phone: '+919876543210' } });
+  schoolRegisterTeacher.mockImplementation(async (payload) => {
+    const teacher = { id: 'new-teacher', ...payload };
+    schoolTeachers.mockResolvedValue({ teachers: [teacher], pagination: null });
+    return { success: true, teacher };
+  });
   render(<SchoolDashboard session={session} onLogout={jest.fn()} />);
   const country = await screen.findByLabelText('Teacher country code');
   const phone = screen.getByLabelText('Teacher mobile number');
@@ -203,15 +207,21 @@ test('teacher registration defaults to India and requires successful SMS verific
   fireEvent.change(screen.getByPlaceholderText('Teacher email'), { target: { value: 'teacher@example.test' } });
   fireEvent.change(screen.getByPlaceholderText('Teacher login ID'), { target: { value: 'teacher-test' } });
   fireEvent.change(screen.getByPlaceholderText('Strong password'), { target: { value: 'fixture-password' } });
+  const dob = screen.getByLabelText('Date of Birth (optional)');
+  expect(dob).not.toBeRequired();
+  fireEvent.change(dob, { target: { value: '1988-02-29' } });
   fireEvent.click(screen.getByRole('button', { name: 'Select classes this teacher handles' }));
   fireEvent.click(screen.getByRole('checkbox', { name: 'Class 7' }));
   fireEvent.click(create);
   await waitFor(() => expect(schoolRegisterTeacher).toHaveBeenCalledWith(expect.objectContaining({
-    phone: '+919876543210', country: 'IN', phoneVerificationId: 'phone-proof'
+    phone: '+919876543210', country: 'IN', phoneVerificationId: 'phone-proof', dateOfBirth: '1988-02-29'
   })));
   await waitFor(() => expect(phone).toHaveValue(''));
   expect(create).toBeDisabled();
   await waitFor(() => expect(screen.queryByLabelText('SMS verification code')).not.toBeInTheDocument());
+  expect(dob).toHaveValue('');
+  fireEvent.click(await screen.findByTitle('Edit teacher'));
+  expect(screen.getByLabelText('Teacher date of birth')).toHaveValue('1988-02-29');
 });
 
 test('changing the mobile number or country invalidates verification and supports other country codes', async () => {

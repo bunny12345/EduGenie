@@ -29,6 +29,11 @@ initially; other countries are available. Mobile numbers are validated with
 `libphonenumber-js` and saved in international E.164 format.
 Student date of birth is required, must be a real date and cannot be in the future;
 teacher email remains required, and student email is optional when using SMS.
+Teacher registration also accepts optional `dateOfBirth` (`YYYY-MM-DD`); when
+provided it must be a real, nonfuture date. It is saved in `teachers.date_of_birth`
+and the local account fallback, and returned for the existing teacher edit form.
+This uses the column in `20261117_school_phone_and_profile_fields.sql`; no
+additional migration is required.
 A parent/guardian contact may be used for students. Each registration requires
 a new verification proof.
 

@@ -841,6 +841,7 @@ export class StudentAuthService implements OnModuleInit {
     loginId: string;
     password: string;
     gender?: string;
+    dateOfBirth?: string;
     phone?: string;
     grades?: string[];
     createdBy?: string;
@@ -852,6 +853,9 @@ export class StudentAuthService implements OnModuleInit {
     const loginId = String(payload.loginId || '').trim().toLowerCase();
     const password = String(payload.password || '');
     const grades = normalizeGrades(payload.grades);
+    const { dateOfBirth } = normalizeProfileFields({
+      dateOfBirth: payload.dateOfBirth === '' ? undefined : payload.dateOfBirth ?? undefined
+    });
 
     if (!schoolId || !name || !email || !loginId || !password) {
       return { ok: false, error: 'schoolId, name, email, loginId and password are required' };
@@ -882,6 +886,7 @@ export class StudentAuthService implements OnModuleInit {
       schoolId,
       grades,
       phone: payload.phone,
+      dateOfBirth,
       gender: String(payload.gender || '').trim().toLowerCase() || undefined
     };
     this.rememberTeacher(account);
@@ -895,6 +900,7 @@ export class StudentAuthService implements OnModuleInit {
       email,
       subject,
       gender,
+      ...(dateOfBirth ? { date_of_birth: dateOfBirth } : {}),
       ...(payload.phone ? { phone: payload.phone } : {}),
       login_id: loginId,
       password_salt: passwordSalt,
@@ -935,7 +941,8 @@ export class StudentAuthService implements OnModuleInit {
         subject,
         loginId,
         grades,
-        phone: account.phone || null
+        phone: account.phone || null,
+        dateOfBirth: account.dateOfBirth || null
       }
     };
   }
