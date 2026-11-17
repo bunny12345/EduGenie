@@ -9,6 +9,7 @@ import { SchoolController } from '../controllers/school.controller';
 import { StudentAuthService } from './student-auth.service';
 import { LearningScoreService } from '../progress/learning-score.service';
 import { AuthController } from '../controllers/auth.controller';
+import { PasswordResetService } from './password-reset.service';
 
 type Row = Record<string, any>;
 const sid = `VE${'a'.repeat(32)}`;
@@ -131,7 +132,7 @@ test('SMS verification normalizes India numbers, checks OTP, and persists one-us
 test('school registration binds both email and SMS to the owner and pending mobile number', async (t) => {
   const f = fixture(t);
   const auth = new StudentAuthService(f.db, f.email);
-  const controller = new AuthController(auth, f.service);
+  const controller = new AuthController(auth, f.service, Object.create(PasswordResetService.prototype));
   const req = { owner: { id: 'owner-school-test' } };
   const details = {
     schoolName: 'Verified school', branch: 'Main', location: 'City', email: 'dual-school@example.test',

@@ -67,6 +67,33 @@ export async function teacherLogin(loginId, password) {
   return res.json();
 }
 
+async function passwordResetRequest(path, payload) {
+  try {
+    const res = await fetch(`${API_BASE}/auth/password/forgot/${path}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data.success) {
+      return { success: false, error: data.error || data.message || 'Something went wrong. Please try again.' };
+    }
+    return data;
+  } catch (e) {
+    return { success: false, error: 'Unable to reach the server. Please check your connection and try again.' };
+  }
+}
+
+// payload: { role, loginId, channel: 'email' | 'phone', email?, country?, phone? }
+export async function requestPasswordResetCode(payload) {
+  return passwordResetRequest('request', payload);
+}
+
+// payload: { role, loginId, challengeId, code, newPassword, confirmPassword }
+export async function resetForgottenPassword(payload) {
+  return passwordResetRequest('reset', payload);
+}
+
 async function ownerRequest(path, token, body) {
   if (!token) throw new Error('Owner sign-in required.');
   const res = await fetch(`${API_BASE}/auth/${path}`, {

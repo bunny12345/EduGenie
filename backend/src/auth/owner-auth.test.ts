@@ -9,6 +9,7 @@ import { OwnerAuthService } from './owner-auth.service';
 import { OwnerGuard, OwnerIdentityGuard } from './owner.guard';
 import { StudentAuthService } from './student-auth.service';
 import { RegistrationPhoneService } from './registration-phone.service';
+import { PasswordResetService } from './password-reset.service';
 
 function envelope(value: unknown): Record<string, unknown> {
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('Expected a JSON response object');
@@ -60,6 +61,7 @@ test('school registration requires the configured Supabase owner and verified TO
         request: () => ({ success: true, challengeId: 'school-phone' }),
         verify: () => ({ success: true, verificationId: 'school-phone' }),
       } },
+      { provide: PasswordResetService, useValue: {} },
       { provide: StudentAuthService, useValue: {
         registerSchool: schoolResult,
         requestSchoolRegistrationOtp: schoolResult,

@@ -7,7 +7,7 @@ import {
 } from '../api';
 
 const countryNames = new Intl.DisplayNames(['en'], { type: 'region' });
-const PHONE_COUNTRIES = getCountries().map((country) => ({
+export const PHONE_COUNTRIES = getCountries().map((country) => ({
   country, name: countryNames.of(country), code: getCountryCallingCode(country)
 })).sort((a, b) => a.name.localeCompare(b.name));
 export const EMPTY_REGISTRATION_PHONE = { country: 'IN', number: '', phone: '', verificationId: '', expiresAt: '' };

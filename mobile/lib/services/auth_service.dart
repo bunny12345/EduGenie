@@ -68,4 +68,41 @@ class AuthService {
 
   Future<Map<String, dynamic>> acceptInvite(Map<String, dynamic> payload) =>
       _post('/auth/invite/accept', payload);
+
+  /// Mirrors `requestPasswordResetCode` in web/src/api.js. [channel] is
+  /// `email` (send [email]) or `phone` (send ISO [country] + [phone]).
+  Future<Map<String, dynamic>> requestPasswordResetCode({
+    required String role,
+    required String loginId,
+    required String channel,
+    String? email,
+    String? country,
+    String? phone,
+  }) =>
+      _post('/auth/password/forgot/request', {
+        'role': role,
+        'loginId': loginId,
+        'channel': channel,
+        if (channel == 'email') 'email': email ?? '',
+        if (channel == 'phone') 'country': country ?? 'IN',
+        if (channel == 'phone') 'phone': phone ?? '',
+      });
+
+  /// Mirrors `resetForgottenPassword` in web/src/api.js.
+  Future<Map<String, dynamic>> resetForgottenPassword({
+    required String role,
+    required String loginId,
+    required String challengeId,
+    required String code,
+    required String newPassword,
+    required String confirmPassword,
+  }) =>
+      _post('/auth/password/forgot/reset', {
+        'role': role,
+        'loginId': loginId,
+        'challengeId': challengeId,
+        'code': code,
+        'newPassword': newPassword,
+        'confirmPassword': confirmPassword,
+      });
 }

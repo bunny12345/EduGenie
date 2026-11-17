@@ -1,13 +1,26 @@
-import { BadRequestException, Body, Controller, Get, Param, Post, Req, UseGuards } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Get, HttpException, Param, Post, Req, UseGuards } from '@nestjs/common';
 import { StudentAuthService } from '../auth/student-auth.service';
 import { OwnerGuard, OwnerIdentityGuard } from '../auth/owner.guard';
 import { RegistrationPhoneService } from '../auth/registration-phone.service';
+import { PasswordResetService } from '../auth/password-reset.service';
+
+type ClientRequest = { ip?: string; headers?: Record<string, string | string[] | undefined> };
+
+// Behind CloudFront/ALB `req.ip` is the proxy, so rate-limit by the original
+// client address. Spoofing this only changes the IP bucket; per-account and
+// per-contact limits still apply.
+function clientIp(req: ClientRequest) {
+  const forwarded = req?.headers?.['x-forwarded-for'];
+  const first = (Array.isArray(forwarded) ? forwarded[0] : forwarded)?.split(',')[0]?.trim();
+  return first || req?.ip || 'unknown';
+}
 
 @Controller('auth')
 export class AuthController {
   constructor(
     private readonly studentAuth: StudentAuthService,
-    private readonly registrationPhone: RegistrationPhoneService
+    private readonly registrationPhone: RegistrationPhoneService,
+    private readonly passwordReset: PasswordResetService
   ) {}
 
   private ownerScope(req: { owner: { id: string } }) {
@@ -93,6 +106,27 @@ export class AuthController {
       role: res.role,
       student: res.student
     };
+  }
+
+  @Post('password/forgot/request')
+  forgotPasswordRequest(@Req() req: ClientRequest, @Body() body: any) {
+    return this.withErrorBody(() => this.passwordReset.request(body, clientIp(req)));
+  }
+
+  @Post('password/forgot/reset')
+  forgotPasswordReset(@Req() req: ClientRequest, @Body() body: any) {
+    return this.withErrorBody(() => this.passwordReset.reset(body, clientIp(req)));
+  }
+
+  private async withErrorBody<T>(action: () => Promise<T>) {
+    try {
+      return await action();
+    } catch (error) {
+      if (!(error instanceof HttpException)) throw error;
+      const response = error.getResponse();
+      const message = typeof response === 'object' && response && 'message' in response ? (response as any).message : error.message;
+      throw new HttpException({ success: false, error: Array.isArray(message) ? message.join(' ') : String(message) }, error.getStatus());
+    }
   }
 
   @Get('invite/:token')

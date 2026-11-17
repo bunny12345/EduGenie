@@ -58,6 +58,50 @@ export function normalizeProfileFields(payload: ProfileFields) {
   return fields;
 }
 
+export type PasswordResetAccount = {
+  role: 'teacher' | 'student';
+  accountId: string;
+  schoolId: string;
+  loginId: string;
+  phones: string[];
+  emails: string[];
+  credentials: Array<{ salt: string; hash: string }>;
+};
+
+function resetPhones(values: unknown[]) {
+  const phones = new Set<string>();
+  for (const value of values) {
+    if (typeof value !== 'string' || !value.trim()) continue;
+    const phone = parsePhoneNumberFromString(value.trim(), value.trim().startsWith('+') ? undefined : 'IN');
+    if (phone?.isValid()) phones.add(phone.number);
+  }
+  return Array.from(phones);
+}
+
+// Teacher rows may store a per-teacher alias (`name+<loginId>@domain` or
+// `<loginId>@teachers.local`) to satisfy a per-school unique constraint. Only
+// real, deliverable addresses count as registered recovery emails.
+function resetEmails(values: unknown[], loginId: string) {
+  const emails = new Set<string>();
+  for (const value of values) {
+    if (typeof value !== 'string') continue;
+    let email = value.trim().toLowerCase();
+    const alias = email.match(/^(.+)\+(.+)@([^@]+)$/);
+    if (alias && alias[2] === loginId) email = `${alias[1]}@${alias[3]}`;
+    if (email.endsWith('@teachers.local') || email.length > 254) continue;
+    if (/^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/.test(email)) emails.add(email);
+  }
+  return Array.from(emails);
+}
+
+export function passwordPolicyError(password: unknown) {
+  if (typeof password !== 'string' || password.length < 8 || password.length > 128
+    || !/[A-Za-z]/.test(password) || !/\d/.test(password) || !/[^A-Za-z0-9\s]/.test(password)) {
+    return 'Password must be 8–128 characters and include at least one letter, one number and one special character.';
+  }
+  return '';
+}
+
 function profileColumns(fields: ProfileFields) {
   return {
     ...(fields.phone !== undefined ? { phone: fields.phone } : {}),
@@ -2491,6 +2535,70 @@ export class StudentAuthService implements OnModuleInit {
     }
 
     return { ok: true, student: { id: studentId, name: existing.name, className: existing.className } };
+  }
+
+  /**
+   * Resolve a teacher/student by login ID for self-service password recovery,
+   * gathering every registered contact and current credential without
+   * changing the cached login records.
+   */
+  async findPasswordResetAccount(role: 'teacher' | 'student', loginIdRaw: unknown): Promise<PasswordResetAccount | null> {
+    const loginId = String(loginIdRaw || '').trim().toLowerCase();
+    if (!loginId || loginId.length > 254) return null;
+    const table = role === 'teacher' ? 'teachers' : 'student_accounts';
+    let row: any = null;
+    try {
+      const res: any = await this.db.client.from(table).select('*').eq('login_id', loginId).limit(1);
+      if (!res?.error && Array.isArray(res?.data)) row = res.data[0] || null;
+    } catch (_e) {
+      /* local store remains the fallback */
+    }
+
+    if (role === 'teacher') {
+      const local = this.findTeacher(loginId);
+      if (local && row && (String(row.id) !== String(local.teacherId) || row.school_id !== local.schoolId)) row = null;
+      if (!local && !row) return null;
+      return {
+        role,
+        accountId: String(local?.teacherId || row.id),
+        schoolId: String(local?.schoolId || row?.school_id || ''),
+        loginId: local?.loginId || row.login_id,
+        phones: resetPhones([row?.phone, local?.phone]),
+        emails: resetEmails([row?.email, local?.email], loginId),
+        credentials: [local, row && { passwordSalt: row.password_salt, passwordHash: row.password_hash }]
+          .filter((entry): entry is { passwordSalt: string; passwordHash: string } => !!entry?.passwordSalt && !!entry?.passwordHash)
+          .map((entry) => ({ salt: entry.passwordSalt, hash: entry.passwordHash }))
+      };
+    }
+
+    const local = this.findLocal(loginId);
+    if (local && row && (String(row.student_id) !== String(local.studentId) || (local.schoolId && row.school_id !== local.schoolId))) row = null;
+    if (!local && !row) return null;
+    const studentId = String(local?.studentId || row.student_id);
+    const schoolId = String(local?.schoolId || row?.school_id || '');
+    const profile = schoolId ? await this.loadStudentForSchool(studentId, schoolId) : null;
+    return {
+      role,
+      accountId: studentId,
+      schoolId,
+      loginId: local?.loginId || row.login_id,
+      phones: resetPhones([profile?.phone, row?.phone, local?.phone]),
+      emails: resetEmails([profile?.email, row?.email, local?.email], loginId),
+      credentials: [local, row && { passwordSalt: row.password_salt, passwordHash: row.password_hash }]
+        .filter((entry): entry is { passwordSalt: string; passwordHash: string } => !!entry?.passwordSalt && !!entry?.passwordHash)
+        .map((entry) => ({ salt: entry.passwordSalt, hash: entry.passwordHash }))
+    };
+  }
+
+  isCurrentPassword(account: PasswordResetAccount, password: string) {
+    return account.credentials.some((entry) => this.hashPassword(password, entry.salt) === entry.hash);
+  }
+
+  async applyPasswordReset(account: PasswordResetAccount, password: string) {
+    if (!account.schoolId) return { ok: false, error: 'This account is not linked to a school. Please contact your school admin.' };
+    return account.role === 'teacher'
+      ? this.resetTeacherPassword({ schoolId: account.schoolId, teacherId: account.accountId, password })
+      : this.resetStudentPassword({ schoolId: account.schoolId, studentId: account.accountId, password });
   }
 
   async loginStudent(loginIdRaw: string, passwordRaw: string) {

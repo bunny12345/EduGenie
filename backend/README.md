@@ -182,6 +182,33 @@ contacts do not require OTP. No schema change or automatic data rewrite is
 needed for this read-path repair. Details absent from every saved source cannot
 be reconstructed.
 
+### Teacher and student forgot password
+
+Public endpoints (no auth guard) let a teacher or student reset their own
+password:
+
+- `POST /auth/password/forgot/request` with
+  `{ role: 'teacher' | 'student', loginId, channel: 'email' | 'phone', email? , country?, phone? }`.
+  The entered email or mobile number must match a contact registered on that
+  account. The response contains `challengeId` and a masked `destination`.
+  Email codes are sent by SMTP and SMS codes by Twilio Verify, using the same
+  configuration as registration verification.
+- `POST /auth/password/forgot/reset` with
+  `{ role, loginId, challengeId, code, newPassword, confirmPassword }`.
+
+If the email does not match or no real email is registered (teacher alias
+addresses such as `name+<loginId>@domain` or `<loginId>@teachers.local` are not
+accepted), the error tells the user to verify with the registered mobile number
+instead, and vice versa. The new password must be 8–128 characters and include
+a letter, a number and a special character. It must also differ from the
+current password. Password checks run before the code is checked, so a rejected
+password does not use up a code attempt. Codes expire after 10 minutes and allow
+5 attempts. Requests are rate-limited per client IP, account and contact.
+Challenges are held in memory, so a backend restart requires a new code. The
+existing teacher/student reset routines update both the database and local
+login stores. No schema change is required. Errors return
+`{ success: false, error }` with the HTTP status.
+
 ### Mock test answer options
 
 When teachers add a question (`POST /tests/:testId/questions`), the backend

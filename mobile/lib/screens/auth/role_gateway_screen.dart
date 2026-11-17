@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import '../../models/session.dart';
 import '../../state/session_provider.dart';
 import '../../theme/app_colors.dart';
+import 'forgot_password_screen.dart';
 
 enum _Role { teacher, student }
 
@@ -24,6 +25,7 @@ class _RoleGatewayScreenState extends ConsumerState<RoleGatewayScreen> {
   bool _busy = false;
   bool _showPassword = false;
   String _error = '';
+  String _notice = '';
 
   final _loginIdCtrl = TextEditingController();
   final _passwordCtrl = TextEditingController();
@@ -39,6 +41,7 @@ class _RoleGatewayScreenState extends ConsumerState<RoleGatewayScreen> {
     setState(() {
       _busy = true;
       _error = '';
+      _notice = '';
     });
     try {
       final res = await ref.read(authServiceProvider).teacherLogin(_loginIdCtrl.text.trim(), _passwordCtrl.text);
@@ -64,6 +67,7 @@ class _RoleGatewayScreenState extends ConsumerState<RoleGatewayScreen> {
     setState(() {
       _busy = true;
       _error = '';
+      _notice = '';
     });
     try {
       final res = await ref.read(authServiceProvider).studentLogin(_loginIdCtrl.text.trim(), _passwordCtrl.text);
@@ -84,6 +88,23 @@ class _RoleGatewayScreenState extends ConsumerState<RoleGatewayScreen> {
     }
   }
 
+  Future<void> _openForgotPassword() async {
+    setState(() {
+      _error = '';
+      _notice = '';
+    });
+    final result = await Navigator.of(context).push<ForgotPasswordResult>(MaterialPageRoute(
+      builder: (_) => ForgotPasswordScreen(
+        role: _role == _Role.teacher ? 'teacher' : 'student',
+        initialLoginId: _loginIdCtrl.text.trim(),
+      ),
+    ));
+    if (!mounted || result == null) return;
+    _loginIdCtrl.text = result.loginId;
+    _passwordCtrl.clear();
+    setState(() => _notice = result.message);
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -97,6 +118,7 @@ class _RoleGatewayScreenState extends ConsumerState<RoleGatewayScreen> {
               const SizedBox(height: 24),
               _buildRoleToggle(),
               const SizedBox(height: 20),
+              if (_notice.isNotEmpty) _buildNoticeBanner(),
               if (_error.isNotEmpty) _buildErrorBanner(),
               switch (_role) {
                 _Role.teacher => _buildSimpleLoginForm(onSubmit: _submitTeacher, label: 'Teacher'),
@@ -155,6 +177,7 @@ class _RoleGatewayScreenState extends ConsumerState<RoleGatewayScreen> {
       onSelectionChanged: (s) => setState(() {
         _role = s.first;
         _error = '';
+        _notice = '';
       }),
     );
   }
@@ -169,6 +192,19 @@ class _RoleGatewayScreenState extends ConsumerState<RoleGatewayScreen> {
         border: Border.all(color: AppColors.danger.withValues(alpha: 0.3)),
       ),
       child: Text(_error, style: const TextStyle(color: AppColors.danger, fontSize: 13)),
+    );
+  }
+
+  Widget _buildNoticeBanner() {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 16),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: AppColors.ok.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: AppColors.ok.withValues(alpha: 0.35)),
+      ),
+      child: Text(_notice, style: const TextStyle(color: Color(0xFF17794A), fontSize: 13, fontWeight: FontWeight.w600)),
     );
   }
 
@@ -196,7 +232,14 @@ class _RoleGatewayScreenState extends ConsumerState<RoleGatewayScreen> {
             ),
           ),
         ),
-        const SizedBox(height: 16),
+        Align(
+          alignment: Alignment.centerRight,
+          child: TextButton(
+            onPressed: _busy ? null : _openForgotPassword,
+            child: const Text('Forgot password?'),
+          ),
+        ),
+        const SizedBox(height: 4),
         ElevatedButton(
           onPressed: _busy ? null : onSubmit,
           child: _busy

@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import WelcomeAssistant from './WelcomeAssistant';
+import ForgotPasswordPanel from './ForgotPasswordPanel';
 import {
   acceptInvite,
   getInviteInfo,
@@ -56,6 +57,29 @@ export default function RoleGateway({ onLogin }) {
 
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const [forgotOpen, setForgotOpen] = useState(false);
+  const [notice, setNotice] = useState('');
+
+  function selectRole(next) {
+    setRole(next);
+    setForgotOpen(false);
+    setError('');
+    setNotice('');
+  }
+
+  function openForgot() {
+    setForgotOpen(true);
+    setError('');
+    setNotice('');
+  }
+
+  function finishForgot(resetLoginId, message) {
+    setForgotOpen(false);
+    setLoginId(resetLoginId);
+    setPassword('');
+    setError('');
+    setNotice(message);
+  }
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -120,6 +144,7 @@ export default function RoleGateway({ onLogin }) {
     e.preventDefault();
     setBusy(true);
     setError('');
+    setNotice('');
     try {
       const res = await teacherLogin(loginId, password);
       if (!res?.success || !res?.token) {
@@ -143,6 +168,7 @@ export default function RoleGateway({ onLogin }) {
     e.preventDefault();
     setBusy(true);
     setError('');
+    setNotice('');
     try {
       const res = await studentLogin(loginId, password);
       if (!res?.success || !res?.token) {
@@ -218,9 +244,9 @@ export default function RoleGateway({ onLogin }) {
         </header>
 
         <div className="rg-role-toggle rg-role-toggle-3">
-          <button type="button" className={role === 'school' ? 'active' : ''} onClick={() => setRole('school')}>School</button>
-          <button type="button" className={role === 'teacher' ? 'active' : ''} onClick={() => setRole('teacher')}>Teacher</button>
-          <button type="button" className={role === 'student' ? 'active' : ''} onClick={() => setRole('student')}>Student</button>
+          <button type="button" className={role === 'school' ? 'active' : ''} onClick={() => selectRole('school')}>School</button>
+          <button type="button" className={role === 'teacher' ? 'active' : ''} onClick={() => selectRole('teacher')}>Teacher</button>
+          <button type="button" className={role === 'student' ? 'active' : ''} onClick={() => selectRole('student')}>Student</button>
         </div>
 
         {role === 'school' ? (
@@ -249,7 +275,18 @@ export default function RoleGateway({ onLogin }) {
           </form>
         ) : null}
 
-        {role === 'teacher' ? (
+        {(role === 'teacher' || role === 'student') && forgotOpen ? (
+          <ForgotPasswordPanel
+            key={role}
+            role={role}
+            initialLoginId={loginId}
+            PasswordField={PasswordField}
+            onDone={finishForgot}
+            onCancel={() => setForgotOpen(false)}
+          />
+        ) : null}
+
+        {role === 'teacher' && !forgotOpen ? (
           <form className="rg-form" onSubmit={submitTeacher}>
             <label>
               Teacher Login ID
@@ -266,12 +303,14 @@ export default function RoleGateway({ onLogin }) {
                 onHide={() => setShowPassword(false)}
               />
             </label>
+            <button type="button" className="rg-link rg-forgot-link" onClick={openForgot}>Forgot password?</button>
+            {notice ? <p className="rg-success" role="status">{notice}</p> : null}
             {error ? <p className="rg-error">{error}</p> : null}
             <button className="rg-submit" type="submit" disabled={busy}>{busy ? 'Please wait...' : 'Login as Teacher'}</button>
           </form>
         ) : null}
 
-        {role === 'student' ? (
+        {role === 'student' && !forgotOpen ? (
           <form className="rg-form" onSubmit={submitStudent}>
             <label>
               Student Login ID
@@ -288,6 +327,8 @@ export default function RoleGateway({ onLogin }) {
                 onHide={() => setShowPassword(false)}
               />
             </label>
+            <button type="button" className="rg-link rg-forgot-link" onClick={openForgot}>Forgot password?</button>
+            {notice ? <p className="rg-success" role="status">{notice}</p> : null}
             {error ? <p className="rg-error">{error}</p> : null}
             <button className="rg-submit" type="submit" disabled={busy}>{busy ? 'Please wait...' : 'Login as Student'}</button>
           </form>

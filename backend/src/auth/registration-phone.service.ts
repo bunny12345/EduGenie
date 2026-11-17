@@ -98,6 +98,17 @@ export class RegistrationPhoneService {
     return { sid: result.sid, status: result.status };
   }
 
+  async sendCode(phone: string) {
+    const result = await this.twilio('Verifications', { To: phone, Channel: 'sms' });
+    if (result.status !== 'pending') throw new ServiceUnavailableException('Could not send a new verification code. Please try again later.');
+    return result.sid;
+  }
+
+  async checkCode(verificationSid: string, code: string) {
+    const result = await this.twilio('VerificationCheck', { VerificationSid: verificationSid, Code: code });
+    return result.sid === verificationSid && result.status === 'approved';
+  }
+
   private async database<T>(operation: PromiseLike<{ data: T; error?: unknown }>): Promise<T> {
     try {
       const result = await operation;

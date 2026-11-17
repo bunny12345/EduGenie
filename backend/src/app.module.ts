@@ -30,6 +30,7 @@ import { StudentAuthService } from './auth/student-auth.service';
 import { EmailService } from './auth/email.service';
 import { RegistrationPhoneService } from './auth/registration-phone.service';
 import { RegistrationEmailService } from './auth/registration-email.service';
+import { PasswordResetService } from './auth/password-reset.service';
 import { CurriculumService } from './curriculum/curriculum.service';
 import { EmbeddingsService } from './embeddings/embeddings.service';
 import { SharedModule } from './shared/shared.module';
@@ -62,6 +63,6 @@ import { VisitorService } from './support/visitor.service';
     OrchardController,
     GamesController
   ],
-  providers: [SupabaseService, AuthGuard, OwnerAuthService, OwnerGuard, OwnerIdentityGuard, StudentAuthService, EmailService, RegistrationPhoneService, RegistrationEmailService, CurriculumService, EmbeddingsService, OrchardService, FlashcardsService, QuizRushService, LlmService, LearningScoreService, SupportService, VisitorService]
+  providers: [SupabaseService, AuthGuard, OwnerAuthService, OwnerGuard, OwnerIdentityGuard, StudentAuthService, EmailService, RegistrationPhoneService, RegistrationEmailService, PasswordResetService, CurriculumService, EmbeddingsService, OrchardService, FlashcardsService, QuizRushService, LlmService, LearningScoreService, SupportService, VisitorService]
 })
 export class AppModule {}

@@ -4694,6 +4694,102 @@ textarea {
   font-weight: 600;
 }
 
+.rg-success {
+  margin: 0;
+  padding: 9px 12px;
+  border-radius: 10px;
+  background: #ecfbf3;
+  border: 1px solid #b7ebcf;
+  color: #17794a;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.rg-link {
+  justify-self: start;
+  border: 0;
+  background: none;
+  padding: 0;
+  color: #2f40cd;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.rg-link:hover:not(:disabled) {
+  text-decoration: underline;
+}
+
+.rg-link:disabled {
+  color: #9aa2c8;
+  cursor: default;
+}
+
+.rg-forgot-link {
+  justify-self: end;
+  margin-top: -4px;
+}
+
+.rg-link-row {
+  display: flex;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.rg-forgot h2 {
+  margin: 0;
+  font-size: 18px;
+  color: #1e2550;
+}
+
+.rg-forgot-intro {
+  margin: 0;
+  color: #66709e;
+  font-size: 12px;
+}
+
+.rg-phone-row {
+  display: grid;
+  grid-template-columns: minmax(0, 160px) minmax(0, 1fr);
+  gap: 8px;
+}
+
+.rg-phone-row select {
+  border: 1px solid #dfe4f6;
+  border-radius: 10px;
+  padding: 10px 8px;
+  font-size: 13px;
+  background: #fff;
+  min-width: 0;
+}
+
+.rg-password-rules {
+  margin: -4px 0 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 3px;
+  font-size: 11.5px;
+  color: #7b83ad;
+}
+
+.rg-password-rules li::before {
+  content: '○ ';
+}
+
+.rg-password-rules li.met {
+  color: #17794a;
+}
+
+.rg-password-rules li.met::before {
+  content: '✓ ';
+}
+
+.rg-password-rules li.rg-rule-note::before {
+  content: '• ';
+}
+
 .rg-otp-note {
   margin: 0;
   padding: 10px 12px;
