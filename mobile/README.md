@@ -287,6 +287,9 @@ history or replace the need for rotation/recovery.
 Release builds **fail** when upload signing is missing; there is no debug-key
 fallback. Debug builds remain available for local testing.
 
+Use the checked-in Gradle wrapper for Android builds. Android Gradle Plugin
+9.1.1 uses Gradle 9.3.1 and satisfies the AndroidX Core 1.19.0 requirement.
+
 ```bash
 flutter analyze
 flutter test
