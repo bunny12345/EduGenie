@@ -12,6 +12,7 @@ import '../../../state/student_providers.dart';
 import '../../../state/exam_access_provider.dart';
 import '../../../theme/app_colors.dart';
 import '../../../widgets/section_card.dart';
+import '../../../widgets/section_tab_button.dart';
 import '../test_taking_screen.dart';
 import 'homework_history_calendar.dart';
 import 'homework_state.dart';
@@ -170,48 +171,6 @@ class _FramedTextButton extends StatelessWidget {
   }
 }
 
-class _TaskTab extends StatelessWidget {
-  final String label;
-  final IconData icon;
-  final bool selected;
-  final VoidCallback onPressed;
-  const _TaskTab({required this.label, required this.icon, required this.selected, required this.onPressed});
-
-  @override
-  Widget build(BuildContext context) {
-    final palette = AppColors.of(context);
-    return Semantics(
-      selected: selected,
-      child: ElevatedButton(
-        onPressed: onPressed,
-        style: ElevatedButton.styleFrom(
-          elevation: selected ? 5 : 1,
-          backgroundColor: selected ? AppColors.brand : palette.card,
-          foregroundColor: selected ? Colors.white : palette.muted,
-          minimumSize: const Size.fromHeight(48),
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 12),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-          side: BorderSide(color: selected ? AppColors.brand : palette.line),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(icon, size: 20),
-            const SizedBox(width: 8),
-            Flexible(
-              child: Text(
-                label,
-                textAlign: TextAlign.center,
-                style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
 /// Student assignments and tests share subjects but have separate task views:
 /// subject switcher, submitted/not-submitted/overdue filter chips,
 /// "View history by date" mini calendar, expandable teacher instructions +
@@ -356,7 +315,7 @@ class _HomeworkScreenState extends ConsumerState<HomeworkScreen> {
             child: Row(
               children: [
                 Expanded(
-                  child: _TaskTab(
+                  child: SectionTabButton(
                     label: 'Homework',
                     icon: Icons.edit_note_rounded,
                     selected: !_showTests,
@@ -365,7 +324,7 @@ class _HomeworkScreenState extends ConsumerState<HomeworkScreen> {
                 ),
                 const SizedBox(width: 12),
                 Expanded(
-                  child: _TaskTab(
+                  child: SectionTabButton(
                     label: 'Mock Tests',
                     icon: Icons.quiz_outlined,
                     selected: _showTests,

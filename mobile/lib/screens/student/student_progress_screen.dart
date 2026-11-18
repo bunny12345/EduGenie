@@ -6,15 +6,15 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../models/learning_score.dart';
 import '../../state/student_providers.dart';
 import '../../widgets/section_card.dart';
+import '../../widgets/section_tab_button.dart';
 import '../../widgets/shimmer_wave.dart';
 import 'progress/progress_charts.dart';
 import 'progress/exam_results_journey.dart';
 import 'progress/progress_helpers.dart';
 import 'progress/subject_progress_detail_screen.dart';
 
-/// My Learning Report — mirrors `web/src/components/StudentProgress.jsx` +
-/// `StudentProgress.css` exactly (same cards, gauge, radar, growth charts,
-/// colors), resized to stack in a single column on a phone screen.
+enum LearningReportSection { score, subjects, exams }
+
 class StudentProgressScreen extends ConsumerStatefulWidget {
   const StudentProgressScreen({super.key});
 
@@ -26,6 +26,7 @@ class StudentProgressScreen extends ConsumerStatefulWidget {
 class _StudentProgressScreenState extends ConsumerState<StudentProgressScreen> {
   String _trendView = 'daily';
   String _subjView = 'daily';
+  LearningReportSection _section = LearningReportSection.score;
   Timer? _progressRefresh;
 
   @override
@@ -45,8 +46,7 @@ class _StudentProgressScreenState extends ConsumerState<StudentProgressScreen> {
   @override
   Widget build(BuildContext context) {
     final colors = ProgressColors.of(context);
-    final dataAsync = ref.watch(learningScoreProvider);
-    final greetingName = ref.watch(dashboardProvider).value?.greetingName;
+    final isExam = _section == LearningReportSection.exams;
 
     return Scaffold(
       backgroundColor: colors.background(const Color(0xFFF7F7FC)),
@@ -63,49 +63,113 @@ class _StudentProgressScreenState extends ConsumerState<StudentProgressScreen> {
           ),
         ],
       ),
-      body: RefreshIndicator(
-        onRefresh: () async {
-          ref.invalidate(learningScoreProvider);
-          ref.invalidate(reportCardsProvider);
-        },
-        child: dataAsync.when(
-          loading: () => const _ProgressSkeleton(),
-          error: (e, _) => ListView(
-            padding: const EdgeInsets.all(16),
-            children: [
-              Padding(
-                padding: const EdgeInsets.symmetric(vertical: 40),
-                child: Column(
-                  children: [
-                    Text(
-                      'Could not load your progress right now.',
-                      style: TextStyle(
-                        color: colors.muted(const Color(0xFF6B7194)),
-                        fontWeight: FontWeight.w600,
-                      ),
+      body: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+            child: Row(
+              children: [
+                for (final (section, label, icon) in const [
+                  (
+                    LearningReportSection.score,
+                    'Score',
+                    Icons.show_chart_rounded,
+                  ),
+                  (
+                    LearningReportSection.subjects,
+                    'Subjects',
+                    Icons.menu_book_outlined,
+                  ),
+                  (
+                    LearningReportSection.exams,
+                    'Exam Results',
+                    Icons.assessment_outlined,
+                  ),
+                ]) ...[
+                  if (section != LearningReportSection.score)
+                    const SizedBox(width: 8),
+                  Expanded(
+                    child: SectionTabButton(
+                      label: label,
+                      icon: icon,
+                      compact: true,
+                      selected: _section == section,
+                      onPressed: () => setState(() => _section = section),
                     ),
-                    const SizedBox(height: 12),
-                    ElevatedButton(
-                      onPressed: () => ref.invalidate(learningScoreProvider),
-                      child: const Text('Try again'),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-          data: (data) => SingleChildScrollView(
-            child: LearningReportBody(
-              data: data,
-              greetingName: greetingName,
-              trendView: _trendView,
-              subjView: _subjView,
-              onTrendViewChange: (v) => setState(() => _trendView = v),
-              onSubjViewChange: (v) => setState(() => _subjView = v),
-              examResultsPanel: const ExamResultsJourneyPanel(),
+                  ),
+                ],
+              ],
             ),
           ),
-        ),
+          Expanded(
+            child: RefreshIndicator(
+              onRefresh: () async {
+                if (isExam) {
+                  ref.invalidate(reportCardsProvider);
+                } else {
+                  ref.invalidate(learningScoreProvider);
+                }
+              },
+              child: isExam
+                  ? ListView(
+                      key: const PageStorageKey('student-progress-exams'),
+                      physics: const AlwaysScrollableScrollPhysics(),
+                      padding: const EdgeInsets.all(16),
+                      children: const [ExamResultsJourneyPanel()],
+                    )
+                  : ref
+                        .watch(learningScoreProvider)
+                        .when(
+                          loading: () => const _ProgressSkeleton(),
+                          error: (e, _) => ListView(
+                            physics: const AlwaysScrollableScrollPhysics(),
+                            padding: const EdgeInsets.all(16),
+                            children: [
+                              Padding(
+                                padding: const EdgeInsets.symmetric(
+                                  vertical: 40,
+                                ),
+                                child: Column(
+                                  children: [
+                                    Text(
+                                      'Could not load your progress right now.',
+                                      style: TextStyle(
+                                        color: colors.muted(
+                                          const Color(0xFF6B7194),
+                                        ),
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 12),
+                                    ElevatedButton(
+                                      onPressed: () =>
+                                          ref.invalidate(learningScoreProvider),
+                                      child: const Text('Try again'),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                          data: (data) => SingleChildScrollView(
+                            key: PageStorageKey(_section),
+                            physics: const AlwaysScrollableScrollPhysics(),
+                            child: LearningReportBody(
+                              data: data,
+                              greetingName: null,
+                              trendView: _trendView,
+                              subjView: _subjView,
+                              onTrendViewChange: (v) =>
+                                  setState(() => _trendView = v),
+                              onSubjViewChange: (v) =>
+                                  setState(() => _subjView = v),
+                              section: _section,
+                            ),
+                          ),
+                        ),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -122,6 +186,7 @@ class LearningReportBody extends StatelessWidget {
   final void Function(String) onTrendViewChange;
   final void Function(String) onSubjViewChange;
   final Widget? examResultsPanel;
+  final LearningReportSection? section;
 
   const LearningReportBody({
     super.key,
@@ -132,6 +197,7 @@ class LearningReportBody extends StatelessWidget {
     required this.onTrendViewChange,
     required this.onSubjViewChange,
     this.examResultsPanel,
+    this.section,
   });
 
   @override
@@ -139,266 +205,347 @@ class LearningReportBody extends StatelessWidget {
     final colors = ProgressColors.of(context);
     final level = levelFace(data.score);
     final activeTrend = trendView == 'daily' ? data.dailyTrend : data.trend;
+    final studentLayout = section != null;
 
     return Padding(
       padding: const EdgeInsets.all(16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text(
-            'Learning progress${greetingName != null ? ' for $greetingName' : ''} — more than marks.',
-            style: TextStyle(
-              fontSize: 12.5,
-              color: colors.muted(const Color(0xFF6B7194)),
+          if (!studentLayout) ...[
+            Text(
+              'Learning progress${greetingName != null ? ' for $greetingName' : ''} — more than marks.',
+              style: TextStyle(
+                fontSize: 12.5,
+                color: colors.muted(const Color(0xFF6B7194)),
+              ),
             ),
-          ),
-          const SizedBox(height: 8),
-          if (data.alert != null) _AlertBanner(alert: data.alert!),
-          _ScoreCard(
-            score: data.score,
-            maxScore: data.maxScore,
-            color: data.color,
-            level: level,
-            momentumDelta: data.momentumDelta,
-          ),
-          const SizedBox(height: 12),
-          SectionCard(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                _CardHead(
-                  title: '📈 My total score over time',
-                  sub:
-                      'Everything added together (out of 1000)'
-                      '${data.trackingSince != null ? ' · ${data.trackingSince}' : ''}'
-                      '${data.academicEndLabel != null ? ' → ${data.academicEndLabel}' : ''} — up means you\'re learning more!',
-                  view: trendView,
-                  onChange: onTrendViewChange,
-                ),
-                const SizedBox(height: 10),
-                GrowthLineChart(
-                  points: activeTrend,
-                  maxY: 1000,
-                  gridVals: const [250, 500, 750, 1000],
-                  color: data.color,
-                  mode: trendView,
-                ),
-              ],
+            const SizedBox(height: 8),
+          ],
+          if (section == null || section == LearningReportSection.score) ...[
+            if (!studentLayout && data.alert != null)
+              _AlertBanner(alert: data.alert!),
+            _ScoreCard(
+              score: data.score,
+              maxScore: data.maxScore,
+              color: data.color,
+              level: level,
+              momentumDelta: data.momentumDelta,
+              compact: studentLayout,
             ),
-          ),
-          const SizedBox(height: 12),
-          SectionCard(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  '🌟 What makes up my score',
-                  style: TextStyle(
-                    fontSize: 15.5,
-                    fontWeight: FontWeight.w800,
-                    color: colors.text(const Color(0xFF1E2140)),
+            if (!studentLayout) const SizedBox(height: 12),
+            SectionCard(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _CardHead(
+                    title: '📈 My total score over time',
+                    sub:
+                        '${studentLayout ? 'Across all subjects (out of ${data.maxScore})' : 'Everything added together (out of 1000)'}'
+                        '${data.trackingSince != null ? ' · ${data.trackingSince}' : ''}'
+                        '${data.academicEndLabel != null ? ' → ${data.academicEndLabel}' : ''}'
+                        '${studentLayout ? '' : ' — up means you\'re learning more!'}',
+                    view: trendView,
+                    onChange: onTrendViewChange,
                   ),
-                ),
-                Text(
-                  'Nine skills that show real learning',
-                  style: TextStyle(
-                    fontSize: 11.5,
-                    color: colors.muted(const Color(0xFF8B90AD)),
+                  const SizedBox(height: 10),
+                  GrowthLineChart(
+                    points: activeTrend,
+                    maxY: 1000,
+                    gridVals: const [250, 500, 750, 1000],
+                    color: data.color,
+                    mode: trendView,
+                    height: studentLayout ? 270 : null,
                   ),
-                ),
-                const SizedBox(height: 12),
-                Center(
-                  child: Column(
-                    children: [
-                      RadarChart(
-                        dimensions: data.dimensions,
-                        emojis: [
-                          for (final d in data.dimensions)
-                            skillMetaFor(d.key, d.label).emoji,
-                        ],
-                        color: data.color,
-                        diameter: 220,
-                      ),
-                      const SizedBox(height: 6),
-                      Text(
-                        'The bigger the shape, the stronger you are all-round.',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                          fontSize: 11.5,
-                          color: colors.muted(const Color(0xFF8B90AD)),
+                ],
+              ),
+            ),
+            if (studentLayout && data.alert != null)
+              _AlertBanner(alert: data.alert!),
+            if (!studentLayout) const SizedBox(height: 12),
+            _ScoreBreakdown(
+              compact: studentLayout,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (!studentLayout) const SizedBox(height: 12),
+                  Center(
+                    child: Column(
+                      children: [
+                        RadarChart(
+                          dimensions: data.dimensions,
+                          emojis: [
+                            for (final d in data.dimensions)
+                              skillMetaFor(d.key, d.label).emoji,
+                          ],
+                          color: data.color,
+                          diameter: 220,
                         ),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 12),
-                GridView.count(
-                  crossAxisCount: 2,
-                  shrinkWrap: true,
-                  physics: const NeverScrollableScrollPhysics(),
-                  crossAxisSpacing: 8,
-                  mainAxisSpacing: 8,
-                  childAspectRatio: 2.1,
-                  children: [
-                    for (final d in data.dimensions)
-                      _SkillCard(
-                        meta: skillMetaFor(d.key, d.label),
-                        value: d.value,
-                      ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 12),
-          SectionCard(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  '⭐ You\'re great at',
-                  style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w800,
-                    color: colors.text(const Color(0xFF1E2140)),
-                  ),
-                ),
-                const SizedBox(height: 6),
-                if (data.strengths.isEmpty)
-                  Text(
-                    'Keep studying to reveal your superpowers!',
-                    style: TextStyle(
-                      fontSize: 12.5,
-                      color: colors.muted(const Color(0xFF9AA0BD)),
+                        const SizedBox(height: 6),
+                        Text(
+                          'The bigger the shape, the stronger you are all-round.',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            fontSize: 11.5,
+                            color: colors.muted(const Color(0xFF8B90AD)),
+                          ),
+                        ),
+                      ],
                     ),
-                  )
-                else
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
+                  ),
+                  const SizedBox(height: 12),
+                  GridView.count(
+                    key: studentLayout
+                        ? const PageStorageKey('student-progress-skill-grid')
+                        : null,
+                    primary: false,
+                    crossAxisCount: 2,
+                    shrinkWrap: true,
+                    physics: const NeverScrollableScrollPhysics(),
+                    crossAxisSpacing: 8,
+                    mainAxisSpacing: 8,
+                    childAspectRatio: 2.1,
                     children: [
-                      for (final s in data.strengths)
-                        _Tag(
-                          text:
-                              '${skillMetaFor(s.key, s.label).emoji} ${skillMetaFor(s.key, s.label).name} · ${s.value}%',
-                          bg: const Color(0xFFDCFCE7),
-                          color: const Color(0xFF15803D),
+                      for (final d in data.dimensions)
+                        _SkillCard(
+                          meta: skillMetaFor(d.key, d.label),
+                          value: d.value,
                         ),
                     ],
                   ),
-                const SizedBox(height: 14),
-                Text(
-                  '🎯 Practise next',
-                  style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w800,
-                    color: colors.text(const Color(0xFF1E2140)),
-                  ),
-                ),
-                const SizedBox(height: 6),
-                if (data.focusAreas.isEmpty)
-                  Text(
-                    'You\'re nicely balanced right now!',
-                    style: TextStyle(
-                      fontSize: 12.5,
-                      color: colors.muted(const Color(0xFF9AA0BD)),
-                    ),
-                  )
-                else
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    children: [
-                      for (final s in data.focusAreas)
-                        _Tag(
-                          text:
-                              '${skillMetaFor(s.key, s.label).emoji} ${skillMetaFor(s.key, s.label).name} · ${s.value}%',
-                          bg: const Color(0xFFFEF3C7),
-                          color: const Color(0xFFB45309),
-                        ),
-                    ],
-                  ),
-              ],
+                ],
+              ),
             ),
-          ),
-          if (data.improvements.isNotEmpty) ...[
             const SizedBox(height: 12),
             SectionCard(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    '🚀 Your next steps',
+                    '⭐ You\'re great at',
                     style: TextStyle(
-                      fontSize: 15.5,
+                      fontSize: 14,
                       fontWeight: FontWeight.w800,
                       color: colors.text(const Color(0xFF1E2140)),
                     ),
                   ),
+                  const SizedBox(height: 6),
+                  if (data.strengths.isEmpty)
+                    Text(
+                      'Keep studying to reveal your superpowers!',
+                      style: TextStyle(
+                        fontSize: 12.5,
+                        color: colors.muted(const Color(0xFF9AA0BD)),
+                      ),
+                    )
+                  else
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        for (final s in data.strengths)
+                          _Tag(
+                            text:
+                                '${skillMetaFor(s.key, s.label).emoji} ${skillMetaFor(s.key, s.label).name} · ${s.value}%',
+                            bg: const Color(0xFFDCFCE7),
+                            color: const Color(0xFF15803D),
+                          ),
+                      ],
+                    ),
+                  const SizedBox(height: 14),
                   Text(
-                    'Small steps, big wins',
+                    '🎯 Practise next',
                     style: TextStyle(
-                      fontSize: 11.5,
-                      color: colors.muted(const Color(0xFF8B90AD)),
+                      fontSize: 14,
+                      fontWeight: FontWeight.w800,
+                      color: colors.text(const Color(0xFF1E2140)),
                     ),
                   ),
-                  const SizedBox(height: 10),
-                  for (var i = 0; i < data.improvements.length; i++)
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: 8),
-                      child: Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            '${i + 1}.',
-                            style: TextStyle(
-                              fontSize: 13,
-                              fontWeight: FontWeight.w800,
-                              color: colors.accent(const Color(0xFF6D5EFC)),
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: Text(
-                              data.improvements[i],
-                              style: TextStyle(
-                                fontSize: 13,
-                                color: colors.text(const Color(0xFF4A4F70)),
-                                height: 1.5,
-                              ),
-                            ),
-                          ),
-                        ],
+                  const SizedBox(height: 6),
+                  if (data.focusAreas.isEmpty)
+                    Text(
+                      'You\'re nicely balanced right now!',
+                      style: TextStyle(
+                        fontSize: 12.5,
+                        color: colors.muted(const Color(0xFF9AA0BD)),
                       ),
+                    )
+                  else
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        for (final s in data.focusAreas)
+                          _Tag(
+                            text:
+                                '${skillMetaFor(s.key, s.label).emoji} ${skillMetaFor(s.key, s.label).name} · ${s.value}%',
+                            bg: const Color(0xFFFEF3C7),
+                            color: const Color(0xFFB45309),
+                          ),
+                      ],
                     ),
                 ],
               ),
             ),
-          ],
-          const SizedBox(height: 12),
-          SectionCard(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                _CardHead(
-                  title: '📚 Each subject on its own',
-                  sub: 'Spot which subject needs more love',
-                  view: subjView,
-                  onChange: onSubjViewChange,
+            if (studentLayout || data.improvements.isNotEmpty) ...[
+              if (!studentLayout) const SizedBox(height: 12),
+              SectionCard(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '🚀 Your next steps',
+                      style: TextStyle(
+                        fontSize: 15.5,
+                        fontWeight: FontWeight.w800,
+                        color: colors.text(const Color(0xFF1E2140)),
+                      ),
+                    ),
+                    Text(
+                      studentLayout
+                          ? 'Suggested actions'
+                          : 'Small steps, big wins',
+                      style: TextStyle(
+                        fontSize: 11.5,
+                        color: colors.muted(const Color(0xFF8B90AD)),
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    if (data.improvements.isEmpty)
+                      Text(
+                        'Keep practising to get personalised recommendations.',
+                        style: TextStyle(
+                          color: colors.muted(const Color(0xFF6B7194)),
+                          fontSize: 12.5,
+                        ),
+                      ),
+                    for (var i = 0; i < data.improvements.length; i++)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 8),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              '${i + 1}.',
+                              style: TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w800,
+                                color: colors.accent(const Color(0xFF6D5EFC)),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                data.improvements[i],
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  color: colors.text(const Color(0xFF4A4F70)),
+                                  height: 1.5,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                  ],
                 ),
-                const SizedBox(height: 10),
-                for (final s in data.subjects) ...[
-                  _SubjectCard(subject: s, view: subjView),
-                  const SizedBox(height: 8),
-                ],
-              ],
+              ),
+            ],
+          ],
+          if (section == LearningReportSection.subjects) ...[
+            SectionCard(
+              child: _CardHead(
+                title: 'Progress by subject',
+                sub: 'Select a subject to see its scores and skills.',
+                view: subjView,
+                onChange: onSubjViewChange,
+              ),
             ),
-          ),
-          if (examResultsPanel != null) ...[
+            if (data.subjects.isEmpty)
+              const SectionCard(
+                child: Text('No subject progress is available yet.'),
+              ),
+            for (final s in data.subjects)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: _SubjectCard(subject: s, view: subjView),
+              ),
+          ],
+          if (!studentLayout) ...[
             const SizedBox(height: 12),
-            examResultsPanel!,
+            SectionCard(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _CardHead(
+                    title: '📚 Each subject on its own',
+                    sub: 'Spot which subject needs more love',
+                    view: subjView,
+                    onChange: onSubjViewChange,
+                  ),
+                  const SizedBox(height: 10),
+                  for (final s in data.subjects) ...[
+                    _SubjectCard(subject: s, view: subjView),
+                    const SizedBox(height: 8),
+                  ],
+                ],
+              ),
+            ),
+            if (examResultsPanel != null) ...[
+              const SizedBox(height: 12),
+              examResultsPanel!,
+            ],
           ],
         ],
+      ),
+    );
+  }
+}
+
+class _ScoreBreakdown extends StatelessWidget {
+  final bool compact;
+  final Widget child;
+
+  const _ScoreBreakdown({required this.compact, required this.child});
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = ProgressColors.of(context);
+    final title = Text(
+      '🌟 What makes up my score',
+      style: TextStyle(
+        fontSize: 15.5,
+        fontWeight: FontWeight.w800,
+        color: colors.text(const Color(0xFF1E2140)),
+      ),
+    );
+    final subtitle = Text(
+      compact
+          ? 'View the skills behind your score'
+          : 'Nine skills that show real learning',
+      style: TextStyle(
+        fontSize: 11.5,
+        color: colors.muted(const Color(0xFF8B90AD)),
+      ),
+    );
+    if (compact) {
+      return SectionCard(
+        padding: EdgeInsets.zero,
+        child: ExpansionTile(
+          key: const PageStorageKey('student-progress-score-breakdown'),
+          shape: const Border(),
+          collapsedShape: const Border(),
+          title: title,
+          subtitle: subtitle,
+          childrenPadding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+          children: [child],
+        ),
+      );
+    }
+    return SectionCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [title, subtitle, child],
       ),
     );
   }
@@ -525,6 +672,7 @@ class _ScoreCard extends StatelessWidget {
   final Color color;
   final LevelFace level;
   final int momentumDelta;
+  final bool compact;
 
   const _ScoreCard({
     required this.score,
@@ -532,6 +680,7 @@ class _ScoreCard extends StatelessWidget {
     required this.color,
     required this.level,
     required this.momentumDelta,
+    required this.compact,
   });
 
   @override
@@ -545,6 +694,74 @@ class _ScoreCard extends StatelessWidget {
     final momentumColor = momentumUp
         ? const Color(0xFF16A34A)
         : (momentumDown ? const Color(0xFFDC2626) : const Color(0xFF6B7194));
+    if (compact) {
+      final change = momentumDelta == 0
+          ? 'No change in the last 30 days'
+          : '${momentumUp ? '+' : '−'}${momentumDelta.abs()} points in the last 30 days';
+      return SectionCard(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Learning Power',
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w800,
+                color: colors.text(const Color(0xFF1E2140)),
+              ),
+            ),
+            const SizedBox(height: 2),
+            Wrap(
+              spacing: 10,
+              runSpacing: 4,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: [
+                Text.rich(
+                  TextSpan(
+                    style: TextStyle(
+                      color: colors.text(const Color(0xFF1E2140)),
+                    ),
+                    children: [
+                      TextSpan(
+                        text: '$score',
+                        style: TextStyle(
+                          color: colors.accent(color),
+                          fontSize: 28,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                      TextSpan(text: ' / $maxScore points'),
+                    ],
+                  ),
+                ),
+                _Tag(
+                  text: '${level.face} ${level.word}',
+                  bg: const Color(0xFFEEF0FA),
+                  color: kToneColors[level.tone] ?? color,
+                ),
+              ],
+            ),
+            const SizedBox(height: 6),
+            LinearProgressIndicator(
+              value: maxScore > 0 ? (score / maxScore).clamp(0.0, 1.0) : 0,
+              color: colors.accent(color),
+              backgroundColor: colors.line(const Color(0xFFEEF0FA)),
+              borderRadius: BorderRadius.circular(999),
+              minHeight: 5,
+            ),
+            const SizedBox(height: 6),
+            Text(
+              change,
+              style: TextStyle(
+                color: colors.accent(momentumColor),
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
     return SectionCard(
       child: Column(
         children: [
@@ -683,8 +900,7 @@ class _CardHead extends StatelessWidget {
             color: colors.line(const Color(0xFFF1F2FB)),
             borderRadius: BorderRadius.circular(999),
           ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
+          child: Wrap(
             children: [
               _ToggleBtn(
                 label: 'Day by day',

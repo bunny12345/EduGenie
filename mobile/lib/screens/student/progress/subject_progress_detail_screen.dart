@@ -306,8 +306,7 @@ class _CardHead extends StatelessWidget {
             color: colors.line(const Color(0xFFF1F2FB)),
             borderRadius: BorderRadius.circular(999),
           ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
+          child: Wrap(
             children: [
               _ToggleBtn(label: 'Day by day', active: view == 'daily', onTap: () => onChange('daily')),
               _ToggleBtn(label: 'Month by month', active: view == 'monthly', onTap: () => onChange('monthly')),

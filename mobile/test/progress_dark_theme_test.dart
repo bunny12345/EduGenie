@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mobile/models/learning_score.dart';
 import 'package:mobile/models/report_card.dart';
@@ -8,6 +9,7 @@ import 'package:mobile/screens/student/progress/progress_charts.dart';
 import 'package:mobile/screens/student/progress/progress_helpers.dart';
 import 'package:mobile/screens/student/progress/subject_progress_detail_screen.dart';
 import 'package:mobile/screens/student/student_progress_screen.dart';
+import 'package:mobile/state/student_providers.dart';
 import 'package:mobile/theme/app_colors.dart';
 
 double contrast(Color a, Color b) {
@@ -70,6 +72,82 @@ void main() {
     AppColors.isDark = false;
   });
   tearDown(() => AppColors.isDark = false);
+
+  testWidgets('student report divides content into three views on a phone', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(320, 680);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final points = [
+      ChartPoint(label: '1', value: 400),
+      ChartPoint(label: '2', value: 600),
+    ];
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          learningScoreProvider.overrideWith(
+            (ref) async => LearningScoreData(
+              hasData: true,
+              score: 600,
+              maxScore: 1000,
+              color: const Color(0xFF6355DC),
+              momentumDelta: 12,
+              dimensions: [
+                ScoreDimension(key: 'tests', label: 'Tests', value: 80),
+              ],
+              trend: points,
+              dailyTrend: points,
+              subjects: [_subject],
+              strengths: [],
+              focusAreas: [],
+              improvements: ['Review the next unit'],
+            ),
+          ),
+          reportCardsProvider.overrideWith(
+            (ref) async => const ReportCardsData(cards: []),
+          ),
+        ],
+        child: _host(const StudentProgressScreen(), dark: true),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Learning Power').hitTestable(), findsOneWidget);
+    final chart = find.byType(GrowthLineChart);
+    expect(tester.getSize(chart).height, greaterThan(190));
+    expect(find.byType(RadarChart), findsNothing);
+    expect(find.text('📚 Each subject on its own'), findsNothing);
+    expect(find.byType(ExamResultsJourneyPanel), findsNothing);
+    final breakdown = find.text('🌟 What makes up my score');
+    await tester.ensureVisible(breakdown);
+    await tester.tap(breakdown);
+    await tester.pumpAndSettle();
+    expect(find.byType(RadarChart), findsOneWidget);
+    await tester.ensureVisible(find.text('🚀 Your next steps'));
+    await tester.pumpAndSettle();
+    expect(find.text('🚀 Your next steps').hitTestable(), findsOneWidget);
+
+    await tester.tap(find.text('Subjects'));
+    await tester.pumpAndSettle();
+    expect(find.text('Progress by subject').hitTestable(), findsOneWidget);
+    expect(find.textContaining('Science').hitTestable(), findsOneWidget);
+    expect(find.text('Learning Power'), findsNothing);
+    await tester.tap(find.textContaining('Science'));
+    await tester.pumpAndSettle();
+    expect(find.byType(SubjectProgressDetailScreen), findsOneWidget);
+    await tester.pageBack();
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Exam Results'));
+    await tester.pumpAndSettle();
+    expect(find.text('Exam Results Journey').hitTestable(), findsOneWidget);
+    expect(find.text('Your exam story starts here'), findsOneWidget);
+    expect(find.text('Progress by subject'), findsNothing);
+    expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
 
   testWidgets('report palette preserves light colors and readable dark pairs', (
     tester,

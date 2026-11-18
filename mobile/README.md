@@ -254,12 +254,16 @@ timeline is retained until a school saves its calendar on the website.
 
 ## Exam results in Progress
 
-The **Exam Results Journey** panel sits below the subject progress cards in
-student Progress and the teacher's selected-student report. It reads the same
+Student Progress opens to **Score** with Learning Power, a larger trend chart,
+an expandable score breakdown, strengths and next steps. **Subjects** shows
+individual subject cards; **Exam Results** opens the **Exam Results Journey**.
+The teacher's selected-student report still places the exam panel below the
+subject cards. The exam panel reads the same
 released report cards as web, compares all exams on a 0–100% scale, and lets the
 viewer filter by subject and tap an exam for its original marks. New released
-cards are checked every minute while the panel is open. Student Progress refresh
-also refreshes exam results. This panel is separate from Learning Power; missing
+cards are checked every minute while the panel is open. Pull to refresh updates
+the current view; the app bar refresh updates both sources. Exam results are
+separate from Learning Power; missing
 subjects are gaps, and one exam does not imply a trend.
 
 Run `flutter test --no-pub test/exam_results_journey_test.dart test/subject_progress_test.dart`

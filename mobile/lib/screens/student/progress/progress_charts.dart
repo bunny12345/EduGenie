@@ -102,6 +102,7 @@ class GrowthLineChart extends StatelessWidget {
   final String mode; // 'daily' | 'monthly'
   final bool mini;
   final double miniHeight;
+  final double? height;
   final bool percentSuffix;
 
   const GrowthLineChart({
@@ -113,6 +114,7 @@ class GrowthLineChart extends StatelessWidget {
     required this.mode,
     this.mini = false,
     this.miniHeight = 64,
+    this.height,
     this.percentSuffix = false,
   });
 
@@ -123,7 +125,7 @@ class GrowthLineChart extends StatelessWidget {
     final active = real.any((p) => (p.value ?? 0) > 0);
     if (points.isEmpty || !active) {
       return SizedBox(
-        height: mini ? miniHeight : 170,
+        height: mini ? miniHeight : height ?? 170,
         child: Center(
           child: Text(
             mini
@@ -140,7 +142,7 @@ class GrowthLineChart extends StatelessWidget {
       );
     }
     return SizedBox(
-      height: mini ? miniHeight : 190,
+      height: mini ? miniHeight : height ?? 190,
       width: double.infinity,
       child: CustomPaint(
         painter: _GrowthLinePainter(
