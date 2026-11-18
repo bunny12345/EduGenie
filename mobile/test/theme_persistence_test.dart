@@ -7,7 +7,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:mobile/main.dart';
 import 'package:mobile/models/session.dart';
-import 'package:mobile/screens/student/student_settings_screen.dart';
+import 'package:mobile/screens/student/student_more_screen.dart';
 import 'package:mobile/services/api_client.dart';
 import 'package:mobile/services/secure_storage_service.dart';
 import 'package:mobile/services/student_api_service.dart';
@@ -173,10 +173,10 @@ void main() {
     await container.read(sessionProvider.future);
     await tester.pumpWidget(UncontrolledProviderScope(
       container: container,
-      child: MaterialApp(theme: AppTheme.light(), home: const StudentSettingsScreen()),
+      child: MaterialApp(theme: AppTheme.light(), home: const StudentMoreScreen()),
     ));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Switch to Dark Theme'));
+    await tester.tap(find.byType(Switch));
     await tester.pumpAndSettle();
     expect(find.textContaining('Theme saved on this device, but could not sync'), findsOneWidget);
     expect((await SecureStorageService().readThemePreferences()).studentDark, isTrue);

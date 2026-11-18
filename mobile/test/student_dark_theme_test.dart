@@ -118,6 +118,7 @@ void main() {
           reportCardsProvider.overrideWith(
             (ref) async => ReportCardsData.fromJson({}),
           ),
+          settingsProvider.overrideWith((ref) async => {'prefs': {}}),
         ],
       );
       addTearDown(container.dispose);

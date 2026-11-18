@@ -376,8 +376,9 @@ must be resolved before treating the full regression suite as green.
 
 ## Student push notifications
 
-Students turn reminders on from **More › Notifications** (also linked from
-Settings). The screen shows:
+Students turn reminders on from **More › Notifications**. The More tab is the
+single home for student preferences: a Dark mode switch, Notifications,
+Parental Lock and Logout. The screen shows:
 
 - the phone's permission status;
 - a lock-screen-style preview of today's personalised 6:30 PM plan, test reminder and 9:00 PM recap;
