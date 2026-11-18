@@ -171,7 +171,7 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
-      await tester.tap(find.textContaining('Assign Homework'));
+      await tester.tap(find.text('Homework'));
       await tester.pumpAndSettle();
       final history = find.text('View History');
       await tester.ensureVisible(history);

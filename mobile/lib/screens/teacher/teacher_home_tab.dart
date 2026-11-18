@@ -9,6 +9,7 @@ import '../../state/teacher_providers.dart';
 import '../../services/attachment_url.dart';
 import '../../theme/app_colors.dart';
 import '../../widgets/section_card.dart';
+import '../../widgets/section_tab_button.dart';
 import '../../widgets/strict_exam_students.dart';
 import '../../widgets/image_source_sheet.dart';
 import '../../widgets/cupertino_time_picker_sheet.dart';
@@ -106,90 +107,109 @@ Future<DateTime?> _pickDateTime(BuildContext context, {DateTime? initial}) async
   return DateTime(date.year, date.month, date.day, time.hour, time.minute);
 }
 
-/// Teacher tab body — mirrors the website teacher sidebar's "Teacher" section
-/// (`TeacherDashboard.jsx`'s `activeSection === 'teacher'` block): the Active
-/// Class banner, then Announcements / Assign Homework / Mock Tests as
-/// collapsible panels with the same fields and behavior as the website.
-class TeacherHomeTab extends ConsumerWidget {
+enum _TeacherHomeSection { announcements, homework, tests }
+
+class TeacherHomeTab extends ConsumerStatefulWidget {
   const TeacherHomeTab({super.key, required this.activeClassBanner});
 
   final Widget activeClassBanner;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final targetClass = ref.watch(teacherTargetClassProvider);
+  ConsumerState<TeacherHomeTab> createState() => _TeacherHomeTabState();
+}
 
-    return SingleChildScrollView(
-      padding: const EdgeInsets.fromLTRB(16, 10, 16, 100),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          activeClassBanner,
-          const SizedBox(height: 12),
-          _AnnouncementsPanel(targetClass: targetClass),
-          const SizedBox(height: 10),
-          _AssignHomeworkPanel(targetClass: targetClass),
-          const SizedBox(height: 10),
-          _MockTestsPanel(targetClass: targetClass),
-        ],
-      ),
+class _TeacherHomeTabState extends ConsumerState<TeacherHomeTab> {
+  _TeacherHomeSection _section = _TeacherHomeSection.announcements;
+
+  @override
+  Widget build(BuildContext context) {
+    final targetClass = ref.watch(teacherTargetClassProvider);
+    final panels = [
+      _AnnouncementsPanel(targetClass: targetClass),
+      _AssignHomeworkPanel(targetClass: targetClass),
+      _MockTestsPanel(targetClass: targetClass),
+    ];
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
+          child: IntrinsicHeight(
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+              for (final (section, label, icon) in const [
+                (_TeacherHomeSection.announcements, 'Announcements', Icons.campaign_outlined),
+                (_TeacherHomeSection.homework, 'Homework', Icons.edit_note_rounded),
+                (_TeacherHomeSection.tests, 'Mock Tests', Icons.quiz_outlined),
+              ]) ...[
+                if (section != _TeacherHomeSection.announcements)
+                  const SizedBox(width: 8),
+                Expanded(
+                  child: SectionTabButton(
+                    label: label,
+                    icon: icon,
+                    compact: true,
+                    selected: _section == section,
+                    onPressed: () {
+                      if (section == _section) return;
+                      FocusScope.of(context).unfocus();
+                      setState(() => _section = section);
+                    },
+                  ),
+                ),
+              ],
+              ],
+            ),
+          ),
+        ),
+        Expanded(
+          child: IndexedStack(
+            index: _section.index,
+            sizing: StackFit.expand,
+            children: [
+              for (final (index, panel) in panels.indexed)
+                ExcludeFocus(
+                  excluding: index != _section.index,
+                  child: TickerMode(
+                    enabled: index == _section.index,
+                    child: SingleChildScrollView(
+                      primary: false,
+                      padding: const EdgeInsets.fromLTRB(12, 8, 12, 100),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          widget.activeClassBanner,
+                          const SizedBox(height: 10),
+                          panel,
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 }
 
-/// Collapsible card frame shared by all three panels — tap the header to
-/// expand/collapse, mirroring the website's card layout in a mobile-friendly
-/// accordion form.
-class _SectionCard extends StatefulWidget {
+class _SectionCard extends StatelessWidget {
   final String title;
   final Widget child;
 
   const _SectionCard({required this.title, required this.child});
 
   @override
-  State<_SectionCard> createState() => _SectionCardState();
-}
-
-class _SectionCardState extends State<_SectionCard> {
-  bool _expanded = false;
-
-  @override
   Widget build(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
-        color: AppColors.of(context).card,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: AppColors.of(context).line),
-      ),
+    return SectionCard(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          InkWell(
-            borderRadius: BorderRadius.circular(14),
-            onTap: () => setState(() => _expanded = !_expanded),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Text(widget.title, style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: AppColors.of(context).text)),
-                  ),
-                  AnimatedRotation(
-                    turns: _expanded ? 0.5 : 0,
-                    duration: const Duration(milliseconds: 180),
-                    child: Icon(Icons.keyboard_arrow_down_rounded, color: AppColors.of(context).muted),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          AnimatedCrossFade(
-            firstChild: const SizedBox(width: double.infinity, height: 0),
-            secondChild: Padding(padding: const EdgeInsets.fromLTRB(12, 0, 12, 12), child: widget.child),
-            crossFadeState: _expanded ? CrossFadeState.showSecond : CrossFadeState.showFirst,
-            duration: const Duration(milliseconds: 180),
-            sizeCurve: Curves.easeOut,
-          ),
+          Text(title, style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800, color: AppColors.of(context).text)),
+          const SizedBox(height: 10),
+          child,
         ],
       ),
     );
@@ -401,7 +421,7 @@ class _AnnouncementsPanelState extends ConsumerState<_AnnouncementsPanel> {
             .toList();
 
     return _SectionCard(
-      title: 'Announcements',
+      title: 'Post an announcement',
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -886,12 +906,12 @@ class _AssignHomeworkPanelState extends ConsumerState<_AssignHomeworkPanel> {
     final recentTop2 = recent.take(2).toList();
 
     return _SectionCard(
-      title: '📝 Assign Homework',
+      title: 'Assign Homework',
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.end,
+          Wrap(
+            alignment: WrapAlignment.end,
             children: [
               TextButton.icon(
                 onPressed: () => ref.invalidate(teacherHomeworkProvider),
@@ -926,7 +946,7 @@ class _AssignHomeworkPanelState extends ConsumerState<_AssignHomeworkPanel> {
             ),
           ),
           const SizedBox(height: 10),
-          TextField(controller: _titleCtrl, decoration: const InputDecoration(hintText: 'Homework title (e.g. Chapter 5 – Photosynthesis)')),
+          TextField(controller: _titleCtrl, decoration: const InputDecoration(hintText: 'Homework title (e.g. Unit 5 – Photosynthesis)')),
           const SizedBox(height: 8),
           IgnorePointer(
             child: TextField(
@@ -1884,14 +1904,12 @@ class _MockTestsPanelState extends ConsumerState<_MockTestsPanel> {
         .toList();
 
     return _SectionCard(
-      title: 'Mock Tests',
+      title: 'Create a mock test',
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Text('Create tests and add questions for your students.', style: TextStyle(fontSize: 13, color: AppColors.of(context).muted)),
           const SizedBox(height: 10),
-          const Text('New Test', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700)),
-          const SizedBox(height: 8),
           TextField(controller: _titleCtrl, decoration: const InputDecoration(hintText: 'Test title')),
           const SizedBox(height: 8),
           TextField(controller: _durationCtrl, keyboardType: TextInputType.number, decoration: const InputDecoration(hintText: 'Duration (minutes)')),

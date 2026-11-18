@@ -261,7 +261,9 @@ Teachers use the same three report tabs after selecting a student by name or
 class. **Change student** reopens the picker. Teacher **Exam Results** also
 includes released report cards and pending marks. The separate teacher
 **Students** screen groups the roster, homework grading and subject snapshot
-into three views.
+into three views. Both student pickers show the class filter above name search.
+**Teacher** opens to Announcements; Homework and Mock Tests have separate tabs.
+All three use the same active class, and switching tabs keeps unfinished drafts.
 
 The exam panel reads the same
 released report cards as web, compares all exams on a 0–100% scale, and lets the

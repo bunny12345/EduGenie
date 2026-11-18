@@ -8,6 +8,7 @@ import '../../models/report_card.dart';
 import '../../state/teacher_providers.dart';
 import '../../theme/app_colors.dart';
 import '../../widgets/section_card.dart';
+import '../../widgets/teacher_class_filter.dart';
 import '../student/student_progress_screen.dart';
 import '../student/progress/exam_results_journey.dart';
 import '../student/student_report_card_screen.dart' show ReportCardSheet;
@@ -358,13 +359,23 @@ class _TeacherProgressTabState extends ConsumerState<TeacherProgressTab> {
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  'Search by name or filter by class to open a learning report.',
+                  'Choose a class or search by name to open a learning report.',
                   style: TextStyle(
                     fontSize: 12,
                     color: AppColors.of(context).muted,
                   ),
                 ),
                 const SizedBox(height: 12),
+                TeacherClassFilter(
+                  options: classOptions,
+                  value: _classFilter,
+                  onChanged: (value) {
+                    _searchDebounce?.cancel();
+                    setState(() => _classFilter = value);
+                    _loadStudents();
+                  },
+                ),
+                const SizedBox(height: 10),
                 TextField(
                   controller: _searchCtrl,
                   onChanged: _onSearchChanged,
@@ -381,45 +392,6 @@ class _TeacherProgressTabState extends ConsumerState<TeacherProgressTab> {
                     },
                     child: const Text('Back to report'),
                   ),
-                const SizedBox(height: 8),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10),
-                  decoration: BoxDecoration(
-                    border: Border.all(color: AppColors.of(context).line),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: DropdownButtonHideUnderline(
-                    child: DropdownButton<String>(
-                      value: classOptions.contains(_classFilter)
-                          ? _classFilter
-                          : 'all',
-                      isExpanded: true,
-                      items: [
-                        const DropdownMenuItem(
-                          value: 'all',
-                          child: Text(
-                            'All classes',
-                            style: TextStyle(fontSize: 13),
-                          ),
-                        ),
-                        for (final c in classOptions)
-                          DropdownMenuItem(
-                            value: c,
-                            child: Text(
-                              c,
-                              style: const TextStyle(fontSize: 13),
-                            ),
-                          ),
-                      ],
-                      onChanged: (v) {
-                        if (v == null) return;
-                        _searchDebounce?.cancel();
-                        setState(() => _classFilter = v);
-                        _loadStudents();
-                      },
-                    ),
-                  ),
-                ),
                 const SizedBox(height: 10),
                 if (_studentsError != null) ...[
                   ErrorInline(message: _studentsError!),

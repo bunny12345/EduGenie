@@ -10,6 +10,7 @@ import '../../state/teacher_providers.dart';
 import '../../theme/app_colors.dart';
 import '../../widgets/section_card.dart';
 import '../../widgets/section_tab_button.dart';
+import '../../widgets/teacher_class_filter.dart';
 import '../student/progress/progress_charts.dart';
 import '../student/homework/lightbox.dart';
 
@@ -505,13 +506,23 @@ class _TeacherStudentsTabState extends ConsumerState<TeacherStudentsTab> {
                         ),
                         const SizedBox(height: 4),
                         Text(
-                          'Search by name or filter by class. Select a student to open their homework.',
+                          'Choose a class or search by name, then select a student.',
                           style: TextStyle(
                             fontSize: 12,
                             color: AppColors.of(context).muted,
                           ),
                         ),
                         const SizedBox(height: 12),
+                        TeacherClassFilter(
+                          options: classOptions,
+                          value: _classFilter,
+                          onChanged: (value) {
+                            _searchDebounce?.cancel();
+                            setState(() => _classFilter = value);
+                            _loadStudents();
+                          },
+                        ),
+                        const SizedBox(height: 10),
                         TextField(
                           controller: _searchCtrl,
                           onChanged: _onSearchChanged,
@@ -520,64 +531,14 @@ class _TeacherStudentsTabState extends ConsumerState<TeacherStudentsTab> {
                             prefixIcon: Icon(Icons.search_rounded, size: 18),
                           ),
                         ),
-                        const SizedBox(height: 8),
-                        Row(
-                          children: [
-                            Expanded(
-                              child: Container(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 10,
-                                ),
-                                decoration: BoxDecoration(
-                                  border: Border.all(
-                                    color: AppColors.of(context).line,
-                                  ),
-                                  borderRadius: BorderRadius.circular(8),
-                                ),
-                                child: DropdownButtonHideUnderline(
-                                  child: DropdownButton<String>(
-                                    value: classOptions.contains(_classFilter)
-                                        ? _classFilter
-                                        : 'all',
-                                    isExpanded: true,
-                                    items: [
-                                      const DropdownMenuItem(
-                                        value: 'all',
-                                        child: Text(
-                                          'All classes',
-                                          style: TextStyle(fontSize: 13),
-                                        ),
-                                      ),
-                                      for (final c in classOptions)
-                                        DropdownMenuItem(
-                                          value: c,
-                                          child: Text(
-                                            c,
-                                            style: const TextStyle(
-                                              fontSize: 13,
-                                            ),
-                                          ),
-                                        ),
-                                    ],
-                                    onChanged: (v) {
-                                      if (v == null) return;
-                                      _searchDebounce?.cancel();
-                                      setState(() => _classFilter = v);
-                                      _loadStudents();
-                                    },
-                                  ),
-                                ),
-                              ),
+                        if (_selectedStudentId != null)
+                          Align(
+                            alignment: AlignmentDirectional.centerEnd,
+                            child: TextButton(
+                              onPressed: _clearSelection,
+                              child: const Text('Clear selection'),
                             ),
-                            if (_selectedStudentId != null) ...[
-                              const SizedBox(width: 8),
-                              _Frame3dButton(
-                                onTap: _clearSelection,
-                                child: const Text('Clear Selection'),
-                              ),
-                            ],
-                          ],
-                        ),
+                          ),
                         const SizedBox(height: 10),
                         if (_studentsError != null) ...[
                           ErrorInline(message: _studentsError!),

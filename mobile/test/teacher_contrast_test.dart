@@ -91,15 +91,19 @@ class _Api extends TeacherApiService {
 class _ProgressApi extends _Api {
   final scoreStudents = <String>[];
   final examStudents = <String>[];
+  final classFilters = <String>[];
 
   @override
   Future<List<Map<String, dynamic>>> getStudents({
     String search = '',
     String className = '',
-  }) async => [
-    {'id': 'student', 'name': 'Alex', 'className': 'Class 8'},
-    {'id': 'second', 'name': 'Morgan', 'className': 'Class 8'},
-  ].where((student) => student['name']!.toLowerCase().contains(search.toLowerCase())).toList();
+  }) async {
+    classFilters.add(className);
+    return [
+      {'id': 'student', 'name': 'Alex', 'className': 'Class 8'},
+      {'id': 'second', 'name': 'Morgan', 'className': 'Class 8'},
+    ].where((student) => student['name']!.toLowerCase().contains(search.toLowerCase())).toList();
+  }
 
   @override
   Future<LearningScoreData> getStudentLearningScore(String studentId) async {
@@ -196,6 +200,51 @@ Widget _app(Widget child, _Api api, ValueNotifier<bool> dark) => ProviderScope(
 void main() {
   setUpAll(() => GoogleFonts.config.allowRuntimeFetching = false);
   tearDown(() => AppColors.isDark = false);
+
+  for (final (label, screen) in const [
+    ('Students', TeacherStudentsTab()),
+    ('Student Progress', TeacherProgressTab()),
+  ]) {
+    testWidgets('$label puts the class filter above name search', (tester) async {
+      final dark = ValueNotifier(false);
+      addTearDown(dark.dispose);
+      final api = _ProgressApi();
+      await tester.pumpWidget(_app(screen, api, dark));
+      await tester.pumpAndSettle();
+      final filter = find.text('Filter by class').hitTestable();
+      expect(tester.getTopLeft(filter).dy, lessThan(tester.getTopLeft(find.byType(TextField)).dy));
+      await tester.tap(find.text('All classes').hitTestable());
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Class 8').hitTestable().last);
+      await tester.pumpAndSettle();
+      expect(api.classFilters, ['all', 'Class 8']);
+      await tester.pumpWidget(const SizedBox.shrink());
+    });
+  }
+
+  testWidgets('teacher home tabs open forms directly and keep drafts', (tester) async {
+    tester.view.physicalSize = const Size(320, 680);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final dark = ValueNotifier(false);
+    addTearDown(dark.dispose);
+    await tester.pumpWidget(_app(const TeacherHomeTab(activeClassBanner: Text('Active class')), _Api(), dark));
+    await tester.pumpAndSettle();
+    expect(find.text('Post an announcement').hitTestable(), findsOneWidget);
+    final title = find.widgetWithText(TextField, 'Announcement title').hitTestable();
+    await tester.enterText(title, 'Assembly reminder');
+    await tester.tap(find.text('Homework').hitTestable());
+    await tester.pumpAndSettle();
+    expect(find.text('Assign Homework').hitTestable(), findsOneWidget);
+    await tester.tap(find.text('Mock Tests').hitTestable());
+    await tester.pumpAndSettle();
+    expect(find.text('Create a mock test').hitTestable(), findsOneWidget);
+    await tester.tap(find.text('Announcements').hitTestable());
+    await tester.pumpAndSettle();
+    expect(tester.widget<TextField>(title).controller!.text, 'Assembly reminder');
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
 
   testWidgets('teacher can search, switch students and browse report views', (tester) async {
     tester.view.physicalSize = const Size(320, 680);
