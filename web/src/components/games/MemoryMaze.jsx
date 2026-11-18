@@ -104,7 +104,7 @@ export default function MemoryMaze({ studentId, onArcadeBackReady }) {
         scope,
         deckId: chapter ? chapter.deckId : null,
         chapterId: chapter ? chapter.chapterId : null,
-        chapterTitle: chapter ? chapter.title : 'All chapters',
+        chapterTitle: chapter ? chapter.title : 'All units',
         totalPairs: cards.length,
       });
       setTiles(pairTiles);
@@ -221,7 +221,7 @@ export default function MemoryMaze({ studentId, onArcadeBackReady }) {
     return (
       <div className="eg-fc-empty">
         <div className="eg-fc-empty-emoji">🌀</div>
-        <h3>No chapters ready yet</h3>
+        <h3>No units ready yet</h3>
         <p>{error || 'Memory Maze uses the same chapters as AI Flashcards — check back once your teacher uploads content!'}</p>
         {error ? <button className="eg-fc-btn ghost" onClick={loadOverview}>Try again</button> : null}
       </div>
@@ -277,7 +277,7 @@ export default function MemoryMaze({ studentId, onArcadeBackReady }) {
                   style={{ '--fc-accent': activeSubject.accent }}
                   onClick={() => startGame(activeSubject, null)}
                 >
-                  <span className="eg-fc-chapter-title">🎲 All chapters</span>
+                  <span className="eg-fc-chapter-title">🎲 All units</span>
                   <span className="eg-fc-chapter-sub">Random mix from {activeSubject.displayName}</span>
                   <span className="eg-fc-chapter-badges">
                     <span className="eg-fc-badge">{activeSubject.totalCards} cards</span>
@@ -328,7 +328,7 @@ export default function MemoryMaze({ studentId, onArcadeBackReady }) {
         </p>
         <div className="eg-fc-summary-actions">
           <button className="eg-fc-btn ghost" onClick={playAgain}>🔁 Play again</button>
-          <button className="eg-fc-btn" onClick={() => loadOverview()}>Pick another chapter</button>
+          <button className="eg-fc-btn" onClick={() => loadOverview()}>Pick another unit</button>
         </div>
       </div>
     );

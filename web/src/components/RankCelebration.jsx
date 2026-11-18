@@ -209,7 +209,7 @@ export default function RankCelebration({ rank, name, className, examName, onClo
         <h2>🎉 Congratulations, {name || 'Champ'}!</h2>
         <p className="eg-celebrate-title">{cfg.title}</p>
         <p className="eg-celebrate-sub">You secured <b>{place} Rank</b> in {className || 'your class'}{examName ? ` — ${examName}` : ''}.</p>
-        <button type="button" className="eg-celebrate-btn" onClick={onClose} autoFocus>Yay! 🎉</button>
+        <button type="button" className="eg-celebrate-btn" onClick={onClose} autoFocus>Continue</button>
       </div>
     </div>
   );

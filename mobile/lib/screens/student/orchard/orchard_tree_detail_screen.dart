@@ -28,7 +28,7 @@ class _MilestoneGroup {
 
 const List<_MilestoneGroup> _kMilestoneGroups = [
   _MilestoneGroup(stage: 'sprout', emoji: '🌱', title: 'Sprout · Understand', items: [
-    ['lesson_watched', 'Watch the AI lesson'],
+    ['lesson_watched', 'Watch the AI unit walkthrough'],
     ['question_asked', 'Ask one question'],
     ['story_done', 'Complete the story'],
   ]),
@@ -157,7 +157,7 @@ class _OrchardTreeDetailScreenState extends ConsumerState<OrchardTreeDetailScree
                 children: [
                   _chip(masteryStageLabel(detail.treeType, tree.stageLabel, tree.masteredChapters), color: accent, bold: true),
                   if (art != null && tree.masteredChapters != null)
-                    _chip('${tree.masteredChapters} ${art.fruitPlural} · mastered lessons', color: accent),
+                    _chip('${tree.masteredChapters} ${art.fruitPlural} · mastered units', color: accent),
                   _chip('Level ${tree.level} of ${tree.maxLevel}'),
                   _chip(
                     tree.health == 'healthy' ? '💚 Healthy' : tree.health == 'thirsty' ? '💧 Thirsty' : '🍂 Needs care',
@@ -171,7 +171,7 @@ class _OrchardTreeDetailScreenState extends ConsumerState<OrchardTreeDetailScree
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    Expanded(child: _stat('Lessons fruited', '$fruited / ${tree.totalChapters}')),
+                    Expanded(child: _stat('Units mastered', '$fruited / ${tree.totalChapters}')),
                     const SizedBox(width: 10),
                     Expanded(child: _stat('Golden fruits', '$golden', icon: '✨')),
                   ],
@@ -230,9 +230,9 @@ class _OrchardTreeDetailScreenState extends ConsumerState<OrchardTreeDetailScree
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('${detail.subject} lessons — every seed becomes a fruit', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
+              Text('${detail.subject} units — every seed becomes a fruit', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
               const SizedBox(height: 4),
-              Text('Each uploaded lesson grows on its own. Care for it and it ripens over weeks.',
+              Text('Each uploaded unit grows on its own. Care for it and it ripens over weeks.',
                   style: TextStyle(fontSize: 12.5, color: AppColors.of(context).muted)),
               const SizedBox(height: 14),
               if (chapters.isEmpty)
@@ -252,10 +252,10 @@ class _OrchardTreeDetailScreenState extends ConsumerState<OrchardTreeDetailScree
                     children: [
                       const Text('🌱', style: TextStyle(fontSize: 32)),
                       const SizedBox(height: 6),
-                      Text('No ${detail.subject} lessons yet', style: const TextStyle(fontWeight: FontWeight.w700)),
+                      Text('No ${detail.subject} units yet', style: const TextStyle(fontWeight: FontWeight.w700)),
                       const SizedBox(height: 4),
                       Text(
-                        'Your school hasn\u2019t uploaded any ${detail.subject} lessons for your class yet. As soon as they do, each lesson appears here as a seed you can grow.',
+                        'Your school hasn\u2019t uploaded any ${detail.subject} units for your class yet. As soon as they do, each unit appears here as a seed you can grow.',
                         textAlign: TextAlign.center,
                         style: TextStyle(fontSize: 12.5, color: AppColors.of(context).muted),
                       ),

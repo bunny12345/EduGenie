@@ -327,7 +327,7 @@ export default function StudentOrchard({ studentId, greetingName = 'there', init
               <div className="eg-orch-tree-foot">
                 <span className="eg-orch-tree-stage">{treeArt(t.treeType) && t.masteredChapters > 0 ? `${t.masteredChapters} ${treeArt(t.treeType).fruitPlural}` : t.stageLabel}</span>
                 <span className="eg-orch-tree-chapters">
-                  {t.totalChapters ? `${t.completedChapters} / ${t.totalChapters} Lessons` : 'No lessons yet'}
+                  {t.totalChapters ? `${t.completedChapters} / ${t.totalChapters} Units` : 'No units yet'}
                 </span>
               </div>
               <div className="eg-orch-tree-bar">
@@ -369,10 +369,10 @@ export default function StudentOrchard({ studentId, greetingName = 'there', init
                 <span>Level {selectedTree.level} of {selectedTree.maxLevel}</span>
               </div>
               <div className="eg-orch-detail-chapters">
-                {treeArt(selectedTree.treeType) && Number.isInteger(selectedTree.masteredChapters) ? <p>{selectedTree.masteredChapters} {treeArt(selectedTree.treeType).fruitPlural} earned · One per fully mastered lesson</p> : null}
+                {treeArt(selectedTree.treeType) && Number.isInteger(selectedTree.masteredChapters) ? <p>{selectedTree.masteredChapters} {treeArt(selectedTree.treeType).fruitPlural} earned · One per fully mastered unit</p> : null}
                 {selectedTree.totalChapters
-                  ? `${selectedTree.completedChapters} / ${selectedTree.totalChapters} Lessons Completed`
-                  : 'No lessons uploaded for your class yet'}
+                  ? `${selectedTree.completedChapters} / ${selectedTree.totalChapters} Units Completed`
+                  : 'No units uploaded for your class yet'}
               </div>
 
               {/* Next chapter */}
@@ -382,7 +382,7 @@ export default function StudentOrchard({ studentId, greetingName = 'there', init
               </div> : null}
               {detail?.subjectKey === selectedKey && detail?.nextChapter && (
                 <div className="eg-orch-next">
-                  <span className="eg-orch-next-label">Next Chapter</span>
+                  <span className="eg-orch-next-label">Next Unit</span>
                   <div className="eg-orch-next-row">
                     <div>
                       <strong>{detail.nextChapter.title}</strong>
@@ -452,7 +452,7 @@ function buildMissions(trees) {
   const thirsty = trees.find((t) => t.health !== 'healthy');
   if (thirsty) missions.push({ icon: '💧', label: `Water your ${thirsty.subject} tree`, reward: '+20 💧' });
   const inProgress = trees.find((t) => t.progressPct > 0 && t.progressPct < 100);
-  if (inProgress) missions.push({ icon: '📖', label: `Revise a ${inProgress.subject} chapter`, reward: '+15 ☀️' });
+  if (inProgress) missions.push({ icon: '📖', label: `Revise a ${inProgress.subject} unit`, reward: '+15 ☀️' });
   missions.push({ icon: '📝', label: 'Take a mock test', reward: '+20 💧' });
   missions.push({ icon: '🤖', label: 'Ask 3 doubts to the AI Tutor', reward: '+10 🌱' });
   return missions.slice(0, 4);
@@ -463,7 +463,7 @@ function buildTip(tree) {
   if (tree.health === 'thirsty') return `Your ${tree.subject} tree needs some water. Try a quick revision or quiz.`;
   if (tree.stage === 'golden_fruit') return `Amazing! Your ${tree.subject} tree is bearing golden fruit. You truly mastered this.`;
   if (tree.progressPct >= 60) return `Great progress! Keep nurturing your ${tree.subject} tree toward fruit.`;
-  return `Plant more seeds — start the next ${tree.subject} chapter to grow your tree.`;
+  return `Plant more seeds — start the next ${tree.subject} unit to grow your tree.`;
 }
 
 // Fallback season from the local date (matches backend seasonForDate), used only

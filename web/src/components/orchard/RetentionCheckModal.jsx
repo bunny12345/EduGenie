@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { generateQuizRush, completeOrchardReview } from '../../api';
 
 // Blossom/Fruit retention check — a quick 3-question quiz grounded in the
-// chapter's own lesson content, shown on demand when a week/month review is
+// chapter's own unit content, shown on demand when a week/month review is
 // due. Passing calls completeOrchardReview to advance the tree.
 export default function RetentionCheckModal({ studentId, subjectKey, subjectLabel, chapter, reviewType, onClose, onDone }) {
   const [loading, setLoading] = useState(true);
@@ -85,7 +85,7 @@ export default function RetentionCheckModal({ studentId, subjectKey, subjectLabe
             <div className={`eg-inline-note ${result.passed ? '' : ''}`}>
               {result.passed
                 ? `✅ Nice! You got ${result.score}/${result.total} — this chapter's memory check is passed.`
-                : `You got ${result.score}/${result.total}. That's below the pass mark — review the lesson and try again soon.`}
+                : `You scored ${result.score}/${result.total}. Review the unit and try again.`}
             </div>
           ) : (
             questions.map((q, i) => (

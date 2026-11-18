@@ -44,7 +44,7 @@ class _QuizRushScreenState extends ConsumerState<QuizRushScreen> {
   String _sessionScope = 'all';
   String? _sessionDeckId;
   String? _sessionChapterId;
-  String _sessionChapterTitle = 'All chapters';
+  String _sessionChapterTitle = 'All units';
 
   List<QuizRushQuestion> _questions = [];
   int _currentIndex = 0;
@@ -120,7 +120,7 @@ class _QuizRushScreenState extends ConsumerState<QuizRushScreen> {
         _sessionScope = chapter != null ? 'deck' : 'all';
         _sessionDeckId = chapter?.deckId;
         _sessionChapterId = chapter?.chapterId;
-        _sessionChapterTitle = chapter?.title ?? 'All chapters';
+        _sessionChapterTitle = chapter?.title ?? 'All units';
         _questions = qs;
         _currentIndex = 0;
         _selectedIndex = null;
@@ -239,7 +239,7 @@ class _QuizRushScreenState extends ConsumerState<QuizRushScreen> {
       case _QrPhase.empty:
         return GameEmptyView(
           emoji: '⚡',
-          title: 'No chapters ready yet',
+          title: 'No units ready yet',
           message: _error ?? "Quiz Rush appears automatically once a chapter's questions are generated — check back soon!",
           onRefresh: _loadOverview,
         );
@@ -296,7 +296,7 @@ class _QuizRushScreenState extends ConsumerState<QuizRushScreen> {
               children: [
                 Text(active.treeEmoji, style: const TextStyle(fontSize: 46)),
                 const SizedBox(height: 10),
-                Text('No ${active.displayName} chapters yet', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: GameColors.of(context).text(Color(0xFF2A2652)))),
+                Text('No ${active.displayName} units yet', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: GameColors.of(context).text(Color(0xFF2A2652)))),
                 const SizedBox(height: 6),
                 Text(
                   'Quiz Rush appears automatically once questions are generated for ${active.displayName}.',
@@ -310,14 +310,14 @@ class _QuizRushScreenState extends ConsumerState<QuizRushScreen> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text('${active.treeEmoji} ${active.displayName} chapters', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w900, color: GameColors.of(context).text(Color(0xFF2A2652)))),
+              Text('${active.treeEmoji} ${active.displayName} units', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w900, color: GameColors.of(context).text(Color(0xFF2A2652)))),
               Text('${active.chapters.length} uploaded', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: GameColors.of(context).accent(active.accent))),
             ],
           ),
           const SizedBox(height: 8),
           GameChapterRow(
             accent: active.accent,
-            title: '🎲 All chapters',
+            title: '🎲 All units',
             sub: 'Random mix from ${active.displayName}',
             badges: [GameBadge(text: '${active.totalQuestions} questions')],
             highlight: true,
@@ -465,7 +465,7 @@ class _QuizRushScreenState extends ConsumerState<QuizRushScreen> {
           runSpacing: 10,
           children: [
             GameGhostButton(label: '🔁 Play again', onTap: _playAgain),
-            GamePrimaryButton(label: 'Pick another chapter', onTap: _loadOverview),
+            GamePrimaryButton(label: 'Pick another unit', onTap: _loadOverview),
           ],
         ),
       ],

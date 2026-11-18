@@ -263,7 +263,7 @@ void main() {
       await _pump(tester);
       for (final label in [
         '🌳 Science Tree',
-        'Lessons fruited',
+        'Units mastered',
         'Golden fruits',
         'Roots (understanding)',
         'Overall growth',
@@ -272,7 +272,7 @@ void main() {
         '2. Golden lesson',
         'Blossom · Roots 0%',
         '🌱 Sprout · Understand',
-        'Watch the AI lesson',
+        'Watch the AI unit walkthrough',
         '🌿 Young Plant · Practice',
         'Do the homework',
         'Take the check →',
@@ -339,7 +339,7 @@ void main() {
           await tester.pumpAndSettle();
           _expectContrast(
             tester,
-            find.textContaining(passed ? '✅ Nice!' : 'below the pass mark'),
+            find.textContaining(passed ? '✅ Nice!' : 'Review the unit and try again'),
           );
           expect(tester.takeException(), isNull);
           await tester.pumpWidget(const SizedBox.shrink());
@@ -363,8 +363,8 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
-      await tester.ensureVisible(find.text('No Science lessons yet'));
-      _expectContrast(tester, find.text('No Science lessons yet'));
+      await tester.ensureVisible(find.text('No Science units yet'));
+      _expectContrast(tester, find.text('No Science units yet'));
       _expectContrast(tester, find.textContaining('Your school hasn'));
       await tester.pumpWidget(const SizedBox.shrink());
     });

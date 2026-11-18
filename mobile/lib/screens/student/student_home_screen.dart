@@ -840,7 +840,7 @@ class _StreakCardState extends State<_StreakCard> {
               Text(
                 doneToday
                     ? 'A little effort today. A stronger you tomorrow.'
-                    : 'Your next chapter starts with one small step.',
+                    : 'Take one small step towards your next learning goal.',
                 style: TextStyle(
                   fontSize: 12,
                   height: 1.5,

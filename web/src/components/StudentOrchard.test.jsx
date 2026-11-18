@@ -44,11 +44,11 @@ test('returning from a tree refreshes the selected chapter detail along with ove
 test('Orchard card, side panel and expanded tree show the same natural mastery count', async () => {
   render(<StudentOrchard studentId="student-1" />);
   expect(await screen.findByText('3 apples')).toBeInTheDocument();
-  expect(screen.getByText('3 apples earned · One per fully mastered lesson')).toBeInTheDocument();
+  expect(screen.getByText('3 apples earned · One per fully mastered unit')).toBeInTheDocument();
   expect(screen.getAllByRole('img', { name: /apple tree with 3 apples/ })).toHaveLength(2);
-  expect(screen.getByText('4 / 12 Lessons')).toBeInTheDocument();
+  expect(screen.getByText('4 / 12 Units')).toBeInTheDocument();
   fireEvent.click(screen.getByText('Explore tree →'));
-  expect(await screen.findByText('3 apples · mastered lessons')).toBeInTheDocument();
+  expect(await screen.findByText('3 apples · mastered units')).toBeInTheDocument();
   expect(screen.getByRole('img', { name: /apple tree with 3 apples/ })).toBeInTheDocument();
   expect(getOrchardTree).toHaveBeenCalledWith('student-1', 'science');
   expect(getOrchardTree).toHaveBeenCalledTimes(1);
@@ -63,7 +63,7 @@ test('opening a tree during the selected detail request shares that request', as
   fireEvent.click(screen.getByText('Explore tree →'));
   await waitFor(() => expect(getOrchardTree).toHaveBeenCalledTimes(1));
   finish({ ...tree, tree, chapters: [], nextChapter: null });
-  expect(await screen.findByText('3 apples · mastered lessons')).toBeInTheDocument();
+  expect(await screen.findByText('3 apples · mastered units')).toBeInTheDocument();
   expect(getOrchardTree).toHaveBeenCalledTimes(1);
 });
 

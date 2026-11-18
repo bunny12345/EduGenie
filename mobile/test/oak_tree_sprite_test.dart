@@ -141,7 +141,7 @@ void main() {
       expect(asset('oak/acorn'), findsNWidgets(extra));
       expect(
         find.bySemanticsLabel(
-          'Oak tree with $count acorns for $count mastered lessons',
+          'Oak tree with $count acorns for $count mastered units',
         ),
         findsOneWidget,
       );

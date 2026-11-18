@@ -65,7 +65,7 @@ class _MemoryMazeScreenState extends ConsumerState<MemoryMazeScreen> {
   String _sessionScope = 'all';
   String? _sessionDeckId;
   String? _sessionChapterId;
-  String _sessionChapterTitle = 'All chapters';
+  String _sessionChapterTitle = 'All units';
   int _totalPairs = 0;
 
   List<_MazeTile> _tiles = [];
@@ -145,7 +145,7 @@ class _MemoryMazeScreenState extends ConsumerState<MemoryMazeScreen> {
         _sessionScope = chapter != null ? 'deck' : 'all';
         _sessionDeckId = chapter?.deckId;
         _sessionChapterId = chapter?.chapterId;
-        _sessionChapterTitle = chapter?.title ?? 'All chapters';
+        _sessionChapterTitle = chapter?.title ?? 'All units';
         _totalPairs = cards.length;
         _tiles = tiles;
         _flippedIds.clear();
@@ -270,7 +270,7 @@ class _MemoryMazeScreenState extends ConsumerState<MemoryMazeScreen> {
       case _MmPhase.empty:
         return GameEmptyView(
           emoji: '🌀',
-          title: 'No chapters ready yet',
+          title: 'No units ready yet',
           message: _error ?? 'Memory Maze uses the same chapters as AI Flashcards — check back once your teacher uploads content!',
           onRefresh: _loadOverview,
         );
@@ -320,7 +320,7 @@ class _MemoryMazeScreenState extends ConsumerState<MemoryMazeScreen> {
               children: [
                 Text(active.treeEmoji, style: const TextStyle(fontSize: 46)),
                 const SizedBox(height: 10),
-                Text('No ${active.displayName} chapters yet', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: GameColors.of(context).text(Color(0xFF2A2652)))),
+                Text('No ${active.displayName} units yet', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: GameColors.of(context).text(Color(0xFF2A2652)))),
                 const SizedBox(height: 6),
                 Text(
                   'Memory Maze appears automatically once flashcards exist for ${active.displayName}.',
@@ -334,14 +334,14 @@ class _MemoryMazeScreenState extends ConsumerState<MemoryMazeScreen> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text('${active.treeEmoji} ${active.displayName} chapters', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w900, color: GameColors.of(context).text(Color(0xFF2A2652)))),
+              Text('${active.treeEmoji} ${active.displayName} units', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w900, color: GameColors.of(context).text(Color(0xFF2A2652)))),
               Text('${active.chapters.length} uploaded', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: GameColors.of(context).accent(active.accent))),
             ],
           ),
           const SizedBox(height: 8),
           GameChapterRow(
             accent: active.accent,
-            title: '🎲 All chapters',
+            title: '🎲 All units',
             sub: 'Random mix from ${active.displayName}',
             badges: [GameBadge(text: '${active.totalCards} cards')],
             highlight: true,
@@ -442,7 +442,7 @@ class _MemoryMazeScreenState extends ConsumerState<MemoryMazeScreen> {
           runSpacing: 10,
           children: [
             GameGhostButton(label: '🔁 Play again', onTap: _playAgain),
-            GamePrimaryButton(label: 'Pick another chapter', onTap: _loadOverview),
+            GamePrimaryButton(label: 'Pick another unit', onTap: _loadOverview),
           ],
         ),
       ],

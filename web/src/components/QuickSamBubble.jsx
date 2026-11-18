@@ -373,7 +373,7 @@ export default function QuickSamBubble({ studentId, schoolName = '', greetingNam
     const greeting = [{
       role: 'ai',
       local: true,
-      text: `Hi${firstName ? ` ${firstName}` : ''}! 👋 I'm Sam. Ask me anything from your class subjects — no need to pick a subject or lesson.`,
+      text: `Hi${firstName ? ` ${firstName}` : ''}! 👋 I'm Sam. Ask me anything from your class subjects — no need to pick a subject or unit.`,
     }];
     messagesRef.current = greeting;
     setMessages(greeting);
@@ -547,7 +547,7 @@ export default function QuickSamBubble({ studentId, schoolName = '', greetingNam
                 ref={inputRef}
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
-                placeholder="Ask Sam anything from your lessons…"
+                placeholder="Ask Sam anything from your units…"
                 maxLength={1000}
                 disabled={recording}
               />

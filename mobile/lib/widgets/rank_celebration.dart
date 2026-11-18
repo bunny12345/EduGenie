@@ -279,7 +279,7 @@ class _RankCelebrationState extends State<RankCelebration> with SingleTickerProv
                               borderRadius: BorderRadius.circular(999),
                               boxShadow: const [BoxShadow(color: Color(0x73FF6B6B), blurRadius: 18, offset: Offset(0, 8))],
                             ),
-                            child: const Text('Yay! 🎉', style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w900)),
+                            child: const Text('Continue', style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w900)),
                           ),
                         ),
                       ],

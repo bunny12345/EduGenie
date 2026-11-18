@@ -256,7 +256,7 @@ class _ContextHeader extends ConsumerWidget {
           Expanded(
             child: _DarkDropdown<String>(
               value: tutorState.lesson?.id,
-              hint: 'Select a lesson',
+              hint: 'Select a unit',
               items: lessons
                   .map((l) => DropdownMenuItem(
                       value: l.id, child: Text(l.title, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 13, color: AiTutorColors.selectText))))
@@ -356,7 +356,7 @@ class _SelectLessonPrompt extends StatelessWidget {
           children: [
             const Text('📚', style: TextStyle(fontSize: 40)),
             const SizedBox(height: 12),
-            const Text('Select a lesson to get started', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 17, color: AiTutorColors.headText)),
+            const Text('Select a unit to get started', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 17, color: AiTutorColors.headText)),
             const SizedBox(height: 6),
             const Text(
               "Choose a subject and lesson above — Sam will start a focused session just for that lesson.",
@@ -1027,7 +1027,7 @@ class _InputRow extends ConsumerWidget {
                   enabled: !sending,
                   style: const TextStyle(color: AiTutorColors.text, fontSize: 14),
                   decoration: InputDecoration(
-                    hintText: 'Ask anything about this lesson...',
+                    hintText: 'Ask anything about this unit...',
                     hintStyle: const TextStyle(color: Color(0xB8D9E4FF)),
                     isDense: true,
                     filled: true,

@@ -50,7 +50,7 @@ class SkillMeta {
 }
 
 const Map<String, SkillMeta> kSkillMeta = {
-  'understanding': SkillMeta('🧠', 'Understanding', 'How well you get the lessons'),
+  'understanding': SkillMeta('🧠', 'Understanding', 'Understanding of curriculum units'),
   'tests': SkillMeta(
     '📝', 'Tests & Quizzes',
     'Test completion rate multiplied by average marks',

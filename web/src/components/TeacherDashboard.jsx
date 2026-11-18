@@ -2569,7 +2569,7 @@ export default function TeacherDashboard({ session, onLogout }) {
                 <input
                   value={assignTitle}
                   onChange={(e) => setAssignTitle(e.target.value)}
-                  placeholder="Homework title (e.g. Chapter 5 – Photosynthesis)"
+                  placeholder="Homework title (e.g. Unit 5 – Photosynthesis)"
                   required
                 />
                 <input
@@ -2589,8 +2589,8 @@ export default function TeacherDashboard({ session, onLogout }) {
                   >
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
                     {assignLessonIds.length
-                      ? `${assignLessonIds.length} chapter${assignLessonIds.length > 1 ? 's' : ''} selected`
-                      : 'Select chapters (optional)'}
+                      ? `${assignLessonIds.length} unit${assignLessonIds.length > 1 ? 's' : ''} selected`
+                      : 'Select units (optional)'}
                     <span style={{ marginLeft: 'auto', fontSize: '10px', transition: 'transform 0.2s', transform: showLessonPicker ? 'rotate(180deg)' : 'none' }}>▾</span>
                   </button>
                   {showLessonPicker && (
@@ -2598,12 +2598,12 @@ export default function TeacherDashboard({ session, onLogout }) {
                       {!teacherTargetClass || teacherTargetClass === 'all' ? (
                         assignAvailableLessons.length > 0 ? null : (
                         <div style={{ padding: '12px', fontSize: '12px', color: '#6b7280', textAlign: 'center' }}>
-                          Select a class to see chapters, or no lessons uploaded yet.
+                          Select a class to see units, or no units uploaded yet.
                         </div>
                         )
                       ) : assignAvailableLessons.length === 0 ? (
                         <div style={{ padding: '12px', fontSize: '12px', color: '#6b7280', textAlign: 'center' }}>
-                          No lessons uploaded for {assignSubject} in {teacherTargetClass} yet. Upload lessons from the school portal first.
+                          No units are available for {assignSubject} in {teacherTargetClass} yet. Upload units from the school portal first.
                         </div>
                       ) : (
                         <>
@@ -2613,7 +2613,7 @@ export default function TeacherDashboard({ session, onLogout }) {
                               checked={assignLessonIds.length === 0}
                               onChange={() => setAssignLessonIds([])}
                             />
-                            <span style={{ fontWeight: 600 }}>All chapters / General</span>
+                            <span style={{ fontWeight: 600 }}>All units / General</span>
                           </label>
                           {assignAvailableLessons.map((lesson, idx) => (
                             <label key={lesson.id} className="td-lesson-picker-option">
@@ -2653,7 +2653,7 @@ export default function TeacherDashboard({ session, onLogout }) {
                   rows={4}
                   value={assignNote}
                   onChange={(e) => setAssignNote(e.target.value)}
-                  placeholder="Homework instructions / notes for students (e.g. Read pages 45–52 and answer Q1–Q5...)"
+                  placeholder="Homework instructions / notes for students (e.g. Read pages 45–52 and answer questions 1–5...)"
                   style={{ resize: 'vertical', fontFamily: 'inherit', fontSize: '14px', padding: '10px', borderRadius: '8px', border: '1px solid #ddd', width: '100%', boxSizing: 'border-box' }}
                 />
                 <div
@@ -2827,15 +2827,15 @@ export default function TeacherDashboard({ session, onLogout }) {
                       >
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
                         {editingHwLessonIds.length
-                          ? `${editingHwLessonIds.length} chapter${editingHwLessonIds.length > 1 ? 's' : ''} selected`
-                          : 'All chapters / General'}
+                          ? `${editingHwLessonIds.length} unit${editingHwLessonIds.length > 1 ? 's' : ''} selected`
+                          : 'All units / General'}
                         <span style={{ marginLeft: 'auto', fontSize: '10px', transform: showEditingLessonPicker ? 'rotate(180deg)' : 'none' }}>▾</span>
                       </button>
                       {showEditingLessonPicker && (
                         <div className="td-lesson-picker-dropdown">
                           <label className="td-lesson-picker-option">
                             <input type="checkbox" checked={!editingHwLessonIds.length} onChange={() => setEditingHwLessonIds([])} />
-                            <span style={{ fontWeight: 600 }}>All chapters / General</span>
+                            <span style={{ fontWeight: 600 }}>All units / General</span>
                           </label>
                           {assignAvailableLessons.length ? assignAvailableLessons.map((lesson, index) => (
                             <label key={lesson.id} className="td-lesson-picker-option">
@@ -2849,7 +2849,7 @@ export default function TeacherDashboard({ session, onLogout }) {
                               <span>{index + 1}. {lesson.title}</span>
                             </label>
                           )) : (
-                            <div style={{ padding: '12px', fontSize: '12px', color: '#6b7280' }}>No lessons available for this class and subject.</div>
+                            <div style={{ padding: '12px', fontSize: '12px', color: '#6b7280' }}>No units available for this class and subject.</div>
                           )}
                         </div>
                       )}
@@ -3268,7 +3268,7 @@ export default function TeacherDashboard({ session, onLogout }) {
                         className="eg-ai-select"
                         disabled={!tutorLessons.length}
                       >
-                        <option value="">{tutorLessons.length ? 'Select a lesson' : 'No lessons yet'}</option>
+                        <option value="">{tutorLessons.length ? 'Select a unit' : 'No units yet'}</option>
                         {tutorLessons.map((lesson) => <option key={lesson.id} value={lesson.id}>{lesson.title}</option>)}
                       </select>
                     </div>
@@ -3332,7 +3332,7 @@ export default function TeacherDashboard({ session, onLogout }) {
                         </div>
                       ) : null}
                       {!panelLoading.chat && !chatHistory.length && !chatLoading ? (
-                        <div className="ai-msg bot">👋 Hi! Ask me anything about {selectedTutorLesson.title} to help plan or recap this lesson.</div>
+                        <div className="ai-msg bot">👋 Ask me about {selectedTutorLesson.title} to help plan or review this unit.</div>
                       ) : null}
                       <div ref={chatEndRef} />
                     </div>
@@ -3403,7 +3403,7 @@ export default function TeacherDashboard({ session, onLogout }) {
                 ) : (
                   <div className="eg-ai-select-lesson-prompt">
                     <span className="eg-ai-select-lesson-icon" aria-hidden="true">📚</span>
-                    <h4>Select a lesson to get started</h4>
+                    <h4>Select a unit to get started</h4>
                     <p>
                       {lockedSubject
                         ? `Choose an available ${lockedSubject} lesson from the dropdown above to start a focused assistant session for it.`

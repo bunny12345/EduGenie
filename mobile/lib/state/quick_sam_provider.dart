@@ -166,7 +166,7 @@ class QuickSamNotifier extends Notifier<QuickSamState> {
         QuickSamMessage(
           isUser: false,
           local: true,
-          text: "$hi 👋 I'm Sam. Ask me anything from your class subjects — no need to pick a subject or lesson.",
+          text: "$hi 👋 I'm Sam. Ask me a question about any of your class subjects. You don't need to select a unit.",
         ),
       ],
     );

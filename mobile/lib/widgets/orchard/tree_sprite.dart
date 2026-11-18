@@ -79,7 +79,7 @@ class TreeSprite extends StatelessWidget {
 
     return Semantics(
       label: grownTree
-          ? '${bakedOak ? 'Oak' : art.fruitName} tree with $count ${art.fruitPlural} for $count mastered lessons'
+          ? '${bakedOak ? 'Oak' : art.fruitName} tree with $count ${art.fruitPlural} for $count mastered units'
           : '$treeType tree, $stage',
       image: true,
       child: SizedBox(

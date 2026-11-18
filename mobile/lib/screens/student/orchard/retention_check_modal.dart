@@ -10,7 +10,7 @@ import '../../../widgets/orchard/orchard_colors.dart';
 
 /// Blossom/Fruit retention check — mirrors
 /// `web/src/components/orchard/RetentionCheckModal.jsx`: a quick 3-question
-/// quiz grounded in the chapter's own lesson content, shown on demand when a
+/// quiz grounded in the chapter's own unit content, shown on demand when a
 /// week/month review is due. Passing calls `completeOrchardReview` to
 /// advance the tree. Returns `true` via `onDone` when the check passed.
 Future<void> showRetentionCheckModal(
@@ -175,7 +175,7 @@ class _RetentionCheckDialogState extends ConsumerState<_RetentionCheckDialog> {
                                   child: Text(
                                     _result!.passed
                                         ? '✅ Nice! You got ${_result!.score}/${_result!.total} — this chapter\'s memory check is passed.'
-                                        : 'You got ${_result!.score}/${_result!.total}. That\'s below the pass mark — review the lesson and try again soon.',
+                                        : 'You scored ${_result!.score}/${_result!.total}. Review the unit and try again.',
                                     style: const TextStyle(fontSize: 13.5),
                                   ),
                                 )

@@ -98,11 +98,11 @@ text is saved as a text document and indexed for the lesson's Sam tutor. Up to
 instead of being truncated. Drafts survive save failures; pasted content clears
 on success or when switching class/subject to avoid mixing lesson sources.
 
-School > Curriculum Content keeps manual Add Lesson and adds **Upload Multi-Lesson
-PDF** for the selected class/subject. Choose one PDF, select **Detect lessons**,
+School > Curriculum Content offers **Add Unit** and **Upload Multi-Unit
+PDF** for the selected class/subject. Choose one PDF, select **Detect units**,
 review automatically filled names and first/last source-page links, confirm the
-boundaries, then create all lessons. Upload the next part separately: numbering
-continues after existing lessons; duplicate titles or a changed curriculum block
+boundaries, then create all units. Upload the next part separately: numbering
+continues after existing units; duplicate titles or a changed curriculum block
 publication rather than overwrite anything.
 
 Clear unit/chapter headings or prominent numbered titles and searchable text are

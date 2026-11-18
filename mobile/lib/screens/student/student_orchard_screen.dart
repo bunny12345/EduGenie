@@ -367,7 +367,7 @@ class _TreeCard extends StatelessWidget {
                 const SizedBox(width: 4),
                 Flexible(
                   child: Text(
-                    tree.totalChapters > 0 ? '${tree.completedChapters} / ${tree.totalChapters} Lessons' : 'No lessons yet',
+                    tree.totalChapters > 0 ? '${tree.completedChapters} / ${tree.totalChapters} Lessons' : 'No units yet',
                     maxLines: 2, overflow: TextOverflow.ellipsis, textAlign: TextAlign.end,
                     style: TextStyle(fontSize: 9.5, color: AppColors.of(context).muted),
                   ),
@@ -461,12 +461,12 @@ class _DetailPanel extends StatelessWidget {
           ),
           const SizedBox(height: 8),
           if (treeArt(tree.treeType) != null && tree.masteredChapters != null)
-            Text('${tree.masteredChapters} ${treeArt(tree.treeType)!.fruitPlural} earned · One per fully mastered lesson',
+            Text('${tree.masteredChapters} ${treeArt(tree.treeType)!.fruitPlural} earned · One per fully mastered unit',
                 style: TextStyle(fontSize: 12, color: OrchardColors(context).accentText(accent),
               ),
             ),
           Text(
-            tree.totalChapters > 0 ? '${tree.completedChapters} / ${tree.totalChapters} Lessons Completed' : 'No lessons uploaded for your class yet',
+            tree.totalChapters > 0 ? '${tree.completedChapters} / ${tree.totalChapters} units completed' : 'No units uploaded for your class yet',
             style: TextStyle(fontSize: 12.5, color: AppColors.of(context).muted),
           ),
           const SizedBox(height: 14),
@@ -498,11 +498,11 @@ class _DetailPanel extends StatelessWidget {
     if (t.health == 'thirsty') return 'Your ${t.subject} tree needs some water. Try a quick revision or quiz.';
     final art = treeArt(t.treeType);
     if (art != null && (t.masteredChapters ?? 0) > 0) {
-      return 'Your ${t.subject} tree has ${t.masteredChapters} ${art.fruitPlural}! Fully master another lesson to earn one more. Completed lessons become mastered after retention reviews and deep understanding.';
+      return 'Your ${t.subject} tree has ${t.masteredChapters} ${art.fruitPlural}! Fully master another unit to earn one more. Completed units become mastered after retention reviews and deep understanding.';
     }
     if (t.stage == 'golden_fruit') return 'Amazing! Your ${t.subject} tree is bearing golden fruit. You truly mastered this.';
     if (t.progressPct >= 60) return 'Great progress! Keep nurturing your ${t.subject} tree toward fruit.';
-    return 'Plant more seeds — start the next ${t.subject} chapter to grow your tree.';
+    return 'Plant more seeds — start the next ${t.subject} unit to grow your tree.';
   }
 }
 

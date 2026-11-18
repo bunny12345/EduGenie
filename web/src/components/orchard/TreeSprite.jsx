@@ -37,7 +37,7 @@ export default function TreeSprite({ treeType, stage, size = 140, accentColor = 
 
   if (!failed) {
     return (
-      <div role="img" aria-label={alt || (grown ? `${bakedOak ? 'Oak' : art.fruitName} tree with ${count} ${art.fruitPlural} for ${count} mastered lessons` : `${treeType} ${stage} (${activeMood})`)}
+      <div role="img" aria-label={alt || (grown ? `${bakedOak ? 'Oak' : art.fruitName} tree with ${count} ${art.fruitPlural} for ${count} mastered units` : `${treeType} ${stage} (${activeMood})`)}
         style={{ ...dim, position: 'relative', filter: `saturate(${wilt})` }}>
         <img
         src={candidates[idx]}

@@ -189,7 +189,7 @@ describe('SchoolDashboard', () => {
 
       await waitFor(() => expect(document.querySelector('.eg-cc-nextnum').textContent).toContain('2'));
       const hint = document.querySelector('.eg-cc-nextnum');
-      expect(hint.textContent).toContain('Saves as lesson');
+      expect(hint.textContent).toContain('Saves as unit');
       expect(hint.textContent).toContain('English');
     });
 
@@ -222,10 +222,10 @@ describe('SchoolDashboard', () => {
       expect(document.querySelector('datalist')).toBeNull();
     });
 
-    test('Add Lesson stays disabled until a title and a PDF are supplied', async () => {
+    test('Add Unit stays disabled until a title and a PDF are supplied', async () => {
       await openCurriculum();
 
-      const addBtn = screen.getByRole('button', { name: /Add Lesson/i });
+      const addBtn = screen.getByRole('button', { name: /Add Unit/i });
       expect(addBtn).toBeDisabled();
 
       fireEvent.change(document.querySelector('#cc-title'), { target: { value: 'Verbs' } });
@@ -245,7 +245,7 @@ describe('SchoolDashboard', () => {
       await waitFor(() => {
         expect(screen.getByText(/No subjects registered for Class 8/)).toBeInTheDocument();
       });
-      expect(screen.queryByRole('button', { name: /Add Lesson/i })).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /Add Unit/i })).not.toBeInTheDocument();
     });
   });
 

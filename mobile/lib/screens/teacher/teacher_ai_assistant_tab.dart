@@ -17,7 +17,7 @@ import '../../theme/ai_tutor_colors.dart';
 /// lesson dropdown, speed control, chat with per-message "Play Voice",
 /// simple follow-up chips (no collapsible Quiz Me/Explain Back/etc — the
 /// teacher section doesn't have those, only the student one does), image
-/// attach row, and the "Select a lesson to get started" empty state. Same
+/// attach row, and the "Select a unit to get started" empty state. Same
 /// dark `.eg-ai-panel` gradient/colors as the student AI Tutor.
 class TeacherAiAssistantTab extends ConsumerStatefulWidget {
   const TeacherAiAssistantTab({super.key});
@@ -370,7 +370,7 @@ class _DarkLessonDropdown extends StatelessWidget {
             size: 16,
           ),
           hint: Text(
-            lessons.isEmpty ? 'No lessons yet' : 'Select a lesson',
+            lessons.isEmpty ? 'No units yet' : 'Select a unit',
             style: const TextStyle(
               fontSize: 12.5,
               color: AiTutorColors.mutedText,
@@ -411,7 +411,7 @@ class _SelectLessonPrompt extends StatelessWidget {
             const Text('📚', style: TextStyle(fontSize: 40)),
             const SizedBox(height: 12),
             const Text(
-              'Select a lesson to get started',
+              'Select a unit to get started',
               style: TextStyle(
                 fontWeight: FontWeight.w700,
                 fontSize: 17,
@@ -477,7 +477,7 @@ class _ChatArea extends StatelessWidget {
               child: Padding(
                 padding: EdgeInsets.symmetric(vertical: 4),
                 child: Text(
-                  '\ud83d\udc4b Ask me anything about this lesson to help plan or recap it.',
+                  '\ud83d\udc4b Ask me anything about this unit to help plan or recap it.',
                   style: TextStyle(color: AiTutorColors.botText, fontSize: 13),
                 ),
               ),
@@ -769,7 +769,7 @@ class _InputRow extends StatelessWidget {
                     fontSize: 14,
                   ),
                   decoration: InputDecoration(
-                    hintText: 'Ask about this lesson... (Enter to send)',
+                    hintText: 'Ask about this unit... (Enter to send)',
                     hintStyle: const TextStyle(color: Color(0xB8D9E4FF)),
                     isDense: true,
                     filled: true,

@@ -36,7 +36,7 @@ class _FlashcardsScreenState extends ConsumerState<FlashcardsScreen> {
   String _sessionScope = 'all';
   String? _sessionDeckId;
   String? _sessionChapterId;
-  String _sessionChapterTitle = 'All chapters';
+  String _sessionChapterTitle = 'All units';
 
   List<FlashcardCard> _queue = [];
   FlashcardCard? _current;
@@ -115,7 +115,7 @@ class _FlashcardsScreenState extends ConsumerState<FlashcardsScreen> {
         _sessionScope = chapter != null ? 'deck' : 'all';
         _sessionDeckId = chapter?.deckId;
         _sessionChapterId = chapter?.chapterId;
-        _sessionChapterTitle = chapter?.title ?? 'All chapters';
+        _sessionChapterTitle = chapter?.title ?? 'All units';
         _queue = cards;
         _current = cards.first;
         _totalToStudy = cards.length;
@@ -337,7 +337,7 @@ class _EmptyView extends StatelessWidget {
             const SizedBox(height: 4),
             Text(
               message ??
-                  "Flashcards appear automatically once your teacher uploads chapter content. Check back soon!",
+                  "Flashcards appear automatically once your teacher uploads unit content. Check back soon!",
               textAlign: TextAlign.center,
               style: TextStyle(
                 fontSize: 13,
@@ -404,7 +404,7 @@ class _PickerView extends StatelessWidget {
                   ),
                   SizedBox(height: 2),
                   Text(
-                    "Cards are built from your teacher's uploaded chapters.",
+                    "Cards are built from your teacher's uploaded units.",
                     style: TextStyle(fontSize: 12, color: GameColors.of(context).muted(Color(0xFF7B81A6))),
                   ),
                 ],
@@ -476,7 +476,7 @@ class _PickerView extends StatelessWidget {
                 Text(active.treeEmoji, style: const TextStyle(fontSize: 46)),
                 const SizedBox(height: 10),
                 Text(
-                  'No ${active.displayName} chapters yet',
+                  'No ${active.displayName} units yet',
                   style: TextStyle(
                     fontSize: 16,
                     color: GameColors.of(context).text(Color(0xFF2A2652)),
@@ -485,7 +485,7 @@ class _PickerView extends StatelessWidget {
                 ),
                 const SizedBox(height: 6),
                 Text(
-                  "Flashcards are created automatically as soon as your teacher uploads ${active.displayName} chapter content — just like Mathematics.",
+                  "Flashcards are created automatically as soon as your teacher uploads ${active.displayName} unit content — just like Mathematics.",
                   textAlign: TextAlign.center,
                   style: TextStyle(
                     fontSize: 12.5,
@@ -503,7 +503,7 @@ class _PickerView extends StatelessWidget {
             runSpacing: 4,
             children: [
               Text(
-                '${active.treeEmoji} ${active.displayName} chapters',
+                '${active.treeEmoji} ${active.displayName} units',
                 style: TextStyle(
                   fontSize: 15,
                   fontWeight: FontWeight.w900,
@@ -523,7 +523,7 @@ class _PickerView extends StatelessWidget {
           const SizedBox(height: 8),
           _ChapterRow(
             accent: active.accent,
-            title: '🎲 All chapters',
+            title: '🎲 All units',
             sub: 'Random mix from ${active.displayName}',
             badges: [
               _Badge(text: '${active.totalCards} cards'),
@@ -1474,7 +1474,7 @@ class _SummaryView extends StatelessWidget {
                         ),
                       ),
                       Text(
-                        'Chapter complete — balance ${coinAward?['coins'] ?? 0}',
+                        'Unit complete — balance ${coinAward?['coins'] ?? 0}',
                         style: TextStyle(
                           fontSize: 11.5,
                           color: GameColors.of(context).accent(Color(0xFFB07F1A)),
@@ -1491,7 +1491,7 @@ class _SummaryView extends StatelessWidget {
             child: Padding(
               padding: EdgeInsets.only(bottom: 14),
               child: Text(
-                '🪙 Chapter bonus already collected — nice revision!',
+                '🪙 Unit bonus already collected — nice revision!',
                 style: TextStyle(fontSize: 12, color: GameColors.of(context).accent(Color(0xFFA07F2A))),
               ),
             ),
@@ -1511,7 +1511,7 @@ class _SummaryView extends StatelessWidget {
           runSpacing: 10,
           children: [
             if (scope == 'deck')
-              _GhostButton(label: '🔁 Repeat chapter', onTap: onRepeatChapter),
+              _GhostButton(label: '🔁 Repeat unit', onTap: onRepeatChapter),
             _PrimaryButton(label: 'Pick another deck', onTap: onPickAnother),
           ],
         ),

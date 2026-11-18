@@ -3327,7 +3327,7 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
               }}
               className="eg-ai-select"
             >
-              <option value="">Select a lesson</option>
+              <option value="">Select a unit</option>
               {tutorLessons.map((lesson) => <option key={lesson.id} value={lesson.id}>{lesson.title}</option>)}
             </select>
           </div>
@@ -3671,7 +3671,7 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
           value={chatInput}
           onChange={(e) => setChatInput(e.target.value)}
           onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); onSendTutorMessage(); } }}
-          placeholder={selectedTutorLesson ? `Ask about ${selectedTutorLesson.title}... (Enter to send)` : 'Select a lesson then ask anything...'}
+          placeholder={selectedTutorLesson ? `Ask about ${selectedTutorLesson.title}... (Enter to send)` : 'Select a unit to ask a question...'}
           disabled={chatLoading}
         />
         {chatImages.length ? <span className="eg-ai-selected-pill">{chatImages.length} file{chatImages.length === 1 ? '' : 's'} ready</span> : null}
@@ -3835,7 +3835,7 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
       ) : (
         <div className="eg-ai-select-lesson-prompt">
           <span className="eg-ai-select-lesson-icon" aria-hidden="true">📚</span>
-          <h4>Select a lesson to get started</h4>
+          <h4>Select a unit to get started</h4>
           <p>
             {tutorSubject
               ? `Choose an available ${tutorSubject} lesson from the dropdown above — Sam will start a focused session just for that lesson.`

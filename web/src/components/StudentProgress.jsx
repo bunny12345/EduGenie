@@ -17,7 +17,7 @@ import './StudentProgress.css';
 // Friendly names, emojis and a one-line "what this means" for each of the nine
 // skills — so a 10-year-old instantly gets what the score is about.
 const SKILL_META = {
-  understanding: { emoji: '🧠', name: 'Understanding', desc: 'How well you get the lessons' },
+  understanding: { emoji: '🧠', name: 'Understanding', desc: 'Understanding of curriculum units' },
   tests: { emoji: '📝', name: 'Tests & Quizzes', desc: 'Test completion rate multiplied by average marks' },
   homework: { emoji: '📒', name: 'Homework', desc: 'Submitted homework out of assigned homework' },
   consistency: { emoji: '📅', name: 'Daily Habit', desc: 'Studying a little every day' },
@@ -359,7 +359,7 @@ function TrendChart({ trend, color, hasData, mode }) {
     return (
       <div className="eg-pg-empty-chart">
         <div className="eg-pg-empty-emoji">📈</div>
-        <p>Your growth line shows up here as you learn. Finish a chapter, play flashcards or take a quiz to add your first point!</p>
+        <p>Your progress will appear here. Complete a unit, practise with flashcards or take a quiz to get started.</p>
       </div>
     );
   }

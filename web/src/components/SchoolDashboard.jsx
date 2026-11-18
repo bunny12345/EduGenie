@@ -666,7 +666,7 @@ export default function SchoolDashboard({ session, onLogout }) {
         className: curriculumClassName, fileName: curriculumImportFile.name, data: await readFileAsDataUrl(curriculumImportFile)
       });
       if (request !== curriculumImportRequest.current) return;
-      if (!preview?.previewId || !Array.isArray(preview.lessons) || !preview.lessons.length) throw new Error('No validated lesson split was returned. No lessons were created.');
+      if (!preview?.previewId || !Array.isArray(preview.lessons) || !preview.lessons.length) throw new Error('The PDF could not be divided into verified units. No units were created.');
       setCurriculumImportPreview(preview);
     } catch (error) {
       if (request === curriculumImportRequest.current) setCurriculumImportError(error?.message || 'Unable to analyse this PDF.');
@@ -677,7 +677,7 @@ export default function SchoolDashboard({ session, onLogout }) {
 
   async function onPublishCurriculumPdf() {
     if (!curriculumImportPreview || !curriculumImportReviewed) {
-      setCurriculumImportError('Review the detected lesson names and page boundaries first.');
+      setCurriculumImportError('Review the detected unit names and page boundaries first.');
       return;
     }
     const request = ++curriculumImportRequest.current;
@@ -718,15 +718,15 @@ export default function SchoolDashboard({ session, onLogout }) {
       return;
     }
     if (!curriculumLessonTitle.trim()) {
-      setNote('Enter a lesson name.');
+      setNote('Enter a unit name.');
       return;
     }
     if (!curriculumPdfFiles.length && !curriculumLessonContent.trim()) {
-      setNote('Choose a lesson PDF or paste the lesson content.');
+      setNote('Choose a unit PDF or paste the unit content.');
       return;
     }
     if (curriculumLessonContent.length > 200000) {
-      setNote('Pasted lesson content must be at most 200,000 characters. Split longer content into separate lessons.');
+      setNote('Pasted unit content must be at most 200,000 characters. Split longer content into separate lessons.');
       return;
     }
 
@@ -743,13 +743,13 @@ export default function SchoolDashboard({ session, onLogout }) {
         isActive: true,
         visibleClassNames: [curriculumClassName]
       });
-      if (created?.success === false) throw new Error(created?.error || 'Unable to create the lesson');
+      if (created?.success === false) throw new Error(created?.error || 'Unable to create the unit');
       createdLessonId = String(created?.lesson?.id || '');
-      if (!createdLessonId) throw new Error('Lesson was created without an id');
+      if (!createdLessonId) throw new Error('Unit was created without an id');
 
       if (curriculumLessonContent.trim()) {
         const saved = await saveCurriculumLessonText(createdLessonId, curriculumLessonContent.trim());
-        if (saved?.success === false || saved?.error) throw new Error(saved?.error || 'Unable to save the pasted lesson content');
+        if (saved?.success === false || saved?.error) throw new Error(saved?.error || 'Unable to save the pasted unit content');
       }
       const errors = [];
       for (const file of curriculumPdfFiles) {
@@ -765,8 +765,8 @@ export default function SchoolDashboard({ session, onLogout }) {
       const lessonNumber = created?.lesson?.order_index;
       setNote(
         errors.length
-          ? `Lesson added with warnings: ${errors.join('; ')}`
-          : `Lesson ${lessonNumber || ''} "${curriculumLessonTitle.trim()}" added with ${curriculumPdfFiles.length + (curriculumLessonContent.trim() ? 1 : 0)} doc(s) to ${curriculumSubjectMatch.subject} · ${curriculumClassName}.`.replace('  ', ' ')
+          ? `Unit added with warnings: ${errors.join('; ')}`
+          : `Unit ${lessonNumber || ''} "${curriculumLessonTitle.trim()}" added with ${curriculumPdfFiles.length + (curriculumLessonContent.trim() ? 1 : 0)} doc(s) to ${curriculumSubjectMatch.subject} · ${curriculumClassName}.`.replace('  ', ' ')
       );
       setCurriculumLessonTitle('');
       setCurriculumLessonDescription('');
@@ -787,7 +787,7 @@ export default function SchoolDashboard({ session, onLogout }) {
         }
         await loadCurriculumPanel();
       }
-      setNote(`${e2?.message || 'Unable to add the lesson.'}${cleanupMessage}`);
+      setNote(`${e2?.message || 'Unable to add the unit.'}${cleanupMessage}`);
     } finally {
       setCurriculumPdfUploading(false);
     }
@@ -797,7 +797,7 @@ export default function SchoolDashboard({ session, onLogout }) {
     const editing = curriculumEditing;
     if (!editing?.lessonId) return;
     if (!String(editing.title || '').trim()) {
-      setNote('Lesson name cannot be empty.');
+      setNote('Unit name cannot be empty.');
       return;
     }
     setCurriculumRowBusy(editing.lessonId);
@@ -806,7 +806,7 @@ export default function SchoolDashboard({ session, onLogout }) {
         title: editing.title.trim(),
         description: String(editing.description || '').trim() || null
       });
-      if (res?.success === false) throw new Error(res?.error || 'Unable to update the lesson');
+      if (res?.success === false) throw new Error(res?.error || 'Unable to update the unit');
 
       if (editing.additionalFiles && editing.additionalFiles.length) {
         for (const file of editing.additionalFiles) {
@@ -820,11 +820,11 @@ export default function SchoolDashboard({ session, onLogout }) {
         }
       }
 
-      setNote(`Lesson "${editing.title.trim()}" updated.`);
+      setNote(`Unit "${editing.title.trim()}" updated.`);
       setCurriculumEditing(null);
       await loadCurriculumPanel();
     } catch (e2) {
-      setNote(e2?.message || 'Unable to update the lesson.');
+      setNote(e2?.message || 'Unable to update the unit.');
     } finally {
       setCurriculumRowBusy('');
     }
@@ -835,12 +835,12 @@ export default function SchoolDashboard({ session, onLogout }) {
     setCurriculumRowBusy(lesson.id);
     try {
       const res = await deleteCurriculumLesson(lesson.id);
-      if (res?.success === false) throw new Error(res?.error || 'Unable to delete the lesson');
-      setNote(`Lesson "${lesson.title}" deleted. Remaining lessons were renumbered.`);
+      if (res?.success === false) throw new Error(res?.error || 'Unable to delete the unit');
+      setNote(`Unit "${lesson.title}" deleted. Remaining units were renumbered.`);
       setCurriculumConfirmDelete(null);
       await loadCurriculumPanel();
     } catch (e2) {
-      setNote(e2?.message || 'Unable to delete the lesson.');
+      setNote(e2?.message || 'Unable to delete the unit.');
     } finally {
       setCurriculumRowBusy('');
     }
@@ -1381,7 +1381,7 @@ export default function SchoolDashboard({ session, onLogout }) {
     },
     curriculum: {
       title: 'Curriculum Upload',
-      subtitle: 'Pick a class, pick a subject, then upload PDFs or paste lesson content.'
+      subtitle: 'Pick a class, pick a subject, then upload PDFs or paste unit content.'
     },
     studentRegistration: {
       title: 'Student Registration',
@@ -1677,7 +1677,7 @@ export default function SchoolDashboard({ session, onLogout }) {
             <div>
               <h3>Curriculum Content</h3>
               <p>
-                Upload PDFs or paste lesson content and everything follows automatically — lesson numbering,
+                Upload PDFs or paste unit content and everything follows automatically — unit numbering,
                 the student&apos;s orchard chapters, flashcard games and the AI tutor.
               </p>
             </div>
@@ -1708,7 +1708,7 @@ export default function SchoolDashboard({ session, onLogout }) {
                 <div className="eg-cc-subjects-head">
                   <span className="eg-cc-subjects-label">Subjects in {curriculumClassName}</span>
                   {curriculumSubjectButtons.length ? (
-                    <span className="eg-cc-subjects-hint">Pick a subject to upload into and to view its lessons</span>
+                    <span className="eg-cc-subjects-hint">Pick a subject to upload into and to view its units</span>
                   ) : null}
                 </div>
 
@@ -1746,7 +1746,7 @@ export default function SchoolDashboard({ session, onLogout }) {
                     <strong>No subjects registered for {curriculumClassName}</strong>
                     <p>
                       Subjects appear here as soon as a teacher is registered for this class. Add the subject teacher
-                      first, then come back to upload lessons.
+                      first, then come back to upload units.
                     </p>
                   </div>
                 )}
@@ -1796,24 +1796,24 @@ export default function SchoolDashboard({ session, onLogout }) {
                 <>
               <div className="eg-cc-upload-modes" role="group" aria-label="Curriculum upload method">
                 <button type="button" aria-pressed={!curriculumImportMode} disabled={!!curriculumImportBusy || curriculumPdfUploading} onClick={() => setCurriculumImportMode(false)}>
-                  Add one lesson manually
+                  Add one unit manually
                 </button>
                 <button type="button" aria-pressed={curriculumImportMode} disabled={!!curriculumImportBusy || curriculumPdfUploading} onClick={() => setCurriculumImportMode(true)}>
-                  <span aria-hidden="true">✦</span> Upload Multi-Lesson PDF
+                  <span aria-hidden="true">✦</span> Upload Multi-Unit PDF
                 </button>
               </div>
               {curriculumImportMode ? (
-                <section className="eg-cc-form eg-cc-import" aria-label="Multi-lesson PDF upload">
+                <section className="eg-cc-form eg-cc-import" aria-label="Multi-unit PDF upload">
                   <div className="eg-cc-import-heading">
                     <span className="eg-cc-import-icon" aria-hidden="true">PDF</span>
                     <div>
-                      <h4>One PDF. Separate lessons.</h4>
-                      <p>Upload a book or part containing several units. Detect and review the lesson names, then add them in order to {curriculumSelectedSubject.subject} · {curriculumClassName}.</p>
+                      <h4>One PDF. Separate units.</h4>
+                      <p>Upload a book or part containing several units. Detect and review the unit names, then add them in order to {curriculumSelectedSubject.subject} · {curriculumClassName}.</p>
                     </div>
                   </div>
-                  <p className="eg-cc-import-safety">Each lesson gets only its own pages—not the whole book—to keep lesson-based Sam teaching correctly scoped. Existing lessons stay unchanged.</p>
+                  <p className="eg-cc-import-safety">Sam uses only the pages assigned to each unit, not the entire book. Existing units are unchanged.</p>
                   <div className="eg-cc-field">
-                    <label htmlFor="cc-multi-pdf">Multi-lesson PDF (up to 15 MB)</label>
+                    <label htmlFor="cc-multi-pdf">Multi-unit PDF (up to 15 MB)</label>
                     <input id="cc-multi-pdf" ref={curriculumImportInput} type="file" accept="application/pdf,.pdf" disabled={!!curriculumImportBusy || !curriculumSubjectMatch}
                       onChange={(e) => {
                         const file = e.target.files?.[0] || null;
@@ -1832,19 +1832,19 @@ export default function SchoolDashboard({ session, onLogout }) {
                   {!curriculumSubjectMatch ? <p className="eg-cc-msg is-error">Register a {curriculumSelectedSubject.subject} teacher for {curriculumClassName} before importing.</p> : null}
                   {curriculumImportError ? <div className="eg-cc-import-error" role="alert">{curriculumImportError}</div> : null}
                   <button type="button" className="eg-cc-primary" disabled={!curriculumImportFile || !curriculumSubjectMatch || !!curriculumImportBusy} onClick={onPreviewCurriculumPdf}>
-                    {curriculumImportBusy === 'analyse' ? 'Analysing & validating…' : 'Detect lessons'}
+                    {curriculumImportBusy === 'analyse' ? 'Analysing & validating…' : 'Detect units'}
                   </button>
                   {curriculumImportPreview ? (
-                    <div className="eg-cc-import-preview" aria-label="Detected lessons">
-                      <h4>{curriculumImportPreview.lessons.length} lessons detected · {curriculumImportPreview.pageCount} PDF pages</h4>
-                      <p>No lessons have been created yet. Check each unit&apos;s first and last page before publishing. Preview expires after 15 minutes.</p>
+                    <div className="eg-cc-import-preview" aria-label="Detected units">
+                      <h4>{curriculumImportPreview.lessons.length} units detected · {curriculumImportPreview.pageCount} PDF pages</h4>
+                      <p>No units have been created yet. Check each unit&apos;s first and last page before publishing. Preview expires after 15 minutes.</p>
                       <p><a href={`${curriculumImportUrl}#page=1`} target="_blank" rel="noopener noreferrer">Review complete source PDF, including excluded pages</a></p>
                       <div className="eg-cc-import-table">
                         <table>
-                          <thead><tr><th>Continues as</th><th>Lesson name</th><th>Source PDF pages</th><th>Review</th></tr></thead>
+                          <thead><tr><th>Continues as</th><th>Unit name</th><th>Source PDF pages</th><th>Review</th></tr></thead>
                           <tbody>{curriculumImportPreview.lessons.map((lesson) => (
                             <tr key={lesson.startPage}>
-                              <td>Lesson {lesson.lessonNumber}</td><td>{lesson.title}</td><td>{lesson.startPage}–{lesson.endPage}</td>
+                              <td>Unit {lesson.lessonNumber}</td><td>{lesson.title}</td><td>{lesson.startPage}–{lesson.endPage}</td>
                               <td><a href={`${curriculumImportUrl}#page=${lesson.startPage}`} target="_blank" rel="noopener noreferrer">Open first page</a>{' · '}<a href={`${curriculumImportUrl}#page=${lesson.endPage}`} target="_blank" rel="noopener noreferrer">Last page</a></td>
                             </tr>
                           ))}</tbody>
@@ -1853,10 +1853,10 @@ export default function SchoolDashboard({ session, onLogout }) {
                       {curriculumImportPreview.excludedPages?.length ? <p className="eg-cc-import-excluded">Not imported: PDF pages {curriculumImportPreview.excludedPages.join(', ')}. Check that these are only cover/contents/end-matter pages.</p> : null}
                       <label className="eg-cc-import-review">
                         <input type="checkbox" checked={curriculumImportReviewed} disabled={!!curriculumImportBusy} onChange={(e) => setCurriculumImportReviewed(e.target.checked)} />
-                        <span>I checked the lesson names, page boundaries and excluded pages. Each lesson contains only its own unit.</span>
+                        <span>I checked the unit names, page boundaries and excluded pages. Each unit contains only the pages that belong to it.</span>
                       </label>
                       <button type="button" className="eg-cc-primary" disabled={!curriculumImportReviewed || !!curriculumImportBusy} onClick={onPublishCurriculumPdf}>
-                        {curriculumImportBusy === 'publish' ? 'Creating separate lessons…' : `Create ${curriculumImportPreview.lessons.length} lessons`}
+                        {curriculumImportBusy === 'publish' ? 'Creating separate lessons…' : `Create ${curriculumImportPreview.lessons.length} units`}
                       </button>
                     </div>
                   ) : null}
@@ -1879,14 +1879,14 @@ export default function SchoolDashboard({ session, onLogout }) {
                       <span>
                         Students in {curriculumClassName} see <strong>{curriculumSelectedSubject.subject}</strong>, but no{' '}
                         {curriculumSelectedSubject.subject} teacher is registered for this class yet. Register the subject
-                        teacher for {curriculumClassName} first — then lessons can be uploaded here.
+                        teacher for {curriculumClassName} first — then units can be uploaded here.
                       </span>
                     </p>
                   )}
                 </div>
 
                 <div className="eg-cc-field">
-                  <label htmlFor="cc-title">Lesson name</label>
+                  <label htmlFor="cc-title">Unit name</label>
                   <input
                     id="cc-title"
                     value={curriculumLessonTitle}
@@ -1902,12 +1902,12 @@ export default function SchoolDashboard({ session, onLogout }) {
                     rows={2}
                     value={curriculumLessonDescription}
                     onChange={(e) => setCurriculumLessonDescription(e.target.value)}
-                    placeholder="A short note for teachers about this lesson"
+                    placeholder="A short note for teachers about this unit"
                   />
                 </div>
 
                 <div className="eg-cc-field">
-                  <label htmlFor="cc-pdf">Lesson PDFs (lesson content, revision notes, question banks, etc.)</label>
+                  <label htmlFor="cc-pdf">Unit PDFs (unit content, revision notes, question banks, etc.)</label>
                   <input
                     id="cc-pdf"
                     type="file"
@@ -1921,20 +1921,20 @@ export default function SchoolDashboard({ session, onLogout }) {
                 </div>
 
                 <div className="eg-cc-field eg-cc-paste">
-                  <label htmlFor="cc-content">Or paste lesson content <em>(no PDF required)</em></label>
+                  <label htmlFor="cc-content">Or paste unit content <em>(no PDF required)</em></label>
                   <p id="cc-content-help">Paste only this lesson&apos;s teaching content, including any questions or examples. Sam will use it as this lesson&apos;s source material. You can also attach PDFs above.</p>
                   <textarea
                     id="cc-content"
                     rows={8}
                     value={curriculumLessonContent}
                     onChange={(e) => setCurriculumLessonContent(e.target.value)}
-                    placeholder="Copy and paste the complete content of this lesson here..."
+                    placeholder="Copy and paste the complete content of this unit here..."
                     aria-describedby="cc-content-help"
                     disabled={curriculumPdfUploading}
                   />
                   <span className="eg-cc-content-count">{curriculumLessonContent.length.toLocaleString()} / 200,000 characters · Saved as a text document and indexed for Sam</span>
                   {curriculumLessonContent.length > 200000 ? (
-                    <span className="eg-cc-import-error" role="alert">This content exceeds 200,000 characters. Nothing has been truncated; split it into separate lessons before saving.</span>
+                    <span className="eg-cc-import-error" role="alert">This content exceeds 200,000 characters. Nothing has been truncated; split it into separate units before saving.</span>
                   ) : null}
                 </div>
 
@@ -1944,11 +1944,11 @@ export default function SchoolDashboard({ session, onLogout }) {
                     className="eg-cc-primary"
                     disabled={curriculumPdfUploading || !curriculumSubjectMatch || !curriculumLessonTitle.trim() || curriculumLessonContent.length > 200000 || (!curriculumPdfFiles.length && !curriculumLessonContent.trim())}
                   >
-                    {curriculumPdfUploading ? 'Adding lesson…' : 'Add Lesson'}
+                    {curriculumPdfUploading ? 'Adding unit…' : 'Add Unit'}
                   </button>
                   {curriculumNextNumber ? (
                     <span className="eg-cc-nextnum">
-                      Saves as lesson <strong>{curriculumNextNumber}</strong> of {curriculumSubjectMatch.subject} · {curriculumClassName}
+                      Saves as unit <strong>{curriculumNextNumber}</strong> of {curriculumSubjectMatch.subject} · {curriculumClassName}
                     </span>
                   ) : null}
                 </div>
@@ -1971,7 +1971,7 @@ export default function SchoolDashboard({ session, onLogout }) {
                         ? `No ${curriculumSelectedSubject.subject} lessons for ${curriculumClassName} yet`
                         : `Nothing uploaded for ${curriculumClassName} yet`}
                     </strong>
-                    <p>Add the first lesson above — it will be saved as lesson 1 and appear here.</p>
+                    <p>Add the first unit above — it will be saved as unit 1 and appear here.</p>
                   </div>
                 ) : (
                   <>
@@ -1990,7 +1990,7 @@ export default function SchoolDashboard({ session, onLogout }) {
                                   <input
                                     value={curriculumEditing.title}
                                     onChange={(e) => setCurriculumEditing((c) => ({ ...c, title: e.target.value }))}
-                                    placeholder="Lesson name"
+                                    placeholder="Unit name"
                                   />
                                   <textarea
                                     rows={2}

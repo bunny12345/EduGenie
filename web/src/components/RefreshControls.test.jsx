@@ -16,8 +16,8 @@ beforeEach(() => jest.resetAllMocks());
 
 test.each([
   ['Flashcards', Flashcards, getFlashcardOverview, 'No flashcards yet'],
-  ['Quiz Rush', QuizRush, getQuizRushOverview, 'No chapters ready yet'],
-  ['Memory Maze', MemoryMaze, getFlashcardOverview, 'No chapters ready yet'],
+  ['Quiz Rush', QuizRush, getQuizRushOverview, 'No units ready yet'],
+  ['Memory Maze', MemoryMaze, getFlashcardOverview, 'No units ready yet'],
 ])('%s omits refresh for empty content but keeps working error recovery', async (_name, Game, overview, heading) => {
   overview.mockRejectedValueOnce(new Error('Unavailable')).mockResolvedValue({ subjects: [] });
   render(<Game studentId="student" />);

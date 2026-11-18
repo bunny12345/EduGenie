@@ -68,7 +68,7 @@ void main() {
     expect(find.textContaining('Congratulations, Bunny'), findsOneWidget);
     expect(find.textContaining('1st Rank'), findsOneWidget);
     expect(tester.takeException(), isNull);
-    await tester.tap(find.textContaining('Yay!'));
+    await tester.tap(find.text('Continue'));
     expect(closed, isTrue);
     // Let the ticker finish before teardown.
     await tester.pumpWidget(const SizedBox.shrink());

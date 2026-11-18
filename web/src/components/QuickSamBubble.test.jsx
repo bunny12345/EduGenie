@@ -32,7 +32,7 @@ beforeEach(() => {
 });
 
 async function ask(text = 'Question') {
-  fireEvent.change(screen.getByPlaceholderText('Ask Sam anything from your lessons…'), { target: { value: text } });
+  fireEvent.change(screen.getByPlaceholderText('Ask Sam anything from your units…'), { target: { value: text } });
   fireEvent.click(screen.getByRole('button', { name: 'Send', exact: true }));
   await waitFor(() => expect(sendQuickSamChat).toHaveBeenCalled());
 }

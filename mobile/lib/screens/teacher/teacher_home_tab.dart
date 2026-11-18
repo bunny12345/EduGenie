@@ -1199,7 +1199,7 @@ class _HomeworkTile extends StatelessWidget {
 
 /// Mirrors the website's chapter/lesson picker (`td-lesson-picker-btn` /
 /// `td-lesson-picker-dropdown` / `td-lesson-tag` in `TeacherDashboard.jsx`) —
-/// a toggle button that reveals checkboxes for "All chapters / General" plus
+/// a toggle button that reveals checkboxes for "All units / General" plus
 /// each available lesson, with selected lessons shown as removable chips.
 class _LessonPicker extends StatelessWidget {
   final List<Map<String, dynamic>> lessons;
@@ -1240,7 +1240,7 @@ class _LessonPicker extends StatelessWidget {
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
-                    selectedIds.isNotEmpty ? '${selectedIds.length} chapter${selectedIds.length > 1 ? 's' : ''} selected' : 'Select chapters (optional)',
+                    selectedIds.isNotEmpty ? '${selectedIds.length} unit${selectedIds.length > 1 ? 's' : ''} selected' : 'Select units (optional)',
                     style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
                   ),
                 ),
@@ -1262,12 +1262,12 @@ class _LessonPicker extends StatelessWidget {
             child: !classSelected
                 ? Padding(
                     padding: const EdgeInsets.all(12),
-                    child: Text('Select a class to see chapters, or no lessons uploaded yet.', style: TextStyle(fontSize: 12, color: AppColors.of(context).muted)),
+                    child: Text('Select a class to see units, or no units uploaded yet.', style: TextStyle(fontSize: 12, color: AppColors.of(context).muted)),
                   )
                 : lessons.isEmpty
                     ? Padding(
                         padding: const EdgeInsets.all(12),
-                        child: Text('No lessons uploaded for this subject in $targetClass yet. Upload lessons from the school portal first.', style: TextStyle(fontSize: 12, color: AppColors.of(context).muted)),
+                        child: Text('No units uploaded for this subject in $targetClass yet. Upload lessons from the school portal first.', style: TextStyle(fontSize: 12, color: AppColors.of(context).muted)),
                       )
                     : ListView(
                         shrinkWrap: true,
@@ -1277,7 +1277,7 @@ class _LessonPicker extends StatelessWidget {
                             controlAffinity: ListTileControlAffinity.leading,
                             value: selectedIds.isEmpty,
                             onChanged: (_) => onChanged(const []),
-                            title: const Text('All chapters / General', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+                            title: const Text('All units / General', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
                           ),
                           for (var i = 0; i < lessons.length; i++)
                             CheckboxListTile(

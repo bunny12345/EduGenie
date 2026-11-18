@@ -58,7 +58,7 @@ void main() {
     await tester.pump();
     expect(find.text('17 cherry rewards'), findsOneWidget);
     expect(
-      find.text('17 cherry rewards earned · One per fully mastered lesson'),
+      find.text('17 cherry rewards earned · One per fully mastered unit'),
       findsOneWidget,
     );
     expect(tester.takeException(), isNull);

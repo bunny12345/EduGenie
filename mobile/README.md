@@ -44,14 +44,14 @@ Run `flutter test --no-pub test/strict_exam_test.dart test/quick_sam_bubble_test
 and `flutter analyze --no-pub`. Native device verification is still required
 before a school rollout; this development machine has no Android/Xcode target.
 
-## Automatically imported curriculum lessons
+## Automatically imported curriculum units
 
-The school website's Multi-Lesson PDF importer publishes ordinary curriculum
-lessons, each with its own unit PDF and lesson-scoped chunks. Student lesson/AI
-Tutor views and teacher lesson selectors receive the names and ordering through
+The school website's Multi-Unit PDF importer publishes curriculum units, each
+with its own PDF and source material for the AI Tutor. Student and teacher unit
+selectors receive the names and ordering through
 their existing curriculum APIs when refreshed. No mobile API contracts, routes,
 conversation IDs or School Admin placeholder change. Deploy the shared backend
-and refresh the app's lesson views; this feature needs no mobile rebuild.
+and refresh the app's unit views to see newly imported content.
 
 ## Student Homework and Mock Tests
 

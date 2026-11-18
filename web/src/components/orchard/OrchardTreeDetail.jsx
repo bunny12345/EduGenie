@@ -18,7 +18,7 @@ const MILESTONE_GROUPS = [
     emoji: '🌱',
     title: 'Sprout · Understand',
     items: [
-      ['lesson_watched', 'Watch the AI lesson'],
+      ['lesson_watched', 'Watch the AI unit walkthrough'],
       ['question_asked', 'Ask one question'],
       ['story_done', 'Complete the story'],
     ],
@@ -169,7 +169,7 @@ export default function OrchardTreeDetail({ studentId, subjectKey, initialTree, 
           </h1>
           <div className="eg-tree-detail-stage-row">
             <span className="eg-tree-detail-stage">{masteryStageLabel(detail.treeType, tree.stageLabel, tree.masteredChapters)}</span>
-            {art && Number.isInteger(tree.masteredChapters) ? <span>{tree.masteredChapters} {art.fruitPlural} · mastered lessons</span> : null}
+            {art && Number.isInteger(tree.masteredChapters) ? <span>{tree.masteredChapters} {art.fruitPlural} · mastered units</span> : null}
             <span className="eg-tree-detail-level">Level {tree.level} of {tree.maxLevel}</span>
             <span className={`eg-tree-detail-health health-${tree.health}`}>
               {tree.health === 'healthy' ? '💚 Healthy' : tree.health === 'thirsty' ? '💧 Thirsty' : '🍂 Needs care'}
@@ -178,7 +178,7 @@ export default function OrchardTreeDetail({ studentId, subjectKey, initialTree, 
           </div>
 
           <div className="eg-tree-detail-stats">
-            <Stat label="Lessons fruited" value={`${fruited} / ${tree.totalChapters}`} />
+            <Stat label="Units mastered" value={`${fruited} / ${tree.totalChapters}`} />
             <Stat label="Golden fruits" value={golden} icon="✨" />
             <Stat label="Roots (understanding)" value={`${tree.rootsPct}%`} />
             <Stat label="Overall growth" value={`${tree.progressPct}%`} />
@@ -200,13 +200,13 @@ export default function OrchardTreeDetail({ studentId, subjectKey, initialTree, 
       {/* Chapters as seeds/fruits — one per uploaded lesson, nothing fabricated */}
       <div className="eg-tree-detail-chapters-wrap">
         <div className="eg-tree-detail-chapters-head">
-          <h2>{detail.subject} lessons — every seed becomes a fruit</h2>
-          <p>Each uploaded lesson grows on its own. Care for it and it ripens over weeks.</p>
+          <h2>{detail.subject} units — every seed becomes a fruit</h2>
+          <p>Each uploaded unit grows on its own. Care for it and it ripens over weeks.</p>
         </div>
         {chapters.length === 0 ? (
           <div className="eg-tree-detail-empty">
             <span className="eg-tree-detail-empty-glyph">🌱</span>
-            <strong>No {detail.subject} lessons yet</strong>
+            <strong>No {detail.subject} units yet</strong>
             <p>
               Your school hasn’t uploaded any {detail.subject} lessons for your class yet.
               As soon as they do, each lesson appears here as a seed you can grow.

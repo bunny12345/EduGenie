@@ -91,7 +91,7 @@ export default function Flashcards({ studentId, onAskTutor, onCoinsEarned, onArc
         scope,
         deckId: chapter ? chapter.deckId : null,
         chapterId: chapter ? chapter.chapterId : null,
-        chapterTitle: chapter ? chapter.title : 'All chapters',
+        chapterTitle: chapter ? chapter.title : 'All units',
         chapter: chapter || null,
       });
       setQueue(cards);
@@ -233,7 +233,7 @@ export default function Flashcards({ studentId, onAskTutor, onCoinsEarned, onArc
       <div className="eg-fc-empty">
         <div className="eg-fc-empty-emoji">🃏</div>
         <h3>No flashcards yet</h3>
-        <p>{error || 'Flashcards appear automatically once your teacher uploads chapter content. Check back soon!'}</p>
+        <p>{error || 'Flashcards appear automatically once your teacher uploads unit content. Check back soon!'}</p>
         {error ? <button className="eg-fc-btn ghost" onClick={loadOverview}>Try again</button> : null}
       </div>
     );
@@ -245,7 +245,7 @@ export default function Flashcards({ studentId, onAskTutor, onCoinsEarned, onArc
         <div className="eg-fc-picker-head">
           <div className="eg-fc-picker-intro">
             <h2>Choose a subject</h2>
-            <p>Cards are built from your teacher's uploaded chapters.</p>
+            <p>Cards are built from your teacher's uploaded units.</p>
           </div>
           <div className="eg-fc-modetoggle" role="tablist">
             <button
@@ -287,14 +287,14 @@ export default function Flashcards({ studentId, onAskTutor, onCoinsEarned, onArc
           {activeSubject && activeSubject.chapters.length === 0 && (
             <div className="eg-fc-chapters-empty">
               <div className="eg-fc-chapters-empty-emoji">{activeSubject.treeEmoji}</div>
-              <h3>No {activeSubject.displayName} chapters yet</h3>
-              <p>Flashcards are created automatically as soon as your teacher uploads {activeSubject.displayName} chapter content — just like Mathematics.</p>
+              <h3>No {activeSubject.displayName} units yet</h3>
+              <p>Flashcards are created automatically as soon as your teacher uploads {activeSubject.displayName} unit content — just like Mathematics.</p>
             </div>
           )}
           {activeSubject && activeSubject.chapters.length > 0 && (
             <>
               <div className="eg-fc-chapters-head">
-                <h3>{activeSubject.treeEmoji} {activeSubject.displayName} chapters</h3>
+                <h3>{activeSubject.treeEmoji} {activeSubject.displayName} units</h3>
                 <span className="eg-fc-chapters-count">{activeSubject.chapters.length} uploaded</span>
               </div>
               <div className="eg-fc-chapters-scroll">
@@ -303,7 +303,7 @@ export default function Flashcards({ studentId, onAskTutor, onCoinsEarned, onArc
                   style={{ '--fc-accent': activeSubject.accent }}
                   onClick={() => startSession(activeSubject, null)}
                 >
-                  <span className="eg-fc-chapter-title">🎲 All chapters</span>
+                  <span className="eg-fc-chapter-title">🎲 All units</span>
                   <span className="eg-fc-chapter-sub">Random mix from {activeSubject.displayName}</span>
                   <span className="eg-fc-chapter-badges">
                     <span className="eg-fc-badge">{activeSubject.totalCards} cards</span>
@@ -356,19 +356,19 @@ export default function Flashcards({ studentId, onAskTutor, onCoinsEarned, onArc
             <span className="eg-fc-coinburst-icon">🪙</span>
             <div>
               <strong>+{coinAward.awarded} coins!</strong>
-              <span>Chapter complete — balance {coinAward.coins}</span>
+              <span>Unit complete — balance {coinAward.coins}</span>
             </div>
           </div>
         )}
         {coinAward && coinAward.awarded === 0 && coinAward.alreadyEarned && (
-          <p className="eg-fc-coinnote">🪙 Chapter bonus already collected — nice revision!</p>
+          <p className="eg-fc-coinnote">🪙 Unit bonus already collected — nice revision!</p>
         )}
         <p className="eg-fc-summary-note">
           {saving ? 'Saving your progress…' : '✅ Progress saved — cards will return on their own schedule.'}
         </p>
         <div className="eg-fc-summary-actions">
           {session && session.scope === 'deck' && (
-            <button className="eg-fc-btn ghost" onClick={repeatChapter}>🔁 Repeat chapter</button>
+            <button className="eg-fc-btn ghost" onClick={repeatChapter}>🔁 Repeat unit</button>
           )}
           <button className="eg-fc-btn" onClick={() => loadOverview()}>Pick another deck</button>
         </div>
@@ -422,7 +422,7 @@ export default function Flashcards({ studentId, onAskTutor, onCoinsEarned, onArc
                   type="button"
                   className="eg-fc-askai"
                   onClick={(e) => { e.stopPropagation(); askTutorForCard(current); }}
-                  title="Open the AI Tutor for this chapter and get a full explanation"
+                  title="Open the AI Tutor for this unit and get a full explanation"
                 >
                   🤖 Ask AI to explain
                 </button>

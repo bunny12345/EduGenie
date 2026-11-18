@@ -1390,7 +1390,7 @@ export async function saveCurriculumLessonText(lessonId, content) {
   const res = await fetch(`${API_BASE}/curriculum/lessons/${encodeURIComponent(lessonId)}/content`, {
     method: 'POST', headers: await authHeaders(), body: JSON.stringify({ content })
   });
-  if (!res.ok) throw new Error(`Unable to save lesson content (${res.status}).`);
+  if (!res.ok) throw new Error(`Unable to save unit content (${res.status}).`);
   return checkSuccess(await res.json(), 'saveCurriculumLessonText');
 }
 
