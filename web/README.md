@@ -23,6 +23,9 @@ verified mobile number **or a verified email address**. A valid mobile number
 must still be entered even when email is verified. Teacher email remains required;
 student email is optional if SMS is used.
 
+In Manual Teacher Registration, type in the **Subject** field to see suggested
+spellings for common subjects. You can still enter a school-specific subject.
+
 For SMS, India (+91) is the default; choose another country when needed. Enter
 the national number, select **Send SMS code**, enter the six-digit code, then
 select **Verify number**. Alternatively, enter an email, select **Send email code**,

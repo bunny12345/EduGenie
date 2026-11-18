@@ -205,6 +205,10 @@ test('teacher registration defaults to India and requires successful SMS verific
   expect(create).toBeEnabled();
   fireEvent.change(screen.getByPlaceholderText('Teacher name'), { target: { value: 'Teacher' } });
   fireEvent.change(screen.getByPlaceholderText('Teacher email'), { target: { value: 'teacher@example.test' } });
+  const subject = screen.getByLabelText('Subject');
+  const suggestions = document.getElementById(subject.getAttribute('list'));
+  expect(suggestions.querySelector('option[value="Physics"]')).not.toBeNull();
+  fireEvent.change(subject, { target: { value: 'Physics' } });
   fireEvent.change(screen.getByPlaceholderText('Teacher login ID'), { target: { value: 'teacher-test' } });
   fireEvent.change(screen.getByPlaceholderText('Strong password'), { target: { value: 'fixture-password' } });
   const dob = screen.getByLabelText('Date of Birth (optional)');
@@ -214,7 +218,7 @@ test('teacher registration defaults to India and requires successful SMS verific
   fireEvent.click(screen.getByRole('checkbox', { name: 'Class 7' }));
   fireEvent.click(create);
   await waitFor(() => expect(schoolRegisterTeacher).toHaveBeenCalledWith(expect.objectContaining({
-    phone: '+919876543210', country: 'IN', phoneVerificationId: 'phone-proof', dateOfBirth: '1988-02-29'
+    phone: '+919876543210', country: 'IN', phoneVerificationId: 'phone-proof', dateOfBirth: '1988-02-29', subject: 'Physics'
   })));
   await waitFor(() => expect(phone).toHaveValue(''));
   expect(create).toBeDisabled();

@@ -45,6 +45,14 @@ function shortDate(value) {
 }
 
 const GRADE_OPTIONS = [5, 6, 7, 8, 9, 10, 11, 12];
+const TEACHER_SUBJECT_SUGGESTIONS = [
+  'Accountancy', 'Art', 'Biology', 'Business Studies', 'Chemistry',
+  'Computer', 'Economics', 'English', 'Environmental Studies', 'Geography',
+  'Hindi', 'History', 'Kannada', 'Malayalam', 'Mathematics', 'Music',
+  'Physical Education', 'Physics', 'Political Science', 'Sanskrit', 'Science',
+  'Social Studies', 'Tamil', 'Telugu'
+];
+
 function profileEditForm(account = {}) {
   const phone = phoneFieldValue(account.phone);
   const email = String(account.email || '').trim().toLowerCase();
@@ -2107,7 +2115,13 @@ export default function SchoolDashboard({ session, onLogout }) {
             <p className="sd-phone-help">Verify either email or mobile to register. A mobile number is still required.</p>
             <RegistrationContactField role="teacher" channel="email" value={teacherEmail} onChange={setTeacherEmail} disabled={busy === 'manual'} />
             <RegistrationContactField role="teacher" value={teacherPhone} onChange={setTeacherPhone} disabled={busy === 'manual'} />
-            <input value={teacherSubject} onChange={(e) => setTeacherSubject(e.target.value)} placeholder="Subject" />
+            <label className="sd-field-label" htmlFor="school-teacher-subject">Subject</label>
+            <input id="school-teacher-subject" list="school-teacher-subject-suggestions"
+              value={teacherSubject} onChange={(e) => setTeacherSubject(e.target.value)}
+              placeholder="Subject" autoComplete="off" />
+            <datalist id="school-teacher-subject-suggestions">
+              {TEACHER_SUBJECT_SUGGESTIONS.map((subject) => <option key={subject} value={subject} />)}
+            </datalist>
             <label className="sd-field-label">Gender</label>
             <select value={teacherGender} onChange={(e) => setTeacherGender(e.target.value)}>
               <option value="">Select gender</option>
