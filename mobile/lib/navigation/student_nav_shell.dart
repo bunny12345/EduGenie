@@ -168,6 +168,9 @@ Future<bool> _requestFocusModePinToExit(
   BuildContext context,
   WidgetRef ref,
 ) async {
+  // Scheduled time already over — release without asking for the PIN.
+  if (await ref.read(focusLockProvider.notifier).releaseIfExpired()) return true;
+  if (!context.mounted) return false;
   final controller = TextEditingController();
   final pin = await showDialog<String>(
     context: context,

@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../services/focus_lock_service.dart';
@@ -33,14 +34,72 @@ class FocusLockState {
 /// restarts. On cold start, if still within its window, re-engages Android
 /// screen pinning and reschedules the remaining countdown; if the window
 /// already passed while the app was closed, unlocks immediately.
+///
+/// Expiry is judged against the wall clock ([FocusLockState.unlockAt]), not
+/// just a one-shot [Timer]: Dart timers run on a monotonic clock that pauses
+/// while the phone sleeps, so a screen-off lock would otherwise unlock late
+/// (by however long the screen was off). A periodic watchdog plus an
+/// app-resume check release the lock as soon as the scheduled time passes.
 class FocusLockNotifier extends Notifier<FocusLockState> {
+  static const Duration _watchdogInterval = Duration(seconds: 15);
+
   Timer? _autoUnlockTimer;
+  Timer? _watchdog;
+  AppLifecycleListener? _lifecycle;
+  bool _releasing = false;
+  // Native unpin failed (e.g. fired while the screen was off) — retry it.
+  bool _nativeUnlockPending = false;
 
   @override
   FocusLockState build() {
-    ref.onDispose(() => _autoUnlockTimer?.cancel());
+    ref.onDispose(() {
+      _autoUnlockTimer?.cancel();
+      _stopWatching();
+    });
     Future.microtask(_restore);
     return const FocusLockState();
+  }
+
+  bool get _isExpired {
+    final unlockAt = state.unlockAt;
+    return state.enabled && unlockAt != null && !DateTime.now().isBefore(unlockAt);
+  }
+
+  /// Unlocks if the scheduled time has already passed. Returns true when the
+  /// lock is (now) off, so callers can skip asking for the parent PIN.
+  Future<bool> releaseIfExpired() async {
+    if (!state.enabled) return true;
+    if (!_isExpired) return false;
+    if (!_releasing) {
+      _releasing = true;
+      try {
+        await disable();
+      } finally {
+        _releasing = false;
+      }
+    }
+    return !state.enabled;
+  }
+
+  Future<void> _onTick() async {
+    if (_nativeUnlockPending) {
+      final ok = await ref.read(focusLockServiceProvider).stopLockTask();
+      if (ok) _nativeUnlockPending = false;
+    }
+    await releaseIfExpired();
+    if (!state.enabled && !_nativeUnlockPending) _stopWatching();
+  }
+
+  void _startWatching() {
+    _watchdog ??= Timer.periodic(_watchdogInterval, (_) => _onTick());
+    _lifecycle ??= AppLifecycleListener(onResume: _onTick);
+  }
+
+  void _stopWatching() {
+    _watchdog?.cancel();
+    _watchdog = null;
+    _lifecycle?.dispose();
+    _lifecycle = null;
   }
 
   Future<void> _restore() async {
@@ -88,14 +147,19 @@ class FocusLockNotifier extends Notifier<FocusLockState> {
 
   void _scheduleAutoUnlock(Duration remaining) {
     _autoUnlockTimer?.cancel();
-    _autoUnlockTimer = Timer(remaining, disable);
+    _autoUnlockTimer = Timer(remaining, releaseIfExpired);
+    _startWatching();
   }
 
   Future<void> disable() async {
     _autoUnlockTimer?.cancel();
-    await ref.read(focusLockServiceProvider).stopLockTask();
+    final service = ref.read(focusLockServiceProvider);
+    final wasEngaged = state.engaged;
+    final stopped = await service.stopLockTask();
+    _nativeUnlockPending = service.isSupported && wasEngaged && !stopped;
     await _clearLockedStorage(ref.read(secureStorageServiceProvider));
     state = FocusLockState(pinSet: state.pinSet, enabled: false, engaged: false, unlockAt: null);
+    if (!_nativeUnlockPending) _stopWatching();
   }
 
   Future<void> _clearLockedStorage(SecureStorageService storage) async {

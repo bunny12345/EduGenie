@@ -237,6 +237,8 @@ class _ManageLockCardState extends ConsumerState<_ManageLockCard> {
   }
 
   Future<void> _turnOff(BuildContext context, WidgetRef ref) async {
+    if (await ref.read(focusLockProvider.notifier).releaseIfExpired()) return;
+    if (!context.mounted) return;
     final pin = await _promptPin(context, title: 'Enter PIN to turn off Focus Mode');
     if (pin == null) return;
     final correct = await ref.read(focusLockProvider.notifier).verifyPin(pin);
