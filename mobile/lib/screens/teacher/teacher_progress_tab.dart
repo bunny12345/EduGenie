@@ -101,11 +101,7 @@ class _Frame3dButtonState extends State<_Frame3dButton> {
 
 const int _studentsPageSize = 5;
 
-/// Teacher tab body for the "Student Progress" bottom-nav icon — mirrors
-/// web's `activeSection === 'progress'` block in `TeacherDashboard.jsx`: a
-/// Students picker on one side, and the exact same "My Learning Report"
-/// (`StudentProgress.jsx`) on the other for whichever student is selected,
-/// fetched via the teacher-scoped learning-score endpoint.
+/// A searchable student picker and a teacher-scoped learning report.
 class TeacherProgressTab extends ConsumerStatefulWidget {
   const TeacherProgressTab({super.key});
 
@@ -129,9 +125,12 @@ class _TeacherProgressTabState extends ConsumerState<TeacherProgressTab> {
   LearningScoreData? _report;
   bool _loadingReport = false;
   int _reportRequest = 0;
+  int _studentsRequest = 0;
   String? _reportError;
   String _trendView = 'daily';
   String _subjView = 'daily';
+  bool _choosingStudent = true;
+  LearningReportSection _section = LearningReportSection.score;
 
   @override
   void initState() {
@@ -151,6 +150,7 @@ class _TeacherProgressTabState extends ConsumerState<TeacherProgressTab> {
   }
 
   Future<void> _loadStudents() async {
+    final request = ++_studentsRequest;
     setState(() {
       _loadingStudents = true;
       _studentsError = null;
@@ -159,7 +159,7 @@ class _TeacherProgressTabState extends ConsumerState<TeacherProgressTab> {
       final list = await ref
           .read(teacherApiServiceProvider)
           .getStudents(search: _searchCtrl.text, className: _classFilter);
-      if (!mounted) return;
+      if (!mounted || request != _studentsRequest) return;
       setState(() {
         _students = list;
         _page = 0;
@@ -168,25 +168,36 @@ class _TeacherProgressTabState extends ConsumerState<TeacherProgressTab> {
           _selectedStudentId = null;
           _selectedStudentName = null;
           _report = null;
+          _choosingStudent = true;
         }
       });
     } catch (e) {
-      if (!mounted) return;
+      if (!mounted || request != _studentsRequest) return;
       setState(
         () => _studentsError = e.toString().replaceFirst('Exception: ', ''),
       );
     } finally {
-      if (mounted) setState(() => _loadingStudents = false);
+      if (mounted && request == _studentsRequest) {
+        setState(() => _loadingStudents = false);
+      }
     }
   }
 
   void _onSearchChanged(String _) {
     _searchDebounce?.cancel();
+    ++_studentsRequest;
+    setState(() {
+      _loadingStudents = true;
+      _studentsError = null;
+    });
     _searchDebounce = Timer(const Duration(milliseconds: 350), _loadStudents);
   }
 
   Future<void> _selectStudent(Map<String, dynamic> s) async {
+    FocusScope.of(context).unfocus();
     setState(() {
+      _choosingStudent = false;
+      _section = LearningReportSection.score;
       _selectedStudentId = s['id']?.toString();
       _selectedStudentName = s['name']?.toString() ?? 'Student';
       _reportError = null;
@@ -207,16 +218,22 @@ class _TeacherProgressTabState extends ConsumerState<TeacherProgressTab> {
       final data = await ref
           .read(teacherApiServiceProvider)
           .getStudentLearningScore(id);
-      if (!mounted || request != _reportRequest || id != _selectedStudentId) return;
+      if (!mounted || request != _reportRequest || id != _selectedStudentId) {
+        return;
+      }
       setState(() => _report = data);
     } catch (e) {
-      if (!mounted || request != _reportRequest || id != _selectedStudentId) return;
+      if (!mounted || request != _reportRequest || id != _selectedStudentId) {
+        return;
+      }
       setState(() {
         _reportError = e.toString().replaceFirst('Exception: ', '');
         _report = null;
       });
     } finally {
-      if (mounted && request == _reportRequest) setState(() => _loadingReport = false);
+      if (mounted && request == _reportRequest) {
+        setState(() => _loadingReport = false);
+      }
     }
   }
 
@@ -235,7 +252,94 @@ class _TeacherProgressTabState extends ConsumerState<TeacherProgressTab> {
         .take(_studentsPageSize)
         .toList();
 
+    final studentId = _selectedStudentId;
+    if (!_choosingStudent && studentId != null) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+            child: SectionCard(
+              padding: EdgeInsets.zero,
+              child: Material(
+                type: MaterialType.transparency,
+                child: ListTile(
+                  leading: const Icon(Icons.person_outline_rounded),
+                  title: Text(_selectedStudentName ?? 'Student'),
+                  subtitle: const Text('Change student'),
+                  trailing: const Icon(Icons.swap_horiz_rounded),
+                  onTap: () => setState(() => _choosingStudent = true),
+                ),
+              ),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: LearningReportTabs(
+              selected: _section,
+              onChanged: (section) => setState(() => _section = section),
+            ),
+          ),
+          Expanded(
+            child: SingleChildScrollView(
+              key: ValueKey((studentId, _section)),
+              child: _section == LearningReportSection.exams
+                  ? Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          ExamResultsJourneyPanel(studentId: studentId),
+                          _StudentReportCardsSection(
+                            studentId: studentId,
+                            studentName: _selectedStudentName ?? 'Student',
+                          ),
+                        ],
+                      ),
+                    )
+                  : _reportError != null
+                  ? Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: SectionCard(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            ErrorInline(message: _reportError!),
+                            TextButton(
+                              onPressed: _loadReport,
+                              child: const Text('Try again'),
+                            ),
+                          ],
+                        ),
+                      ),
+                    )
+                  : _report == null
+                  ? const Padding(
+                      padding: EdgeInsets.all(16),
+                      child: Column(
+                        children: [
+                          SkeletonBox(height: 110),
+                          SkeletonBox(height: 240),
+                        ],
+                      ),
+                    )
+                  : LearningReportBody(
+                      data: _report!,
+                      greetingName: _selectedStudentName,
+                      trendView: _trendView,
+                      subjView: _subjView,
+                      onTrendViewChange: (v) => setState(() => _trendView = v),
+                      onSubjViewChange: (v) => setState(() => _subjView = v),
+                      section: _section,
+                    ),
+            ),
+          ),
+        ],
+      );
+    }
+
     return SingleChildScrollView(
+      key: const PageStorageKey('teacher-progress-roster'),
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -245,7 +349,7 @@ class _TeacherProgressTabState extends ConsumerState<TeacherProgressTab> {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 Text(
-                  'Students',
+                  'Choose a student',
                   style: TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.w800,
@@ -254,8 +358,11 @@ class _TeacherProgressTabState extends ConsumerState<TeacherProgressTab> {
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  'Select a student to see their full progress report \u2014 every subject, just like they see it.',
-                  style: TextStyle(fontSize: 12, color: AppColors.of(context).muted),
+                  'Search by name or filter by class to open a learning report.',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: AppColors.of(context).muted,
+                  ),
                 ),
                 const SizedBox(height: 12),
                 TextField(
@@ -266,6 +373,14 @@ class _TeacherProgressTabState extends ConsumerState<TeacherProgressTab> {
                     prefixIcon: Icon(Icons.search_rounded, size: 18),
                   ),
                 ),
+                if (studentId != null)
+                  TextButton(
+                    onPressed: () {
+                      FocusScope.of(context).unfocus();
+                      setState(() => _choosingStudent = false);
+                    },
+                    child: const Text('Back to report'),
+                  ),
                 const SizedBox(height: 8),
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 10),
@@ -275,7 +390,9 @@ class _TeacherProgressTabState extends ConsumerState<TeacherProgressTab> {
                   ),
                   child: DropdownButtonHideUnderline(
                     child: DropdownButton<String>(
-                      value: _classFilter,
+                      value: classOptions.contains(_classFilter)
+                          ? _classFilter
+                          : 'all',
                       isExpanded: true,
                       items: [
                         const DropdownMenuItem(
@@ -296,6 +413,7 @@ class _TeacherProgressTabState extends ConsumerState<TeacherProgressTab> {
                       ],
                       onChanged: (v) {
                         if (v == null) return;
+                        _searchDebounce?.cancel();
                         setState(() => _classFilter = v);
                         _loadStudents();
                       },
@@ -303,22 +421,23 @@ class _TeacherProgressTabState extends ConsumerState<TeacherProgressTab> {
                   ),
                 ),
                 const SizedBox(height: 10),
-                if (_studentsError != null)
-                  Text(
-                    _studentsError!,
-                    style: const TextStyle(
-                      fontSize: 12,
-                      color: AppColors.danger,
-                    ),
-                  )
-                else if (_loadingStudents && _students.isEmpty) ...[
+                if (_studentsError != null) ...[
+                  ErrorInline(message: _studentsError!),
+                  TextButton(
+                    onPressed: _loadStudents,
+                    child: const Text('Try again'),
+                  ),
+                ] else if (_loadingStudents) ...[
                   const SkeletonBox(height: 44),
                   const SkeletonBox(height: 44),
                   const SkeletonBox(height: 44),
                 ] else if (!_loadingStudents && paged.isEmpty)
                   Text(
-                    'No students available yet for this class.',
-                    style: TextStyle(fontSize: 12, color: AppColors.of(context).muted),
+                    'No students match your search and class filter.',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: AppColors.of(context).muted,
+                    ),
                   )
                 else
                   for (final s in paged)
@@ -327,7 +446,9 @@ class _TeacherProgressTabState extends ConsumerState<TeacherProgressTab> {
                       selected: _selectedStudentId == s['id']?.toString(),
                       onTap: () => _selectStudent(s),
                     ),
-                if (_students.length > _studentsPageSize) ...[
+                if (!_loadingStudents &&
+                    _studentsError == null &&
+                    _students.length > _studentsPageSize) ...[
                   const SizedBox(height: 10),
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -357,70 +478,6 @@ class _TeacherProgressTabState extends ConsumerState<TeacherProgressTab> {
               ],
             ),
           ),
-          const SizedBox(height: 14),
-          _Frame3dCard(
-            child: _selectedStudentId == null
-                ? Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 24),
-                    child: Text(
-                      'Select a student above to see their full progress report.',
-                      style: TextStyle(fontSize: 13, color: AppColors.of(context).muted),
-                    ),
-                  )
-                : _loadingReport && _report == null
-                ? Column(
-                    children: const [
-                      SkeletonBox(height: 160),
-                      SkeletonBox(height: 120),
-                      SkeletonBox(height: 160),
-                    ],
-                  )
-                : _reportError != null
-                ? Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 24),
-                    child: Column(
-                      children: [
-                        Text(
-                          _reportError!,
-                          style: const TextStyle(
-                            fontSize: 13,
-                            color: AppColors.danger,
-                          ),
-                        ),
-                        const SizedBox(height: 10),
-                        _Frame3dButton(
-                          onTap: _loadReport,
-                          child: const Text('Try again'),
-                        ),
-                      ],
-                    ),
-                  )
-                : _report == null
-                ? const SizedBox()
-                : Padding(
-                    padding: const EdgeInsets.only(top: 4),
-                    child: LearningReportBody(
-                      data: _report!,
-                      greetingName: _selectedStudentName,
-                      trendView: _trendView,
-                      subjView: _subjView,
-                      onTrendViewChange: (v) => setState(() => _trendView = v),
-                      onSubjViewChange: (v) => setState(() => _subjView = v),
-                      examResultsPanel: ExamResultsJourneyPanel(
-                        key: ValueKey(_selectedStudentId),
-                        studentId: _selectedStudentId!,
-                      ),
-                    ),
-                  ),
-          ),
-          if (_selectedStudentId != null) ...[
-            const SizedBox(height: 14),
-            _StudentReportCardsSection(
-              key: ValueKey(_selectedStudentId),
-              studentId: _selectedStudentId!,
-              studentName: _selectedStudentName ?? 'Student',
-            ),
-          ],
         ],
       ),
     );
@@ -435,23 +492,33 @@ class _StudentReportCardsSection extends ConsumerStatefulWidget {
   final String studentId;
   final String studentName;
 
-  const _StudentReportCardsSection({super.key, required this.studentId, required this.studentName});
+  const _StudentReportCardsSection({
+    required this.studentId,
+    required this.studentName,
+  });
 
   @override
-  ConsumerState<_StudentReportCardsSection> createState() => _StudentReportCardsSectionState();
+  ConsumerState<_StudentReportCardsSection> createState() =>
+      _StudentReportCardsSectionState();
 }
 
-class _StudentReportCardsSectionState extends ConsumerState<_StudentReportCardsSection> {
+class _StudentReportCardsSectionState
+    extends ConsumerState<_StudentReportCardsSection> {
   String? _selectedExamId;
 
   @override
   Widget build(BuildContext context) {
-    final async = ref.watch(teacherStudentReportCardsProvider(widget.studentId));
+    final async = ref.watch(
+      teacherStudentReportCardsProvider(widget.studentId),
+    );
     return _Frame3dCard(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          const Text('🎓 Report Cards', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
+          const Text(
+            '🎓 Report Cards',
+            style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
+          ),
           const SizedBox(height: 2),
           Text(
             "${widget.studentName}'s released exam results \u2014 handy for parent-teacher meetings.",
@@ -460,13 +527,24 @@ class _StudentReportCardsSectionState extends ConsumerState<_StudentReportCardsS
           const SizedBox(height: 12),
           async.when(
             loading: () => const SkeletonBox(height: 220),
-            error: (e, _) => ErrorInline(message: e.toString().replaceFirst('Exception: ', '')),
+            error: (e, _) => ErrorInline(
+              message: e.toString().replaceFirst('Exception: ', ''),
+            ),
             data: (data) {
               final cards = (data['reportCards'] as List? ?? [])
-                  .map((r) => ReportCard.fromJson(Map<String, dynamic>.from(r as Map)))
+                  .map(
+                    (r) => ReportCard.fromJson(
+                      Map<String, dynamic>.from(r as Map),
+                    ),
+                  )
                   .toList();
               final pending = (data['pending'] as List? ?? []).cast<Map>();
-              final card = cards.isEmpty ? null : cards.firstWhere((c) => c.examId == _selectedExamId, orElse: () => cards.first);
+              final card = cards.isEmpty
+                  ? null
+                  : cards.firstWhere(
+                      (c) => c.examId == _selectedExamId,
+                      orElse: () => cards.first,
+                    );
               return Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
@@ -487,7 +565,10 @@ class _StudentReportCardsSectionState extends ConsumerState<_StudentReportCardsS
                               padding: const EdgeInsets.symmetric(vertical: 2),
                               child: Text(
                                 '\u23F3 ${p['examName']} \u2014 ${p['entered']} of ${p['total']} subjects entered \u00b7 waiting for ${(p['missingSubjects'] as List).join(', ')}',
-                                style: const TextStyle(fontSize: 12, color: Color(0xFF7A5200)),
+                                style: const TextStyle(
+                                  fontSize: 12,
+                                  color: Color(0xFF7A5200),
+                                ),
                               ),
                             ),
                         ],
@@ -499,7 +580,10 @@ class _StudentReportCardsSectionState extends ConsumerState<_StudentReportCardsS
                       child: Text(
                         'No report card has been released for this student yet. It appears once every subject teacher has added marks.',
                         textAlign: TextAlign.center,
-                        style: TextStyle(fontSize: 13, color: AppColors.of(context).muted),
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: AppColors.of(context).muted,
+                        ),
                       ),
                     )
                   else ...[
@@ -516,15 +600,22 @@ class _StudentReportCardsSectionState extends ConsumerState<_StudentReportCardsS
                                 selected: c.examId == card.examId,
                                 selectedColor: AppColors.brand,
                                 labelStyle: TextStyle(
-                                  color: c.examId == card.examId ? Colors.white : AppColors.of(context).text,
+                                  color: c.examId == card.examId
+                                      ? Colors.white
+                                      : AppColors.of(context).text,
                                   fontWeight: FontWeight.w700,
                                 ),
-                                onSelected: (_) => setState(() => _selectedExamId = c.examId),
+                                onSelected: (_) =>
+                                    setState(() => _selectedExamId = c.examId),
                               ),
                           ],
                         ),
                       ),
-                    ReportCardSheet(card: card, studentName: widget.studentName, teacherView: true),
+                    ReportCardSheet(
+                      card: card,
+                      studentName: widget.studentName,
+                      teacherView: true,
+                    ),
                   ],
                 ],
               );
@@ -559,7 +650,9 @@ class _ProgressStudentRow extends StatelessWidget {
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
           decoration: BoxDecoration(
-            color: selected ? AppColors.of(context).brandSoft : AppColors.of(context).background,
+            color: selected
+                ? AppColors.of(context).brandSoft
+                : AppColors.of(context).background,
             borderRadius: BorderRadius.circular(10),
             border: selected
                 ? Border.all(color: AppColors.brand, width: 1.5)
@@ -577,7 +670,10 @@ class _ProgressStudentRow extends StatelessWidget {
               ),
               Text(
                 className,
-                style: TextStyle(fontSize: 11, color: AppColors.of(context).muted),
+                style: TextStyle(
+                  fontSize: 11,
+                  color: AppColors.of(context).muted,
+                ),
               ),
             ],
           ),

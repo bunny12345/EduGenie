@@ -15,6 +15,49 @@ import 'progress/subject_progress_detail_screen.dart';
 
 enum LearningReportSection { score, subjects, exams }
 
+class LearningReportTabs extends StatelessWidget {
+  const LearningReportTabs({
+    super.key,
+    required this.selected,
+    required this.onChanged,
+  });
+
+  final LearningReportSection selected;
+  final ValueChanged<LearningReportSection> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        for (final (section, label, icon) in const [
+          (LearningReportSection.score, 'Score', Icons.show_chart_rounded),
+          (
+            LearningReportSection.subjects,
+            'Subjects',
+            Icons.menu_book_outlined,
+          ),
+          (
+            LearningReportSection.exams,
+            'Exam Results',
+            Icons.assessment_outlined,
+          ),
+        ]) ...[
+          if (section != LearningReportSection.score) const SizedBox(width: 8),
+          Expanded(
+            child: SectionTabButton(
+              label: label,
+              icon: icon,
+              compact: true,
+              selected: selected == section,
+              onPressed: () => onChanged(section),
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+}
+
 class StudentProgressScreen extends ConsumerStatefulWidget {
   const StudentProgressScreen({super.key});
 
@@ -67,38 +110,9 @@ class _StudentProgressScreenState extends ConsumerState<StudentProgressScreen> {
         children: [
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-            child: Row(
-              children: [
-                for (final (section, label, icon) in const [
-                  (
-                    LearningReportSection.score,
-                    'Score',
-                    Icons.show_chart_rounded,
-                  ),
-                  (
-                    LearningReportSection.subjects,
-                    'Subjects',
-                    Icons.menu_book_outlined,
-                  ),
-                  (
-                    LearningReportSection.exams,
-                    'Exam Results',
-                    Icons.assessment_outlined,
-                  ),
-                ]) ...[
-                  if (section != LearningReportSection.score)
-                    const SizedBox(width: 8),
-                  Expanded(
-                    child: SectionTabButton(
-                      label: label,
-                      icon: icon,
-                      compact: true,
-                      selected: _section == section,
-                      onPressed: () => setState(() => _section = section),
-                    ),
-                  ),
-                ],
-              ],
+            child: LearningReportTabs(
+              selected: _section,
+              onChanged: (section) => setState(() => _section = section),
             ),
           ),
           Expanded(

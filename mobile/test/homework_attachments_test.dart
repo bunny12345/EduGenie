@@ -78,11 +78,7 @@ Widget _teacherStudentApp(_TeacherApi api, {bool dark = false}) => ProviderScope
 );
 
 Future<void> _selectTeacherStudent(WidgetTester tester) async {
-  final selector = find.byWidgetPredicate((widget) => widget is DropdownButton<String> && widget.value == null);
-  await tester.ensureVisible(selector);
-  await tester.tap(selector);
-  await tester.pumpAndSettle();
-  await tester.tap(find.text('Alex \u00b7 Class 8').last);
+  await tester.tap(find.text('Alex'));
   await tester.pumpAndSettle();
 }
 

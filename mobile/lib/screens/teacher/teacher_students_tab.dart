@@ -9,6 +9,7 @@ import '../../services/attachment_url.dart';
 import '../../state/teacher_providers.dart';
 import '../../theme/app_colors.dart';
 import '../../widgets/section_card.dart';
+import '../../widgets/section_tab_button.dart';
 import '../student/progress/progress_charts.dart';
 import '../student/homework/lightbox.dart';
 
@@ -17,10 +18,18 @@ import '../student/homework/lightbox.dart';
 /// `teacher_shell.dart`).
 const Color _frame3dColor = Color(0xFF46464E);
 
-Border _frame3dBorder({double alpha = 0.35, double width = 1.5}) => Border.all(color: _frame3dColor.withValues(alpha: alpha), width: width);
+Border _frame3dBorder({double alpha = 0.35, double width = 1.5}) => Border.all(
+  color: _frame3dColor.withValues(alpha: alpha),
+  width: width,
+);
 
-List<BoxShadow> _frame3dShadow({double alpha = 0.18, double blur = 10}) =>
-    [BoxShadow(color: Colors.black.withValues(alpha: alpha), blurRadius: blur, offset: const Offset(0, 4))];
+List<BoxShadow> _frame3dShadow({double alpha = 0.18, double blur = 10}) => [
+  BoxShadow(
+    color: Colors.black.withValues(alpha: alpha),
+    blurRadius: blur,
+    offset: const Offset(0, 4),
+  ),
+];
 
 DateTime? _parseDate(dynamic value) {
   if (value == null) return null;
@@ -100,7 +109,11 @@ class _Frame3dButtonState extends State<_Frame3dButton> {
             boxShadow: _pressed ? [] : _frame3dShadow(alpha: 0.12, blur: 6),
           ),
           child: DefaultTextStyle(
-            style: TextStyle(color: foreground, fontSize: 12, fontWeight: FontWeight.w700),
+            style: TextStyle(
+              color: foreground,
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
+            ),
             child: widget.child,
           ),
         ),
@@ -123,11 +136,16 @@ class TeacherStudentsTab extends ConsumerStatefulWidget {
   ConsumerState<TeacherStudentsTab> createState() => _TeacherStudentsTabState();
 }
 
+enum _StudentsSection { roster, homework, progress }
+
 class _TeacherStudentsTabState extends ConsumerState<TeacherStudentsTab> {
   final _searchCtrl = TextEditingController();
   String _classFilter = 'all';
   int _page = 0;
   Timer? _searchDebounce;
+  int _studentsRequest = 0;
+  _StudentsSection _section = _StudentsSection.roster;
+  _StudentsSection _studentDestination = _StudentsSection.homework;
 
   List<Map<String, dynamic>> _students = [];
   bool _loadingStudents = true;
@@ -138,7 +156,8 @@ class _TeacherStudentsTabState extends ConsumerState<TeacherStudentsTab> {
   List<Map<String, dynamic>> _homework = [];
   bool _loadingHomework = false;
   String? _homeworkError;
-  String _homeworkStatusFilter = 'all'; // all | submitted | not-submitted | overdue
+  String _homeworkStatusFilter =
+      'all'; // all | submitted | not-submitted | overdue
 
   String? _expandedGradeId;
   final _gradeValueCtrl = TextEditingController();
@@ -168,34 +187,52 @@ class _TeacherStudentsTabState extends ConsumerState<TeacherStudentsTab> {
   }
 
   Future<void> _loadStudents() async {
+    final request = ++_studentsRequest;
     setState(() {
       _loadingStudents = true;
       _studentsError = null;
     });
     try {
-      final list = await ref.read(teacherApiServiceProvider).getStudents(search: _searchCtrl.text, className: _classFilter);
-      if (!mounted) return;
+      final list = await ref
+          .read(teacherApiServiceProvider)
+          .getStudents(search: _searchCtrl.text, className: _classFilter);
+      if (!mounted || request != _studentsRequest) return;
       setState(() {
         _students = list;
         _page = 0;
-        if (_selectedStudentId != null && !list.any((s) => s['id']?.toString() == _selectedStudentId)) {
+        if (_selectedStudentId != null &&
+            !list.any((s) => s['id']?.toString() == _selectedStudentId)) {
           _selectedStudentId = null;
           _selectedStudentName = null;
           _homework = [];
         }
       });
     } catch (e) {
-      if (!mounted) return;
-      setState(() => _studentsError = e.toString().replaceFirst('Exception: ', ''));
+      if (!mounted || request != _studentsRequest) return;
+      setState(
+        () => _studentsError = e.toString().replaceFirst('Exception: ', ''),
+      );
     } finally {
-      if (mounted) setState(() => _loadingStudents = false);
+      if (mounted && request == _studentsRequest) {
+        setState(() => _loadingStudents = false);
+      }
     }
   }
 
   void _onSearchChanged(String _) {
     _searchDebounce?.cancel();
+    ++_studentsRequest;
+    setState(() {
+      _loadingStudents = true;
+      _studentsError = null;
+    });
     _searchDebounce = Timer(const Duration(milliseconds: 350), _loadStudents);
   }
+
+  void _openRoster() => setState(() {
+    _studentDestination = _section;
+    _section = _StudentsSection.roster;
+  });
 
   void _clearSelection() {
     setState(() {
@@ -211,13 +248,18 @@ class _TeacherStudentsTabState extends ConsumerState<TeacherStudentsTab> {
   }
 
   Future<void> _selectStudent(Map<String, dynamic> s) async {
+    FocusScope.of(context).unfocus();
     setState(() {
+      if (_section == _StudentsSection.roster) {
+        _section = _studentDestination;
+      }
       _selectedStudentId = s['id']?.toString();
       _selectedStudentName = s['name']?.toString() ?? 'Student';
       _homeworkStatusFilter = 'all';
       _expandedGradeId = null;
       _homework = [];
       _homeworkError = null;
+      _subjectProgress = null;
     });
     await Future.wait([_loadHomework(), _loadSubjectProgress()]);
   }
@@ -230,10 +272,16 @@ class _TeacherStudentsTabState extends ConsumerState<TeacherStudentsTab> {
       _homeworkError = null;
     });
     try {
-      final list = await ref.read(teacherApiServiceProvider).getStudentHomework(id);
+      final list = await ref
+          .read(teacherApiServiceProvider)
+          .getStudentHomework(id);
       list.sort((a, b) {
-        final aTs = _parseDate(a['startAt'] ?? a['createdAt'] ?? a['dueAt']) ?? DateTime(0);
-        final bTs = _parseDate(b['startAt'] ?? b['createdAt'] ?? b['dueAt']) ?? DateTime(0);
+        final aTs =
+            _parseDate(a['startAt'] ?? a['createdAt'] ?? a['dueAt']) ??
+            DateTime(0);
+        final bTs =
+            _parseDate(b['startAt'] ?? b['createdAt'] ?? b['dueAt']) ??
+            DateTime(0);
         return bTs.compareTo(aTs);
       });
       if (!mounted || _selectedStudentId != id) return;
@@ -245,7 +293,9 @@ class _TeacherStudentsTabState extends ConsumerState<TeacherStudentsTab> {
         _homework = [];
       });
     } finally {
-      if (mounted && _selectedStudentId == id) setState(() => _loadingHomework = false);
+      if (mounted && _selectedStudentId == id) {
+        setState(() => _loadingHomework = false);
+      }
     }
   }
 
@@ -257,24 +307,27 @@ class _TeacherStudentsTabState extends ConsumerState<TeacherStudentsTab> {
       _progressError = null;
     });
     try {
-      final json = await ref.read(teacherApiServiceProvider).getStudentSubjectProgress(id);
-      if (!mounted) return;
+      final json = await ref
+          .read(teacherApiServiceProvider)
+          .getStudentSubjectProgress(id);
+      if (!mounted || _selectedStudentId != id) return;
       setState(() {
         _subjectProgress = json == null ? null : SubjectProgress.fromJson(json);
         _progressHasData = true;
       });
     } catch (e) {
-      if (!mounted) return;
+      if (!mounted || _selectedStudentId != id) return;
       setState(() {
         _progressError = e.toString().replaceFirst('Exception: ', '');
         _subjectProgress = null;
         _progressHasData = false;
       });
     } finally {
-      if (mounted) setState(() => _loadingProgress = false);
+      if (mounted && _selectedStudentId == id) {
+        setState(() => _loadingProgress = false);
+      }
     }
   }
-
 
   void _startGrade(Map<String, dynamic> hw) {
     final id = hw['id']?.toString();
@@ -290,13 +343,20 @@ class _TeacherStudentsTabState extends ConsumerState<TeacherStudentsTab> {
   }
 
   Future<void> _submitGrade(String hwId) async {
-    if (_gradeValueCtrl.text.trim().isEmpty && _gradeFeedbackCtrl.text.trim().isEmpty) return;
+    if (_gradeValueCtrl.text.trim().isEmpty &&
+        _gradeFeedbackCtrl.text.trim().isEmpty) {
+      return;
+    }
     setState(() => _gradingBusy = true);
     try {
-      await ref.read(teacherApiServiceProvider).gradeHomework(
+      await ref
+          .read(teacherApiServiceProvider)
+          .gradeHomework(
             hwId,
             grade: int.tryParse(_gradeValueCtrl.text.trim()),
-            feedback: _gradeFeedbackCtrl.text.trim().isEmpty ? null : _gradeFeedbackCtrl.text.trim(),
+            feedback: _gradeFeedbackCtrl.text.trim().isEmpty
+                ? null
+                : _gradeFeedbackCtrl.text.trim(),
           );
       _gradeValueCtrl.clear();
       _gradeFeedbackCtrl.clear();
@@ -304,7 +364,9 @@ class _TeacherStudentsTabState extends ConsumerState<TeacherStudentsTab> {
       await _loadHomework();
     } catch (e) {
       if (!mounted) return;
-      setState(() => _homeworkError = e.toString().replaceFirst('Exception: ', ''));
+      setState(
+        () => _homeworkError = e.toString().replaceFirst('Exception: ', ''),
+      );
     } finally {
       if (mounted) setState(() => _gradingBusy = false);
     }
@@ -332,7 +394,9 @@ class _TeacherStudentsTabState extends ConsumerState<TeacherStudentsTab> {
       });
     } catch (e) {
       if (!mounted || _selectedStudentId != studentId) return;
-      setState(() => _homeworkError = e.toString().replaceFirst('Exception: ', ''));
+      setState(
+        () => _homeworkError = e.toString().replaceFirst('Exception: ', ''),
+      );
     } finally {
       if (mounted && _aiGradingId == id) setState(() => _aiGradingId = null);
     }
@@ -340,129 +404,312 @@ class _TeacherStudentsTabState extends ConsumerState<TeacherStudentsTab> {
 
   @override
   Widget build(BuildContext context) {
-    final classOptions = ref.watch(teacherClassOptionsProvider).value ?? const <String>[];
-    final int pageCount = _students.isEmpty ? 1 : (_students.length / _studentsPageSize).ceil();
-    final int clampedPage = _page < 0 ? 0 : (_page > pageCount - 1 ? pageCount - 1 : _page);
-    final paged = _students.skip(clampedPage * _studentsPageSize).take(_studentsPageSize).toList();
+    final classOptions =
+        ref.watch(teacherClassOptionsProvider).value ?? const <String>[];
+    final int pageCount = _students.isEmpty
+        ? 1
+        : (_students.length / _studentsPageSize).ceil();
+    final int clampedPage = _page < 0
+        ? 0
+        : (_page > pageCount - 1 ? pageCount - 1 : _page);
+    final paged = _students
+        .skip(clampedPage * _studentsPageSize)
+        .take(_studentsPageSize)
+        .toList();
 
-    return SingleChildScrollView(
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          _Frame3dCard(
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+          child: Row(
+            children: [
+              for (final (section, label, icon) in const [
+                (
+                  _StudentsSection.roster,
+                  'Roster',
+                  Icons.people_outline_rounded,
+                ),
+                (
+                  _StudentsSection.homework,
+                  'Homework',
+                  Icons.edit_note_rounded,
+                ),
+                (
+                  _StudentsSection.progress,
+                  'Snapshot',
+                  Icons.insights_outlined,
+                ),
+              ]) ...[
+                if (section != _StudentsSection.roster)
+                  const SizedBox(width: 8),
+                Expanded(
+                  child: SectionTabButton(
+                    label: label,
+                    icon: icon,
+                    compact: true,
+                    selected: _section == section,
+                    onPressed: () {
+                      FocusScope.of(context).unfocus();
+                      if (section == _StudentsSection.roster &&
+                          _section != section) {
+                        _openRoster();
+                      } else {
+                        setState(() => _section = section);
+                      }
+                    },
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+        if (_section != _StudentsSection.roster && _selectedStudentId != null)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
+            child: SectionCard(
+              padding: EdgeInsets.zero,
+              child: Material(
+                type: MaterialType.transparency,
+                child: ListTile(
+                  leading: const Icon(Icons.person_outline_rounded),
+                  title: Text(_selectedStudentName ?? 'Student'),
+                  subtitle: const Text('Change student'),
+                  trailing: const Icon(Icons.swap_horiz_rounded),
+                  onTap: _openRoster,
+                ),
+              ),
+            ),
+          ),
+        Expanded(
+          child: SingleChildScrollView(
+            key: ValueKey((
+              _section,
+              _section == _StudentsSection.roster ? null : _selectedStudentId,
+            )),
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Text('Students', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: AppColors.of(context).text)),
-                const SizedBox(height: 4),
-                Text('Filter by class, select a student, and view their homework status.', style: TextStyle(fontSize: 12, color: AppColors.of(context).muted)),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: _searchCtrl,
-                  onChanged: _onSearchChanged,
-                  decoration: const InputDecoration(hintText: 'Search students by name', prefixIcon: Icon(Icons.search_rounded, size: 18)),
-                ),
-                const SizedBox(height: 8),
-                Row(
-                  children: [
-                    Expanded(
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 10),
-                        decoration: BoxDecoration(border: Border.all(color: AppColors.of(context).line), borderRadius: BorderRadius.circular(8)),
-                        child: DropdownButtonHideUnderline(
-                          child: DropdownButton<String>(
-                            value: _classFilter,
-                            isExpanded: true,
-                            items: [
-                              const DropdownMenuItem(value: 'all', child: Text('All classes', style: TextStyle(fontSize: 13))),
-                              for (final c in classOptions) DropdownMenuItem(value: c, child: Text(c, style: const TextStyle(fontSize: 13))),
-                            ],
-                            onChanged: (v) {
-                              if (v == null) return;
-                              setState(() => _classFilter = v);
-                              _loadStudents();
-                            },
+                if (_section == _StudentsSection.roster)
+                  _Frame3dCard(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Text(
+                          'Student roster',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w800,
+                            color: AppColors.of(context).text,
                           ),
                         ),
-                      ),
+                        const SizedBox(height: 4),
+                        Text(
+                          'Search by name or filter by class. Select a student to open their homework.',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: AppColors.of(context).muted,
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        TextField(
+                          controller: _searchCtrl,
+                          onChanged: _onSearchChanged,
+                          decoration: const InputDecoration(
+                            hintText: 'Search students by name',
+                            prefixIcon: Icon(Icons.search_rounded, size: 18),
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 10,
+                                ),
+                                decoration: BoxDecoration(
+                                  border: Border.all(
+                                    color: AppColors.of(context).line,
+                                  ),
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: DropdownButtonHideUnderline(
+                                  child: DropdownButton<String>(
+                                    value: classOptions.contains(_classFilter)
+                                        ? _classFilter
+                                        : 'all',
+                                    isExpanded: true,
+                                    items: [
+                                      const DropdownMenuItem(
+                                        value: 'all',
+                                        child: Text(
+                                          'All classes',
+                                          style: TextStyle(fontSize: 13),
+                                        ),
+                                      ),
+                                      for (final c in classOptions)
+                                        DropdownMenuItem(
+                                          value: c,
+                                          child: Text(
+                                            c,
+                                            style: const TextStyle(
+                                              fontSize: 13,
+                                            ),
+                                          ),
+                                        ),
+                                    ],
+                                    onChanged: (v) {
+                                      if (v == null) return;
+                                      _searchDebounce?.cancel();
+                                      setState(() => _classFilter = v);
+                                      _loadStudents();
+                                    },
+                                  ),
+                                ),
+                              ),
+                            ),
+                            if (_selectedStudentId != null) ...[
+                              const SizedBox(width: 8),
+                              _Frame3dButton(
+                                onTap: _clearSelection,
+                                child: const Text('Clear Selection'),
+                              ),
+                            ],
+                          ],
+                        ),
+                        const SizedBox(height: 10),
+                        if (_studentsError != null) ...[
+                          ErrorInline(message: _studentsError!),
+                          TextButton(
+                            onPressed: _loadStudents,
+                            child: const Text('Try again'),
+                          ),
+                        ] else if (_loadingStudents) ...[
+                          const SkeletonBox(height: 44),
+                          const SkeletonBox(height: 44),
+                          const SkeletonBox(height: 44),
+                        ] else if (!_loadingStudents && paged.isEmpty)
+                          Text(
+                            'No students match your search and class filter.',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: AppColors.of(context).muted,
+                            ),
+                          )
+                        else
+                          for (final s in paged)
+                            _StudentRow(
+                              student: s,
+                              selected:
+                                  _selectedStudentId == s['id']?.toString(),
+                              onTap: () => _selectStudent(s),
+                            ),
+                        if (!_loadingStudents &&
+                            _studentsError == null &&
+                            _students.length > _studentsPageSize) ...[
+                          const SizedBox(height: 10),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              _Frame3dButton(
+                                onTap: clampedPage == 0
+                                    ? null
+                                    : () => setState(
+                                        () => _page = clampedPage - 1,
+                                      ),
+                                child: const Text('\u2190 Previous'),
+                              ),
+                              Text(
+                                'Page ${clampedPage + 1} of $pageCount',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: AppColors.of(context).muted,
+                                ),
+                              ),
+                              _Frame3dButton(
+                                onTap: clampedPage >= pageCount - 1
+                                    ? null
+                                    : () => setState(
+                                        () => _page = clampedPage + 1,
+                                      ),
+                                child: const Text('Next \u2192'),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ],
                     ),
-                    const SizedBox(width: 8),
-                    _Frame3dButton(onTap: _clearSelection, child: const Text('Clear Selection')),
-                  ],
-                ),
-                const SizedBox(height: 10),
-                if (_studentsError != null)
-                  Text(_studentsError!, style: const TextStyle(fontSize: 12, color: AppColors.danger))
-                else if (_loadingStudents && _students.isEmpty) ...[
-                  const SkeletonBox(height: 44),
-                  const SkeletonBox(height: 44),
-                  const SkeletonBox(height: 44),
-                ] else if (!_loadingStudents && paged.isEmpty)
-                  Text('No students available yet for this class.', style: TextStyle(fontSize: 12, color: AppColors.of(context).muted))
-                else
-                  for (final s in paged) _StudentRow(student: s, selected: _selectedStudentId == s['id']?.toString(), onTap: () => _selectStudent(s)),
-                if (_students.length > _studentsPageSize) ...[
-                  const SizedBox(height: 10),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      _Frame3dButton(
-                        onTap: clampedPage == 0 ? null : () => setState(() => _page = clampedPage - 1),
-                        child: const Text('\u2190 Previous'),
-                      ),
-                      Text('Page ${clampedPage + 1} of $pageCount', style: TextStyle(fontSize: 12, color: AppColors.of(context).muted)),
-                      _Frame3dButton(
-                        onTap: clampedPage >= pageCount - 1 ? null : () => setState(() => _page = clampedPage + 1),
-                        child: const Text('Next \u2192'),
-                      ),
-                    ],
                   ),
-                ],
+                if (_section != _StudentsSection.roster &&
+                    _selectedStudentId == null)
+                  SectionCard(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          _section == _StudentsSection.homework
+                              ? 'Choose a student to review submissions and grades.'
+                              : 'Choose a student to view their progress in your subject.',
+                        ),
+                        TextButton(
+                          onPressed: _openRoster,
+                          child: const Text('Open student roster'),
+                        ),
+                      ],
+                    ),
+                  ),
+                if (_section == _StudentsSection.homework &&
+                    _selectedStudentId != null)
+                  _Frame3dCard(
+                    child: _HomeworkStatusPanel(
+                      students: _students,
+                      selectedStudentId: _selectedStudentId,
+                      selectedStudentName: _selectedStudentName,
+                      onSelectStudent: (id) {
+                        final s = _students.firstWhere(
+                          (s) => s['id']?.toString() == id,
+                          orElse: () => const {},
+                        );
+                        if (s.isNotEmpty) _selectStudent(s);
+                      },
+                      homework: _homework,
+                      loading: _loadingHomework,
+                      error: _homeworkError,
+                      statusFilter: _homeworkStatusFilter,
+                      onStatusFilterChanged: (v) =>
+                          setState(() => _homeworkStatusFilter = v),
+                      expandedGradeId: _expandedGradeId,
+                      onStartGrade: _startGrade,
+                      gradeValueCtrl: _gradeValueCtrl,
+                      gradeFeedbackCtrl: _gradeFeedbackCtrl,
+                      gradingBusy: _gradingBusy,
+                      onSubmitGrade: _submitGrade,
+                      onCancelGrade: () =>
+                          setState(() => _expandedGradeId = null),
+                      aiGradingId: _aiGradingId,
+                      onAutoCorrect: _startAiGrade,
+                    ),
+                  ),
+                if (_section == _StudentsSection.progress &&
+                    _selectedStudentId != null)
+                  _Frame3dCard(
+                    child: _ProgressSnapshotPanel(
+                      selectedStudentId: _selectedStudentId,
+                      selectedStudentName: _selectedStudentName,
+                      subject: _subjectProgress,
+                      hasData: _progressHasData,
+                      loading: _loadingProgress,
+                      error: _progressError,
+                      view: _progressView,
+                      onViewChanged: (v) => setState(() => _progressView = v),
+                    ),
+                  ),
               ],
             ),
           ),
-          const SizedBox(height: 14),
-          _Frame3dCard(
-            child: _HomeworkStatusPanel(
-              students: _students,
-              selectedStudentId: _selectedStudentId,
-              selectedStudentName: _selectedStudentName,
-              onSelectStudent: (id) {
-                final s = _students.firstWhere((s) => s['id']?.toString() == id, orElse: () => const {});
-                if (s.isNotEmpty) _selectStudent(s);
-              },
-              homework: _homework,
-              loading: _loadingHomework,
-              error: _homeworkError,
-              statusFilter: _homeworkStatusFilter,
-              onStatusFilterChanged: (v) => setState(() => _homeworkStatusFilter = v),
-              expandedGradeId: _expandedGradeId,
-              onStartGrade: _startGrade,
-              gradeValueCtrl: _gradeValueCtrl,
-              gradeFeedbackCtrl: _gradeFeedbackCtrl,
-              gradingBusy: _gradingBusy,
-              onSubmitGrade: _submitGrade,
-              onCancelGrade: () => setState(() => _expandedGradeId = null),
-              aiGradingId: _aiGradingId,
-              onAutoCorrect: _startAiGrade,
-            ),
-          ),
-          const SizedBox(height: 14),
-          _Frame3dCard(
-            child: _ProgressSnapshotPanel(
-              selectedStudentId: _selectedStudentId,
-              selectedStudentName: _selectedStudentName,
-              subject: _subjectProgress,
-              hasData: _progressHasData,
-              loading: _loadingProgress,
-              error: _progressError,
-              view: _progressView,
-              onViewChanged: (v) => setState(() => _progressView = v),
-            ),
-          ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 }
@@ -472,7 +719,11 @@ class _StudentRow extends StatelessWidget {
   final bool selected;
   final VoidCallback onTap;
 
-  const _StudentRow({required this.student, required this.selected, required this.onTap});
+  const _StudentRow({
+    required this.student,
+    required this.selected,
+    required this.onTap,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -486,9 +737,13 @@ class _StudentRow extends StatelessWidget {
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
           decoration: BoxDecoration(
-            color: selected ? AppColors.of(context).brandSoft : AppColors.of(context).background,
+            color: selected
+                ? AppColors.of(context).brandSoft
+                : AppColors.of(context).background,
             borderRadius: BorderRadius.circular(10),
-            border: selected ? Border.all(color: AppColors.brand, width: 1.5) : null,
+            border: selected
+                ? Border.all(color: AppColors.brand, width: 1.5)
+                : null,
           ),
           child: Row(
             children: [
@@ -496,8 +751,20 @@ class _StudentRow extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(name, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
-                    Text(className, style: TextStyle(fontSize: 11, color: AppColors.of(context).muted)),
+                    Text(
+                      name,
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w700,
+                        fontSize: 13,
+                      ),
+                    ),
+                    Text(
+                      className,
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: AppColors.of(context).muted,
+                      ),
+                    ),
                   ],
                 ),
               ),
@@ -554,16 +821,20 @@ class _HomeworkStatusPanel extends StatelessWidget {
   bool _isSubmitted(Map<String, dynamic> h) {
     final due = (h['dueStatus']?.toString() ?? '').toLowerCase();
     final status = (h['status']?.toString() ?? '').toLowerCase();
-    return due == 'submitted' || ['submitted', 'resubmitted', 'graded'].contains(status);
+    return due == 'submitted' ||
+        ['submitted', 'resubmitted', 'graded'].contains(status);
   }
 
-  bool _isOverdue(Map<String, dynamic> h) => (h['dueStatus']?.toString() ?? '').toLowerCase() == 'overdue';
+  bool _isOverdue(Map<String, dynamic> h) =>
+      (h['dueStatus']?.toString() ?? '').toLowerCase() == 'overdue';
 
   /// Steps to the previous/next student in `students` — mirrors web's
   /// `goToAdjacentStudent(delta)` exactly (clamped, no wraparound).
   void _goToAdjacent(int delta) {
     if (students.isEmpty) return;
-    final currentIndex = students.indexWhere((s) => s['id']?.toString() == selectedStudentId);
+    final currentIndex = students.indexWhere(
+      (s) => s['id']?.toString() == selectedStudentId,
+    );
     final baseIndex = currentIndex == -1 ? 0 : currentIndex;
     final nextIndex = (baseIndex + delta).clamp(0, students.length - 1);
     final id = students[nextIndex]['id']?.toString();
@@ -572,7 +843,9 @@ class _HomeworkStatusPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final selectedIndex = students.indexWhere((s) => s['id']?.toString() == selectedStudentId);
+    final selectedIndex = students.indexWhere(
+      (s) => s['id']?.toString() == selectedStudentId,
+    );
     final submitted = homework.where(_isSubmitted).length;
     final notSubmitted = homework.length - submitted;
     final overdue = homework.where(_isOverdue).length;
@@ -583,45 +856,47 @@ class _HomeworkStatusPanel extends StatelessWidget {
       if (statusFilter == 'overdue') return _isOverdue(h);
       return true;
     }).toList();
-    final visible = statusFilter == 'all' ? filtered.take(5).toList() : filtered;
+    final visible = statusFilter == 'all'
+        ? filtered.take(5).toList()
+        : filtered;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Text('Homework Status', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: AppColors.of(context).text)),
-        const SizedBox(height: 8),
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 10),
-          decoration: BoxDecoration(border: Border.all(color: AppColors.of(context).line), borderRadius: BorderRadius.circular(8)),
-          child: DropdownButtonHideUnderline(
-            child: DropdownButton<String>(
-              value: selectedStudentId,
-              isExpanded: true,
-              hint: Text('Select a student to view homework', style: TextStyle(fontSize: 13, color: AppColors.of(context).muted)),
-              items: [
-                for (final s in students)
-                  DropdownMenuItem(
-                    value: s['id']?.toString(),
-                    child: Text('${s['name'] ?? 'Student'} \u00b7 ${s['className'] ?? ''}', style: const TextStyle(fontSize: 13)),
-                  ),
-              ],
-              onChanged: (v) {
-                if (v != null) onSelectStudent(v);
-              },
-            ),
+        Text(
+          'Homework Status',
+          style: TextStyle(
+            fontSize: 16,
+            fontWeight: FontWeight.w800,
+            color: AppColors.of(context).text,
           ),
         ),
+        const SizedBox(height: 8),
         if (students.length > 1) ...[
           const SizedBox(height: 10),
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              _Frame3dButton(onTap: selectedIndex <= 0 ? null : () => _goToAdjacent(-1), child: const Text('\u2190 Prev')),
+              _Frame3dButton(
+                onTap: selectedIndex <= 0 ? null : () => _goToAdjacent(-1),
+                child: const Text('\u2190 Prev'),
+              ),
               const SizedBox(width: 10),
-              Text('${selectedIndex + 1}/${students.length}', style: TextStyle(fontSize: 12, color: AppColors.of(context).muted, fontWeight: FontWeight.w700)),
+              Text(
+                '${selectedIndex + 1}/${students.length}',
+                style: TextStyle(
+                  fontSize: 12,
+                  color: AppColors.of(context).muted,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
               const SizedBox(width: 10),
               _Frame3dButton(
-                onTap: (selectedIndex == -1 || selectedIndex >= students.length - 1) ? null : () => _goToAdjacent(1),
+                onTap:
+                    (selectedIndex == -1 ||
+                        selectedIndex >= students.length - 1)
+                    ? null
+                    : () => _goToAdjacent(1),
                 child: const Text('Next \u2192'),
               ),
             ],
@@ -629,12 +904,21 @@ class _HomeworkStatusPanel extends StatelessWidget {
         ],
         const SizedBox(height: 10),
         Text(
-          selectedStudentId != null ? '\ud83d\udcdd All homework for ${selectedStudentName ?? 'student'}' : 'Select a student to view homework.',
-          style: TextStyle(fontSize: 12, color: AppColors.of(context).muted, fontWeight: FontWeight.w600),
+          selectedStudentId != null
+              ? '\ud83d\udcdd All homework for ${selectedStudentName ?? 'student'}'
+              : 'Select a student to view homework.',
+          style: TextStyle(
+            fontSize: 12,
+            color: AppColors.of(context).muted,
+            fontWeight: FontWeight.w600,
+          ),
         ),
         if (error != null) ...[
           const SizedBox(height: 8),
-          Text(error!, style: const TextStyle(fontSize: 12, color: AppColors.danger)),
+          Text(
+            error!,
+            style: const TextStyle(fontSize: 12, color: AppColors.danger),
+          ),
         ],
         if (selectedStudentId != null && homework.isNotEmpty) ...[
           const SizedBox(height: 10),
@@ -642,9 +926,33 @@ class _HomeworkStatusPanel extends StatelessWidget {
             spacing: 8,
             runSpacing: 8,
             children: [
-              _StatusChip(label: 'Submitted', count: submitted, on: statusFilter == 'submitted', onColor: AppColors.ok, onTap: () => onStatusFilterChanged(statusFilter == 'submitted' ? 'all' : 'submitted')),
-              _StatusChip(label: 'Not submitted', count: notSubmitted, on: statusFilter == 'not-submitted', onColor: AppColors.danger, onTap: () => onStatusFilterChanged(statusFilter == 'not-submitted' ? 'all' : 'not-submitted')),
-              _StatusChip(label: 'Overdue', count: overdue, on: statusFilter == 'overdue', onColor: AppColors.warn, onTap: () => onStatusFilterChanged(statusFilter == 'overdue' ? 'all' : 'overdue')),
+              _StatusChip(
+                label: 'Submitted',
+                count: submitted,
+                on: statusFilter == 'submitted',
+                onColor: AppColors.ok,
+                onTap: () => onStatusFilterChanged(
+                  statusFilter == 'submitted' ? 'all' : 'submitted',
+                ),
+              ),
+              _StatusChip(
+                label: 'Not submitted',
+                count: notSubmitted,
+                on: statusFilter == 'not-submitted',
+                onColor: AppColors.danger,
+                onTap: () => onStatusFilterChanged(
+                  statusFilter == 'not-submitted' ? 'all' : 'not-submitted',
+                ),
+              ),
+              _StatusChip(
+                label: 'Overdue',
+                count: overdue,
+                on: statusFilter == 'overdue',
+                onColor: AppColors.warn,
+                onTap: () => onStatusFilterChanged(
+                  statusFilter == 'overdue' ? 'all' : 'overdue',
+                ),
+              ),
             ],
           ),
         ],
@@ -655,7 +963,10 @@ class _HomeworkStatusPanel extends StatelessWidget {
           const SkeletonBox(height: 50),
           const SkeletonBox(height: 50),
         ] else if (!loading && homework.isEmpty)
-          Text('No homework assigned to this student yet.', style: TextStyle(fontSize: 12, color: AppColors.of(context).muted))
+          Text(
+            'No homework assigned to this student yet.',
+            style: TextStyle(fontSize: 12, color: AppColors.of(context).muted),
+          )
         else
           for (final hw in visible)
             _HomeworkStatusTile(
@@ -704,20 +1015,35 @@ class _ProgressSnapshotPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final series = view == 'monthly' ? subject?.monthly ?? const [] : subject?.daily ?? const [];
+    final series = view == 'monthly'
+        ? subject?.monthly ?? const []
+        : subject?.daily ?? const [];
     final active = series.any((p) => (p.value ?? 0) > 0);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Text('Progress Snapshot', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: AppColors.of(context).text)),
+        Text(
+          'Progress Snapshot',
+          style: TextStyle(
+            fontSize: 16,
+            fontWeight: FontWeight.w800,
+            color: AppColors.of(context).text,
+          ),
+        ),
         const SizedBox(height: 8),
         Row(
           children: [
             Expanded(
               child: Text(
-                selectedStudentId != null ? '\ud83d\udcca ${selectedStudentName ?? 'student'}' : 'Select a student to see metrics.',
-                style: TextStyle(fontSize: 12, color: AppColors.of(context).muted, fontWeight: FontWeight.w600),
+                selectedStudentId != null
+                    ? '\ud83d\udcca ${selectedStudentName ?? 'student'}'
+                    : 'Select a student to see metrics.',
+                style: TextStyle(
+                  fontSize: 12,
+                  color: AppColors.of(context).muted,
+                  fontWeight: FontWeight.w600,
+                ),
               ),
             ),
             if (subject != null)
@@ -725,15 +1051,23 @@ class _ProgressSnapshotPanel extends StatelessWidget {
                 children: [
                   _Frame3dButton(
                     onTap: () => onViewChanged('daily'),
-                    background: view == 'daily' ? AppColors.brand : AppColors.of(context).background,
-                    foreground: view == 'daily' ? Colors.white : AppColors.of(context).muted,
+                    background: view == 'daily'
+                        ? AppColors.brand
+                        : AppColors.of(context).background,
+                    foreground: view == 'daily'
+                        ? Colors.white
+                        : AppColors.of(context).muted,
                     child: const Text('Daily'),
                   ),
                   const SizedBox(width: 6),
                   _Frame3dButton(
                     onTap: () => onViewChanged('monthly'),
-                    background: view == 'monthly' ? AppColors.brand : AppColors.of(context).background,
-                    foreground: view == 'monthly' ? Colors.white : AppColors.of(context).muted,
+                    background: view == 'monthly'
+                        ? AppColors.brand
+                        : AppColors.of(context).background,
+                    foreground: view == 'monthly'
+                        ? Colors.white
+                        : AppColors.of(context).muted,
                     child: const Text('Monthly'),
                   ),
                 ],
@@ -742,7 +1076,10 @@ class _ProgressSnapshotPanel extends StatelessWidget {
         ),
         if (error != null) ...[
           const SizedBox(height: 8),
-          Text(error!, style: const TextStyle(fontSize: 12, color: AppColors.danger)),
+          Text(
+            error!,
+            style: const TextStyle(fontSize: 12, color: AppColors.danger),
+          ),
         ],
         if (selectedStudentId != null && subject != null) ...[
           const SizedBox(height: 16),
@@ -757,8 +1094,20 @@ class _ProgressSnapshotPanel extends StatelessWidget {
                 child: Text.rich(
                   TextSpan(
                     text: '${subject!.score}',
-                    style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900, color: subject!.accent),
-                    children: const [TextSpan(text: '%', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700))],
+                    style: TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.w900,
+                      color: subject!.accent,
+                    ),
+                    children: const [
+                      TextSpan(
+                        text: '%',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ),
@@ -767,18 +1116,44 @@ class _ProgressSnapshotPanel extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('${subject!.emoji} ${subject!.name}', style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w800)),
+                    Text(
+                      '${subject!.emoji} ${subject!.name}',
+                      style: const TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
                     const SizedBox(height: 4),
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                      decoration: BoxDecoration(color: subject!.accent.withValues(alpha: 0.15), borderRadius: BorderRadius.circular(999)),
-                      child: Text(subject!.statusLabel, style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: subject!.accent)),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 3,
+                      ),
+                      decoration: BoxDecoration(
+                        color: subject!.accent.withValues(alpha: 0.15),
+                        borderRadius: BorderRadius.circular(999),
+                      ),
+                      child: Text(
+                        subject!.statusLabel,
+                        style: TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.w700,
+                          color: subject!.accent,
+                        ),
+                      ),
                     ),
-                    if (subject!.status != 'not-started' && subject!.trend != 0) ...[
+                    if (subject!.status != 'not-started' &&
+                        subject!.trend != 0) ...[
                       const SizedBox(height: 4),
                       Text(
                         '${subject!.trend > 0 ? '\u25b2' : '\u25bc'} ${subject!.trend.abs()}% this month',
-                        style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: subject!.trend > 0 ? AppColors.ok : AppColors.danger),
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                          color: subject!.trend > 0
+                              ? AppColors.ok
+                              : AppColors.danger,
+                        ),
                       ),
                     ],
                   ],
@@ -798,23 +1173,42 @@ class _ProgressSnapshotPanel extends StatelessWidget {
                   Text(
                     'No activity yet \u2014 the growth line appears here once this student studies the subject.',
                     textAlign: TextAlign.center,
-                    style: TextStyle(fontSize: 12, color: AppColors.of(context).muted),
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: AppColors.of(context).muted,
+                    ),
                   ),
                 ],
               ),
             )
           else
-            GrowthLineChart(points: series, maxY: 100, gridVals: const [25, 50, 75, 100], color: subject!.accent, mode: view, percentSuffix: true),
+            GrowthLineChart(
+              points: series,
+              maxY: 100,
+              gridVals: const [25, 50, 75, 100],
+              color: subject!.accent,
+              mode: view,
+              percentSuffix: true,
+            ),
           if (subject!.tip.isNotEmpty) ...[
             const SizedBox(height: 10),
-            Text('\ud83d\udca1 ${subject!.tip}', style: TextStyle(fontSize: 12, color: AppColors.of(context).muted)),
+            Text(
+              '\ud83d\udca1 ${subject!.tip}',
+              style: TextStyle(
+                fontSize: 12,
+                color: AppColors.of(context).muted,
+              ),
+            ),
           ],
         ] else if (selectedStudentId != null && loading) ...[
           const SizedBox(height: 10),
           const SkeletonBox(height: 70),
         ] else if (selectedStudentId != null && !loading) ...[
           const SizedBox(height: 10),
-          Text('No progress data yet.', style: TextStyle(fontSize: 12, color: AppColors.of(context).muted)),
+          Text(
+            'No progress data yet.',
+            style: TextStyle(fontSize: 12, color: AppColors.of(context).muted),
+          ),
         ],
       ],
     );
@@ -828,7 +1222,13 @@ class _StatusChip extends StatelessWidget {
   final Color onColor;
   final VoidCallback onTap;
 
-  const _StatusChip({required this.label, required this.count, required this.on, required this.onColor, required this.onTap});
+  const _StatusChip({
+    required this.label,
+    required this.count,
+    required this.on,
+    required this.onColor,
+    required this.onTap,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -870,26 +1270,56 @@ class _HomeworkStatusTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final title = homework['title']?.toString() ?? 'Homework';
     final subject = homework['subject']?.toString() ?? '';
-    final dueStatus = (homework['dueStatus']?.toString() ?? homework['status']?.toString() ?? '').toLowerCase();
+    final dueStatus =
+        (homework['dueStatus']?.toString() ??
+                homework['status']?.toString() ??
+                '')
+            .toLowerCase();
     final grade = homework['grade'];
     final attemptCount = (homework['attemptCount'] as num?)?.toInt() ?? 0;
     final remark = homework['remark']?.toString();
-    final canGrade = ['submitted', 'resubmitted', 'graded', 'overdue', 'pending'].contains(dueStatus);
+    final canGrade = [
+      'submitted',
+      'resubmitted',
+      'graded',
+      'overdue',
+      'pending',
+    ].contains(dueStatus);
     final badgeColor = AppColors.readableAccent(
-      ['submitted', 'resubmitted', 'graded'].contains(dueStatus) ? AppColors.ok : (dueStatus == 'overdue' ? AppColors.danger : AppColors.warn),
+      ['submitted', 'resubmitted', 'graded'].contains(dueStatus)
+          ? AppColors.ok
+          : (dueStatus == 'overdue' ? AppColors.danger : AppColors.warn),
       dark: AppColors.of(context).isDark,
     );
-    final answerText = (homework['latestAnswerText'] ?? homework['latest_answer_text'])?.toString().trim() ?? '';
-    final rawUrls = homework['latestAttachmentUrls'] ?? homework['latest_attachment_urls'];
-    final urls = rawUrls is List ? rawUrls.whereType<String>().map((url) => url.trim()).where((url) => url.isNotEmpty).toList() : <String>[];
-    final singleUrl = (homework['latestAttachmentUrl'] ?? homework['latest_attachment_url'])?.toString().trim() ?? '';
+    final answerText =
+        (homework['latestAnswerText'] ?? homework['latest_answer_text'])
+            ?.toString()
+            .trim() ??
+        '';
+    final rawUrls =
+        homework['latestAttachmentUrls'] ?? homework['latest_attachment_urls'];
+    final urls = rawUrls is List
+        ? rawUrls
+              .whereType<String>()
+              .map((url) => url.trim())
+              .where((url) => url.isNotEmpty)
+              .toList()
+        : <String>[];
+    final singleUrl =
+        (homework['latestAttachmentUrl'] ?? homework['latest_attachment_url'])
+            ?.toString()
+            .trim() ??
+        '';
     if (urls.isEmpty && singleUrl.isNotEmpty) urls.add(singleUrl);
     final hasSubmission = answerText.isNotEmpty || urls.isNotEmpty;
 
     return Container(
       margin: const EdgeInsets.only(top: 8),
       padding: const EdgeInsets.all(10),
-      decoration: BoxDecoration(color: AppColors.of(context).background, borderRadius: BorderRadius.circular(10)),
+      decoration: BoxDecoration(
+        color: AppColors.of(context).background,
+        borderRadius: BorderRadius.circular(10),
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -900,21 +1330,49 @@ class _HomeworkStatusTile extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(title, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
-                    Text('$subject \u00b7 Due ${_shortDate(homework['dueAt'])}', style: TextStyle(fontSize: 11, color: AppColors.of(context).muted)),
+                    Text(
+                      title,
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w700,
+                        fontSize: 13,
+                      ),
+                    ),
+                    Text(
+                      '$subject \u00b7 Due ${_shortDate(homework['dueAt'])}',
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: AppColors.of(context).muted,
+                      ),
+                    ),
                   ],
                 ),
               ),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                decoration: BoxDecoration(color: badgeColor.withValues(alpha: 0.15), borderRadius: BorderRadius.circular(999)),
-                child: Text(dueStatus.isEmpty ? 'pending' : dueStatus, style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: badgeColor)),
+                decoration: BoxDecoration(
+                  color: badgeColor.withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(999),
+                ),
+                child: Text(
+                  dueStatus.isEmpty ? 'pending' : dueStatus,
+                  style: TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w700,
+                    color: badgeColor,
+                  ),
+                ),
               ),
             ],
           ),
           if (remark != null && remark.isNotEmpty) ...[
             const SizedBox(height: 4),
-            Text(remark, style: TextStyle(fontSize: 11, color: AppColors.of(context).muted)),
+            Text(
+              remark,
+              style: TextStyle(
+                fontSize: 11,
+                color: AppColors.of(context).muted,
+              ),
+            ),
           ],
           if (hasSubmission)
             ExpansionTile(
@@ -923,15 +1381,31 @@ class _HomeworkStatusTile extends StatelessWidget {
               childrenPadding: const EdgeInsets.only(bottom: 10),
               shape: const Border(),
               collapsedShape: const Border(),
-              title: Text('View student submission', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: AppColors.of(context).text)),
+              title: Text(
+                'View student submission',
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.of(context).text,
+                ),
+              ),
               children: [
                 if (answerText.isNotEmpty)
                   Container(
                     width: double.infinity,
                     padding: const EdgeInsets.all(10),
                     margin: const EdgeInsets.only(bottom: 8),
-                    decoration: BoxDecoration(color: AppColors.of(context).card, borderRadius: BorderRadius.circular(8)),
-                    child: SelectableText(answerText, style: TextStyle(fontSize: 13, color: AppColors.of(context).text)),
+                    decoration: BoxDecoration(
+                      color: AppColors.of(context).card,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: SelectableText(
+                      answerText,
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: AppColors.of(context).text,
+                      ),
+                    ),
                   ),
                 if (urls.isNotEmpty) ...[
                   Align(
@@ -957,7 +1431,16 @@ class _HomeworkStatusTile extends StatelessWidget {
                                   errorBuilder: (_, _, _) => SizedBox(
                                     width: 72,
                                     height: 72,
-                                    child: Center(child: Text('Image unavailable', textAlign: TextAlign.center, style: TextStyle(fontSize: 11, color: AppColors.of(context).muted))),
+                                    child: Center(
+                                      child: Text(
+                                        'Image unavailable',
+                                        textAlign: TextAlign.center,
+                                        style: TextStyle(
+                                          fontSize: 11,
+                                          color: AppColors.of(context).muted,
+                                        ),
+                                      ),
+                                    ),
                                   ),
                                 ),
                               ),
@@ -967,14 +1450,26 @@ class _HomeworkStatusTile extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(height: 6),
-                  Text('Tap a photo to zoom, swipe or download.', style: TextStyle(fontSize: 11, color: AppColors.of(context).muted)),
+                  Text(
+                    'Tap a photo to zoom, swipe or download.',
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: AppColors.of(context).muted,
+                    ),
+                  ),
                 ],
               ],
             )
           else
             Padding(
               padding: const EdgeInsets.only(top: 8),
-              child: Text('No student submission yet', style: TextStyle(fontSize: 11, color: AppColors.of(context).muted)),
+              child: Text(
+                'No student submission yet',
+                style: TextStyle(
+                  fontSize: 11,
+                  color: AppColors.of(context).muted,
+                ),
+              ),
             ),
           const SizedBox(height: 6),
           Wrap(
@@ -982,8 +1477,20 @@ class _HomeworkStatusTile extends StatelessWidget {
             runSpacing: 8,
             crossAxisAlignment: WrapCrossAlignment.center,
             children: [
-              Text('Grade: ${grade != null ? '$grade/100' : '\u2014'}', style: TextStyle(fontSize: 11, color: AppColors.of(context).text)),
-              Text('Attempts: $attemptCount', style: TextStyle(fontSize: 11, color: AppColors.of(context).text)),
+              Text(
+                'Grade: ${grade != null ? '$grade/100' : '\u2014'}',
+                style: TextStyle(
+                  fontSize: 11,
+                  color: AppColors.of(context).text,
+                ),
+              ),
+              Text(
+                'Attempts: $attemptCount',
+                style: TextStyle(
+                  fontSize: 11,
+                  color: AppColors.of(context).text,
+                ),
+              ),
               if (canGrade && hasSubmission) ...[
                 _Frame3dButton(
                   onTap: aiBusy ? null : onAutoCorrect,
@@ -992,7 +1499,11 @@ class _HomeworkStatusTile extends StatelessWidget {
                   child: Text(aiBusy ? 'Reading…' : '✨ Autocorrect'),
                 ),
               ],
-              if (canGrade) _Frame3dButton(onTap: onToggleGrade, child: Text(expanded ? 'Cancel' : 'Grade')),
+              if (canGrade)
+                _Frame3dButton(
+                  onTap: onToggleGrade,
+                  child: Text(expanded ? 'Cancel' : 'Grade'),
+                ),
             ],
           ),
           if (expanded) ...[
@@ -1000,8 +1511,14 @@ class _HomeworkStatusTile extends StatelessWidget {
             Container(
               padding: const EdgeInsets.all(8),
               decoration: BoxDecoration(
-                color: AppColors.of(context).isDark ? AppColors.of(context).brandSoft : const Color(0xFFFEF3C7),
-                border: Border.all(color: AppColors.of(context).isDark ? AppColors.of(context).line : const Color(0xFFFCD34D)),
+                color: AppColors.of(context).isDark
+                    ? AppColors.of(context).brandSoft
+                    : const Color(0xFFFEF3C7),
+                border: Border.all(
+                  color: AppColors.of(context).isDark
+                      ? AppColors.of(context).line
+                      : const Color(0xFFFCD34D),
+                ),
                 borderRadius: BorderRadius.circular(8),
               ),
               child: Column(
@@ -1010,21 +1527,41 @@ class _HomeworkStatusTile extends StatelessWidget {
                   TextField(
                     controller: gradeValueCtrl,
                     keyboardType: TextInputType.number,
-                    decoration: InputDecoration(hintText: 'Score (0-100)', isDense: true, filled: true, fillColor: AppColors.of(context).card),
+                    decoration: InputDecoration(
+                      hintText: 'Score (0-100)',
+                      isDense: true,
+                      filled: true,
+                      fillColor: AppColors.of(context).card,
+                    ),
                   ),
                   const SizedBox(height: 6),
                   TextField(
                     controller: gradeFeedbackCtrl,
                     maxLines: 2,
-                    decoration: InputDecoration(hintText: 'Feedback for student', isDense: true, filled: true, fillColor: AppColors.of(context).card),
+                    decoration: InputDecoration(
+                      hintText: 'Feedback for student',
+                      isDense: true,
+                      filled: true,
+                      fillColor: AppColors.of(context).card,
+                    ),
                   ),
                   const SizedBox(height: 8),
                   Row(
                     mainAxisAlignment: MainAxisAlignment.end,
                     children: [
-                      _Frame3dButton(onTap: onCancel, background: AppColors.danger, foreground: Colors.white, child: const Text('Cancel')),
+                      _Frame3dButton(
+                        onTap: onCancel,
+                        background: AppColors.danger,
+                        foreground: Colors.white,
+                        child: const Text('Cancel'),
+                      ),
                       const SizedBox(width: 8),
-                      _Frame3dButton(onTap: busy ? null : onSubmit, background: AppColors.ok, foreground: Colors.white, child: Text(busy ? 'Submitting...' : 'Submit')),
+                      _Frame3dButton(
+                        onTap: busy ? null : onSubmit,
+                        background: AppColors.ok,
+                        foreground: Colors.white,
+                        child: Text(busy ? 'Submitting...' : 'Submit'),
+                      ),
                     ],
                   ),
                 ],

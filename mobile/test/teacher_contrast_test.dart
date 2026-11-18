@@ -4,7 +4,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:mobile/models/learning_score.dart';
 import 'package:mobile/screens/teacher/teacher_home_tab.dart';
+import 'package:mobile/screens/teacher/teacher_progress_tab.dart';
 import 'package:mobile/screens/teacher/teacher_report_cards_tab.dart';
 import 'package:mobile/screens/teacher/teacher_students_tab.dart';
 import 'package:mobile/services/api_client.dart';
@@ -86,6 +88,41 @@ class _Api extends TeacherApiService {
   }
 }
 
+class _ProgressApi extends _Api {
+  final scoreStudents = <String>[];
+  final examStudents = <String>[];
+
+  @override
+  Future<List<Map<String, dynamic>>> getStudents({
+    String search = '',
+    String className = '',
+  }) async => [
+    {'id': 'student', 'name': 'Alex', 'className': 'Class 8'},
+    {'id': 'second', 'name': 'Morgan', 'className': 'Class 8'},
+  ].where((student) => student['name']!.toLowerCase().contains(search.toLowerCase())).toList();
+
+  @override
+  Future<LearningScoreData> getStudentLearningScore(String studentId) async {
+    scoreStudents.add(studentId);
+    return LearningScoreData.fromJson({
+      'hasData': true,
+      'score': 600,
+      'subjects': [{'name': 'Science', 'score': 60}],
+    });
+  }
+
+  @override
+  Future<Map<String, dynamic>> getStudentReportCards(String studentId) async {
+    examStudents.add(studentId);
+    return {
+      'reportCards': [],
+      'pending': [
+        {'examName': 'Autumn Exam', 'entered': 1, 'total': 2, 'missingSubjects': ['Science']},
+      ],
+    };
+  }
+}
+
 double _contrast(Color foreground, Color background) {
   final a = foreground.computeLuminance();
   final b = background.computeLuminance();
@@ -159,6 +196,63 @@ Widget _app(Widget child, _Api api, ValueNotifier<bool> dark) => ProviderScope(
 void main() {
   setUpAll(() => GoogleFonts.config.allowRuntimeFetching = false);
   tearDown(() => AppColors.isDark = false);
+
+  testWidgets('teacher can search, switch students and browse report views', (tester) async {
+    tester.view.physicalSize = const Size(320, 680);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final dark = ValueNotifier(true);
+    addTearDown(dark.dispose);
+    final api = _ProgressApi();
+    await tester.pumpWidget(_app(const TeacherProgressTab(), api, dark));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Alex'));
+    await tester.pumpAndSettle();
+    expect(find.text('Learning Power').hitTestable(), findsOneWidget);
+    expect(find.byType(TextField), findsNothing);
+    await tester.tap(find.text('Subjects'));
+    await tester.pumpAndSettle();
+    expect(find.text('Progress by subject').hitTestable(), findsOneWidget);
+    expect(find.text('Learning Power'), findsNothing);
+    await tester.tap(find.text('Exam Results'));
+    await tester.pumpAndSettle();
+    expect(find.text('Exam Results Journey').hitTestable(), findsOneWidget);
+    expect(find.textContaining('Autumn Exam'), findsOneWidget);
+    expect(api.examStudents, ['student']);
+    await tester.tap(find.text('Change student'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField), 'Morgan');
+    await tester.pump(const Duration(milliseconds: 350));
+    await tester.pumpAndSettle();
+    expect(find.text('Alex'), findsNothing);
+    await tester.tap(find.text('Morgan', findRichText: false).last);
+    await tester.pumpAndSettle();
+    expect(find.text('Learning Power').hitTestable(), findsOneWidget);
+    expect(api.scoreStudents, ['student', 'second']);
+    expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  testWidgets('student roster returns to Snapshot when picking for that view', (tester) async {
+    final dark = ValueNotifier(false);
+    addTearDown(dark.dispose);
+    await tester.pumpWidget(_app(const TeacherStudentsTab(), _Api(), dark));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Snapshot'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Open student roster'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Alex'));
+    await tester.pumpAndSettle();
+    expect(find.text('Progress Snapshot'), findsOneWidget);
+    expect(find.text('Homework Status'), findsNothing);
+    await tester.tap(find.text('Homework'));
+    await tester.pumpAndSettle();
+    expect(find.text('Plant worksheet'), findsOneWidget);
+    expect(find.text('Progress Snapshot'), findsNothing);
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
 
   testWidgets('mock-test actions have 4.5:1 contrast in both themes and still open editing and questions', (tester) async {
     tester.view.physicalSize = const Size(430, 1000);
