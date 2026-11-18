@@ -23,6 +23,7 @@ function fixture(options: { holdEmbedding?: boolean; holdPersistence?: boolean; 
   const studentId = randomUUID();
   const conversationId = `conv-${studentId}:subject-science:lesson-lesson`;
   const embedding = deferred();
+  const embeddingStarted = deferred();
   const persistence = deferred();
   const backgroundDone = deferred();
   if (!options.holdEmbedding) embedding.resolve();
@@ -35,9 +36,10 @@ function fixture(options: { holdEmbedding?: boolean; holdPersistence?: boolean; 
   const tables: Record<string, Row[]> = {
     students: [{ id: studentId, name: 'Learner', class_name: 'Class 8' }],
     lessons: [{ id: 'lesson', title: 'Plants', subject: 'Science' }],
+    lesson_class_visibility: [{ lesson_id: 'lesson' }],
     lesson_chunks: [
-      { id: 'c1', document_id: 'textbook', chunk_text: 'Leaves use sunlight to make food.', embedding: [1, 0] },
-      { id: 'c2', document_id: 'revision', chunk_text: 'Important question: Why do plants need sunlight?', embedding: [1, 0] },
+      { id: 'c1', lesson_id: 'lesson', document_id: 'textbook', chunk_text: 'Leaves use sunlight to make food.', embedding: [1, 0] },
+      { id: 'c2', lesson_id: 'lesson', document_id: 'revision', chunk_text: 'Important question: Why do plants need sunlight?', embedding: [1, 0] },
     ],
     lesson_documents: [
       { id: 'textbook', file_name: 'Lesson.pdf' },
@@ -63,6 +65,7 @@ function fixture(options: { holdEmbedding?: boolean; holdPersistence?: boolean; 
         select() { return query; },
         eq(key: string, value: unknown) { filters.push({ table, key, value }); return query; },
         in() { return query; },
+        range() { return query; },
         order() { return query; },
         limit() { return query; },
         insert(rows: Row[]) { additions = rows; return query; },
@@ -104,11 +107,14 @@ function fixture(options: { holdEmbedding?: boolean; holdPersistence?: boolean; 
   };
   const embeddings: EmbeddingsService = Object.create(EmbeddingsService.prototype);
   embeddings.embed = async () => {
+    embeddingStarted.resolve();
     await embedding.promise;
     if (options.latencyMs) await new Promise((resolve) => setTimeout(resolve, options.latencyMs));
     return [1, 0];
   };
   const auth: StudentAuthService = Object.create(StudentAuthService.prototype);
+  auth.resolveStudentProfile = async (id) => ({ id, name: 'Learner', className: 'Class 8', schoolId: studentId, teacherId: '' });
+  auth.listClassTeachers = async () => [{ id: 'science-teacher', name: 'Science teacher', subject: 'Science' }];
   const orchard: OrchardService = Object.create(OrchardService.prototype);
   let growth = 0;
   orchard.recordActivity = async () => { growth++; return {}; };
@@ -125,10 +131,25 @@ function fixture(options: { holdEmbedding?: boolean; holdPersistence?: boolean; 
     upsertLessonMasteryRecord: { value: async () => { backgroundDone.resolve(); } },
   });
   return {
-    chat, studentId, conversationId, embedding, persistence, backgroundDone, reads, filters, writes,
+    chat, studentId, conversationId, embedding, embeddingStarted, persistence, backgroundDone, reads, filters, writes,
     prompts, requestOptions, tables, snapshots, growth: () => growth,
   };
 }
+
+test('Home Sam reads homework during embedding and still reviews the class-grounded reply', async () => {
+  const f = fixture({ holdEmbedding: true });
+  const response = f.chat.handleQuickMessage(f.studentId, 'Why do plants use sunlight?');
+  await Promise.race([f.embeddingStarted.promise, response]);
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  const startedDuringEmbedding = f.reads.includes('homework');
+  f.embedding.resolve();
+  const result = await response;
+  assert(startedDuringEmbedding);
+  assert.match(f.prompts[0][0].content, /Leaves use sunlight to make food/);
+  assert.match(f.prompts[1][0].content, /HOMEWORK ANSWER-LEAK REVIEW/);
+  assert.deepEqual(result.subjects, ['Science']);
+  assert.match(result.reply, /Leaves use sunlight to make food/);
+});
 
 test('embedding, history, profile, lesson and homework reads start together without losing context', async () => {
   const f = fixture({ holdEmbedding: true });

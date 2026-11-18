@@ -1483,6 +1483,8 @@ export class ChatService {
       homeworkHelp ? `${homeworkHelp.subject} ${homeworkHelp.title} ${homeworkHelp.questionText}` : '',
       text.length < 40 && lastUser ? `${lastUser}\n${text}` : text,
     ].filter(Boolean).join('\n');
+    // Keep the homework check mandatory, but overlap its database reads with embedding.
+    const homeworkEntriesPromise = Promise.allSettled([this.getHomeworkGuardrailEntries(studentId)]);
     const emb = await this.embeddings.embed(retrievalText);
     const tokens = (t: string) => this.normalizeForMatch(t).split(' ').map((w) => w.replace(/^[./-]+|[./-]+$/g, ''));
     const queryTokens = new Set(tokens(retrievalText).filter((w) => w.length > 3));
@@ -1517,11 +1519,12 @@ export class ChatService {
     }).join('\n');
 
     let homeworkEntries: HomeworkGuardEntry[];
-    try {
-      homeworkEntries = await this.getHomeworkGuardrailEntries(studentId);
-    } catch (error) {
-      if (!homeworkHelp) throw error;
-      console.warn('Using the verified homework-help context after the broader homework lookup failed', error);
+    const [homeworkRead] = await homeworkEntriesPromise;
+    if (homeworkRead.status === 'fulfilled') {
+      homeworkEntries = homeworkRead.value;
+    } else {
+      if (!homeworkHelp) throw homeworkRead.reason;
+      console.warn('Using the verified homework-help context after the broader homework lookup failed', homeworkRead.reason);
       homeworkEntries = [{ title: homeworkHelp.title, questionText: homeworkHelp.questionText, hasSubmission: false, unlocked: false }];
     }
     const lockedHomeworkMatch = this.findLockedHomeworkMatch(homeworkEntries, text);

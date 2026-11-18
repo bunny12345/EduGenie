@@ -1,13 +1,47 @@
 import 'dart:math' as math;
 import 'dart:typed_data';
+import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mobile/utils/tutor_text.dart';
 import 'package:mobile/utils/voice_envelope.dart';
 import 'package:mobile/widgets/sam_avatar.dart';
 
 void main() {
+  testWidgets('Sam’s thought cloud is visible inside the mobile crop only while thinking', (tester) async {
+    const avatar = Key('cropped-avatar');
+    Future<int?> cloudAlpha(SamMode mode) async {
+      await tester.pumpWidget(Directionality(
+        textDirection: TextDirection.ltr,
+        child: Center(
+          child: SizedBox(
+            width: 520,
+            child: RepaintBoundary(
+              key: avatar,
+              child: SamAvatar(mode: mode, viewTop: 96, viewHeight: 590),
+            ),
+          ),
+        ),
+      ));
+      await tester.pump(const Duration(milliseconds: 100));
+      final boundary = tester.renderObject<RenderRepaintBoundary>(find.byKey(avatar));
+      return tester.runAsync(() async {
+        final image = await boundary.toImage();
+        try {
+          final pixels = (await image.toByteData(format: ui.ImageByteFormat.rawRgba))!;
+          return pixels.getUint8((image.width * 35 + 460) * 4 + 3);
+        } finally {
+          image.dispose();
+        }
+      });
+    }
+
+    expect(await cloudAlpha(SamMode.thinking), greaterThan(140));
+    expect(await cloudAlpha(SamMode.idle), isZero);
+  });
+
   testWidgets('SamAvatar paints in every mode without errors', (tester) async {
     for (final mode in SamMode.values) {
       await tester.pumpWidget(

@@ -519,7 +519,7 @@ class _SamRig extends ChangeNotifier {
     bodyShiftX = speaking ? _noise(t * 0.9, 23) * 2 + lean : 0;
 
     for (var i = 0; i < 3; i++) {
-      dots[i] = mode == SamMode.thinking ? (math.sin(t * 4 - i * 1.1) > 0 ? 1.0 : 0.25) : 0.0;
+      dots[i] = mode == SamMode.thinking ? 0.8 + 0.2 * math.sin(t * 5 - i * 1.1) : 0.0;
     }
     notifyListeners();
   }
@@ -599,6 +599,9 @@ class _SamAvatarState extends State<SamAvatar> with SingleTickerProviderStateMix
 }
 
 class _SamPainter extends CustomPainter {
+  static const _vestPath = 'M124 532 Q130 482 124 410 Q126 380 152 368 L186 360 L200 412 L214 360 L248 368 Q274 380 276 410 Q270 482 276 532 Q200 540 124 532 Z';
+  static const _skirtPath = 'M124 529 Q200 537 276 529 L306 668 Q200 684 94 668 Z';
+  static const _thoughtCloud = 'M374 145 C363 145 357 139 359 132 C360 126 365 123 372 123 C371 112 383 106 393 111 C400 102 415 105 418 117 C428 117 435 123 434 132 C433 141 426 145 416 145 Z';
   final _SamRig rig;
   final Color shirtColor;
   final double viewTop;
@@ -728,6 +731,7 @@ class _SamPainter extends CustomPainter {
     canvas.translate(-200, -296);
     _head(canvas);
     canvas.restore();
+    _thoughtTrail(canvas);
 
     canvas.restore();
   }
@@ -784,13 +788,17 @@ class _SamPainter extends CustomPainter {
     _fillStroke(canvas, _svg('M136 480 Q118 446 106 410 Q106 372 150 360 L250 360 Q294 372 294 410 Q282 446 264 480 Z'), Colors.white, const Color(0xFFDFE3F5), 1.5);
 
     // pleated skirt
-    _fillStroke(canvas, _svg('M116 548 L284 548 L306 668 Q200 684 94 668 Z'), const Color(0xFF2B3A8C), const Color(0xFF101A58), 1.5);
+    _fillStroke(canvas, _svg(_skirtPath), const Color(0xFF2B3A8C), const Color(0xFF101A58), 1.5);
     for (final dx in const [-72, -48, -24, 0, 24, 48, 72]) {
-      canvas.drawLine(Offset(200 + dx * 0.78, 556), Offset(200 + dx * 1.2, 672), _stroke(const Color(0xFF4656B3), 2, opacity: 0.7));
+      canvas.drawLine(
+        Offset(200 + dx * 0.78, 540 - 4 * math.pow(dx / 76, 2).toDouble()),
+        Offset(200 + dx * 1.2, 674 - 8 * math.pow(dx / 88, 2).toDouble()),
+        _stroke(const Color(0xFF4656B3), 2, opacity: 0.7),
+      );
     }
 
     // vest
-    final vest = _svg('M124 558 Q130 482 124 410 Q126 380 152 368 L186 360 L200 412 L214 360 L248 368 Q274 380 276 410 Q270 482 276 558 Z');
+    final vest = _svg(_vestPath);
     final vb = vest.getBounds();
     canvas.drawPath(
       vest,
@@ -800,7 +808,7 @@ class _SamPainter extends CustomPainter {
     );
     canvas.drawPath(vest, _stroke(const Color(0xFF101A58), 1.5));
     const gold = Color(0xFFF2C94C);
-    canvas.drawPath(_svg('M124 558 Q200 566 276 558'), _stroke(gold, 2.5, cap: StrokeCap.round));
+    canvas.drawPath(_svg('M124 532 Q200 540 276 532'), _stroke(gold, 2.5, cap: StrokeCap.round));
     canvas.drawPath(_svg('M186 360 L200 412 L214 360'), _stroke(gold, 2.5, join: StrokeJoin.round));
 
     // collar + bow
@@ -835,8 +843,8 @@ class _SamPainter extends CustomPainter {
 
   Path _torsoClip() => Path()
     ..addPath(_svg('M136 480 Q118 446 106 410 Q106 372 150 360 L250 360 Q294 372 294 410 Q282 446 264 480 Z'), Offset.zero)
-    ..addPath(_svg('M124 558 Q130 482 124 410 Q126 380 152 368 L186 360 L200 412 L214 360 L248 368 Q274 380 276 410 Q270 482 276 558 Z'), Offset.zero)
-    ..addPath(_svg('M116 548 L284 548 L306 668 Q200 684 94 668 Z'), Offset.zero);
+    ..addPath(_svg(_vestPath), Offset.zero)
+    ..addPath(_svg(_skirtPath), Offset.zero);
 
   // Perspective: reaching toward the viewer brings the shoulder slightly
   // forward/in, shortens the forearm, and makes the (closer) hand bigger.
@@ -1217,16 +1225,22 @@ class _SamPainter extends CustomPainter {
       canvas.drawCircle(Offset(x, y), 5, _fill(const Color(0xFFF0485E)));
       canvas.drawCircle(Offset(x, y), 5, _stroke(bowEdge, 1.2));
     }
+  }
 
-    // thinking bubbles
-    const bubbles = [(318.0, 112.0, 5.0), (338.0, 92.0, 7.0), (366.0, 62.0, 10.0)];
+  void _thoughtTrail(Canvas canvas) {
+    if (rig.mode != SamMode.thinking) return;
+    const edge = Color(0xFFA5B4FC);
+    const bubbles = [(311.0, 180.0, 5.0), (338.0, 159.0, 8.0)];
     for (var i = 0; i < bubbles.length; i++) {
       final o = rig.dots[i];
-      if (o <= 0) continue;
       final b = bubbles[i];
       canvas.drawCircle(Offset(b.$1, b.$2), b.$3, _fill(Colors.white, o));
-      canvas.drawCircle(Offset(b.$1, b.$2), b.$3, _stroke(const Color(0xFFC7D2FE), 2, opacity: o));
+      canvas.drawCircle(Offset(b.$1, b.$2), b.$3, _stroke(edge, 2.5, opacity: o));
     }
+    final cloud = _svg(_thoughtCloud);
+    final opacity = rig.dots[2];
+    canvas.drawPath(cloud, _fill(Colors.white, opacity));
+    canvas.drawPath(cloud, _stroke(edge, 2.5, opacity: opacity, join: StrokeJoin.round));
   }
 
   void _eye(Canvas canvas, double cx, bool left) {

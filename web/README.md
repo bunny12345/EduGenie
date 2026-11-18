@@ -117,6 +117,10 @@ Run `CI=true npm test -- --watch=false --runInBand --runTestsByPath src/componen
 
 ## Home Sam voice
 
+Sam shows two small bubbles leading to a cloud while thinking. Home Sam loads
+the homework safeguards during class-material retrieval and still checks the
+reply before displaying it.
+
 Home-page Sam has a top-right **Speed** selector with 1x and 2x
 playback. It applies immediately to generated audio and is retained while the
 Home component remains mounted. Browser speech fallback applies a changed

@@ -303,6 +303,10 @@ function Arm({ upRef, foreRef, store, uid }) {
   );
 }
 
+const VEST = 'M124 532 Q130 482 124 410 Q126 380 152 368 L186 360 L200 412 L214 360 L248 368 Q274 380 276 410 Q270 482 276 532 Q200 540 124 532 Z';
+const SKIRT = 'M124 529 Q200 537 276 529 L306 668 Q200 684 94 668 Z';
+const THOUGHT_CLOUD = 'M374 145 C363 145 357 139 359 132 C360 126 365 123 372 123 C371 112 383 106 393 111 C400 102 415 105 418 117 C428 117 435 123 434 132 C433 141 426 145 416 145 Z';
+
 export default function SamAvatar({ mode = 'idle', schoolName = '', shirtColor = '#23318f', getLevel, celebrate = false }) {
   const modeRef = useRef(mode);
   modeRef.current = mode;
@@ -718,7 +722,8 @@ export default function SamAvatar({ mode = 'idle', schoolName = '', shirtColor =
       setT(bodyRef.current, `translate(${shiftX.toFixed(2)} ${(reduce ? 0 : Math.sin(t * 1.7) * 2).toFixed(2)})`);
 
       dots.current.forEach((el, i) => {
-        if (el) el.style.opacity = mode === 'thinking' ? (Math.sin(t * 4 - i * 1.1) > 0 ? 1 : 0.25) : 0;
+        if (el) el.style.opacity = mode === 'thinking'
+          ? (reduce ? 1 : 0.8 + 0.2 * Math.sin(t * 5 - i * 1.1)) : 0;
       });
 
       raf = requestAnimationFrame(frame);
@@ -814,8 +819,8 @@ export default function SamAvatar({ mode = 'idle', schoolName = '', shirtColor =
         <filter id="eg-sam-soft" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="6" /></filter>
         <clipPath id="eg-sam-torso">
           <path d="M136 480 Q118 446 106 410 Q106 372 150 360 L250 360 Q294 372 294 410 Q282 446 264 480 Z" />
-          <path d="M124 558 Q130 482 124 410 Q126 380 152 368 L186 360 L200 412 L214 360 L248 368 Q274 380 276 410 Q270 482 276 558 Z" />
-          <path d="M116 548 L284 548 L306 668 Q200 684 94 668 Z" />
+          <path d={VEST} />
+          <path d={SKIRT} />
         </clipPath>
         <radialGradient id="eg-sam-iris" cx="50%" cy="40%" r="70%">
           <stop offset="0%" stopColor="#b07a3c" />
@@ -846,14 +851,14 @@ export default function SamAvatar({ mode = 'idle', schoolName = '', shirtColor =
           <path d="M136 480 Q118 446 106 410 Q106 372 150 360 L250 360 Q294 372 294 410 Q282 446 264 480 Z" fill="#fff" stroke="#dfe3f5" strokeWidth="1.5" />
 
           {/* pleated skirt */}
-          <path d="M116 548 L284 548 L306 668 Q200 684 94 668 Z" fill="#2b3a8c" stroke="#101a58" strokeWidth="1.5" />
+          <path d={SKIRT} fill="#2b3a8c" stroke="#101a58" strokeWidth="1.5" />
           {[-72, -48, -24, 0, 24, 48, 72].map((dx) => (
-            <path key={dx} d={`M${200 + dx * 0.78} 556 L${200 + dx * 1.2} 672`} stroke="#4656b3" strokeWidth="2" opacity="0.7" />
+            <path key={dx} d={`M${200 + dx * 0.78} ${540 - 4 * (dx / 76) ** 2} L${200 + dx * 1.2} ${674 - 8 * (dx / 88) ** 2}`} stroke="#4656b3" strokeWidth="2" opacity="0.7" />
           ))}
 
           {/* uniform vest */}
-          <path d="M124 558 Q130 482 124 410 Q126 380 152 368 L186 360 L200 412 L214 360 L248 368 Q274 380 276 410 Q270 482 276 558 Z" fill="url(#eg-sam-vest)" stroke="#101a58" strokeWidth="1.5" />
-          <path d="M124 558 Q200 566 276 558" fill="none" stroke="#f2c94c" strokeWidth="2.5" strokeLinecap="round" />
+          <path d={VEST} fill="url(#eg-sam-vest)" stroke="#101a58" strokeWidth="1.5" />
+          <path d="M124 532 Q200 540 276 532" fill="none" stroke="#f2c94c" strokeWidth="2.5" strokeLinecap="round" />
           <path d="M186 360 L200 412 L214 360" fill="none" stroke="#f2c94c" strokeWidth="2.5" strokeLinejoin="round" />
 
           {/* collar + bow */}
@@ -968,11 +973,13 @@ export default function SamAvatar({ mode = 'idle', schoolName = '', shirtColor =
               </g>
             ))}
 
-            {/* thinking bubbles */}
-            {[[318, 112, 5], [338, 92, 7], [366, 62, 10]].map(([x, y, r], i) => (
-              <circle key={i} ref={(el) => { dots.current[i] = el; }} cx={x} cy={y} r={r} fill="#fff" stroke="#c7d2fe" strokeWidth="2" style={{ opacity: 0 }} />
-            ))}
             </g>
+          </g>
+          <g className="eg-sam-thought-trail" aria-hidden="true" fill="#fff" stroke="#a5b4fc" strokeWidth="2.5" strokeLinejoin="round">
+            {[[311, 180, 5], [338, 159, 8]].map(([x, y, r], i) => (
+              <circle key={i} ref={(el) => { dots.current[i] = el; }} cx={x} cy={y} r={r} style={{ opacity: 0 }} />
+            ))}
+            <path ref={(el) => { dots.current[2] = el; }} d={THOUGHT_CLOUD} style={{ opacity: 0 }} />
           </g>
         </g>
       </g>

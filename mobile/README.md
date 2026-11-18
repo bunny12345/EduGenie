@@ -103,6 +103,9 @@ The existing app/backend URL configuration is unchanged.
 
 ## Home Sam voice
 
+Sam's thinking animation ends in a cloud and stays inside the cropped avatar
+used by both Home Sam and the unit tutor.
+
 The top-right Home Sam speed menu offers 1x and 2x. It updates current
 and subsequent playback without regenerating the voice, and is retained when
 Sam is closed/reopened within the app session. Lesson AI Tutor speed is unchanged.
