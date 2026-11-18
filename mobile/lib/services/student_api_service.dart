@@ -74,27 +74,29 @@ class StudentApiService {
   }
 
   /// Today's personalised 6:30 PM / 9:00 PM push messages + preferences.
-  Future<Map<String, dynamic>> getNotificationPreview() => _get('/notifications/preview', const {});
+  Future<Map<String, dynamic>> getNotificationPreview() =>
+      _notificationSettings('preview');
 
-  Future<Map<String, dynamic>> updateNotificationPreferences(Map<String, bool> prefs) async {
-    try {
-      final res = await _client.dio.patch('/notifications/preferences', data: prefs);
-      return Map<String, dynamic>.from(res.data as Map);
-    } on DioException catch (e) {
-      final data = e.response?.data;
-      throw Exception(data is Map && data['message'] != null ? data['message'].toString() : (e.message ?? 'Network error'));
+  Future<Map<String, dynamic>> updateNotificationPreferences(Map<String, bool> prefs) =>
+      _notificationSettings('preferences', method: 'PATCH', data: prefs);
+
+  Future<Map<String, dynamic>> _notificationSettings(
+    String path, {
+    String method = 'GET',
+    Map<String, bool>? data,
+  }) async {
+    final result = await _client.notificationRequest(path, method: method, data: data);
+    if (result['success'] != true ||
+        result['preferences'] is! Map<String, dynamic> ||
+        (path == 'preview' && (result['summary'] is! Map<String, dynamic> || result['devices'] is! num))) {
+      throw Exception('The notification service returned an unexpected response. Please try again later.');
     }
+    return result;
   }
 
   /// Returns the server's result map; `success` is false with an `error` when nothing was delivered.
-  Future<Map<String, dynamic>> sendTestNotification() async {
-    try {
-      final res = await _client.dio.post('/notifications/test');
-      return Map<String, dynamic>.from(res.data as Map);
-    } on DioException catch (e) {
-      throw Exception(e.message ?? 'Network error');
-    }
-  }
+  Future<Map<String, dynamic>> sendTestNotification() =>
+      _client.notificationRequest('test', method: 'POST');
 
   Future<List<HomeworkItem>> getHomework(String studentId) async {
     final json = await _get('/homework', {'studentId': studentId});

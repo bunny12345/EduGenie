@@ -97,6 +97,6 @@ variable "backend_route_prefixes" {
   default = [
     "auth", "chat", "dashboard", "orchard", "games", "homework", "progress",
     "calendar", "rewards", "tests", "library", "settings", "teacher", "school",
-    "curriculum", "uploads", "health", "support", "owner/support",
+    "curriculum", "uploads", "health", "support", "owner/support", "notifications/",
   ]
 }

@@ -95,16 +95,19 @@ class _StudentNotificationsScreenState
       ref.read(apiClientProvider),
     );
     if (!mounted) return;
+    final permission = ref.read(pushPermissionProvider).value;
     setState(() => _enabling = false);
     ref.invalidate(pushPermissionProvider);
     ref.invalidate(notificationPreviewProvider);
     if (!ok) {
       setState(
         () => _error =
-            'Notifications are blocked for AcademiX. Turn them on in your phone Settings › Apps › AcademiX › Notifications.',
+            permission == PushPermission.denied
+            ? 'Notifications are blocked. Allow them in phone Settings › Apps › AcademiX › Notifications.'
+            : 'Could not register this phone for notifications. Please try again.',
       );
     } else {
-      _snack('🔔 Reminders are on for this phone!');
+      _snack('🔔 This phone is registered for notifications.');
     }
   }
 
@@ -179,6 +182,7 @@ class _StudentNotificationsScreenState
           ref.invalidate(notificationPreviewProvider);
         },
         child: ListView(
+          physics: const AlwaysScrollableScrollPhysics(),
           padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
           children: [
             _HeroCard(
@@ -214,6 +218,7 @@ class _StudentNotificationsScreenState
                         o.key: serverPrefs[o.key] != false,
                     };
                 final registered = ((data['devices'] as num?) ?? 0) > 0;
+                final serverReady = data['pushConfigured'] == true;
                 final summary = Map<String, dynamic>.from(
                   data['summary'] as Map? ?? {},
                 );
@@ -275,13 +280,19 @@ class _StudentNotificationsScreenState
                       Padding(
                         padding: const EdgeInsets.only(top: 2, bottom: 8),
                         child: Text(
-                          'Turn on notifications above to customise your reminders.',
+                          'Connect this phone above to customise your reminders.',
                           style: TextStyle(color: palette.muted, fontSize: 12),
                         ),
                       ),
+                    if (!serverReady)
+                      const ErrorInline(
+                        message: 'Push delivery is not configured on the server yet.',
+                      ),
                     const SizedBox(height: 8),
                     OutlinedButton.icon(
-                      onPressed: _sending || !registered ? null : _sendTest,
+                      onPressed: _sending || !registered || !serverReady
+                          ? null
+                          : _sendTest,
                       icon: _sending
                           ? const SizedBox(
                               height: 16,
@@ -324,7 +335,7 @@ class _HeroCard extends StatelessWidget {
     final granted = permission == PushPermission.granted;
     final unavailable = permission == PushPermission.unavailable;
     final status = granted
-        ? '🔔 On for this phone'
+        ? '🔔 Permission allowed'
         : unavailable
         ? 'Not available in this app build'
         : permission == PushPermission.denied
@@ -394,7 +405,7 @@ class _HeroCard extends StatelessWidget {
           const SizedBox(height: 14),
           Row(
             children: [
-              Container(
+              Flexible(child: Container(
                 padding: const EdgeInsets.symmetric(
                   horizontal: 12,
                   vertical: 7,
@@ -411,9 +422,9 @@ class _HeroCard extends StatelessWidget {
                     fontSize: 12.5,
                   ),
                 ),
-              ),
-              const Spacer(),
-              if (!granted && !unavailable)
+              )),
+              const SizedBox(width: 8),
+              if (!unavailable)
                 PressableScale(
                   onTap: enabling ? null : onEnable,
                   child: Container(
@@ -431,9 +442,9 @@ class _HeroCard extends StatelessWidget {
                             width: 16,
                             child: CircularProgressIndicator(strokeWidth: 2),
                           )
-                        : const Text(
-                            'Turn on',
-                            style: TextStyle(
+                        : Text(
+                            granted ? 'Reconnect' : 'Turn on',
+                            style: const TextStyle(
                               color: AppColors.brand,
                               fontWeight: FontWeight.w800,
                             ),

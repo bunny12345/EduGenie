@@ -164,7 +164,7 @@ class PushNotificationService {
   }
 
   /// Registers this phone for the signed-in student (asks for permission the
-  /// first time). Returns false when push isn't available or was denied.
+  /// first time). Returns true only after the backend accepts the token.
   Future<bool> registerStudent(ApiClient api) async {
     if (!_available) return false;
     try {
@@ -179,7 +179,13 @@ class PushNotificationService {
       await _sendToken(api, token);
       await _tokenRefresh?.cancel();
       // ignore: deprecated_member_use
-      _tokenRefresh = messaging.onTokenRefresh.listen((next) => _sendToken(api, next).catchError((_) {}));
+      _tokenRefresh = messaging.onTokenRefresh.listen((next) async {
+        try {
+          await _sendToken(api, next);
+        } catch (_) {
+          debugPrint('Push token refresh could not be registered.');
+        }
+      });
       return true;
     } catch (error) {
       debugPrint('Push registration failed: $error');
@@ -188,12 +194,17 @@ class PushNotificationService {
   }
 
   Future<void> _sendToken(ApiClient api, String token) async {
-    if ((api.authToken ?? '').isEmpty) return;
-    await api.dio.post('/notifications/devices', data: {
+    if ((api.authToken ?? '').isEmpty) {
+      throw StateError('A student session is required for push registration.');
+    }
+    final result = await api.notificationRequest('devices', method: 'POST', data: {
       'token': token,
       'platform': _platform,
       'timezone': await _timezone(),
     });
+    if (result['success'] != true) {
+      throw StateError('The notification service did not accept the device registration.');
+    }
   }
 
   /// Called on logout while the auth token is still valid, so the next person

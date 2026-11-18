@@ -4,9 +4,14 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:mobile/screens/student/student_notifications_screen.dart';
 import 'package:mobile/services/push_notification_service.dart';
 
-Map<String, dynamic> _preview({int devices = 1, Map<String, bool>? prefs}) => {
+Map<String, dynamic> _preview({
+  int devices = 1,
+  bool pushConfigured = true,
+  Map<String, bool>? prefs,
+}) => {
   'success': true,
   'devices': devices,
+  'pushConfigured': pushConfigured,
   'timezone': 'Asia/Kolkata',
   'preferences':
       prefs ??
@@ -54,7 +59,8 @@ void main() {
     (tester) async {
       await _pump(tester, _preview());
 
-      expect(find.text('🔔 On for this phone'), findsOneWidget);
+      expect(find.text('🔔 Permission allowed'), findsOneWidget);
+      expect(find.text('Reconnect'), findsOneWidget);
       expect(find.text('📚 Asha, 2 homework tasks today'), findsOneWidget);
       expect(find.text('📝 Science mock test tomorrow'), findsOneWidget);
       expect(find.text('🌟 Great job today, Asha!'), findsOneWidget);
@@ -90,9 +96,21 @@ void main() {
         isTrue,
       );
       expect(
-        find.text('Turn on notifications above to customise your reminders.'),
+        find.text('Connect this phone above to customise your reminders.'),
         findsOneWidget,
       );
     },
   );
+
+  testWidgets('shows when server delivery is unavailable', (tester) async {
+    await _pump(tester, _preview(pushConfigured: false));
+    expect(
+      find.text('Push delivery is not configured on the server yet.'),
+      findsOneWidget,
+    );
+    final button = tester.widget<ButtonStyleButton>(find.widgetWithText(
+      OutlinedButton, 'Send me a test notification',
+    ));
+    expect(button.onPressed, isNull);
+  });
 }

@@ -986,6 +986,14 @@ Setup:
    - `PUSH_DEFAULT_TIMEZONE` (default `Asia/Kolkata`).
    - `PUSH_SCHEDULER_DISABLED=true` to pause the scheduler, for example on extra replicas.
 
+On AWS, deploy the backend and apply the CloudFront `notifications/*` behavior
+from [`infra/aws`](../infra/aws). Without that behavior, `academix.now` can
+return the React website instead of the API. After CloudFront finishes deploying,
+`curl -i https://academix.now/notifications/preview` without a session should
+return HTTP 401 with JSON, not HTTP 200 with HTML. Then sign in on the Android
+phone and use **More → Notifications → Reconnect** if permission is already
+allowed. Send a test notification before assigning new homework.
+
 Without Firebase credentials, everything except sending still works: device
 registration, preferences and previews.
 
