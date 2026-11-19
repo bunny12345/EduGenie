@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>API_KEY</key>
+	<string>AIzaSyCI_YR-yAp2UaRS46eMaQlswEGuCtQUU1U</string>
+	<key>GCM_SENDER_ID</key>
+	<string>557778195997</string>
+	<key>PLIST_VERSION</key>
+	<string>1</string>
+	<key>BUNDLE_ID</key>
+	<string>now.academix.app</string>
+	<key>PROJECT_ID</key>
+	<string>academix-a56b3</string>
+	<key>STORAGE_BUCKET</key>
+	<string>academix-a56b3.firebasestorage.app</string>
+	<key>IS_ADS_ENABLED</key>
+	<false></false>
+	<key>IS_ANALYTICS_ENABLED</key>
+	<false></false>
+	<key>IS_APPINVITE_ENABLED</key>
+	<true></true>
+	<key>IS_GCM_ENABLED</key>
+	<true></true>
+	<key>IS_SIGNIN_ENABLED</key>
+	<true></true>
+	<key>GOOGLE_APP_ID</key>
+	<string>1:557778195997:ios:c56546e62596a3b25bd8f4</string>
+</dict>
+</plist>
