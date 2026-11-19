@@ -199,6 +199,11 @@ active theme for its sheet, wheel text and Cancel/Done controls. Run
 `flutter test --no-pub test/cupertino_time_picker_sheet_test.dart` for light/dark
 contrast, large text, confirming a time and cancelling without a change.
 
+The student Home bell counts unread class and school announcements. Opening
+Announcements marks the displayed items as read on that device for that
+student account. Edits update the existing announcement without counting as
+new; the app checks for new announcements while in the foreground.
+
 Mock-test action buttons, manual grading fields and report-card entry panels
 use theme-aware surfaces and contrasting text, including live theme switches
 without losing drafts. Subject-coloured report-card controls use deeper shades

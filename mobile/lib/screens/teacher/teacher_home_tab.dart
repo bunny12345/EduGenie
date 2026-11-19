@@ -316,8 +316,8 @@ class _AnnouncementsPanelState extends ConsumerState<_AnnouncementsPanel> {
             title: _titleCtrl.text.trim(),
             message: _messageCtrl.text.trim(),
             className: widget.targetClass,
-            startAt: _visibleFrom?.toIso8601String(),
-            endAt: _visibleUntil?.toIso8601String(),
+            startAt: _visibleFrom?.toUtc().toIso8601String(),
+            endAt: _visibleUntil?.toUtc().toIso8601String(),
           );
       _titleCtrl.clear();
       _messageCtrl.clear();
@@ -338,8 +338,8 @@ class _AnnouncementsPanelState extends ConsumerState<_AnnouncementsPanel> {
       _editingAnnId = a['id']?.toString();
       _editingTitleCtrl.text = a['title']?.toString() ?? '';
       _editingMessageCtrl.text = a['message']?.toString() ?? '';
-      _editingVisibleFrom = _parseDate(a['startAt'] ?? a['start_at']);
-      _editingVisibleUntil = _parseDate(a['endAt'] ?? a['end_at']);
+      _editingVisibleFrom = _parseDate(a['startAt'] ?? a['start_at'])?.toLocal();
+      _editingVisibleUntil = _parseDate(a['endAt'] ?? a['end_at'])?.toLocal();
       _editingError = null;
     });
   }
@@ -371,9 +371,8 @@ class _AnnouncementsPanelState extends ConsumerState<_AnnouncementsPanel> {
             id,
             title: _editingTitleCtrl.text.trim(),
             message: _editingMessageCtrl.text.trim(),
-            className: widget.targetClass == 'all' ? null : widget.targetClass,
-            startAt: _editingVisibleFrom?.toIso8601String(),
-            endAt: _editingVisibleUntil?.toIso8601String(),
+            startAt: _editingVisibleFrom?.toUtc().toIso8601String(),
+            endAt: _editingVisibleUntil?.toUtc().toIso8601String(),
           );
       ref.invalidate(teacherAnnouncementsProvider);
       _cancelEdit();

@@ -2042,8 +2042,8 @@ export default function TeacherDashboard({ session, onLogout }) {
         message: announcementMessage,
         audience: 'students',
         className: teacherTargetClass,
-        startAt: announcementStartAt || null,
-        endAt: announcementEndAt || null
+        startAt: announcementStartAt ? new Date(announcementStartAt).toISOString() : null,
+        endAt: announcementEndAt ? new Date(announcementEndAt).toISOString() : null
       });
       if (!res?.announcement) {
         setNote(res?.error || 'Announcement could not be posted.');
@@ -2094,9 +2094,8 @@ export default function TeacherDashboard({ session, onLogout }) {
       await updateTeacherAnnouncement(editingAnnId, {
         title: editingAnnTitle,
         message: editingAnnMessage,
-        className: teacherTargetClass === 'all' ? undefined : teacherTargetClass,
-        startAt: editingAnnStartAt || null,
-        endAt: editingAnnEndAt || null
+        startAt: editingAnnStartAt ? new Date(editingAnnStartAt).toISOString() : null,
+        endAt: editingAnnEndAt ? new Date(editingAnnEndAt).toISOString() : null
       });
       onCancelEditAnnouncement();
       setNote('✅ Announcement updated.');

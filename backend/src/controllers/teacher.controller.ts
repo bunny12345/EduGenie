@@ -1867,7 +1867,9 @@ export class TeacherController {
     };
     try {
       const res = await this.db.client.from('announcements').insert([row]).select();
-      const inserted = (res as any)?.data?.[0] || row;
+      if (res.error) throw res.error;
+      const inserted = res.data?.[0];
+      if (!inserted) throw new Error('The announcement was not saved.');
       this.notifications?.notifyAnnouncement({
         schoolId: req?.user?.schoolId,
         className: targetClass,
@@ -1914,7 +1916,7 @@ export class TeacherController {
         endAt: row.end_at,
         createdAt: row.created_at
       };
-      this.localFeed.addAnnouncements([local]);
+      if (this.db.client.isMock) this.localFeed.addAnnouncements([local]);
       return {
         success: false,
         error: String((e as any)?.message || e || 'announcement post failed'),
@@ -1927,43 +1929,47 @@ export class TeacherController {
   async updateAnnouncement(@Param('id') id: string, @Req() req: any, @Body() body: any) {
     this.ensureTeacher(req);
     const actorId = this.actorId(req);
-    const targetClass: string | null = body?.className || null;
     const startAt = body?.startAt ? new Date(body.startAt).toISOString() : null;
     const endAt = body?.endAt ? new Date(body.endAt).toISOString() : null;
     const patch = {
       title: body?.title || 'Announcement',
       message: body?.message || '',
-      audience: targetClass ? `class:${targetClass}` : (body?.audience || 'students'),
-      target_class: targetClass,
       start_at: startAt,
       end_at: endAt,
     };
 
     try {
-      const seedRes = await this.db.client.from('announcements').select('*').eq('id', id).maybeSingle();
-      const seedRow = (seedRes as any)?.data || null;
+      const seedRes = await this.db.client.from('announcements').select('*').eq('id', id).limit(1);
+      if (seedRes.error) throw seedRes.error;
+      const seedRow = seedRes.data?.[0];
       if (seedRow) {
         if (seedRow.created_by && String(seedRow.created_by) !== actorId) {
           return { success: false, error: 'You can only edit announcements you created.' };
         }
         const res = await this.db.client.from('announcements').update(patch).eq('id', id).select();
-        const updated = (res as any)?.data?.[0] || { ...seedRow, ...patch };
+        if (res.error) throw res.error;
+        const updated = res.data?.[0];
+        if (!updated) return { success: false, error: 'The announcement was not saved. Refresh the list and try again.' };
+        const announcement = {
+          id: updated.id,
+          title: updated.title,
+          message: updated.message,
+          audience: updated.audience,
+          className: updated.target_class || (String(updated.audience || '').startsWith('class:') ? updated.audience.slice(6) : null),
+          createdBy: updated.created_by || null,
+          startAt: updated.start_at || null,
+          endAt: updated.end_at || null,
+          createdAt: updated.created_at || null
+        };
+        // Keep the mock/local mirror and cached student dashboards in sync.
+        if (!this.localFeed.updateAnnouncement(id, announcement)) this.localFeed.announcementVersion++;
         return {
           success: true,
-          announcement: {
-            id: updated.id,
-            title: updated.title,
-            message: updated.message,
-            audience: updated.audience,
-            className: targetClass,
-            createdBy: updated.created_by || null,
-            startAt: updated.start_at || null,
-            endAt: updated.end_at || null,
-            createdAt: updated.created_at || null
-          }
+          announcement
         };
       }
 
+      if (!this.db.client.isMock) return { success: false, error: 'Announcement not found' };
       const localRow = this.localFeed.listAnnouncements().find((a: any) => String(a?.id || '') === String(id));
       if (!localRow) return { success: false, error: 'Announcement not found' };
       if (localRow.createdBy && String(localRow.createdBy) !== actorId) {
@@ -1972,8 +1978,6 @@ export class TeacherController {
       const updated = this.localFeed.updateAnnouncement(id, {
         title: patch.title,
         message: patch.message,
-        audience: patch.audience,
-        className: targetClass,
         startAt,
         endAt,
       });
@@ -1989,17 +1993,21 @@ export class TeacherController {
     const actorId = this.actorId(req);
 
     try {
-      const seedRes = await this.db.client.from('announcements').select('*').eq('id', id).maybeSingle();
-      const seedRow = (seedRes as any)?.data || null;
+      const seedRes = await this.db.client.from('announcements').select('*').eq('id', id).limit(1);
+      if (seedRes.error) throw seedRes.error;
+      const seedRow = seedRes.data?.[0];
       if (seedRow) {
         if (seedRow.created_by && String(seedRow.created_by) !== actorId) {
           return { success: false, error: 'You can only delete announcements you created.' };
         }
-        await this.db.client.from('announcements').delete().eq('id', id);
-        this.localFeed.removeAnnouncementById(id);
+        const result = await this.db.client.from('announcements').delete().eq('id', id).select('id');
+        if (result.error) throw result.error;
+        if (!result.data?.length) return { success: false, error: 'Announcement not found' };
+        if (!this.localFeed.removeAnnouncementById(id)) this.localFeed.announcementVersion++;
         return { success: true, deleted: 1 };
       }
 
+      if (!this.db.client.isMock) return { success: false, error: 'Announcement not found' };
       const localRow = this.localFeed.listAnnouncements().find((a: any) => String(a?.id || '') === String(id));
       if (!localRow) return { success: false, error: 'Announcement not found' };
       if (localRow.createdBy && String(localRow.createdBy) !== actorId) {

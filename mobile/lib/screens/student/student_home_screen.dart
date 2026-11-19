@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../models/dashboard.dart';
 import '../../state/session_provider.dart';
+import '../../state/student_announcements_provider.dart';
 import '../../state/student_providers.dart';
 import '../../theme/app_colors.dart';
 import '../../widgets/student_shortcut_tile.dart';
@@ -304,12 +305,22 @@ class _AnnouncementBell extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final count = ref.watch(dashboardProvider).value?.announcements.length ?? 0;
+    ref.watch(announcementRefreshProvider);
+    final announcements = ref.watch(dashboardProvider).value?.announcements;
+    final studentId = ref.watch(sessionProvider).value?.userId;
+    final seen = studentId == null
+        ? null
+        : ref.watch(seenAnnouncementsProvider(studentId)).value;
+    final count = seen == null
+        ? 0
+        : (announcements ?? [])
+              .where((a) => a.id.isNotEmpty && !seen.contains(a.id))
+              .length;
 
     return Semantics(
       button: true,
       label:
-          'Announcements, $count ${count == 1 ? 'announcement' : 'announcements'}',
+          'Announcements, $count unread',
       child: InkWell(
         borderRadius: BorderRadius.circular(999),
         onTap: () => Navigator.of(context).push(
@@ -347,7 +358,7 @@ class _AnnouncementBell extends ConsumerWidget {
                       borderRadius: BorderRadius.circular(999),
                     ),
                     child: Text(
-                      count > 9 ? '9+' : '$count',
+                      '$count',
                       textAlign: TextAlign.center,
                       style: const TextStyle(
                         fontSize: 8,

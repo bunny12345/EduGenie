@@ -1,4 +1,4 @@
-import { Controller, Get, Query, UseGuards, Req } from '@nestjs/common';
+import { Controller, Get, Logger, Query, UseGuards, Req } from '@nestjs/common';
 import { SupabaseService } from '../supabase.service';
 import { AuthGuard } from '../auth/auth.guard';
 import { LocalFeedService } from '../shared/local-feed.service';
@@ -8,12 +8,29 @@ import { METRIC_ORDER_COLUMN, metricAt, metricScore } from '../progress/progress
 @Controller('dashboard')
 export class DashboardController {
   private static cache = new Map<string, { expiresAt: number; value: any }>();
+  private readonly logger = new Logger(DashboardController.name);
 
   constructor(
     private readonly db: SupabaseService,
     private readonly localFeed: LocalFeedService,
     private readonly studentAuth: StudentAuthService
   ) {}
+
+  private async readAnnouncementRows(className: string | null) {
+    const audiences = ['students', 'all'];
+    if (className) audiences.push(`class:${className}`);
+    const rows = [];
+    const pageSize = 100;
+    for (let offset = 0; ; offset += pageSize) {
+      const { data, error } = await this.db.client.from('announcements').select('*')
+        .in('audience', audiences).order('created_at', { ascending: false })
+        .order('id', { ascending: false }).range(offset, offset + pageSize - 1);
+      if (error) throw error;
+      const page = data || [];
+      rows.push(...page);
+      if (page.length < pageSize) return rows;
+    }
+  }
 
   @Get()
   @UseGuards(AuthGuard)
@@ -23,7 +40,7 @@ export class DashboardController {
     // portal builds its subject nav from. Keying the cache on the roster version
     // means a newly registered (or removed) subject teacher is reflected on the
     // next request instead of up to a TTL later.
-    const cacheKey = `dashboard:${id}:${StudentAuthService.rosterVersion}`;
+    const cacheKey = `dashboard:${id}:${StudentAuthService.rosterVersion}:${this.localFeed.announcementVersion}`;
     const now = Date.now();
     const cached = DashboardController.cache.get(cacheKey);
     if (cached && cached.expiresAt > now) return cached.value;
@@ -46,8 +63,10 @@ export class DashboardController {
       const homeworkRequest = this.db.client.from('homework').select('*').eq('student_id', id).order('due_at', { ascending: true }).limit(8);
       const progressRequest = this.db.client.from('progress_metrics').select('*').eq('student_id', id).order(METRIC_ORDER_COLUMN, { ascending: false }).limit(10);
       const memoriesRequest = this.db.client.from('memories').select('*').eq('student_id', id).limit(6);
-      const announcementsRequest = this.db.client.from('announcements').select('*')
-        .in('audience', ['students', 'all']).order('created_at', { ascending: false }).limit(20);
+      const announcementsRequest = this.readAnnouncementRows(student.class_name).catch((error) => {
+        this.logger.warn(`Unable to load announcements: ${error?.message || error}`);
+        return [];
+      });
       const teachersRequest = (async () => {
         try {
           return student.school_id && student.class_name
@@ -136,29 +155,28 @@ export class DashboardController {
         reason: m.value || 'Recommended from your learning pattern'
       }));
 
-      const announcementRows = (ann && (ann as any).data) || [];
-      // Only show announcements currently inside their (optional) visibility window.
-      const isAnnouncementVisible = (a: any) => {
-        const now = Date.now();
-        const startMs = a?.start_at ? new Date(a.start_at).getTime() : null;
-        const endMs = a?.end_at ? new Date(a.end_at).getTime() : null;
-        if (startMs && Number.isFinite(startMs) && now < startMs) return false;
-        if (endMs && Number.isFinite(endMs) && now > endMs) return false;
-        return true;
-      };
-      const announcements = (Array.isArray(announcementRows) ? announcementRows : [])
-        .filter(isAnnouncementVisible)
-        .slice(0, 8)
-        .map((a: any) => ({
-          id: a.id,
-          title: a.title || 'Announcement',
-          message: a.message || '',
-          audience: a.audience || 'students',
-          createdAt: a.created_at || null
-        }));
-      const mergedAnnouncements = announcements.length
-        ? announcements
-        : this.localFeed.listAnnouncements().filter(isAnnouncementVisible).slice(0, 8);
+      const classTeacherIds = new Set(classTeachers.map((teacher) => teacher.id));
+      const announcementRows = this.db.client.isMock
+        ? [...ann, ...this.localFeed.listAnnouncements().filter((a) => String(a.id || '').startsWith('local-ann-'))]
+        : ann;
+      const visibleAt = Date.now();
+      const announcements = announcementRows.filter((a) => {
+        const audience = String(a.audience || 'students');
+        const target = String(a.target_class || a.className || (audience.startsWith('class:') ? audience.slice(6) : '')).trim().toLowerCase();
+        if (target) {
+          // Class labels are reused across schools, so the creator must also be on this school's class roster.
+          if (target !== studentClassName || !classTeacherIds.has(String(a.created_by || a.createdBy || ''))) return false;
+        } else if (audience !== 'students' && audience !== 'all') return false;
+        const start = Date.parse(a.start_at || a.startAt || '');
+        const end = Date.parse(a.end_at || a.endAt || '');
+        return !(start > visibleAt || end < visibleAt);
+      }).map((a) => ({
+        id: a.id,
+        title: a.title || 'Announcement',
+        message: a.message || '',
+        audience: a.audience || 'students',
+        createdAt: a.created_at || a.createdAt || null,
+      })).sort((a, b) => Date.parse(b.createdAt || '') - Date.parse(a.createdAt || ''));
 
       const streak = await this.computeLearningStreak(id, mergedHomeworkRows, progressRows);
 
@@ -173,7 +191,7 @@ export class DashboardController {
         classTeachers,
         streak,
         recommendations,
-        announcements: mergedAnnouncements
+        announcements
       };
 
       const response = {

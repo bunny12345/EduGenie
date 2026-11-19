@@ -7,6 +7,7 @@ const FEED_FILE = path.join(DATA_DIR, 'local-feed.json');
 
 @Injectable()
 export class LocalFeedService implements OnModuleInit {
+  announcementVersion = 0;
   private announcements: any[] = [];
   private homeworkAssignments: any[] = [];
   private tests: any[] = [];
@@ -53,6 +54,7 @@ export class LocalFeedService implements OnModuleInit {
     const next = Array.isArray(items) ? items : [];
     if (!next.length) return;
     this.announcements = [...next, ...this.announcements].slice(0, 200);
+    this.announcementVersion++;
   }
 
   listAnnouncements() {
@@ -63,6 +65,7 @@ export class LocalFeedService implements OnModuleInit {
   removeExpiredAnnouncements(nowIso: string) {
     const before = this.announcements.length;
     this.announcements = this.announcements.filter((a) => !a?.endAt || a.endAt >= nowIso);
+    if (this.announcements.length < before) this.announcementVersion++;
     return before - this.announcements.length;
   }
 
@@ -73,6 +76,7 @@ export class LocalFeedService implements OnModuleInit {
     if (index < 0) return null;
     const next = { ...this.announcements[index], ...(patch || {}) };
     this.announcements[index] = next;
+    this.announcementVersion++;
     return next;
   }
 
@@ -81,6 +85,7 @@ export class LocalFeedService implements OnModuleInit {
     if (!targetId) return false;
     const before = this.announcements.length;
     this.announcements = this.announcements.filter((a) => String(a?.id || '').trim() !== targetId);
+    if (this.announcements.length < before) this.announcementVersion++;
     return this.announcements.length < before;
   }
 

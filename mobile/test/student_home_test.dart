@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mobile/models/dashboard.dart';
 import 'package:mobile/models/report_card.dart';
@@ -9,6 +10,7 @@ import 'package:mobile/screens/student/student_announcements_screen.dart';
 import 'package:mobile/screens/student/student_calendar_screen.dart';
 import 'package:mobile/screens/student/student_home_screen.dart';
 import 'package:mobile/state/session_provider.dart';
+import 'package:mobile/state/student_announcements_provider.dart';
 import 'package:mobile/state/student_providers.dart';
 import 'package:mobile/theme/app_colors.dart';
 
@@ -42,6 +44,7 @@ Widget _home({
   bool dark = false,
   StreakInfo streak = _streak,
   bool reserveNavigation = false,
+  List<AnnouncementItem> Function()? announcements,
 }) {
   return ProviderScope(
     overrides: [
@@ -51,7 +54,7 @@ Widget _home({
           schoolName: 'Green Valley International School',
           className: 'Class 8',
           streak: streak,
-          announcements: const [
+          announcements: announcements?.call() ?? const [
             AnnouncementItem(
               id: 'notice',
               title: 'Science fair',
@@ -94,7 +97,54 @@ Widget _home({
 }
 
 void main() {
+  setUp(() => FlutterSecureStorage.setMockInitialValues({}));
   tearDown(() => AppColors.isDark = false);
+
+  testWidgets('the bell clears after reading and only counts new announcements', (
+    tester,
+  ) async {
+    var announcements = const [
+      AnnouncementItem(id: 'a', title: 'Original', message: 'First update'),
+    ];
+    await tester.pumpWidget(_home(announcements: () => announcements));
+    await tester.pump();
+    await tester.pumpAndSettle();
+    final bell = find.bySemanticsLabel(RegExp('Announcements,'));
+    Future<void> readAndClose(String noticeTitle) async {
+      await tester.tap(bell);
+      await tester.pumpAndSettle();
+      expect(find.byType(StudentAnnouncementsScreen), findsOneWidget);
+      expect(find.text(noticeTitle), findsOneWidget);
+      await tester.pageBack();
+      await tester.pumpAndSettle();
+    }
+
+    final container = ProviderScope.containerOf(tester.element(bell));
+    expect(container.read(seenAnnouncementsProvider('student')).value, isEmpty);
+    expect(find.bySemanticsLabel(RegExp('Announcements, 1 unread')), findsOneWidget);
+    await readAndClose('Original');
+    expect(find.bySemanticsLabel(RegExp('Announcements, 0 unread')), findsOneWidget);
+
+    announcements = const [
+      AnnouncementItem(id: 'a', title: 'Edited', message: 'Revised details'),
+      AnnouncementItem(id: 'b', title: 'New notice', message: 'Second update'),
+      AnnouncementItem(id: 'c', title: 'Another notice', message: 'Third update'),
+    ];
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    await tester.pump(const Duration(seconds: 20));
+    await tester.pumpAndSettle();
+    expect(find.bySemanticsLabel(RegExp('Announcements, 2 unread')), findsOneWidget);
+    await readAndClose('Edited');
+    expect(find.bySemanticsLabel(RegExp('Announcements, 0 unread')), findsOneWidget);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pumpAndSettle();
+    await tester.pumpWidget(_home(announcements: () => announcements));
+    await tester.pump();
+    await tester.pumpAndSettle();
+    expect(find.bySemanticsLabel(RegExp('Announcements, 0 unread')), findsOneWidget);
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
 
   testWidgets(
     'most of Academics is visible immediately after the school and streak',

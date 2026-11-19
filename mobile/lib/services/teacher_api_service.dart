@@ -274,14 +274,12 @@ class TeacherApiService {
     String id, {
     required String title,
     required String message,
-    String? className,
     String? startAt,
     String? endAt,
   }) {
     return _post('/teacher/announcements/${Uri.encodeComponent(id)}/update', {
       'title': title,
       'message': message,
-      'className': className,
       'startAt': startAt,
       'endAt': endAt,
     });

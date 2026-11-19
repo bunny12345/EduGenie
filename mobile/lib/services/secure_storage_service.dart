@@ -28,6 +28,14 @@ class SecureStorageService {
 
   Future<void> clearSession() => _storage.delete(key: _sessionKey);
 
+  Future<Set<String>> readSeenAnnouncements(String studentId) async {
+    final raw = await _storage.read(key: 'academix_seen_announcements_$studentId');
+    return raw == null ? {} : (jsonDecode(raw) as List).whereType<String>().toSet();
+  }
+
+  Future<void> writeSeenAnnouncements(String studentId, Set<String> ids) =>
+      _storage.write(key: 'academix_seen_announcements_$studentId', value: jsonEncode(ids.toList()));
+
   // ─── Remembered login (per role, kept across logout) ─────────────────────
   Future<SavedLogin?> readSavedLogin(String role) async {
     final raw = await _storage.read(key: '$_savedLoginPrefix$role');
