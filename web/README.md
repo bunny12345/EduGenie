@@ -147,6 +147,12 @@ and preserves the uploaded-class-material teaching boundary. Deploy both the
 updated backend and website. No chat conversation IDs or database policies change.
 Run the Sam test above plus `src/components/StudentDashboard.performance.test.jsx`.
 
+## Teacher Students progress snapshot
+
+The **Students → Progress Snapshot** chart spaces date labels and markers across
+the selected Daily or Monthly range so long reporting periods remain readable.
+The trend line and CSV export still use all recorded points.
+
 ## Teacher homework autocorrection
 
 Students > Homework Status keeps its submission viewer and Autocorrect action.

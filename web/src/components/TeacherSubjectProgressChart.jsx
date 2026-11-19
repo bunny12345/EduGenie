@@ -1,6 +1,7 @@
 import React from 'react';
 
 const STATUS_LABEL = { strong: 'Great!', 'on-track': 'On track', 'needs-focus': 'Needs work', 'not-started': 'Not started' };
+const snapshotDate = new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
 
 // Mirrors the Student portal's per-subject progress graph (same score ring +
 // growth line shape/colors), scoped to a single subject for the Teacher portal.
@@ -51,7 +52,7 @@ function SubjectTrendChart({ series, accent, mode }) {
   const W = 520;
   const H = 190;
   const padL = 34;
-  const padR = 14;
+  const padR = 26;
   const padT = 16;
   const padB = 36;
   const pts = Array.isArray(series) ? series : [];
@@ -76,8 +77,10 @@ function SubjectTrendChart({ series, accent, mode }) {
   const lastReal = real[real.length - 1];
   const areaPts = `${x(firstReal.i)},${padT + innerH} ${linePts} ${x(lastReal.i)},${padT + innerH}`;
   const gridVals = [25, 50, 75, 100];
-  const labelEvery = mode === 'daily' && pts.length > 8 ? 2 : 1;
   const last = pts.length - 1;
+  const intervals = Math.min(last, 6);
+  const tickIndices = new Set(Array.from({ length: intervals + 1 }, (_, i) =>
+    intervals ? Math.round(i * last / intervals) : 0));
   const gid = `tdSubjTrend-${String(accent || '').replace('#', '')}`;
 
   return (
@@ -97,17 +100,19 @@ function SubjectTrendChart({ series, accent, mode }) {
       <polygon points={areaPts} fill={`url(#${gid})`} />
       <polyline points={linePts} className="td-progress-line" stroke={accent} />
       {pts.map((p, i) => {
-        const showLabel = i % labelEvery === 0 || i === last;
+        const showLabel = tickIndices.has(i);
         const isFuture = p.value == null;
-        const showVal = !isFuture && (i === lastReal.i || mode === 'monthly');
+        const isLatest = i === lastReal.i;
+        const showVal = !isFuture && (isLatest || (mode === 'monthly' && showLabel && x(lastReal.i) - x(i) >= 40));
+        const date = showLabel && mode === 'daily' ? Date.parse(`${p.key}T00:00:00Z`) : NaN;
         return (
           <g key={p.key}>
             {showLabel && (
               <text x={x(i)} y={H - 18} className={`td-progress-axis-x${isFuture ? ' future' : ''}`}>
-                {mode === 'daily' && p.weekday ? p.weekday : p.label}
+                {Number.isFinite(date) ? snapshotDate.format(date) : p.label}
               </text>
             )}
-            {!isFuture && <circle cx={x(i)} cy={y(p.value)} r={i === lastReal.i ? 5 : 3.5} className="td-progress-dot" stroke={accent} />}
+            {!isFuture && (showLabel || isLatest) && <circle cx={x(i)} cy={y(p.value)} r={isLatest ? 5 : 3.5} className="td-progress-dot" stroke={accent} />}
             {showVal && <text x={x(i)} y={y(p.value) - 10} className="td-progress-val">{p.value}%</text>}
           </g>
         );
