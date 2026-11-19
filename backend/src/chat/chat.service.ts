@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Optional } from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -9,6 +9,8 @@ import { EmbeddingsService } from '../embeddings/embeddings.service';
 import { StudentAuthService } from '../auth/student-auth.service';
 import { OrchardService } from '../orchard/orchard.service';
 import { LocalFeedService } from '../shared/local-feed.service';
+import { isSchoolworkStatusReply, SchoolworkStatusService, schoolworkStatusRequest } from './schoolwork-status.service';
+import { normalizeSubjectKey } from '../orchard/orchard.constants';
 
 type ChatTurn = {
   role: 'user' | 'assistant';
@@ -46,6 +48,8 @@ type HomeworkGuardEntry = {
   hasSubmission: boolean;
   unlocked: boolean;
   subject?: string;
+  unitIds?: string[];
+  unitTitles?: string[];
 };
 
 type UnderstandingSignal = {
@@ -255,7 +259,8 @@ export class ChatService {
     private readonly embeddings: EmbeddingsService,
     private readonly studentAuth: StudentAuthService,
     private readonly orchard: OrchardService,
-    private readonly localFeed: LocalFeedService
+    private readonly localFeed: LocalFeedService,
+    @Optional() private readonly schoolwork?: SchoolworkStatusService
   ) {}
 
   private getCacheKey(studentId: string, conversationId: string) {
@@ -332,6 +337,7 @@ export class ChatService {
 
   private toContextMessages(turns: ChatTurn[]): ChatContextMessage[] {
     return this.normalizeTurns(turns)
+      .filter((t) => !isSchoolworkStatusReply(t.content))
       .map((t) => ({ role: t.role, content: t.content }))
       .slice(-20);
   }
@@ -618,7 +624,12 @@ export class ChatService {
         const unlocked = hasSubmission && (now - (submittedAt as Date).getTime()) >= ONE_HOUR_MS;
         const ocrText = unlocked ? '' : await this.getHomeworkQuestionText(h);
         const questionText = [note, ocrText].filter(Boolean).join(' — ');
-        return { title: h.title || 'Homework', questionText, hasSubmission, unlocked, subject: String(h.subject || '').trim() };
+        const meta = h.tasks?.meta;
+        const unitLabels = (values: unknown) => Array.isArray(values) ? values.filter((value): value is string => typeof value === 'string') : [];
+        return {
+          title: h.title || 'Homework', questionText, hasSubmission, unlocked, subject: String(h.subject || '').trim(),
+          unitIds: unitLabels(meta?.lessonIds), unitTitles: unitLabels(meta?.lessonTitles),
+        };
       }))).filter((e) => e.questionText || e.title);
 
       return entries;
@@ -850,6 +861,27 @@ export class ChatService {
     const lessonId = String(opts?.lessonId || '').trim();
     let profileRow: any = null;
     this.appendCacheTurn(studentId, convId, userTurn);
+
+    const statusRequest = !uniqueImages.length ? schoolworkStatusRequest(message) : null;
+    if (statusRequest && this.schoolwork) {
+      const { reply, followups } = await this.schoolwork.reply(studentId, statusRequest, { lessonId, lessonSubject });
+      const assistantTurn: ChatTurn = { role: 'assistant', content: reply, ts: new Date().toISOString() };
+      this.appendCacheTurn(studentId, convId, assistantTurn);
+      void (async () => {
+        const previous = await this.loadSnapshotHistory(studentId, convId);
+        await this.persistSnapshotHistory(studentId, convId, [...previous, userTurn, assistantTurn].slice(-60));
+        const { error } = await this.db.client.from('messages').insert([userTurn, assistantTurn].map((turn) => ({
+          student_id: studentId,
+          role: turn.role === 'assistant' ? 'ai' : 'user',
+          message: turn.content,
+          message_metadata: this.buildMessageMetadata(turn),
+          conversation_id: convId,
+          created_at: turn.ts,
+        })));
+        if (error) console.warn('Schoolwork chat message insert failed', error.message);
+      })().catch((error) => console.warn('Schoolwork chat persistence failed', error));
+      return { reply, followups, conversationId: convId };
+    }
 
     // Observe rejections immediately while independent context reads overlap.
     const historyReads = Promise.allSettled([
@@ -1119,7 +1151,8 @@ export class ChatService {
       .filter((m) => m.content && !(m.role === 'user' && m.content === message))
       .slice(-20);
 
-    const understandingSignals = extractChapterSignals(recentHistory);
+    const teachingHistory = recentHistory.filter((turn) => !isSchoolworkStatusReply(turn.content));
+    const understandingSignals = extractChapterSignals(teachingHistory);
     const lessonProgressSummary = understandingSignals.length
       ? understandingSignals.map((signal) => {
           const support = signal.recommendedSupport.length ? signal.recommendedSupport.join(', ') : 'continue guided practice';
@@ -1144,6 +1177,18 @@ export class ChatService {
     const [homeworkRead] = await homeworkEntriesPromise;
     if (homeworkRead.status === 'rejected') throw homeworkRead.reason;
     const allHomeworkEntries = homeworkRead.value;
+    const titleWords = (text: string) => this.normalizeForMatch(text).replace(/[/.-]+/g, ' ').replace(/\s+/g, ' ').trim();
+    const messageKey = ` ${titleWords(message)} `;
+    const outsideUnit = lessonSubject && allHomeworkEntries.find((entry) => {
+      const subject = normalizeSubjectKey(entry.subject);
+      if (!subject || (subject === normalizeSubjectKey(lessonSubject) && (!entry.unitIds?.length || entry.unitIds.includes(lessonId)))) return false;
+      const title = titleWords(entry.title);
+      return !!this.findLockedHomeworkMatch([entry], message)
+        || (title.length >= 5 && title !== 'homework' && messageKey.includes(` ${title} `));
+    });
+    const unitRedirect = outsideUnit
+      ? `That homework belongs outside the selected Unit. Select ${outsideUnit.subject}${outsideUnit.unitTitles?.length ? ` → ${outsideUnit.unitTitles.join(' or ')}` : ' and the matching Unit'} in AI Tutor, or ask Sam on Home for a hint.`
+      : '';
     const homeworkEntries = lessonSubject
       ? allHomeworkEntries.filter((entry) => entry.subject?.toLowerCase() === lessonSubject.toLowerCase())
       : allHomeworkEntries;
@@ -1232,11 +1277,11 @@ export class ChatService {
         ]
       : [
           { role: 'system', content: systemPrompt },
-          ...recentHistory,
+          ...teachingHistory,
           { role: 'user', content: message }
         ];
 
-    const rawReply = await this.llm.query(messages, {
+    const rawReply = unitRedirect || await this.llm.query(messages, {
       imageBase64List: uniqueImages.map((img) => img.base64),
       requireModelResponse: !!lockedHomeworkMatch,
     });
@@ -1246,11 +1291,11 @@ export class ChatService {
         .find((turn) => turn.role === 'user' && turn.imageDataUrls?.length) : undefined);
     const reviewImages = uniqueImages.length ? uniqueImages.map((img) => img.base64)
       : this.extractImagePayloads(priorImageTurn?.imageDataUrls).map((img) => img.base64);
-    const protectedReply = await this.protectHomeworkReply(rawReply, message, allHomeworkEntries, {
-      history: recentHistory, images: reviewImages, source: lessonContextSection,
+    const protectedReply = unitRedirect ? { reply: unitRedirect, homework: false } : await this.protectHomeworkReply(rawReply, message, allHomeworkEntries, {
+      history: teachingHistory, images: reviewImages, source: lessonContextSection,
       knownMatch: lockedHomeworkMatch, studentName, lessonTitle, lessonSubject,
     });
-    const reply = addContextualEmojis(protectedReply.reply);
+    const reply = unitRedirect || addContextualEmojis(protectedReply.reply);
 
     const assistantTurn: ChatTurn = {
       role: 'assistant',
@@ -1259,7 +1304,7 @@ export class ChatService {
     };
     this.appendCacheTurn(studentId, convId, assistantTurn);
 
-    const followups = protectedReply.homework
+    const followups = unitRedirect ? [] : protectedReply.homework
       ? ['Give me one more small hint', 'Explain the concept as a story', 'Ask me a check question']
       : this.buildFollowups(message, lessonTitle || '', lessonSubject || '');
     const orchardSubjectKey = String(lessonSubject || opts?.lessonSubject || '').trim().toLowerCase().replace(/\s+/g, '-');
@@ -1272,7 +1317,7 @@ export class ChatService {
     // as the model responds instead of waiting on extra DB writes and embeddings.
     void (async () => {
       try {
-        if (orchardSubjectKey && userMsgTrimmed.length >= 8 && looksLikeQuestion) {
+        if (!unitRedirect && orchardSubjectKey && userMsgTrimmed.length >= 8 && looksLikeQuestion) {
           try {
             await this.orchard.recordActivity(studentId, {
               subjectKey: orchardSubjectKey,
@@ -1307,7 +1352,7 @@ export class ChatService {
           }]);
         } catch (e) { /* ignore */ }
 
-        if (lessonId) {
+        if (lessonId && !unitRedirect) {
           await this.upsertLessonMasteryRecord({
             studentId,
             lessonId,
@@ -1440,6 +1485,8 @@ export class ChatService {
     const text = String(message || '').trim().slice(0, 2000);
     if (!text) return { reply: '', followups: [], subjects: [] as string[] };
     const homeworkId = String(opts?.homeworkId || '').trim();
+    const statusRequest = !homeworkId ? schoolworkStatusRequest(text) : null;
+    if (statusRequest && this.schoolwork) return this.schoolwork.reply(studentId, statusRequest);
     const homeworkHelp = homeworkId ? await this.loadHomeworkHelpContext(studentId, homeworkId) : null;
 
     let studentName = '';
@@ -1474,6 +1521,7 @@ export class ChatService {
     const history = (Array.isArray(opts?.recentMessages) ? opts!.recentMessages : [])
       .filter((m) => m && typeof m.content === 'string' && m.content.trim())
       .map((m) => ({ role: m.role === 'assistant' ? 'assistant' : 'user', content: m.content.trim().slice(0, 2000) }))
+      .filter((m) => !isSchoolworkStatusReply(m.content))
       .slice(-12);
 
     // Retrieval also considers the previous question so short follow-ups

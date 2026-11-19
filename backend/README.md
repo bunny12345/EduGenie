@@ -383,6 +383,19 @@ Run `npx tsc --noEmit` and
 Fixtures verify request scoping, prompt rules, submission rejection, worksheets
 and exam guards without live networking; they do not measure real-model pedagogy.
 
+### Schoolwork updates in Sam
+
+Home Sam answers questions such as “What homework is due today?”, “Did I
+submit my Science homework?”, “How did I do on my mock tests?” and “How is my
+progress graph looking?” directly from the signed-in student's records. “Today”
+uses the configured school-day default (`PUSH_DEFAULT_TIMEZONE`). The Learning
+Power trend comes from the same calculation as the Progress page. Unit Tutor
+shows homework linked to the selected Unit and redirects other work or
+account-wide results to the relevant Unit or Home Sam.
+
+Status replies are formatted by the backend without model generation or
+worksheet OCR. Homework help still goes through the existing answer review.
+
 ### Assigned-homework answer protection in both Sam chats
 
 AI Tutor (`POST /chat`) and ordinary Home Sam (`POST /chat/quick`, even without an

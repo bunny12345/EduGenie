@@ -10,6 +10,8 @@ import { EmbeddingsService } from '../embeddings/embeddings.service';
 import { StudentAuthService } from '../auth/student-auth.service';
 import { OrchardService } from '../orchard/orchard.service';
 import { LocalFeedService } from '../shared/local-feed.service';
+import { SchoolworkStatusService } from './schoolwork-status.service';
+import { LearningScoreService } from '../progress/learning-score.service';
 
 type Row = Record<string, unknown>;
 
@@ -120,7 +122,15 @@ function fixture(options: { holdEmbedding?: boolean; holdPersistence?: boolean; 
   orchard.recordActivity = async () => { growth++; return {}; };
   const feed: LocalFeedService = Object.create(LocalFeedService.prototype);
   feed.listHomeworkForStudent = () => [];
-  const chat = new ChatService(llm, db, embeddings, auth, orchard, feed);
+  feed.listAttemptsForStudent = () => [];
+  const learning: LearningScoreService = Object.create(LearningScoreService.prototype);
+  learning.listAssignedTests = async () => tables.tests || [];
+  learning.getLearningScore = async () => ({
+    hasData: true, score: 612, maxScore: 1000,
+    trend: [{ score: 580 }, { score: 612 }, { score: null, future: true }],
+    subjects: [{ name: 'Science', score: 55, status: 'needs-focus' }],
+  });
+  const chat = new ChatService(llm, db, embeddings, auth, orchard, feed, new SchoolworkStatusService(db, feed, auth, learning));
   const snapshots: unknown[][] = [];
   Object.defineProperties(chat, {
     loadLocalSnapshotHistory: { value: () => [] },
@@ -135,6 +145,72 @@ function fixture(options: { holdEmbedding?: boolean; holdPersistence?: boolean; 
     prompts, requestOptions, tables, snapshots, growth: () => growth,
   };
 }
+
+test('Home Sam reports today’s assigned homework and submissions without curriculum or a model call', async () => {
+  const f = fixture({ holdEmbedding: true });
+  const now = new Date().toISOString();
+  f.tables.homework = [
+    { id: 'todo', subject: 'Science', title: 'Leaves worksheet', note: 'Private question text', due_at: now },
+    { id: 'done', subject: 'Science', title: 'Roots worksheet', created_at: now },
+    { id: 'other-class', subject: 'Science', title: 'Other class assignment', class_name: 'Class 9', due_at: now },
+    { id: 'future', subject: 'Science', title: 'Invisible assignment', start_at: '2099-12-01T10:00:00Z', created_at: now },
+  ];
+  f.tables.homework_attempts = [{ id: 'attempt', homework_id: 'done' }];
+  const result = await f.chat.handleQuickMessage(f.studentId, 'What is the homeworks today?');
+  assert.match(result.reply, /1 pending, 1 submitted/);
+  assert.match(result.reply, /Leaves worksheet — not submitted/);
+  assert.match(result.reply, /Roots worksheet — submitted/);
+  assert.doesNotMatch(result.reply, /Other class assignment|Invisible assignment|Private question text/);
+  assert.deepEqual(f.prompts, []);
+  assert(!f.reads.includes('lesson_chunks'));
+  assert(!f.reads.includes('test_attempts'));
+  assert(f.filters.filter((filter) => /homework/.test(filter.table)).every((filter) => filter.value === f.studentId));
+});
+
+test('Unit Sam only lists linked homework and redirects the rest to the right Unit or Home', async () => {
+  const f = fixture({ holdEmbedding: true });
+  f.tables.homework = [
+    { id: 'mine', subject: 'Science', title: 'Leaf activity', tasks: { meta: { lessonIds: ['lesson'] } } },
+    { id: 'other', subject: 'Science', title: 'Unshown worksheet', tasks: { meta: { lessonIds: ['energy'], lessonTitles: ['Energy'] } } },
+  ];
+  const result = await f.chat.handleMessage(f.studentId, 'What is my homework?', {
+    lessonId: 'lesson', lessonSubject: 'Science', conversationId: f.conversationId,
+  });
+  assert.equal(result.conversationId, f.conversationId);
+  assert.match(result.reply, /Leaf activity/);
+  assert.match(result.reply, /Science → Energy.*ask Sam on Home/);
+  assert.doesNotMatch(result.reply, /Unshown worksheet/);
+  assert.deepEqual(f.prompts, []);
+  assert.equal(f.growth(), 0, 'a status lookup is not Unit mastery activity');
+});
+
+test('Unit Sam redirects an identified worksheet from another Unit without teaching it', async () => {
+  const f = fixture();
+  f.tables.homework = [{
+    id: 'outside', subject: 'Science', title: 'Electric circuits worksheet',
+    tasks: { meta: { lessonIds: ['energy'], lessonTitles: ['Energy'] } },
+  }];
+  const result = await f.chat.handleMessage(f.studentId, 'Give me a hint for the Electric circuits worksheet.', {
+    lessonId: 'lesson', lessonSubject: 'Science', conversationId: f.conversationId,
+  });
+  assert.match(result.reply, /Science → Energy.*ask Sam on Home/);
+  assert.deepEqual(f.prompts, []);
+});
+
+test('Home Sam reports scheduled tests, recorded zero scores and the real monthly graph trend', async () => {
+  const f = fixture({ holdEmbedding: true });
+  f.tables.tests = [
+    { id: 'next', subject: 'Science', title: 'Upcoming quiz', start_at: '2099-01-19T04:30:00Z' },
+    { id: 'done', subject: 'Science', title: 'Plants quiz' },
+  ];
+  f.tables.test_attempts = [{ id: 'a', test_id: 'done', score: 0, created_at: '2020-01-01T00:00:00Z' }];
+  const result = await f.chat.handleQuickMessage(f.studentId, 'Show me my mock test results and my progress graph');
+  assert.match(result.reply, /Upcoming quiz — scheduled/);
+  assert.match(result.reply, /Plants quiz — completed, 0%/);
+  assert.match(result.reply, /580 to 612 \(up\)/);
+  assert.match(result.reply, /Start with Science \(55%\)/);
+  assert.deepEqual(f.prompts, []);
+});
 
 test('Home Sam reads homework during embedding and still reviews the class-grounded reply', async () => {
   const f = fixture({ holdEmbedding: true });
@@ -245,7 +321,7 @@ test('the tutor controller surfaces safety-check failures without a generic 500 
   const feed: LocalFeedService = Object.create(LocalFeedService.prototype);
   feed.logStudentActivity = () => { throw new Error('A failed chat must not log a successful send'); };
   const controller = new ChatController(f.chat, feed);
-  const response = await controller.chat({ studentId: f.studentId }, {
+  const response = await controller.chat({ user: { sub: f.studentId, role: 'student' } }, {
     message: 'Describe the function of a leaf', conversationId: f.conversationId, lessonId: 'lesson', lessonSubject: 'Science',
   });
   assert.equal(response.success, false);

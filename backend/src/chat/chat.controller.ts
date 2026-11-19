@@ -2,6 +2,7 @@ import { Controller, Post, Body, Get, Query, Headers, UseGuards, Req } from '@ne
 import { ChatService } from './chat.service';
 import { AuthGuard } from '../auth/auth.guard';
 import { LocalFeedService } from '../shared/local-feed.service';
+import { requireStudentIdentity } from '../auth/student-identity';
 
 @Controller('chat')
 export class ChatController {
@@ -29,7 +30,7 @@ export class ChatController {
     }
   ) {
     const { message, personality, conversationId, recentMessages, imageDataUrl, imageDataUrls, imageNames, lessonId, lessonTitle, lessonSubject } = payload;
-    const studentId = req.studentId || payload.studentId || 'anon';
+    const studentId = requireStudentIdentity(req, payload.studentId);
     try {
       const response = await this.chatService.handleMessage(studentId, message, {
         personality,
@@ -63,7 +64,7 @@ export class ChatController {
     @Req() req: any,
     @Body() payload: { studentId?: string; message: string; recentMessages?: Array<{ role: string; content: string }>; homeworkId?: string }
   ) {
-    const studentId = req.studentId || payload?.studentId || 'anon';
+    const studentId = requireStudentIdentity(req, payload?.studentId);
     try {
       const response = await this.chatService.handleQuickMessage(studentId, payload?.message, {
         recentMessages: payload?.recentMessages,

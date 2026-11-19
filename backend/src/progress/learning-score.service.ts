@@ -157,7 +157,7 @@ export class LearningScoreService {
     return res.data?.[0] || null;
   }
 
-  private async studentTests(schoolId: string | undefined, className: string): Promise<any[]> {
+  async listAssignedTests(schoolId: string | undefined, className: string): Promise<any[]> {
     if (!schoolId || !className) {
       this.logger.error('Unable to resolve school/class for assigned test progress.');
       throw new ServiceUnavailableException('Unable to retrieve assigned tests for learning progress.');
@@ -626,7 +626,7 @@ export class LearningScoreService {
     const schoolId = studentRow?.school_id || (await this.studentAuth.resolveStudentProfile(studentId)).schoolId;
     const [chapters, assignedTests, schoolPeriod] = await Promise.all([
       this.assignmentRows('orchard_chapters', rawGrowth.map((r) => r.chapter_id)),
-      this.studentTests(schoolId, className),
+      this.listAssignedTests(schoolId, className),
       this.getSchoolProgressPeriod(schoolId),
     ]);
     const homeworkById = new Map(this.localFeed.listHomeworkForStudent(studentId).map((row) => [String(row.id), row]));
