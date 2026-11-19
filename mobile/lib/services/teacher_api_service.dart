@@ -9,6 +9,34 @@ class TeacherApiService {
 
   TeacherApiService(this._client);
 
+  Future<Map<String, dynamic>> getAttendance({String? className, String? date}) =>
+      _get('/teacher/attendance', {
+        'className': ?className,
+        'date': ?date,
+      });
+
+  Future<void> saveAttendance({
+    required String className,
+    required String date,
+    required bool saved,
+    required List<Map<String, Object>> entries,
+  }) async {
+    try {
+      final response = await _client.dio.post('/teacher/attendance', data: {
+        'className': className, 'date': date, 'saved': saved, 'entries': entries,
+      });
+      final data = response.data;
+      if (data is! Map || data['success'] != true) {
+        throw Exception('Could not confirm that attendance was saved.');
+      }
+    } on DioException catch (error) {
+      final data = error.response?.data;
+      throw Exception(data is Map
+          ? data['message'] ?? 'Could not save attendance.'
+          : 'Could not save attendance.');
+    }
+  }
+
   Future<Map<String, dynamic>> _get(
     String path,
     Map<String, dynamic> query,

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../theme/app_colors.dart';
 import '../../widgets/student_shortcut_tile.dart';
 import 'student_support_screen.dart';
+import 'student_attendance_screen.dart';
 
 /// School services use the same raised shortcuts as student Home.
 class StudentServicesScreen extends StatefulWidget {
@@ -157,6 +158,10 @@ class _StudentServicesScreenState extends State<StudentServicesScreen> {
                                   builder: (_) => const StudentSupportScreen(),
                                 ),
                               );
+                            } else if (service.label == 'Attendance') {
+                              Navigator.of(context).push(MaterialPageRoute<void>(
+                                builder: (_) => const StudentAttendanceScreen(),
+                              ));
                             } else {
                               setState(
                                 () => _selected = _selected == service

@@ -940,6 +940,28 @@ export async function getReportCardExams(className) {
   return getJsonChecked(withQuery('/teacher/report-cards/exams', { className }), 'getReportCardExams');
 }
 
+async function attendanceRequest(url, payload) {
+  const res = await fetch(url, {
+    headers: await authHeaders(),
+    ...(payload ? { method: 'POST', body: JSON.stringify(payload) } : {})
+  });
+  const data = await res.json().catch(() => null);
+  if (!res.ok || data?.success !== true) throw new Error(data?.message || data?.error || 'Attendance is unavailable right now.');
+  return data;
+}
+
+export function getTeacherAttendance(className, date) {
+  return attendanceRequest(withQuery('/teacher/attendance', { className, date }));
+}
+
+export function saveTeacherAttendance(payload) {
+  return attendanceRequest(`${API_BASE}/teacher/attendance`, payload);
+}
+
+export function getStudentAttendance() {
+  return attendanceRequest(`${API_BASE}/progress/attendance`);
+}
+
 export async function createReportCardExam(payload) {
   return sendReportCardJson('POST', '/teacher/report-cards/exams', payload, 'createReportCardExam');
 }

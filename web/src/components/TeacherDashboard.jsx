@@ -5,6 +5,8 @@ import SubjectBackground, { getPalette } from './SubjectBackground';
 import TeacherSubjectProgressChart from './TeacherSubjectProgressChart';
 import StudentProgress from './StudentProgress';
 import TeacherReportCards from './TeacherReportCards';
+import { TeacherAttendance } from './Attendance';
+
 import StudentReportCard from './StudentReportCard';
 import {
   addTestQuestion,
@@ -212,6 +214,23 @@ function getClassNameFromItem(item) {
 function isInTargetClass(item, targetClass) {
   if (!targetClass || targetClass === 'all') return true;
   return normalizeClassName(getClassNameFromItem(item)) === normalizeClassName(targetClass);
+}
+
+function ClassRecords({ classOptions, mySubject }) {
+  const [section, setSection] = useState('Report Cards');
+  const [attendanceOpened, setAttendanceOpened] = useState(false);
+  return <>
+    <nav className="td-records-switch" aria-label="Class Records">
+      {['Report Cards', 'Attendance', 'Timetable'].map((name) =>
+        <button key={name} type="button" aria-pressed={section === name} onClick={() => {
+          setSection(name);
+          if (name === 'Attendance') setAttendanceOpened(true);
+        }}>{name}</button>)}
+    </nav>
+    <div hidden={section !== 'Report Cards'}><TeacherReportCards classOptions={classOptions} mySubject={mySubject} /></div>
+    {attendanceOpened && <div hidden={section !== 'Attendance'}><TeacherAttendance /></div>}
+    {section === 'Timetable' && <article className="td-card"><h3>Timetable</h3><p>Class timetables are not available yet.</p></article>}
+  </>;
 }
 
 export default function TeacherDashboard({ session, onLogout }) {
@@ -2151,7 +2170,7 @@ export default function TeacherDashboard({ session, onLogout }) {
     { key: 'ai-assistant', label: 'AI Assistant', icon: '🤖' },
     { key: 'students', label: 'Students', icon: '👤' },
     { key: 'progress', label: 'Student Progress', icon: '📈' },
-    { key: 'report-cards', label: 'Report Cards', icon: '🧾' }
+    { key: 'report-cards', label: 'Class Records', icon: '🧾' }
   ];
 
   return (
@@ -4022,7 +4041,7 @@ export default function TeacherDashboard({ session, onLogout }) {
 
         {/* ══════════ REPORT CARDS SECTION ══════════ */}
         {activeSection === 'report-cards' && (
-          <TeacherReportCards classOptions={classOptions} mySubject={lockedSubject} />
+          <ClassRecords classOptions={classOptions} mySubject={lockedSubject} />
         )}
       </div>
 

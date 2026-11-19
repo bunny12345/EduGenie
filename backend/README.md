@@ -383,6 +383,16 @@ Run `npx tsc --noEmit` and
 Fixtures verify request scoping, prompt rules, submission rejection, worksheets
 and exam guards without live networking; they do not measure real-model pedagogy.
 
+### Class attendance
+
+Apply [the attendance migration](db/migrations/20261119_class_attendance.sql) in
+Supabase before deploying attendance. It adds a service-role-only table and
+does not modify existing tables or policies. Teachers share one daily register
+per assigned class. Both attendance endpoints reuse the school's Progress Graph
+dates; roll-call dates follow the graph's Asia/Kolkata calendar. Students only
+see their own attendance. The percentage is present days divided by days with
+a saved mark for that student; unrecorded days do not count.
+
 ### Schoolwork updates in Sam
 
 Home Sam answers questions such as “What homework is due today?”, “Did I

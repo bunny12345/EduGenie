@@ -147,6 +147,14 @@ and preserves the uploaded-class-material teaching boundary. Deploy both the
 updated backend and website. No chat conversation IDs or database policies change.
 Run the Sam test above plus `src/components/StudentDashboard.performance.test.jsx`.
 
+## Class attendance
+
+Teachers use **Class Records → Attendance** to choose a class and roll-call
+date, mark everyone present or absent in one action, and save. Select a student
+on the chosen date to correct their mark. **Report Cards** remains in Class
+Records; **Timetable** is a placeholder. Students use **Home → School Services
+→ Attendance** for their percentage and dated history.
+
 ## Teacher Students progress snapshot
 
 The **Students → Progress Snapshot** chart spaces date labels and markers across

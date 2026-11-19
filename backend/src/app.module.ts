@@ -42,6 +42,7 @@ import { FcmService } from './notifications/fcm.service';
 import { StudentDigestService } from './notifications/student-digest.service';
 import { NotificationsService } from './notifications/notifications.service';
 import { NotificationsController } from './notifications/notifications.controller';
+import { AttendanceController } from './controllers/attendance.controller';
 
 @Module({
   imports: [ExamControlModule, ChatModule, SharedModule],
@@ -66,7 +67,8 @@ import { NotificationsController } from './notifications/notifications.controlle
     SchoolController,
     OrchardController,
     GamesController,
-    NotificationsController
+    NotificationsController,
+    AttendanceController
   ],
   providers: [SupabaseService, AuthGuard, OwnerAuthService, OwnerGuard, OwnerIdentityGuard, StudentAuthService, EmailService, RegistrationPhoneService, RegistrationEmailService, PasswordResetService, CurriculumService, EmbeddingsService, OrchardService, FlashcardsService, QuizRushService, LlmService, LearningScoreService, SupportService, VisitorService, FcmService, StudentDigestService, NotificationsService]
 })

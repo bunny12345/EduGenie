@@ -4,7 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../screens/teacher/teacher_ai_assistant_tab.dart';
 import '../screens/teacher/teacher_home_tab.dart';
 import '../screens/teacher/teacher_progress_tab.dart';
-import '../screens/teacher/teacher_report_cards_tab.dart';
+import '../screens/teacher/teacher_attendance_tab.dart';
 import '../screens/teacher/teacher_students_tab.dart';
 import '../state/session_provider.dart';
 import '../state/teacher_providers.dart';
@@ -95,7 +95,7 @@ class _TeacherShellState extends ConsumerState<TeacherShell> {
     _TeacherNavItem(
       icon: Icons.badge_outlined,
       selectedIcon: Icons.badge_rounded,
-      label: 'Report Cards',
+      label: 'Class Records',
       comingSoonIcon: Icons.badge_rounded,
       comingSoonSubtitle: 'Exam report cards land here next.',
     ),
@@ -196,7 +196,7 @@ class _TeacherShellState extends ConsumerState<TeacherShell> {
                 const TeacherAiAssistantTab(),
                 const TeacherStudentsTab(),
                 const TeacherProgressTab(),
-                const TeacherReportCardsTab(),
+                const TeacherClassRecordsTab(),
               ],
             ),
           ),

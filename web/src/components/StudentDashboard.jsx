@@ -49,6 +49,7 @@ import MathMarkdown from './MathMarkdown';
 import SamAvatar from './SamAvatar';
 import QuickSamBubble from './QuickSamBubble';
 import TechnicalSupport from './TechnicalSupport';
+import { StudentAttendance } from './Attendance';
 import useVisiblePanels from '../hooks/useVisiblePanels';
 import useStrictExam, { useExamAccess } from '../hooks/useStrictExam';
 
@@ -4536,6 +4537,8 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
               </div>
               {selectedSchoolService?.type === 'query' ? (
                 <TechnicalSupport key={studentId} />
+              ) : selectedSchoolService?.type === 'attendance' ? (
+                <StudentAttendance key={studentId} />
               ) : selectedSchoolService ? (
                 <div className="eg-service-demo-panel" style={{ borderColor: `${selectedSchoolService.color}44` }}>
                   <strong>{selectedSchoolService.label}</strong>

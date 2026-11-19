@@ -28,6 +28,8 @@ class StudentApiService {
 
   StudentApiService(this._client);
 
+  Future<Map<String, dynamic>> getAttendance() => _get('/progress/attendance', const {});
+
   Future<Map<String, dynamic>> _get(
     String path,
     Map<String, dynamic> query,
