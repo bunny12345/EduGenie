@@ -104,7 +104,7 @@ void main() {
                 TestItem(
                   id: 'future',
                   title: 'Future exam',
-                  subject: 'Mathematics',
+                  subject: ' mathematics ',
                   windowStatus: 'scheduled',
                   startAt: DateTime(2030),
                 ),
@@ -133,8 +133,10 @@ void main() {
       await ProviderScope.containerOf(
         tester.element(find.byType(HomeworkScreen)),
       ).read(sessionProvider.future);
+      expect(find.text('2'), findsOneWidget);
       await tester.tap(find.widgetWithText(ElevatedButton, 'Mock Tests'));
       await tester.pumpAndSettle();
+      expect(find.text('2'), findsOneWidget);
       expect(find.text('Expired'), findsOneWidget);
       expect(find.textContaining('Opens '), findsOneWidget);
       final review = find.text('Completed (100%) ▾ Review');

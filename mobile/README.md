@@ -57,8 +57,11 @@ and refresh the app's unit views to see newly imported content.
 
 The Homework screen has a persistent, raised **Homework / Mock Tests** switch.
 Both views keep the selected subject; homework drafts, filters and expanded
-instructions/feedback survive switching views. Subject badges count actionable
-items in the selected view, using the existing due/submission/test-window rules.
+instructions/feedback survive switching views. Subject badges on Homework count
+pending homework and unfinished mock tests; the Mock Tests tab counts only
+tests. Scheduled tests count from assignment until completion or expiry, but
+can only be started during their attempt window. Tapping a mock-test phone
+notification opens the Mock Tests tab for the relevant subject.
 The compact subject heading is separate from individual assignment cards.
 Raised, labelled actions distinguish instructions, saved submissions, history,
 feedback and the primary Submit button; static titles/statuses are not buttons.

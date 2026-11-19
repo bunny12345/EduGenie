@@ -796,7 +796,7 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
   const testsBySubject = useMemo(() => {
     const grouped = new Map();
     tests.forEach((t) => {
-      const subj = t?.subject || 'General';
+      const subj = String(t?.subject || 'General').trim().toLowerCase();
       if (!grouped.has(subj)) grouped.set(subj, []);
       grouped.get(subj).push(t);
     });
@@ -881,13 +881,8 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
       // keep inflating the badge forever either.
       if (!state.submitted && !state.hide) count++;
     });
-    testsBySubject.get(subject)?.forEach((t) => {
-      // Only count tests the student can actually act on right now — same
-      // condition that shows the "Start" button below. A test the student
-      // already completed, or hasn't opened yet / has closed, isn't a
-      // pending action and shouldn't keep the badge lit forever.
-      const windowStatus = t.windowStatus || 'none';
-      if (!t.attempted && windowStatus !== 'scheduled' && windowStatus !== 'expired') count++;
+    testsBySubject.get(subject.trim().toLowerCase())?.forEach((t) => {
+      if (!t.attempted && t.windowStatus !== 'expired') count++;
     });
     return count;
   };
@@ -5302,7 +5297,7 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
               </div>
               {panelError.tests ? <p className="eg-loading">{panelError.tests}</p> : null}
               <ul className="mini-list">
-                {(testsBySubject.get(activeView) || []).map((t) => {
+                {(testsBySubject.get(activeView.trim().toLowerCase()) || []).map((t) => {
                   const windowStatus = t.windowStatus || 'none';
                   const opensAt = t.startAt || t.start_at;
                   const closesAt = t.endAt || t.end_at;
@@ -5362,7 +5357,7 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
                     </li>
                   );
                 })}
-                {!panelLoading.tests && !(testsBySubject.get(activeView) || []).length ? <li>No tests available for this subject.</li> : null}
+                {!panelLoading.tests && !testsBySubject.get(activeView.trim().toLowerCase())?.length ? <li>No tests available for this subject.</li> : null}
               </ul>
               {testResult ? <p className="eg-inline-note">Last score: {String(testResult.score)} | {testResult.feedback}</p> : null}
             </article>

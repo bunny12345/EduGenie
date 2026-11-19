@@ -246,7 +246,7 @@ export class NotificationsService implements OnModuleInit, OnModuleDestroy {
 
   private background(task: () => Promise<unknown>) {
     if (!this.fcm.configured) return;
-    void task().catch((e) => this.logger.warn(`Event push failed: ${e?.message || e}`));
+    return task().catch((e) => this.logger.warn(`Event push failed: ${e?.message || e}`));
   }
 
   notifyHomeworkAssigned(rows: any[]) {
@@ -272,14 +272,29 @@ export class NotificationsService implements OnModuleInit, OnModuleDestroy {
   }
 
   notifyTestAssigned(test: { school_id?: string; class_name?: string; title?: string; subject?: string; start_at?: string; duration_minutes?: number }) {
-    this.background(async () => {
-      const devices = await this.schoolDevices(String(test?.school_id || ''), test?.class_name || null, 'testReminders');
-      await this.deliver(devices, (device) => newTestMessage({
-        title: String(test.title || ''),
-        subject: String(test.subject || ''),
-        opensLabel: localDateTimeLabel(test.start_at, safeTimezone(device.timezone)),
-        durationMinutes: Math.max(1, Number(test.duration_minutes || 30))
-      }));
+    return this.background(async () => {
+      const schoolId = String(test.school_id || '').trim();
+      if (!schoolId) return;
+      const target = normalizeClass(test.class_name);
+      const roster = await this.studentAuth.listSchoolProgressStudents(schoolId);
+      const ids = roster.filter((s) => normalizeClass(s.className) && (!target || normalizeClass(s.className) === target))
+        .map((s) => s.id);
+      for (let offset = 0; offset < ids.length; offset += 100) {
+        const devices = await this.devicesWhere((q) => q.in('student_id', ids.slice(offset, offset + 100)));
+        const optedIn = devices.filter((d) => d.test_reminders !== false);
+        const eligible = new Set<string>();
+        await Promise.all([...new Set<string>(optedIn.map((device) => device.student_id))].map(async (id) => {
+          const profile = await this.studentAuth.resolveStudentProfile(id);
+          const currentClass = normalizeClass(profile.className);
+          if (profile.schoolId === schoolId && currentClass && (!target || currentClass === target)) eligible.add(id);
+        }));
+        await this.deliver(optedIn.filter((device) => eligible.has(device.student_id)), (device) => newTestMessage({
+          title: String(test.title || ''),
+          subject: String(test.subject || ''),
+          opensLabel: localDateTimeLabel(test.start_at, safeTimezone(device.timezone)),
+          durationMinutes: Math.max(1, Number(test.duration_minutes || 30))
+        }));
+      }
     });
   }
 

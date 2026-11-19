@@ -9,7 +9,6 @@ import '../screens/student/student_home_screen.dart';
 import '../screens/student/student_more_screen.dart';
 import '../screens/student/student_progress_screen.dart';
 import '../screens/student/student_services_screen.dart';
-import '../screens/student/subject_detail_screen.dart';
 import '../services/push_notification_service.dart';
 import '../state/focus_lock_provider.dart';
 import '../state/student_navigation_provider.dart';
@@ -81,7 +80,7 @@ class _StudentShellState extends State<StudentShell> {
     _push.openedRoute.value = null;
     final Widget? screen = switch (target.route) {
       'homework' => const HomeworkScreen(),
-      'tests' => target.subject != null ? SubjectDetailScreen(subject: target.subject!) : const HomeworkScreen(),
+      'tests' => HomeworkScreen(showMockTests: true, initialSubject: target.subject),
       'ai_tutor' => const StudentAiTutorScreen(),
       'announcements' => const StudentAnnouncementsScreen(),
       'progress' => const StudentProgressScreen(),

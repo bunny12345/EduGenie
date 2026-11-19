@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
@@ -177,7 +178,10 @@ class _FramedTextButton extends StatelessWidget {
 /// attachments, submission form (text + images) with a resubmit window, and
 /// expandable teacher feedback.
 class HomeworkScreen extends ConsumerStatefulWidget {
-  const HomeworkScreen({super.key});
+  const HomeworkScreen({super.key, this.showMockTests = false, this.initialSubject});
+
+  final bool showMockTests;
+  final String? initialSubject;
 
   @override
   ConsumerState<HomeworkScreen> createState() => _HomeworkScreenState();
@@ -187,10 +191,12 @@ class _HomeworkScreenState extends ConsumerState<HomeworkScreen> {
   String? _selectedSubject;
   _HwFilter _filter = _HwFilter.all;
   bool _showHistory = false;
-  bool _showTests = false;
+  late bool _showTests;
   String? _historyFromDate;
   late int _historyYear;
   late int _historyMonth;
+  late final AppLifecycleListener _lifecycle;
+  late final Timer _testsRefreshTimer;
 
   final Set<String> _expandedTeacherInfo = {};
   final Set<String> _expandedSubmission = {};
@@ -206,6 +212,13 @@ class _HomeworkScreenState extends ConsumerState<HomeworkScreen> {
   @override
   void initState() {
     super.initState();
+    _showTests = widget.showMockTests;
+    _lifecycle = AppLifecycleListener(onResume: _refreshTests);
+    _testsRefreshTimer = Timer.periodic(const Duration(seconds: 20), (_) {
+      if (WidgetsBinding.instance.lifecycleState == AppLifecycleState.resumed) {
+        _refreshTests();
+      }
+    });
     final now = DateTime.now();
     _historyYear = now.year;
     _historyMonth = now.month - 1;
@@ -213,11 +226,20 @@ class _HomeworkScreenState extends ConsumerState<HomeworkScreen> {
 
   @override
   void dispose() {
+    _testsRefreshTimer.cancel();
+    _lifecycle.dispose();
     for (final c in _answerControllers.values) {
       c.dispose();
     }
     super.dispose();
   }
+
+  void _refreshTests() {
+    if (!mounted || ModalRoute.of(context)?.isCurrent != true) return;
+    if (!ref.read(testsProvider).isLoading) ref.invalidate(testsProvider);
+  }
+
+  String _subjectKey(String? subject) => (subject ?? '').trim().toLowerCase();
 
   TextEditingController _answerCtrlFor(HomeworkItem h) {
     return _answerControllers.putIfAbsent(h.id, () => TextEditingController(text: h.latestAnswerText ?? ''));
@@ -301,7 +323,12 @@ class _HomeworkScreenState extends ConsumerState<HomeworkScreen> {
     final subjects = ref.watch(studentSubjectsProvider);
     final homeworkAsync = ref.watch(homeworkProvider);
     final testsAsync = ref.watch(testsProvider);
-    _selectedSubject ??= subjects.isNotEmpty ? subjects.first : null;
+    if (subjects.isNotEmpty && !subjects.contains(_selectedSubject)) {
+      _selectedSubject = subjects.firstWhere(
+        (s) => _subjectKey(s) == _subjectKey(widget.initialSubject),
+        orElse: () => subjects.first,
+      );
+    }
     final theme = _subjectTheme(_selectedSubject ?? '');
     final iconColor = SubjectPalette.colorFor(_selectedSubject ?? '');
 
@@ -363,21 +390,17 @@ class _HomeworkScreenState extends ConsumerState<HomeworkScreen> {
                                   : homeworkAsync.value!
                                         .where((h) => h.subject == s && !homeworkState(h).submitted && !homeworkState(h).hide)
                                         .length;
-                              // Mirrors web's getSubjectNotifications(): only tests the
-                              // student can still act on count — not ones already
-                              // completed, scheduled for later, or expired.
                               final pendingTests = testsAsync.value == null
                                   ? 0
                                   : testsAsync.value!
                                         .where(
                                           (t) =>
-                                              t.subject == s &&
+                                              _subjectKey(t.subject) == _subjectKey(s) &&
                                               !t.attempted &&
-                                              t.windowStatus != 'scheduled' &&
                                               t.windowStatus != 'expired',
                                         )
                                         .length;
-                              final pendingCount = _showTests ? pendingTests : pendingHomework;
+                              final pendingCount = _showTests ? pendingTests : pendingHomework + pendingTests;
                               return Padding(
                                 padding: const EdgeInsets.fromLTRB(0, 4, 8, 8),
                                 child: _SubjectPillChip(
@@ -673,7 +696,9 @@ class _HomeworkScreenState extends ConsumerState<HomeworkScreen> {
                               style: TextStyle(color: HomeworkColors.of(context).accent(Colors.red), fontSize: 12),
                             ),
                             data: (tests) {
-                              final subjectTests = tests.where((t) => t.subject == _selectedSubject).toList();
+                              final subjectTests = tests
+                                  .where((t) => _subjectKey(t.subject) == _subjectKey(_selectedSubject))
+                                  .toList();
                               return Container(
                                 width: double.infinity,
                                 padding: const EdgeInsets.all(14),

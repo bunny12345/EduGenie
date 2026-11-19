@@ -409,21 +409,19 @@ export class TestsController {
       }
       await this.exams.configure(testId, body.strictMode === true);
 
-      const res = await this.db.client.from('tests').update({ status: 'assigned', start_at: startAt, end_at: endAt }).eq('id', testId).select();
-      const test = (res as any)?.data?.[0] || null;
-      if (!test) {
-        const localTest = this.localFeed.listTests().find((t: any) => String(t?.id || '') === String(testId));
-        if (!localTest) return { success: false, error: 'Test not found', test: null };
-        const updated = { ...localTest, status: 'assigned', start_at: startAt, end_at: endAt };
-        this.localFeed.upsertTest(updated);
-        if (ownedTest.status !== 'assigned') this.notifications?.notifyTestAssigned(updated);
-        return { success: true, test: { id: updated.id, title: updated.title, subject: updated.subject, status: 'assigned', startAt, endAt } };
+      const patch = { status: 'assigned', start_at: startAt, end_at: endAt };
+      let test = { ...ownedTest, ...patch };
+      if (!testId.startsWith('local-test-')) {
+        const res = await this.db.client.from('tests').update(patch).eq('id', testId).select();
+        if (res.error) throw res.error;
+        if (!res.data?.[0]) return { success: false, error: 'Unable to confirm the test was assigned. Refresh and retry.', test: null };
+        test = res.data[0];
       }
       this.localFeed.upsertTest({
         id: test.id || testId,
         title: test.title,
         subject: test.subject,
-        class_name: test.class_name || test.className || '',
+        class_name: test.class_name || test.className || ownedTest.class_name || ownedTest.className || '',
         school_id: ownedTest.school_id,
         teacher_id: ownedTest.teacher_id,
         duration_minutes: test.duration_minutes || 30,
@@ -432,9 +430,9 @@ export class TestsController {
         end_at: test.end_at || endAt
       });
       if (ownedTest.status !== 'assigned') {
-        this.notifications?.notifyTestAssigned({
+        void this.notifications?.notifyTestAssigned({
           school_id: ownedTest.school_id,
-          class_name: test.class_name || test.className || ownedTest.class_name || '',
+          class_name: test.class_name || test.className || ownedTest.class_name || ownedTest.className || '',
           title: test.title,
           subject: test.subject,
           start_at: test.start_at || startAt,

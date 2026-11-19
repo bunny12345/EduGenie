@@ -102,11 +102,25 @@ test('subject average card labels the backend mock-test marks and preserves a re
   api.getProgress.mockResolvedValue({
     subjectScores: [{ subject: 'Science', score: 0, assigned: 1, completed: 1, testScore: 0 }],
   });
+
   render(<StudentDashboard studentId="student" onLogout={() => {}} />);
   expect(await screen.findByText('Average Mock Test Score')).toBeInTheDocument();
   const card = screen.getAllByRole('article').find((article) => within(article).queryByText('Average Mock Test Score'));
   expect(within(card).getByText('0%')).toBeInTheDocument();
   expect(api.getProgress).toHaveBeenCalledTimes(1);
+});
+
+test('subject badge counts assigned mock tests before they open, but not completed or expired tests', async () => {
+  window.location.hash = 'Home/Science';
+  api.getTests.mockResolvedValue({ tests: [
+    { id: 'future', title: 'Plant science mock test', subject: ' science ', windowStatus: 'scheduled', startAt: '2099-11-20T08:00:00Z' },
+    { id: 'done', title: 'Finished test', subject: 'Science', attempted: true },
+    { id: 'past', title: 'Expired test', subject: 'Science', windowStatus: 'expired' },
+  ] });
+  const { container } = render(<StudentDashboard studentId="student" onLogout={() => {}} />);
+  expect(await screen.findByText('Plant science mock test')).toBeInTheDocument();
+  expect(container.querySelector('.eg-subject-pill-badge')).toHaveTextContent(/^1$/);
+  expect(screen.queryByRole('button', { name: 'Start', exact: true })).not.toBeInTheDocument();
 });
 
 test('a strict test saves answers then freezes both answers and submission after a window interruption', async () => {

@@ -972,7 +972,7 @@ Cloud Messaging (no SMS or email):
 - **6:30 PM study plan:** pending homework count, what's due today or overdue, or a revision idea with Sam when nothing is assigned.
 - **6:30 PM test reminder:** sent when a mock test opens or closes tomorrow.
 - **9:00 PM recap:** that day's real activity on app or web (homework submitted, tests attempted, Sam chats, orchard, check-ins, progress), with praise and the streak, or a gentle nudge.
-- **Instant pushes:** sent when a teacher assigns homework, assigns a test, or posts an announcement. Future-scheduled announcements are skipped.
+- **Instant pushes:** sent when a teacher assigns homework, first assigns a test, or posts an announcement. A future-scheduled test notifies the current class roster immediately if students have mock-test notifications enabled. Future-scheduled announcements are skipped.
 
 Times use each phone's own timezone, and each type is sent at most once per
 day per device. The scheduler runs inside the backend every minute. It catches

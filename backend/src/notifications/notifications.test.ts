@@ -153,3 +153,36 @@ test('device registration keeps preferences per student and validates input', as
   await service.removeDevice('stu-1', 'tablet-token-0123456789abcd');
   assert.equal(tables.student_push_devices.length, 1);
 });
+
+test('scheduled assignments push to the current class and respect notification preferences', async () => {
+  const tables = fixture();
+  tables.student_push_devices = [
+    { student_id: 'current', token: 'current-phone', school_id: 'old-school', class_name: 'Class 7', timezone: 'Asia/Kolkata' },
+    { student_id: 'moved', token: 'moved-phone', school_id: 'sch-1', class_name: 'Class 8' },
+    { student_id: 'opted-out', token: 'muted-phone', school_id: 'sch-1', class_name: 'Class 8', test_reminders: false },
+    { student_id: 'other-class', token: 'other-class-phone', school_id: 'sch-1', class_name: 'Class 9' },
+  ];
+  const auth = {
+    listSchoolProgressStudents: async (schoolId: string) => {
+      assert.equal(schoolId, 'sch-1');
+      return [{ id: 'current', className: 'Class 8' }, { id: 'moved', className: 'Class 8' },
+        { id: 'opted-out', className: 'Class 8' }, { id: 'other-class', className: 'Class 9' }];
+    },
+    resolveStudentProfile: async (id: string) => ({ id, schoolId: id === 'moved' ? 'sch-2' : 'sch-1', className: 'Class 8' }),
+  } as any;
+  const sent: { token: string; message: ReturnType<typeof eveningPlanMessage> }[] = [];
+  const service = new NotificationsService(fakeDb(tables), {
+    configured: true,
+    send: async (token: string, message: ReturnType<typeof eveningPlanMessage>) => {
+      sent.push({ token, message });
+      return { ok: true, invalidToken: false };
+    },
+  } as any, null!, auth);
+  await service.notifyTestAssigned({
+    school_id: 'sch-1', class_name: 'Class 8', subject: 'Science', title: 'Plants', start_at: '2099-01-19T04:30:00Z',
+  });
+  assert.deepEqual(sent.map((s) => [s.token, s.message.type, s.message.route, s.message.data]), [
+    ['current-phone', 'new_test', 'tests', { subject: 'Science' }],
+  ]);
+  assert.match(sent[0].message.body, /Plants.*opens.*10:00 AM/);
+});
