@@ -467,8 +467,14 @@ test('missing configuration, provider failures and malformed provider replies ar
 test('manual registration requires verified phone for both roles and a real, nonfuture student date of birth', async (t) => {
   const f = fixture(t);
   const auth: StudentAuthService = Object.create(StudentAuthService.prototype);
-  const teacher = t.mock.method(auth, 'registerTeacherBySchool', async (payload: Row) => ({ ok: true, teacher: payload }));
-  const student = t.mock.method(auth, 'registerStudentBySchool', async (payload: Row) => ({ ok: true, student: payload }));
+  const teacher = t.mock.method(auth, 'registerTeacherBySchool', async (payload: Row, verify: () => Promise<unknown>) => {
+    await verify();
+    return { ok: true, teacher: payload };
+  });
+  const student = t.mock.method(auth, 'registerStudentBySchool', async (payload: Row, verify: () => Promise<unknown>) => {
+    await verify();
+    return { ok: true, student: payload };
+  });
   const score: LearningScoreService = Object.create(LearningScoreService.prototype);
   const controller = new SchoolController(auth, score, f.service, Object.create(RegistrationEmailService.prototype));
   const req = { user: { sub: scope.actorId, schoolId: scope.schoolId, role: 'school_admin' } };
@@ -495,15 +501,26 @@ test('manual registration requires verified phone for both roles and a real, non
   assert.equal(result.success, true);
   assert.equal(teacher.mock.calls[0].arguments[0].phone, '+919876543210');
   assert.equal(teacher.mock.calls[0].arguments[0].dateOfBirth, '1988-02-29');
-  await assert.rejects(controller.registerTeacher(req, { ...body, phoneVerificationId: verified.verificationId }), /used/);
-  assert.equal(teacher.mock.callCount(), 1);
+  await assert.rejects(
+    controller.registerTeacher(req, { ...body, phoneVerificationId: verified.verificationId }),
+    (error: unknown) => {
+      assert.ok(error instanceof BadRequestException);
+      assert.match(error.message, /used/);
+      assert.deepEqual(error.getResponse(), { message: error.message, verificationToRenew: 'phone' });
+      return true;
+    }
+  );
+  assert.equal(f.rows[0].status, 'used');
 });
 
 test('student registration passes the verified international number and required date of birth to storage', async (t) => {
   const f = fixture(t);
   const proof = await f.verified('student');
   const auth: StudentAuthService = Object.create(StudentAuthService.prototype);
-  const student = t.mock.method(auth, 'registerStudentBySchool', async (payload: Row) => ({ ok: true, student: payload }));
+  const student = t.mock.method(auth, 'registerStudentBySchool', async (payload: Row, verify: () => Promise<unknown>) => {
+    await verify();
+    return { ok: true, student: payload };
+  });
   const score: LearningScoreService = Object.create(LearningScoreService.prototype);
   const controller = new SchoolController(auth, score, f.service, Object.create(RegistrationEmailService.prototype));
   const result = await controller.registerStudent({ user: { sub: scope.actorId, schoolId: scope.schoolId, role: 'school_admin' } }, {
@@ -521,7 +538,13 @@ test('teacher creation validates and saves the phone and optional DOB in the acc
   const db: SupabaseService = Object.create(SupabaseService.prototype);
   db.client = { from(table: string) {
     assert.equal(table, 'teachers');
-    return { async insert(rows: Row[]) { inserted.push(...rows); return { error: null }; } };
+    const query = {
+      select: () => query, ilike: () => query, eq: () => query, order: () => query,
+      limit: async () => ({ data: [], error: null }),
+      range: async () => ({ data: [], error: null }),
+      async insert(rows: Row[]) { inserted.push(...rows); return { error: null }; }
+    };
+    return query;
   } };
   const auth: StudentAuthService = Object.create(StudentAuthService.prototype);
   Reflect.set(auth, 'db', db);
@@ -543,6 +566,161 @@ test('teacher creation validates and saves the phone and optional DOB in the acc
   assert.equal(result.teacher?.dateOfBirth, '1988-02-29');
   assert.equal(remembered?.dateOfBirth, '1988-02-29');
   assert.equal(inserted[0].date_of_birth, '1988-02-29');
+});
+
+test('school registration rejects saved login IDs and overlapping teacher subjects before consuming contact proof', async (t) => {
+  const tables: Record<string, Row[]> = {
+    teachers: [
+      { id: 'existing', school_id: 'school-a', login_id: 'Existing_Teacher', email: 'Existing@Example.test', subject: 'Computer  Science', grades: ['Class 7'] },
+      { id: 'legacy-math', school_id: 'school-a', login_id: 'legacy-math', subject: 'Mathamatics', grades: ['Class 7'] },
+      { id: 'standard-math', school_id: 'school-a', login_id: 'standard-math', subject: 'Mathematics', grades: ['Class 9'] },
+    ],
+    student_accounts: [{ login_id: 'Existing_Student' }],
+    students: [],
+  };
+  const inserted: Row[] = [];
+  const db: SupabaseService = Object.create(SupabaseService.prototype);
+  db.client = { from(table: string) {
+    const rows = tables[table] || [];
+    let selected = rows;
+    const query = {
+      select: () => query,
+      ilike(key: string, value: string) {
+        const literal = value.replace(/\\([\\%_])/g, '$1');
+        selected = selected.filter((row) => String(row[key] ?? '').toLowerCase() === literal);
+        return query;
+      },
+      eq(key: string, value: string) {
+        selected = rows.filter((row) => row[key] === value);
+        return query;
+      },
+      order: () => query,
+      range: async () => ({ data: selected, error: null }),
+      limit: async () => ({ data: selected.slice(0, 1), error: null }),
+      then(resolve: (result: Row) => void) { resolve({ data: selected, error: null }); },
+      delete() {
+        return { async eq(key: string, value: string) {
+          tables[table] = rows.filter((row) => row[key] !== value);
+          return { error: null };
+        } };
+      },
+      async insert(entries: Row[]) {
+        if (table === 'student_accounts' && entries[0].login_id === 'late-conflict') {
+          return { error: { code: '23505', message: 'duplicate key violates unique constraint "uq_student_accounts_login_id_lower"' } };
+        }
+        inserted.push(...entries);
+        rows.push(...entries);
+        return { error: null };
+      },
+    };
+    return query;
+  } };
+  const auth = new StudentAuthService(db, Object.create(EmailService.prototype));
+  Reflect.set(auth, 'rememberTeacher', () => {});
+  Reflect.set(auth, 'remember', () => {});
+  const admin = (schoolId: string) => ({ user: { sub: 'admin', schoolId, role: 'school_admin' } });
+  const verify = t.mock.fn(async () => {});
+  const phoneService = Object.assign(Object.create(RegistrationPhoneService.prototype), {
+    normalize: () => '+919876543210', consume: verify, restoreAfterConflict: async () => false,
+  });
+  const emailService = Object.assign(Object.create(RegistrationEmailService.prototype), {
+    normalizeEmail: (email?: string) => email || null,
+  });
+  const controller = new SchoolController(auth, Object.create(LearningScoreService.prototype), phoneService, emailService);
+  const base = { name: 'New account', password: 'fixture-password', phoneVerificationId: 'fixture' };
+  const teacher = { ...base, email: 'new@example.test', subject: ' computer science ', grades: ['Class 7'], loginId: 'new-teacher' };
+  const teacherLogin = await controller.registerTeacher(admin('school-b'), { ...teacher, loginId: ' EXISTING_TEACHER ' });
+  const teacherSubject = await controller.registerTeacher(admin('school-a'), teacher);
+  const teacherEmail = await controller.registerTeacher(admin('school-a'), {
+    ...teacher, grades: ['Class 8'], email: 'existing@example.test',
+  });
+  const studentLogin = await controller.registerStudent(admin('school-b'), {
+    ...base, loginId: ' EXISTING_STUDENT ', className: 'Class 7', dateOfBirth: '2014-06-15',
+  });
+  for (const result of [teacherLogin, teacherSubject, teacherEmail, studentLogin]) {
+    assert.ok('code' in result);
+    assert.equal(result.code, 'REGISTRATION_CONFLICT');
+    assert.equal(result.verificationToRenew, undefined);
+  }
+  assert.ok('error' in teacherEmail);
+  assert.match(teacherEmail.error, /email is already in use/);
+  assert.ok('error' in teacherLogin && 'error' in studentLogin && 'error' in teacherSubject);
+  assert.match(teacherLogin.error, /teacher login ID is already in use/);
+  assert.match(studentLogin.error, /student login ID is already in use/);
+  assert.match(teacherSubject.error, /already has a teacher for Class 7/);
+  assert.equal(verify.mock.callCount(), 0);
+  assert.equal(inserted.length, 0);
+
+  for (const [subject, grade] of [['Mathematics', 'Class 7'], ['Mathamatics', 'Class 9'], ['Maths', 'Class 7']]) {
+    const duplicate = await controller.registerTeacher(admin('school-a'), { ...teacher, subject, grades: ['Class 6', grade] });
+    assert.ok('error' in duplicate);
+    assert.match(duplicate.error, new RegExp(`already has a teacher for ${grade}`));
+    assert.equal(duplicate.verificationToRenew, undefined);
+  }
+  assert.equal(verify.mock.callCount(), 0);
+  assert.equal(inserted.length, 0);
+
+  const [first, second] = await Promise.all([
+    controller.registerTeacher(admin('school-a'), { ...teacher, grades: ['Class 8'] }),
+    controller.registerTeacher(admin('school-a'), { ...teacher, grades: ['Class 8'], loginId: 'another-teacher' }),
+  ]);
+  assert.equal(first.success, true);
+  assert.ok('error' in second);
+  assert.match(second.error, /already has a teacher for Class 8/);
+  assert.equal(verify.mock.callCount(), 1);
+  assert.equal(inserted.length, 1);
+
+  const student = { ...base, className: 'Class 7', dateOfBirth: '2014-06-15' };
+  const correctedStudent = await controller.registerStudent(admin('school-b'), { ...student, loginId: 'new-student' });
+  assert.equal(correctedStudent.success, true);
+  assert.equal(tables.students.length, 1);
+  const lateStudentConflict = await controller.registerStudent(admin('school-b'), { ...student, loginId: 'late-conflict' });
+  assert.ok('error' in lateStudentConflict);
+  assert.match(lateStudentConflict.error, /student login ID is already in use/);
+  assert.equal(lateStudentConflict.verificationToRenew, 'phone');
+  assert.equal(verify.mock.callCount(), 3);
+  assert.equal(tables.students.length, 1);
+
+  const mathInAnotherClass = await controller.registerTeacher(admin('school-a'), {
+    ...teacher, loginId: 'math-other-class', email: undefined, subject: 'Mathematics', grades: ['Class 6'],
+  });
+  assert.equal(mathInAnotherClass.success, true);
+});
+
+test('confirmed duplicate writes preserve the original proof until corrected registration succeeds', async (t) => {
+  const f = fixture(t);
+  const auth = new StudentAuthService(f.db, f.email);
+  const controller = new SchoolController(auth, Object.create(LearningScoreService.prototype), f.service, f.emailService);
+  const req = { user: { sub: scope.actorId, schoolId: scope.schoolId, role: 'school_admin' } };
+  const sms = await f.verified('teacher');
+  const email = await f.emailVerified('student');
+  const conflict = { ok: false, code: 'REGISTRATION_CONFLICT', error: 'Login ID already in use.' };
+  t.mock.method(auth, 'registerTeacherBySchool', async (payload: Row, verify: () => Promise<unknown>) => {
+    assert.equal(payload.email, null);
+    await verify();
+    return payload.loginId === 'duplicate' ? conflict : { ok: true, teacher: payload };
+  });
+  t.mock.method(auth, 'registerStudentBySchool', async (payload: Row, verify: () => Promise<unknown>) => {
+    await verify();
+    return payload.loginId === 'duplicate' ? conflict : { ok: true, student: payload };
+  });
+  const body = { ...input, name: 'Test account', password: 'fixture-password', loginId: 'duplicate' };
+  const teacher = { ...body, phoneVerificationId: sms.verificationId };
+  const student = { ...body, email: email.email, emailVerificationId: email.verificationId, dateOfBirth: '2014-06-15', className: 'Class 7' };
+  for (const [register, payload, row] of [
+    [controller.registerTeacher.bind(controller), teacher, f.rows[0]],
+    [controller.registerStudent.bind(controller), student, f.emailRows[0]],
+  ] as const) {
+    const expiresAt = row.expires_at;
+    const rejected = await register(req, payload);
+    assert.ok('verificationToRenew' in rejected);
+    assert.equal(rejected.verificationToRenew, undefined);
+    assert.equal(row.status, 'verified');
+    assert.equal(row.expires_at, expiresAt);
+    assert.equal((await register(req, { ...payload, loginId: 'corrected' })).success, true);
+    assert.equal(row.status, 'used');
+    await assert.rejects(register(req, { ...payload, loginId: 'another' }), /expired or used/);
+  }
 });
 
 test('email OTPs are scoped, hashed, checked and atomically consumed across service instances', async (t) => {
@@ -615,8 +793,14 @@ test('either email or SMS authorizes school registration, but a valid mobile num
       const f = fixture(t);
       const proof = await f.emailVerified(role);
       const auth: StudentAuthService = Object.create(StudentAuthService.prototype);
-      const teacher = t.mock.method(auth, 'registerTeacherBySchool', async (payload: Row) => ({ ok: true, teacher: payload }));
-      const student = t.mock.method(auth, 'registerStudentBySchool', async (payload: Row) => ({ ok: true, student: payload }));
+      const teacher = t.mock.method(auth, 'registerTeacherBySchool', async (payload: Row, verify: () => Promise<unknown>) => {
+        await verify();
+        return { ok: true, teacher: payload };
+      });
+      const student = t.mock.method(auth, 'registerStudentBySchool', async (payload: Row, verify: () => Promise<unknown>) => {
+        await verify();
+        return { ok: true, student: payload };
+      });
       const sms = t.mock.method(f.service, 'consume', async () => { throw new Error('SMS must not be required for email verification'); });
       const score: LearningScoreService = Object.create(LearningScoreService.prototype);
       const controller = new SchoolController(auth, score, f.service, f.emailService);

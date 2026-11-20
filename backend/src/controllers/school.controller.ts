@@ -1,4 +1,4 @@
-import { BadRequestException, Body, Controller, Delete, ForbiddenException, Get, Param, Patch, Post, Query, Req, UseGuards } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Delete, ForbiddenException, Get, Logger, Param, Patch, Post, Query, Req, UseGuards } from '@nestjs/common';
 import { AuthGuard } from '../auth/auth.guard';
 import { normalizeProfileFields, StudentAuthService } from '../auth/student-auth.service';
 import { LearningScoreService } from '../progress/learning-score.service';
@@ -26,18 +26,44 @@ export class SchoolController {
     }
   }
 
-  private async registrationContact(req: any, role: 'teacher' | 'student', body: any) {
+  private registrationContact(req: any, role: 'teacher' | 'student', body: any) {
     const scope = { schoolId: req.user.schoolId || req.user.sub, actorId: req.user.sub };
     const phone = this.registrationPhone.normalize(scope, role, body);
-    const email = this.registrationEmail.normalizeEmail(body?.email, role === 'teacher');
-    if (body?.emailVerificationId) {
-      await this.registrationEmail.consume(scope, role, body);
-    } else if (body?.phoneVerificationId) {
-      await this.registrationPhone.consume(scope, role, body);
-    } else {
+    const email = this.registrationEmail.normalizeEmail(body?.email, false);
+    if (!body?.emailVerificationId && !body?.phoneVerificationId) {
       throw new BadRequestException('Verify either the mobile number or email address before registering.');
     }
-    return { phone, email };
+    const channel = body.emailVerificationId ? 'email' : 'phone';
+    let verificationNeedsRenewal = false;
+    const verifyContact = async () => {
+      try {
+        await (channel === 'email'
+          ? this.registrationEmail.consume(scope, role, body)
+          : this.registrationPhone.consume(scope, role, body));
+        verificationNeedsRenewal = true;
+      } catch (error) {
+        if (error instanceof BadRequestException) {
+          throw new BadRequestException({ message: error.message, verificationToRenew: channel });
+        }
+        throw error;
+      }
+    };
+    const verificationToRenew = async (code?: string) => {
+      if (!verificationNeedsRenewal) return undefined;
+      // Only a confirmed duplicate insert rejection can release a proof claimed by this request.
+      if (code === 'REGISTRATION_CONFLICT') {
+        try {
+          const restored = await (channel === 'email'
+            ? this.registrationEmail.restoreAfterConflict(scope, role, body)
+            : this.registrationPhone.restoreAfterConflict(scope, role, body));
+          if (restored) return undefined;
+        } catch (_error) {
+          Logger.warn('Unable to restore contact verification after a duplicate registration.', SchoolController.name);
+        }
+      }
+      return channel;
+    };
+    return { phone, email, verifyContact, verificationToRenew };
   }
 
   private async contactScope(req: any, body: any) {
@@ -200,7 +226,7 @@ export class SchoolController {
       || dob > new Date().toISOString().slice(0, 10)) {
       throw new BadRequestException('A valid date of birth is required and cannot be in the future.');
     }
-    const { phone, email } = await this.registrationContact(req, 'student', body);
+    const { phone, email, verifyContact, verificationToRenew } = this.registrationContact(req, 'student', body);
     const res = await this.authFlow.registerStudentBySchool({
       schoolId,
       name: body?.name,
@@ -212,9 +238,9 @@ export class SchoolController {
       phone,
       email,
       createdBy: req?.user?.sub || null
-    });
-    if (!res.ok) return { success: false, error: res.error };
-    return { success: true, student: res.student };
+    }, verifyContact);
+    if (!res.ok) return { success: false as const, error: res.error, code: res.code, verificationToRenew: await verificationToRenew(res.code) };
+    return { success: true as const, student: res.student };
   }
 
   @Patch('students/:id')
@@ -302,7 +328,7 @@ export class SchoolController {
     const { dateOfBirth } = normalizeProfileFields({
       dateOfBirth: body?.dateOfBirth === '' ? undefined : body?.dateOfBirth ?? undefined
     });
-    const { phone, email } = await this.registrationContact(req, 'teacher', body);
+    const { phone, email, verifyContact, verificationToRenew } = this.registrationContact(req, 'teacher', body);
     const res = await this.authFlow.registerTeacherBySchool({
       schoolId,
       name: body?.name,
@@ -315,9 +341,9 @@ export class SchoolController {
       phone,
       grades: body?.grades,
       createdBy: req?.user?.sub || null
-    });
-    if (!res.ok) return { success: false, error: res.error };
-    return { success: true, teacher: res.teacher };
+    }, verifyContact);
+    if (!res.ok) return { success: false as const, error: res.error, code: res.code, verificationToRenew: await verificationToRenew(res.code) };
+    return { success: true as const, teacher: res.teacher };
   }
 
   @Post('registration/phone/request')

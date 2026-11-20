@@ -140,4 +140,13 @@ export class RegistrationEmailService {
     if (!rows.length) throw new BadRequestException('Email verification is missing, expired or used. Please verify this address again.');
     return input.email;
   }
+
+  async restoreAfterConflict(scope: Scope, role: Role, body: EmailInput & { emailVerificationId?: unknown }) {
+    const input = this.input(scope, { ...body, role });
+    const rows = await this.database<Verification[]>(this.db.client.from('registration_email_verifications')
+      .update({ status: 'verified' }).eq('id', body.emailVerificationId).eq('school_id', scope.schoolId)
+      .eq('actor_id', scope.actorId).eq('role', role).eq('email', input.email).eq('status', 'used')
+      .gte('expires_at', new Date(Date.now() + 1).toISOString()).select('*'));
+    return rows.length > 0;
+  }
 }

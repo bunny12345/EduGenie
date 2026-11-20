@@ -28,7 +28,7 @@ entered even when email is used for verification. India (+91) is selected
 initially; other countries are available. Mobile numbers are validated with
 `libphonenumber-js` and saved in international E.164 format.
 Student date of birth is required, must be a real date and cannot be in the future;
-teacher email remains required, and student email is optional when using SMS.
+email is optional for both teachers and students when registering by SMS.
 Teacher registration also accepts optional `dateOfBirth` (`YYYY-MM-DD`); when
 provided it must be a real, nonfuture date. It is saved in `teachers.date_of_birth`
 and the local account fallback, and returned for the existing teacher edit form.
@@ -108,8 +108,21 @@ restarts and cannot be reused concurrently across replicas. Email code hashes
 use the existing backend JWT signing secret; rotating it invalidates pending
 email codes. Changing a contact clears only that contact's verification; a valid
 proof for the other contact can still authorize registration.
-A failed/uncertain account-creation request requires
-verifying again before retrying. Expired verification rows can be removed by
+Manual registration checks login IDs case-insensitively within each role, across
+schools, using the existing unique login indexes. A teacher subject can only
+be assigned once per class in a school. The check treats `Mathematics`, `Math`,
+`Maths`, and the legacy misspelling `Mathamatics` as the same subject without
+renaming existing records. A detected conflict returns
+`{success: false, code: "REGISTRATION_CONFLICT", error}` before consuming
+verification, so the admin can correct the form and retry. Concurrent teacher
+registrations for one school are serialized within a backend process; the
+subject/class check is not a database constraint across replicas.
+An existing teacher email in the same school is also checked before consuming
+verification. A confirmed duplicate insert rejection restores the proof for
+the same contact without extending its expiry. Registration failures include `verificationToRenew: "phone" |
+"email"` when the selected proof was rejected or already consumed. The web form
+clears only that proof; an unaffected verified contact can still be used.
+Expired verification rows can be removed by
 periodic maintenance (`DELETE FROM public.registration_phone_verifications
 WHERE expires_at < now()` and the equivalent for
 `public.registration_email_verifications`); they cannot authorize registration.
@@ -118,9 +131,9 @@ at the SMTP provider when deploying multiple backend replicas.
 
 Missing configuration, delivery errors and storage failures are explicit and
 never treated as successful verification. There is no fake SMS/email OTP bypass,
-including in local mock-database mode. Existing login, invite-link registration
-and teacher-managed legacy registration are unchanged; these requirements apply
-to the school's two manual registration endpoints/forms. The mobile school-admin
+including in local mock-database mode. Login is unchanged, and the contact
+verification requirements apply only to the school's two manual registration
+endpoints/forms. The mobile school-admin
 placeholder remains unchanged.
 
 Validate without SMS/email/database access:

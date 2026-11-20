@@ -14,6 +14,15 @@ type StoredProfileFields = {
 };
 type StudentProfileRow = StoredProfileFields & { student_id: string; school_id: string; login_id?: string };
 
+const normalizeLoginId = (value: string) => String(value || '').trim().toLowerCase();
+function subjectKey(value?: string) {
+  const key = String(value || '').trim().replace(/\s+/g, ' ').toLowerCase();
+  return ['math', 'maths', 'mathamatics'].includes(key) ? 'mathematics' : key;
+}
+const loginIdConflict = (role: 'teacher' | 'student') =>
+  `This ${role} login ID is already in use. Choose a different login ID.`;
+const teacherEmailConflict = 'This email is already in use by a teacher in this school. Enter a different email address.';
+
 function storedProfile(row?: StoredProfileFields | null): ProfileFields {
   return { phone: row?.phone, email: row?.email, gender: row?.gender, dateOfBirth: row?.date_of_birth };
 }
@@ -568,7 +577,7 @@ export class StudentAuthService implements OnModuleInit {
     excludeTeacherId?: string
   ): { grade: string } | null {
     const sid = String(schoolId || '').trim();
-    const subj = String(subject || '').trim().toLowerCase();
+    const subj = subjectKey(subject);
     const gradeSet = new Set(normalizeGrades(grades).map((g) => g.toLowerCase()));
     const excludeId = String(excludeTeacherId || '').trim();
     if (!sid || !subj || !gradeSet.size) return null;
@@ -576,12 +585,59 @@ export class StudentAuthService implements OnModuleInit {
     for (const account of StudentAuthService.teacherAccounts.values()) {
       if (String(account.schoolId || '').trim() !== sid) continue;
       if (excludeId && String(account.teacherId || '').trim() === excludeId) continue;
-      if (String(account.subject || '').trim().toLowerCase() !== subj) continue;
+      if (subjectKey(account.subject) !== subj) continue;
       for (const g of normalizeGrades(account.grades)) {
         if (gradeSet.has(g.toLowerCase())) return { grade: g };
       }
     }
     return null;
+  }
+
+  private async registrationValueExists(table: 'teachers' | 'student_accounts', column: 'login_id' | 'email', value: string, schoolId?: string) {
+    let query = this.db.client.from(table).select(column);
+    if (schoolId) query = query.eq('school_id', schoolId);
+    const result = await (this.db.client.isMock
+      ? query.eq(column, value)
+      : query.ilike(column, value.replace(/[\\%_]/g, '\\$&'))).limit(1);
+    if (result?.error) throw result.error;
+    return Array.isArray(result?.data) && result.data.length > 0;
+  }
+
+  private async registeredSubjectGrade(schoolId: string, subject: string, grades: string[]) {
+    const local = this.findSubjectGradeConflict(schoolId, subject, grades);
+    if (local || !grades.length) return local?.grade;
+    const key = subjectKey(subject);
+    const pageSize = 100;
+    for (let offset = 0; ; offset += pageSize) {
+      const { data, error } = await this.db.client.from('teachers').select('id, subject, grades')
+        .eq('school_id', schoolId).order('id').range(offset, offset + pageSize - 1);
+      if (error) throw error;
+      const rows: Array<{ subject?: string; grades?: string[] }> = data || [];
+      for (const row of rows) {
+        if (subjectKey(row.subject) !== key) continue;
+        const overlapping = normalizeGrades(row.grades).find((grade) => grades.includes(grade));
+        if (overlapping) return overlapping;
+      }
+      if (rows.length < pageSize) return undefined;
+    }
+  }
+
+  // Keep the conflict check and insert together for requests handled by this backend.
+  private static registrationQueue = new Map<string, Promise<void>>();
+
+  private async withRegistrationLock<T>(key: string, register: () => Promise<T>): Promise<T> {
+    const queue = StudentAuthService.registrationQueue;
+    const previous = queue.get(key);
+    let release!: () => void;
+    const current = new Promise<void>((resolve) => { release = resolve; });
+    queue.set(key, current);
+    try {
+      await previous;
+      return await register();
+    } finally {
+      release();
+      if (queue.get(key) === current) queue.delete(key);
+    }
   }
 
   private rememberSchool(account: SchoolAccount) {
@@ -880,7 +936,7 @@ export class StudentAuthService implements OnModuleInit {
   async registerTeacherBySchool(payload: {
     schoolId: string;
     name: string;
-    email: string;
+    email?: string;
     subject?: string;
     loginId: string;
     password: string;
@@ -889,32 +945,53 @@ export class StudentAuthService implements OnModuleInit {
     phone?: string;
     grades?: string[];
     createdBy?: string;
-  }) {
+  }, verifyContact?: () => Promise<unknown>) {
     const schoolId = String(payload.schoolId || '').trim();
     const name = String(payload.name || '').trim();
     const email = String(payload.email || '').trim().toLowerCase();
     const subject = String(payload.subject || '').trim() || 'General';
-    const loginId = String(payload.loginId || '').trim().toLowerCase();
+    const loginId = normalizeLoginId(payload.loginId);
     const password = String(payload.password || '');
     const grades = normalizeGrades(payload.grades);
     const { dateOfBirth } = normalizeProfileFields({
       dateOfBirth: payload.dateOfBirth === '' ? undefined : payload.dateOfBirth ?? undefined
     });
 
-    if (!schoolId || !name || !email || !loginId || !password) {
-      return { ok: false, error: 'schoolId, name, email, loginId and password are required' };
+    if (!schoolId || !name || !loginId || !password) {
+      return { ok: false as const, error: 'School, name, login ID and password are required.', code: undefined };
+    }
+    if (!email && !verifyContact) {
+      return { ok: false as const, error: 'Email is required for teacher invite registration.', code: undefined };
     }
     if (password.length < 8) {
-      return { ok: false, error: 'Password must be at least 8 characters long' };
+      return { ok: false as const, error: 'Password must be at least 8 characters long', code: undefined };
     }
-    if (this.findTeacher(loginId)) {
-      return { ok: false, error: 'Teacher login ID already exists' };
-    }
-    const conflict = this.findSubjectGradeConflict(schoolId, subject, grades);
-    if (conflict) {
-      return { ok: false, error: `${subject} teacher already exists for ${conflict.grade}.` };
-    }
+    const registration = { ...payload, schoolId, name, email, subject, loginId, password, dateOfBirth, grades };
+    return this.withRegistrationLock(`teacher-login:${loginId}`, () =>
+      this.withRegistrationLock(`teacher-school:${schoolId}`, () => this.createTeacherRegistration(registration, verifyContact)));
+  }
 
+  private async createTeacherRegistration(payload: {
+    schoolId: string; name: string; email: string; subject: string; loginId: string;
+    password: string; grades: string[]; dateOfBirth?: string; gender?: string; phone?: string; createdBy?: string;
+  }, verifyContact?: () => Promise<unknown>) {
+    const { schoolId, name, email, subject, loginId, password, grades, dateOfBirth } = payload;
+    try {
+      if (this.findTeacher(loginId) || await this.registrationValueExists('teachers', 'login_id', loginId)) {
+        return { ok: false, error: loginIdConflict('teacher'), code: 'REGISTRATION_CONFLICT' };
+      }
+      const grade = await this.registeredSubjectGrade(schoolId, subject, grades);
+      if (grade) {
+        return { ok: false, error: `${subject} already has a teacher for ${grade}. Choose a different subject or class.`, code: 'REGISTRATION_CONFLICT' };
+      }
+      if (email && await this.registrationValueExists('teachers', 'email', email, schoolId)) {
+        return { ok: false, error: teacherEmailConflict, code: 'REGISTRATION_CONFLICT' };
+      }
+    } catch (_error) {
+      Logger.error('Unable to check teacher registration availability.', 'StudentAuth');
+      throw new ServiceUnavailableException('Could not check teacher registration. Please try again.');
+    }
+    await verifyContact?.();
     const teacherId = randomUUID();
     const passwordSalt = randomBytes(12).toString('hex');
     const passwordHash = this.hashPassword(password, passwordSalt);
@@ -933,15 +1010,13 @@ export class StudentAuthService implements OnModuleInit {
       dateOfBirth,
       gender: String(payload.gender || '').trim().toLowerCase() || undefined
     };
-    this.rememberTeacher(account);
-
     const gender = String(payload.gender || '').trim().toLowerCase() || null;
 
     const baseRow = {
       id: teacherId,
       school_id: schoolId,
       name,
-      email,
+      email: email || null,
       subject,
       gender,
       ...(dateOfBirth ? { date_of_birth: dateOfBirth } : {}),
@@ -954,26 +1029,20 @@ export class StudentAuthService implements OnModuleInit {
     };
 
     try {
-      const insertRes: any = await this.db.client
-        .from('teachers')
-        .insert([{ ...baseRow, grades }]);
-      // Supabase returns an error object (rather than throwing) when the
-      // `grades` column hasn't been migrated yet — retry without it so the
-      // teacher row is still persisted. Grades remain available via the local
-      // account store and resolveTeacherGrades().
-      if (insertRes && insertRes.error) {
-        await this.db.client.from('teachers').insert([baseRow]);
+      const { error } = await this.db.client.from('teachers').insert([{ ...baseRow, grades }]);
+      if (error?.code === '23505') {
+        const emailConflict = error.message?.includes('uq_teachers_email_per_school_lower');
+        const loginConflict = error.message?.includes('uq_teachers_login_id_lower');
+        if (emailConflict || loginConflict) {
+          return { ok: false, error: emailConflict ? teacherEmailConflict : loginIdConflict('teacher'), code: 'REGISTRATION_CONFLICT' };
+        }
       }
-    } catch (e) {
-      try {
-        await this.db.client.from('teachers').insert([baseRow]);
-      } catch (_e2) {
-        // fallback only.
-      }
+      if (error) throw error;
+    } catch (_error) {
+      Logger.error('Unable to save teacher registration.', 'StudentAuth');
+      return { ok: false, error: 'Could not save the teacher account. Please try again.' };
     }
-    // Confirm the row landed — students reference teachers, so a missing row
-    // would block student registration for this teacher's classes.
-    await this.ensureTeacherRowInDb(account);
+    this.rememberTeacher(account);
 
     return {
       ok: true,
@@ -981,7 +1050,7 @@ export class StudentAuthService implements OnModuleInit {
         id: teacherId,
         schoolId,
         name,
-        email,
+        email: email || null,
         subject,
         loginId,
         grades,
@@ -2110,8 +2179,8 @@ export class StudentAuthService implements OnModuleInit {
     dateOfBirth?: string;
     phone?: string;
     email?: string;
-  }) {
-    const loginId = String(payload.loginId || '').trim().toLowerCase();
+  }, verifyContact?: () => Promise<unknown>) {
+    const loginId = normalizeLoginId(payload.loginId);
     const password = String(payload.password || '');
     const name = String(payload.name || '').trim();
     const className = String(payload.className || '').trim() || 'Class';
@@ -2121,14 +2190,28 @@ export class StudentAuthService implements OnModuleInit {
     const email = String(payload.email || '').trim().toLowerCase() || null;
 
     if (!loginId || !password || !name) {
-      return { ok: false, error: 'loginId, password and name are required' };
+      return { ok: false as const, error: 'loginId, password and name are required', code: undefined };
     }
 
-    const existingLocal = this.findLocal(loginId);
-    if (existingLocal) {
-      return { ok: false, error: 'Login ID already exists' };
-    }
+    return this.withRegistrationLock(`student-login:${loginId}`, () =>
+      this.createStudentRegistration({ ...payload, loginId, password, name, className, gender, dateOfBirth, phone, email }, verifyContact));
+  }
 
+  private async createStudentRegistration(payload: {
+    loginId: string; password: string; name: string; className: string; gender: string | null;
+    dateOfBirth: string | null; phone: string | null; email: string | null;
+    studentId?: string; schoolId?: string; teacherId?: string; createdBy?: string;
+  }, verifyContact?: () => Promise<unknown>) {
+    const { loginId, password, name, className, gender, dateOfBirth, phone, email } = payload;
+    try {
+      if (this.findLocal(loginId) || await this.registrationValueExists('student_accounts', 'login_id', loginId)) {
+        return { ok: false, error: loginIdConflict('student'), code: 'REGISTRATION_CONFLICT' };
+      }
+    } catch (_error) {
+      Logger.error('Unable to check student registration availability.', 'StudentAuth');
+      throw new ServiceUnavailableException('Could not check student registration. Please try again.');
+    }
+    await verifyContact?.();
     const studentId = payload.studentId || randomUUID();
     const passwordSalt = randomBytes(12).toString('hex');
     const passwordHash = this.hashPassword(password, passwordSalt);
@@ -2147,18 +2230,6 @@ export class StudentAuthService implements OnModuleInit {
       phone: phone || undefined,
       email: email || undefined
     };
-
-    // Keep local copy so auth works even when backing table is absent in dev.
-    this.remember(account);
-
-    try {
-      const dup = await this.db.client.from('student_accounts').select('*').eq('login_id', loginId).limit(1);
-      if (Array.isArray((dup as any)?.data) && (dup as any).data.length) {
-        return { ok: false, error: 'Login ID already exists' };
-      }
-    } catch (e) {
-      // Ignore duplicate check failures in local/mock mode.
-    }
 
     try {
       await this.db.client.from('students').insert([
@@ -2182,7 +2253,7 @@ export class StudentAuthService implements OnModuleInit {
     // throw, so verify the row actually landed and repair it if it did not.
     // Without this the student would exist only locally and would silently miss
     // out on class-scoped content.
-    await this.ensureStudentRowInDb({
+    const rosterSaved = await this.ensureStudentRowInDb({
       studentId,
       name,
       className,
@@ -2190,9 +2261,11 @@ export class StudentAuthService implements OnModuleInit {
       teacherId: payload.teacherId,
       createdBy: payload.createdBy
     });
+    if (!rosterSaved) return { ok: false, error: 'Could not save the student roster entry. Please try again.' };
 
+    let writeError: { code?: string; message?: string } | null;
     try {
-      await this.db.client
+      const { error } = await this.db.client
         .from('student_accounts')
         .insert([
           {
@@ -2212,9 +2285,27 @@ export class StudentAuthService implements OnModuleInit {
             created_at: new Date().toISOString()
           }
         ]);
-    } catch (e) {
-      // In local prototyping, the table may not exist; local memory remains source of truth.
+      writeError = error;
+    } catch (_error) {
+      Logger.error('Unable to confirm student registration.', 'StudentAuth');
+      return { ok: false, error: 'Could not confirm the student account. Check the roster before retrying.' };
     }
+    if (writeError) {
+      if (!payload.studentId) {
+        try {
+          const { error } = await this.db.client.from('students').delete().eq('id', studentId);
+          if (error) throw error;
+        } catch (_cleanupError) {
+          Logger.error('Unable to remove the roster entry after student registration failed.', 'StudentAuth');
+        }
+      }
+      if (writeError.code === '23505' && writeError.message?.includes('uq_student_accounts_login_id_lower')) {
+        return { ok: false, error: loginIdConflict('student'), code: 'REGISTRATION_CONFLICT' };
+      }
+      Logger.error('Unable to save student registration.', 'StudentAuth');
+      return { ok: false, error: 'Could not save the student account. Please try again.' };
+    }
+    this.remember(account);
 
     return {
       ok: true,
@@ -2332,13 +2423,13 @@ export class StudentAuthService implements OnModuleInit {
     phone?: string;
     email?: string;
     createdBy?: string;
-  }) {
+  }, verifyContact?: () => Promise<unknown>) {
     const schoolId = String(payload.schoolId || '').trim();
     const className = String(payload.className || '').trim();
-    if (!schoolId) return { ok: false, error: 'schoolId is required' };
-    if (!className) return { ok: false, error: 'Class is required' };
+    if (!schoolId) return { ok: false as const, error: 'schoolId is required', code: undefined };
+    if (!className) return { ok: false as const, error: 'Class is required', code: undefined };
     if (String(payload.password || '').length < 8) {
-      return { ok: false, error: 'Password must be at least 8 characters long' };
+      return { ok: false as const, error: 'Password must be at least 8 characters long', code: undefined };
     }
 
     // File the student under the class teacher when there is exactly one, so
@@ -2364,7 +2455,7 @@ export class StudentAuthService implements OnModuleInit {
       phone: payload.phone,
       email: payload.email,
       createdBy: payload.createdBy
-    });
+    }, verifyContact);
   }
 
   async schoolAccountContact(schoolId: string, role: 'teacher' | 'student', id: string) {

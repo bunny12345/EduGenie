@@ -101,3 +101,15 @@ test('registration still displays business errors returned in success-false enve
   });
   await expect(schoolRegisterStudent({})).rejects.toThrow('Login ID already exists');
 });
+
+test('registration forwards which verification proof must be renewed', async () => {
+  setRuntimeDevToken('school-portal-token');
+  global.fetch.mockResolvedValue({
+    ok: false, status: 400,
+    json: async () => ({ message: 'Email verification is missing, expired or used.', verificationToRenew: 'email' }),
+  });
+  await expect(schoolRegisterStudent({})).rejects.toMatchObject({
+    message: 'Email verification is missing, expired or used.',
+    verificationToRenew: 'email',
+  });
+});

@@ -1102,7 +1102,10 @@ async function schoolRegistrationRequest(path, payload, method = 'POST') {
   });
   const data = await res.json();
   if (!res.ok || data?.success !== true) {
-    throw new Error(data?.message || data?.error || 'The registration request failed. Please try again.');
+    const error = new Error(data?.message || data?.error || 'The registration request failed. Please try again.');
+    error.code = data?.code;
+    error.verificationToRenew = data?.verificationToRenew;
+    throw error;
   }
   return data;
 }

@@ -168,7 +168,7 @@ test('legacy accounts can update personal details without adding or verifying ab
   expect(requestRegistrationEmailCode).not.toHaveBeenCalled();
 });
 
-test('teacher registration defaults to India and requires successful SMS verification before saving', async () => {
+test('teacher registration can retry a duplicate subject with the same SMS proof and no email', async () => {
   window.location.hash = '#teachers';
   schoolRegisterTeacher.mockImplementation(async (payload) => {
     const teacher = { id: 'new-teacher', ...payload };
@@ -181,6 +181,7 @@ test('teacher registration defaults to India and requires successful SMS verific
   const create = screen.getByRole('button', { name: 'Create Teacher Account' });
   expect(country).toHaveValue('IN');
   expect(phone).toBeRequired();
+  expect(screen.getByLabelText('Teacher email address')).not.toBeRequired();
   expect(create).toBeDisabled();
   fireEvent.change(phone, { target: { value: '123' } });
   fireEvent.click(screen.getByRole('button', { name: 'Send SMS code' }));
@@ -204,7 +205,6 @@ test('teacher registration defaults to India and requires successful SMS verific
   });
   expect(create).toBeEnabled();
   fireEvent.change(screen.getByPlaceholderText('Teacher name'), { target: { value: 'Teacher' } });
-  fireEvent.change(screen.getByPlaceholderText('Teacher email'), { target: { value: 'teacher@example.test' } });
   const subject = screen.getByLabelText('Subject');
   const suggestions = document.getElementById(subject.getAttribute('list'));
   expect(suggestions.querySelector('option[value="Physics"]')).not.toBeNull();
@@ -216,9 +216,17 @@ test('teacher registration defaults to India and requires successful SMS verific
   fireEvent.change(dob, { target: { value: '1988-02-29' } });
   fireEvent.click(screen.getByRole('button', { name: 'Select classes this teacher handles' }));
   fireEvent.click(screen.getByRole('checkbox', { name: 'Class 7' }));
+  schoolRegisterTeacher.mockRejectedValueOnce(
+    new Error('Physics already has a teacher for Class 7. Choose a different subject or class.')
+  );
   fireEvent.click(create);
-  await waitFor(() => expect(schoolRegisterTeacher).toHaveBeenCalledWith(expect.objectContaining({
-    phone: '+919876543210', country: 'IN', phoneVerificationId: 'phone-proof', dateOfBirth: '1988-02-29', subject: 'Physics'
+  expect(await screen.findByRole('alert')).toHaveTextContent('Physics already has a teacher for Class 7.');
+  expect(screen.getByRole('alert')).not.toHaveTextContent(/verify.*again/i);
+  expect(create).toBeEnabled();
+  fireEvent.change(subject, { target: { value: 'Chemistry' } });
+  fireEvent.click(create);
+  await waitFor(() => expect(schoolRegisterTeacher).toHaveBeenLastCalledWith(expect.objectContaining({
+    phone: '+919876543210', country: 'IN', phoneVerificationId: 'phone-proof', dateOfBirth: '1988-02-29', subject: 'Chemistry', email: undefined
   })));
   await waitFor(() => expect(phone).toHaveValue(''));
   expect(create).toBeDisabled();
@@ -272,9 +280,18 @@ test('student registration requires date of birth and verified mobile while emai
   fireEvent.change(screen.getByPlaceholderText('Student login ID'), { target: { value: 'student-test' } });
   fireEvent.change(screen.getByPlaceholderText('Strong password (min 8 characters)'), { target: { value: 'fixture-password' } });
   fireEvent.change(screen.getByLabelText('Class'), { target: { value: 'Class 7' } });
+  schoolRegisterStudent.mockRejectedValueOnce(Object.assign(
+    new Error('This student login ID is already in use. Choose a different login ID.'),
+    { code: 'REGISTRATION_CONFLICT' }
+  ));
   fireEvent.click(create);
-  await waitFor(() => expect(schoolRegisterStudent).toHaveBeenCalledWith(expect.objectContaining({
-    phone: '+919876543210', country: 'IN', phoneVerificationId: 'phone-proof', dateOfBirth: '2014-06-15'
+  expect(await screen.findByRole('alert')).toHaveTextContent('This student login ID is already in use.');
+  expect(screen.getByRole('alert')).not.toHaveTextContent(/verify.*again/i);
+  expect(create).toBeEnabled();
+  fireEvent.change(screen.getByPlaceholderText('Student login ID'), { target: { value: 'student-corrected' } });
+  fireEvent.click(create);
+  await waitFor(() => expect(schoolRegisterStudent).toHaveBeenLastCalledWith(expect.objectContaining({
+    phone: '+919876543210', country: 'IN', phoneVerificationId: 'phone-proof', dateOfBirth: '2014-06-15', loginId: 'student-corrected'
   })));
   await waitFor(() => expect(phone).toHaveValue(''));
   expect(create).toBeDisabled();

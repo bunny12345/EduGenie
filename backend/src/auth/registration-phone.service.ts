@@ -187,4 +187,14 @@ export class RegistrationPhoneService {
     if (!rows.length) throw new BadRequestException('Mobile verification is missing, expired or used. Please verify this number again.');
     return input.phone;
   }
+
+  async restoreAfterConflict(scope: Scope, role: RegistrationRole, body: PhoneInput & { phoneVerificationId?: unknown }) {
+    const input = this.input(scope, { ...body, role });
+    const rows = await this.database<Verification[]>(this.db.client.from(this.table(role))
+      .update({ status: 'verified' }).eq('id', body.phoneVerificationId)
+      .eq('school_id', scope.schoolId).eq('actor_id', scope.actorId).eq('role', role)
+      .eq('phone', input.phone).eq('country', input.country).eq('status', 'used')
+      .gte('expires_at', new Date(Date.now() + 1).toISOString()).select('*'));
+    return rows.length > 0;
+  }
 }
