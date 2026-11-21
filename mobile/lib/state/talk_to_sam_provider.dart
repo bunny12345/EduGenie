@@ -214,17 +214,17 @@ class TalkToSamNotifier extends Notifier<TalkToSamState> {
   /// that specific button can show "Generating Voice..."/"Stop Voice" while
   /// every other message's button is disabled, mirroring web's
   /// `chatVoiceLoadingId`/`chatVoicePlayId`.
-  Future<void> speak(String text, {bool autoListen = false, bool requireSession = false, String? messageId}) async {
+  Future<void> speak(String text, {bool autoListen = false, bool requireSession = false, String? messageId, String language = 'en-US', String subject = ''}) async {
     final cleanText = text.trim();
     if (cleanText.isEmpty) return;
     if (state.speaking) {
-      _speakQueue.add(_QueuedSpeech(cleanText, autoListen, requireSession, messageId));
+      _speakQueue.add(_QueuedSpeech(cleanText, autoListen, requireSession, messageId, language, subject));
       return;
     }
-    await _playSpeech(cleanText, autoListen, requireSession, messageId);
+    await _playSpeech(cleanText, autoListen, requireSession, messageId, language, subject);
   }
 
-  Future<void> _playSpeech(String text, bool autoListen, bool requireSession, String? messageId) async {
+  Future<void> _playSpeech(String text, bool autoListen, bool requireSession, String? messageId, String language, String subject) async {
     final studentId = ref.read(sessionProvider).value?.userId ?? '';
     if (studentId.isEmpty) return;
     final revision = _speechRevision;
@@ -240,7 +240,7 @@ class TalkToSamNotifier extends Notifier<TalkToSamState> {
       caption: requireSession ? text : null,
     );
     try {
-      final tts = await ref.read(chatApiServiceProvider).generateLocalTtsAudio(tutorSpeechText(text), studentId, voice: 'shimmer', speed: 1.15, format: 'wav');
+      final tts = await ref.read(chatApiServiceProvider).generateLocalTtsAudio(tutorSpeechText(text), studentId, targetLanguage: language, voice: 'shimmer', speed: 1.15, format: 'wav', subject: subject);
       if (!valid()) return;
       // Sam may have been closed while this request was in flight — skip
       // playback so a closed popup can't suddenly start talking. Mirrors
@@ -306,7 +306,7 @@ class TalkToSamNotifier extends Notifier<TalkToSamState> {
     if (!valid() || failed) return;
     if (_speakQueue.isNotEmpty) {
       final next = _speakQueue.removeAt(0);
-      unawaited(_playSpeech(next.text, next.autoListen, next.requireSession, next.messageId));
+      unawaited(_playSpeech(next.text, next.autoListen, next.requireSession, next.messageId, next.language, next.subject));
     } else if (autoListen && state.sessionActive) {
       await startRecording();
     }
@@ -453,7 +453,7 @@ class TalkToSamNotifier extends Notifier<TalkToSamState> {
       final messages = ref.read(tutorProvider).messages;
       final lastAi = messages.where((m) => !m.isUser).lastOrNull;
       if (lastAi != null && state.sessionActive) {
-        await speak(lastAi.text, autoListen: true, requireSession: true);
+        await speak(lastAi.text, autoListen: true, requireSession: true, language: lastAi.speechLanguage, subject: lastAi.speechSubject);
       }
     } catch (e) {
       state = state.copyWith(busy: false, error: 'Voice input failed. Please try again.');
@@ -477,8 +477,10 @@ class _QueuedSpeech {
   final bool autoListen;
   final bool requireSession;
   final String? messageId;
+  final String language;
+  final String subject;
 
-  const _QueuedSpeech(this.text, this.autoListen, this.requireSession, this.messageId);
+  const _QueuedSpeech(this.text, this.autoListen, this.requireSession, this.messageId, this.language, this.subject);
 }
 
 final talkToSamProvider = NotifierProvider<TalkToSamNotifier, TalkToSamState>(TalkToSamNotifier.new);

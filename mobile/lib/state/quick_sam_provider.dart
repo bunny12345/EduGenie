@@ -34,6 +34,7 @@ class QuickSamState {
   final bool transcribing;
   // True only while Sam's voice is audible — drives the avatar's talking.
   final bool voicePlaying;
+  final bool speechActive;
   final bool muted;
   final int speechRate;
   final String? error;
@@ -47,6 +48,7 @@ class QuickSamState {
     this.recording = false,
     this.transcribing = false,
     this.voicePlaying = false,
+    this.speechActive = false,
     this.muted = false,
     this.speechRate = 1,
     this.error,
@@ -61,6 +63,7 @@ class QuickSamState {
     bool? recording,
     bool? transcribing,
     bool? voicePlaying,
+    bool? speechActive,
     bool? muted,
     int? speechRate,
     String? error,
@@ -73,6 +76,7 @@ class QuickSamState {
     recording: recording ?? this.recording,
     transcribing: transcribing ?? this.transcribing,
     voicePlaying: voicePlaying ?? this.voicePlaying,
+    speechActive: speechActive ?? this.speechActive,
     muted: muted ?? this.muted,
     speechRate: speechRate ?? this.speechRate,
     error: clearError ? null : (error ?? this.error),
@@ -156,20 +160,40 @@ class QuickSamNotifier extends Notifier<QuickSamState> {
 
   void open({String firstName = '', String? homeworkId}) {
     _session++;
+    _cancel?.cancel();
+    _cancel = null;
+    final stopped = _stopAudio();
+    final session = _session;
+    final revision = _speechRevision;
     final hi = firstName.isNotEmpty ? 'Hi $firstName!' : 'Hi!';
+    final greeting = "$hi 👋 I'm Sam. What would you like to learn today? You can ask me about any of your class subjects. You don't need to select a unit.";
     state = QuickSamState(
       open: true,
       muted: state.muted,
       speechRate: state.speechRate,
       homeworkId: homeworkId,
+      speechActive: !state.muted && homeworkId == null,
       messages: [
         QuickSamMessage(
           isUser: false,
           local: true,
-          text: "$hi 👋 I'm Sam. Ask me a question about any of your class subjects. You don't need to select a unit.",
+          text: greeting,
         ),
       ],
     );
+    if (!state.muted && homeworkId == null) {
+      unawaited(_greet(stopped, greeting, session, revision));
+    }
+  }
+
+  Future<void> _greet(Future<void> stopped, String greeting, int session, int revision) async {
+    await stopped;
+    if (session != _session || revision != _speechRevision || !state.open) return;
+    if (state.error != null) {
+      state = state.copyWith(speechActive: false);
+      return;
+    }
+    await _speak(greeting, session);
   }
 
   /// Ends the session and forgets the whole conversation.
@@ -225,7 +249,7 @@ class QuickSamNotifier extends Notifier<QuickSamState> {
         followups: followups,
         sending: false,
       );
-      unawaited(_speak(reply, session));
+      unawaited(_speak(reply, session, language: res['speechLanguage'] as String? ?? 'en-US', subject: res['speechSubject'] as String? ?? ''));
     } catch (error, stack) {
       if (session != _session) return;
       debugPrint('Quick Sam chat failed: $error\n$stack');
@@ -235,24 +259,32 @@ class QuickSamNotifier extends Notifier<QuickSamState> {
     }
   }
 
-  Future<void> _speak(String text, int session) async {
-    final speech = tutorSpeechText(text);
+  Future<void> _speak(String text, int session, {String language = 'en-US', String subject = ''}) async {
+    var speech = tutorSpeechText(text);
     if (speech.isEmpty || state.muted || _studentId.isEmpty) return;
     final revision = _speechRevision;
     bool valid() => session == _session && revision == _speechRevision && !state.muted;
     final service = ref.read(chatApiServiceProvider);
     final studentId = _studentId;
-    final chunks = splitSamSpeech(speech);
+    final speechPrepared = language != 'en-US';
+    state = state.copyWith(speechActive: true);
     Future<({Map<String, dynamic>? tts, Object? error})> prepare(String chunk) async {
       try {
-        return (tts: await service.generateLocalTtsAudio(chunk, studentId, voice: 'shimmer', speed: 1, format: 'wav'), error: null);
+        return (tts: await service.generateLocalTtsAudio(chunk, studentId, targetLanguage: language, voice: 'shimmer', speed: 1, format: 'wav', subject: subject, speechPrepared: speechPrepared), error: null);
       } catch (error) {
         return (tts: null, error: error);
       }
     }
 
-    var pending = prepare(chunks.first);
     try {
+      if (speechPrepared) {
+        final result = await service.prepareSamSpeech(speech, studentId, targetLanguage: language, subject: subject);
+        if (!valid()) return;
+        speech = (result['speechText'] as String? ?? '').trim();
+        if (speech.isEmpty) throw StateError('Sam returned an empty spoken explanation');
+      }
+      final chunks = splitSamSpeech(speech);
+      var pending = prepare(chunks.first);
       for (var i = 0; i < chunks.length; i++) {
         final result = await pending;
         if (!valid()) return;
@@ -278,7 +310,10 @@ class QuickSamNotifier extends Notifier<QuickSamState> {
       debugPrint('Quick Sam voice failed: $error\n$stack');
       if (valid()) state = state.copyWith(voicePlaying: false, error: 'Sam’s voice is unavailable. You can still read the reply.');
     } finally {
-      if (valid()) _audioDone = null;
+      if (valid()) {
+        _audioDone = null;
+        state = state.copyWith(speechActive: false);
+      }
     }
   }
 
@@ -304,14 +339,16 @@ class QuickSamNotifier extends Notifier<QuickSamState> {
     _audioDone = null;
     _envelope = null;
     _anchorClock.stop();
+    if (state.voicePlaying || state.speechActive) state = state.copyWith(voicePlaying: false, speechActive: false);
     try {
       await _player.stop();
     } catch (error, stack) {
       debugPrint('Quick Sam audio stop failed: $error\n$stack');
       state = state.copyWith(error: 'Unable to stop Sam’s voice. Please close Sam and try again.');
     }
-    if (state.voicePlaying) state = state.copyWith(voicePlaying: false);
   }
+
+  Future<void> stopSpeaking() => _stopAudio();
 
   Future<void> toggleMute() async {
     final muted = !state.muted;
@@ -320,6 +357,10 @@ class QuickSamNotifier extends Notifier<QuickSamState> {
   }
 
   Future<void> toggleRecording() async {
+    if (state.speechActive) {
+      await stopSpeaking();
+      return;
+    }
     if (state.recording) {
       await _finishRecording();
       return;

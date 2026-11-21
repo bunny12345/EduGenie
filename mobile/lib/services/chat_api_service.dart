@@ -35,7 +35,7 @@ class ChatApiService {
     }
   }
 
-  /// Returns `{reply, followups, conversationId}` — see `handleMessage()` in
+  /// Returns `{reply, followups, conversationId, speechLanguage, speechSubject}` — see `handleMessage()` in
   /// `backend/src/chat/chat.service.ts`.
   Future<Map<String, dynamic>> sendChat({
     required String studentId,
@@ -182,8 +182,18 @@ class ChatApiService {
     }
   }
 
+  /// Returns a verified, originally phrased spoken explanation of the approved text.
+  Future<Map<String, dynamic>> prepareSamSpeech(String text, String studentId, {required String targetLanguage, String subject = ''}) {
+    return _post('/chat/speech-script', {
+      'text': text,
+      'studentId': studentId,
+      'targetLanguage': targetLanguage,
+      'subject': subject,
+    });
+  }
+
   /// Returns `{audioBase64, mimeType}` for local server-generated TTS.
-  Future<Map<String, dynamic>> generateLocalTtsAudio(String text, String studentId, {String targetLanguage = 'en-US', String? voice, double speed = 1, String? format}) {
+  Future<Map<String, dynamic>> generateLocalTtsAudio(String text, String studentId, {String targetLanguage = 'en-US', String? voice, double speed = 1, String? format, String subject = '', bool speechPrepared = false}) {
     return _post('/chat/tts-audio', {
       'text': text,
       'targetLanguage': targetLanguage,
@@ -191,6 +201,8 @@ class ChatApiService {
       'voice': voice,
       'speed': speed,
       'format': ?format,
+      'subject': subject,
+      'speechPrepared': speechPrepared,
     });
   }
 

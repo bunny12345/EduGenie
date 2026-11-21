@@ -107,8 +107,8 @@ class _StudentShellState extends State<StudentShell> {
       label: 'Services',
     ),
     _NavItem(
-      icon: Icons.more_horiz_rounded,
-      selectedIcon: Icons.more_horiz_rounded,
+      icon: Icons.settings_outlined,
+      selectedIcon: Icons.settings_rounded,
       label: 'More',
     ),
   ];

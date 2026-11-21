@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import SamAvatar from './SamAvatar';
 import MathMarkdown from './MathMarkdown';
-import { sendQuickSamChat, generateLocalTtsAudio, transcribeTutorAudio } from '../api';
+import { sendQuickSamChat, prepareSamSpeech, generateLocalTtsAudio, transcribeTutorAudio } from '../api';
 
 // Floating "Sam" bubble on the student home page. Opens the full-screen Sam
 // avatar for quick questions across ALL of the class's subjects (no subject or
@@ -37,7 +37,7 @@ export function splitSamSpeech(text) {
   let rest = text.trim();
   while (rest) {
     const limit = chunks.length ? 600 : 240;
-    const boundary = /[.!?](?=\s)/g;
+    const boundary = /[.!?।॥](?=\s)/g;
     const ends = [...rest.slice(0, limit).matchAll(boundary)];
     let end = ends.length ? (chunks.length ? ends[ends.length - 1].index : ends[0].index) + 1 : Math.min(limit, rest.length);
     if (!ends.length && rest.length > limit) {
@@ -69,6 +69,7 @@ export default function QuickSamBubble({ studentId, schoolName = '', greetingNam
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [voicePlaying, setVoicePlaying] = useState(false);
+  const [speechActive, setSpeechActive] = useState(false);
   const [recording, setRecording] = useState(false);
   const [transcribing, setTranscribing] = useState(false);
   const [muted, setMuted] = useState(false);
@@ -78,6 +79,7 @@ export default function QuickSamBubble({ studentId, schoolName = '', greetingNam
   const sessionRef = useRef(0);
   const homeworkIdRef = useRef(null);
   const sendRef = useRef(null);
+  const speakRef = useRef(null);
   const abortRef = useRef(null);
   const audioRef = useRef(null);
   const audioUrlRef = useRef('');
@@ -120,6 +122,7 @@ export default function QuickSamBubble({ studentId, schoolName = '', greetingNam
       try { window.speechSynthesis.cancel(); } catch { /* ignore */ }
     }
     setVoicePlaying(false);
+    setSpeechActive(false);
   }, []);
 
   const stopRecorder = useCallback((discard) => {
@@ -186,17 +189,34 @@ export default function QuickSamBubble({ studentId, schoolName = '', greetingNam
     return { level, bright: Math.min(1, Math.max(0, (centroid - 0.04) / 0.14)) };
   }, []);
 
-  async function speak(text) {
-    const speech = toSpeech(text);
+  async function speak(text, language = 'en-US', subject = '') {
+    let speech = toSpeech(text);
     if (!speech || mutedRef.current) return;
     const session = sessionRef.current;
     stopSpeaking();
     const revision = speechRevisionRef.current;
     const valid = () => session === sessionRef.current && revision === speechRevisionRef.current && !mutedRef.current;
+    setSpeechActive(true);
+    const speechPrepared = language !== 'en-US';
+    if (speechPrepared) {
+      try {
+        const result = await prepareSamSpeech(speech, language, studentId, subject);
+        if (!valid()) return;
+        speech = String(result?.speechText || '').trim();
+        if (!speech) throw new Error('Sam returned an empty spoken explanation');
+      } catch (error) {
+        if (valid()) {
+          console.warn('Quick Sam spoken explanation failed', error);
+          setError(error?.message || 'Sam’s voice is unavailable. You can still read the reply.');
+          setSpeechActive(false);
+        }
+        return;
+      }
+    }
     const chunks = splitSamSpeech(speech);
     // Prepare one short segment ahead while the current segment is speaking.
     // Capture failures here so a prefetched rejection can never go unhandled.
-    const prepare = (chunk) => generateLocalTtsAudio(chunk, 'en-US', studentId, 'shimmer', 1)
+    const prepare = (chunk) => generateLocalTtsAudio(chunk, language, studentId, 'shimmer', 1, subject, speechPrepared)
       .then((tts) => ({ tts }), (error) => ({ error }));
     let pending = prepare(chunks[0]);
     for (let i = 0; i < chunks.length; i += 1) {
@@ -226,8 +246,9 @@ export default function QuickSamBubble({ studentId, schoolName = '', greetingNam
         if (!valid()) return;
         console.warn('Quick Sam voice playback failed', error);
         audioRef.current?.pause();
-        if (!window.speechSynthesis) {
+        if (!window.speechSynthesis || language !== 'en-US') {
           setError('Sam’s voice is unavailable. You can still read the reply.');
+          setSpeechActive(false);
           return;
         }
         await new Promise((resolve) => {
@@ -262,6 +283,7 @@ export default function QuickSamBubble({ studentId, schoolName = '', greetingNam
         }
       }
     }
+    if (valid()) setSpeechActive(false);
   }
 
   function changeSpeechRate(event) {
@@ -295,7 +317,7 @@ export default function QuickSamBubble({ studentId, schoolName = '', greetingNam
       const reply = String(res?.reply || '').trim() || "Sorry, I couldn't come up with an answer. Try asking in a different way.";
       setMessages((prev) => [...prev, { role: 'ai', text: reply }]);
       setFollowups(Array.isArray(res?.followups) ? res.followups.slice(0, 3) : []);
-      speak(reply);
+      speak(reply, res.speechLanguage || 'en-US', res.speechSubject || '');
     } catch (e) {
       if (session !== sessionRef.current || e?.name === 'AbortError') return;
       console.warn('Quick Sam chat failed', e);
@@ -309,8 +331,13 @@ export default function QuickSamBubble({ studentId, schoolName = '', greetingNam
   }
 
   sendRef.current = send;
+  speakRef.current = speak;
 
   async function toggleRecording() {
+    if (speechActive) {
+      stopSpeaking();
+      return;
+    }
     if (recording) {
       stopRecorder(false);
       return;
@@ -373,7 +400,7 @@ export default function QuickSamBubble({ studentId, schoolName = '', greetingNam
     const greeting = [{
       role: 'ai',
       local: true,
-      text: `Hi${firstName ? ` ${firstName}` : ''}! 👋 I'm Sam. Ask me anything from your class subjects — no need to pick a subject or unit.`,
+      text: `Hi${firstName ? ` ${firstName}` : ''}! 👋 I'm Sam. What would you like to learn today? You can ask me about any of your class subjects — no need to pick a subject or unit.`,
     }];
     messagesRef.current = greeting;
     setMessages(greeting);
@@ -382,6 +409,7 @@ export default function QuickSamBubble({ studentId, schoolName = '', greetingNam
     setFollowups([]);
     setError('');
     setInput('');
+    if (!homeworkId) speakRef.current(greeting[0].text);
   }, [firstName, stopSpeaking, stopRecorder]);
 
   useEffect(() => {
@@ -454,7 +482,7 @@ export default function QuickSamBubble({ studentId, schoolName = '', greetingNam
   const status = recording ? '🎙️ Listening… tap the mic again when you are done'
     : transcribing ? '💭 Catching what you said…'
     : busy ? '💭 Sam is thinking…'
-    : voicePlaying ? '🔊 Sam is talking…'
+    : voicePlaying ? '🔊 Sam is talking… tap stop to interrupt'
     : '✨ Ask me about any of your subjects';
 
   return (
@@ -531,12 +559,12 @@ export default function QuickSamBubble({ studentId, schoolName = '', greetingNam
                 type="button"
                 className={`eg-quick-sam-mic ${recording ? 'on' : ''}`}
                 onClick={toggleRecording}
-                disabled={busy || transcribing}
-                aria-label={recording ? 'Stop and send' : 'Ask by voice'}
-                title={recording ? 'Stop and send' : 'Ask by voice'}
+                disabled={!speechActive && (busy || transcribing)}
+                aria-label={recording ? 'Stop and send' : speechActive ? 'Stop Sam speaking' : 'Ask by voice'}
+                title={recording ? 'Stop and send' : speechActive ? 'Stop Sam speaking' : 'Ask by voice'}
               >
                 <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor" aria-hidden="true" focusable="false">
-                  {recording ? (
+                  {recording || speechActive ? (
                     <rect x="6" y="6" width="12" height="12" rx="2" />
                   ) : (
                     <path d="M12 14a3 3 0 0 0 3-3V5a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3Zm5-3a5 5 0 0 1-10 0 1 1 0 0 0-2 0 7 7 0 0 0 6 6.92V20H9a1 1 0 0 0 0 2h6a1 1 0 0 0 0-2h-2v-2.08A7 7 0 0 0 19 11a1 1 0 0 0-2 0Z" />

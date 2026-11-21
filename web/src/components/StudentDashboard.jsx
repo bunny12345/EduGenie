@@ -1711,6 +1711,9 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
   async function onToggleLocalVoice(messageId, rawText) {
     const id = String(messageId || '').trim();
     if (!id) return;
+    const voiceMessage = chatHistory.find((message) => message.id === id);
+    const language = voiceMessage?.speechLanguage || 'en-US';
+    const subject = voiceMessage?.speechSubject || '';
 
     if (chatVoicePlayId === id) {
       stopLocalVoicePlayback();
@@ -1735,11 +1738,11 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
       currentReadAloudRef.current = { messageId: '', text: '', languageCode: '' };
       setChatReadAloudId('');
 
-      const cacheKey = `${id}::en-US::${cleanText.slice(0, 160)}`;
+      const cacheKey = `${id}::${language}::${subject}::${cleanText.slice(0, 160)}`;
 
       let cached = localVoiceCacheRef.current[cacheKey];
       if (!cached) {
-        const tts = await generateLocalTtsAudio(cleanText, 'en-US', studentId, undefined, chatReadAloudSpeed);
+        const tts = await generateLocalTtsAudio(cleanText, language, studentId, undefined, chatReadAloudSpeed, subject);
         const audioBase64 = String(tts?.audioBase64 || '').trim();
         if (!audioBase64) throw new Error('Local TTS returned empty audio.');
         cached = {
@@ -2443,7 +2446,7 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
       }
       // Use the reply directly from the response — much more reliable than
       // re-fetching from Supabase (which may return empty if persistence failed).
-      const aiMsg = { id: `ai-${Date.now()}`, role: 'ai', text: res.reply || '…', ts: new Date().toISOString(), fromVoice: Boolean(opts?.fromVoice) };
+      const aiMsg = { id: `ai-${Date.now()}`, role: 'ai', text: res.reply || '…', ts: new Date().toISOString(), fromVoice: Boolean(opts?.fromVoice), speechLanguage: res.speechLanguage || 'en-US', speechSubject: res.speechSubject || '' };
       if (opts?.hidden) {
         // Hidden prompt (auto-tutor) — only show the AI reply, not the user prompt
         setChatHistory((prev) => [...safeArray(prev), aiMsg]);
@@ -2456,7 +2459,7 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
       }
       // Auto-speak when Sam session is active (use ref to avoid stale closure)
       if ((samSessionActiveRef.current || opts?.speak) && res.reply) {
-        speakSamResponse(res.reply, { autoListen: true });
+        speakSamResponse(res.reply, { autoListen: true, language: res.speechLanguage || 'en-US', subject: res.speechSubject || '' });
       }
       // Show follow-up suggestions if provided
       if (Array.isArray(res?.followups) && res.followups.length) {
@@ -2774,11 +2777,11 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
 
     // If already speaking, queue it
     if (talkToSamAudioRef.current || (typeof window !== 'undefined' && window.speechSynthesis && window.speechSynthesis.speaking)) {
-      samSpeakQueueRef.current.push({ text: cleanText, autoListen: opts.autoListen !== false });
+      samSpeakQueueRef.current.push({ text: cleanText, autoListen: opts.autoListen !== false, language: opts.language || 'en-US', subject: opts.subject || '' });
       return;
     }
 
-    async function playNext(speechText, autoListen) {
+    async function playNext(speechText, autoListen, language, subject) {
       if (!speechText) {
         setTalkToSamSpeaking(false);
         // Auto-listen after Sam finishes speaking (voice-loop)
@@ -2798,7 +2801,7 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
         setSamVoicePlaying(false);
         talkToSamAudioRef.current = null;
         const next = samSpeakQueueRef.current.shift();
-        if (next) playNext(next.text, next.autoListen);
+        if (next) playNext(next.text, next.autoListen, next.language, next.subject);
         else {
           setTalkToSamSpeaking(false);
           if (autoListen && samSessionActiveRef.current) {
@@ -2813,7 +2816,7 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
 
       let played = false;
       try {
-        const tts = await generateLocalTtsAudio(speechText, 'en-US', studentId, 'shimmer', 1.15);
+        const tts = await generateLocalTtsAudio(speechText, language, studentId, 'shimmer', 1.15, subject);
         // If Sam was closed while awaiting TTS, abort playback
         if (!samSessionActiveRef.current) { setTalkToSamSpeaking(false); return; }
         const audioBase64 = String(tts?.audioBase64 || '').trim();
@@ -2840,6 +2843,11 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
       } catch { /* fallback below */ }
 
       // Browser SpeechSynthesis fallback
+      if (!played && language !== 'en-US') {
+        setPanelErrorKey('chat', 'Sam’s voice explanation is unavailable. You can still read the English reply.');
+        onDone();
+        return;
+      }
       if (!played && typeof window !== 'undefined' && window.speechSynthesis) {
         const utterance = new window.SpeechSynthesisUtterance(speechText);
         utterance.lang = 'en-US';
@@ -2858,7 +2866,7 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
       }
     }
 
-    await playNext(cleanText, opts.autoListen !== false);
+    await playNext(cleanText, opts.autoListen !== false, opts.language || 'en-US', opts.subject || '');
   }
 
   // Send a message as Sam's voice input — does NOT block, Sam speaks reply in background

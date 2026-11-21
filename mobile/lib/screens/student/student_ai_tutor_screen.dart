@@ -508,7 +508,7 @@ class _MessageBubble extends ConsumerWidget {
                             if (isPlaying) {
                               ref.read(talkToSamProvider.notifier).stopSpeaking();
                             } else {
-                              ref.read(talkToSamProvider.notifier).speak(message.text, messageId: message.id);
+                              ref.read(talkToSamProvider.notifier).speak(message.text, messageId: message.id, language: message.speechLanguage, subject: message.speechSubject);
                             }
                           },
                     child: Container(

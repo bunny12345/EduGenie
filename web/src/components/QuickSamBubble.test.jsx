@@ -1,7 +1,7 @@
 import React from 'react';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import QuickSamBubble, { HOMEWORK_HELP_PROMPT, splitSamSpeech } from './QuickSamBubble';
-import { generateLocalTtsAudio, sendQuickSamChat } from '../api';
+import { generateLocalTtsAudio, prepareSamSpeech, sendQuickSamChat } from '../api';
 
 jest.mock('../api');
 jest.mock('./SamAvatar', () => () => null);
@@ -29,6 +29,7 @@ beforeEach(() => {
   URL.revokeObjectURL = jest.fn();
   sendQuickSamChat.mockResolvedValue({ reply: 'First short sentence. Then the rest of the answer.' });
   generateLocalTtsAudio.mockResolvedValue(tts);
+  prepareSamSpeech.mockResolvedValue({ speechText: 'First short sentence. Then the rest of the answer.' });
 });
 
 async function ask(text = 'Question') {
@@ -38,9 +39,38 @@ async function ask(text = 'Question') {
 }
 
 function open() {
-  render(<QuickSamBubble studentId="student" />);
+  const view = render(<QuickSamBubble studentId="student" />);
   fireEvent.click(screen.getByRole('button', { name: 'Ask Sam a quick question' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Stop Sam speaking' }));
+  generateLocalTtsAudio.mockClear();
+  return view;
 }
+
+test('opening Sam speaks a local greeting and learning question without a teaching request', async () => {
+  render(<QuickSamBubble studentId="student" greetingName="Alex Taylor" />);
+  fireEvent.click(screen.getByRole('button', { name: 'Ask Sam a quick question' }));
+  await waitFor(() => expect(players).toHaveLength(1));
+  expect(generateLocalTtsAudio.mock.calls[0][0]).toBe('Hi Alex!');
+  expect(screen.getByText(/What would you like to learn today/)).toBeInTheDocument();
+  expect(generateLocalTtsAudio.mock.calls.map((call) => call[0]).join(' ')).toContain('What would you like to learn today?');
+  expect(sendQuickSamChat).not.toHaveBeenCalled();
+  expect(prepareSamSpeech).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole('button', { name: 'Stop Sam speaking' }));
+  expect(players[0].pause).toHaveBeenCalledTimes(1);
+  expect(screen.getByRole('button', { name: 'Ask by voice' })).toBeEnabled();
+  await ask('Explain fractions');
+  expect(sendQuickSamChat.mock.calls[0][2]).toEqual([]);
+});
+
+test('muted reopening keeps the welcome message without starting voice', () => {
+  open();
+  fireEvent.click(screen.getByRole('button', { name: '🔇 Mute' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Close Sam' }));
+  generateLocalTtsAudio.mockClear();
+  fireEvent.click(screen.getByRole('button', { name: 'Ask Sam a quick question' }));
+  expect(generateLocalTtsAudio).not.toHaveBeenCalled();
+  expect(screen.getByText(/What would you like to learn today/)).toBeInTheDocument();
+});
 
 test('homework help opens automatically, retains its id on follow-ups, and clears it on close', async () => {
   const started = jest.fn();
@@ -86,13 +116,22 @@ test('splits a short first segment and bounded remaining segments without losing
 });
 
 test('plays the short first segment before remaining speech is ready, with no overlapping segments', async () => {
+  sendQuickSamChat.mockResolvedValue({ reply: 'First short sentence. Then the rest of the answer.', speechLanguage: 'te-IN', speechSubject: 'Science' });
   const second = deferred();
-  generateLocalTtsAudio.mockResolvedValueOnce(tts).mockReturnValueOnce(second.promise);
+  const speechText = 'ఇది మొదటి concept. ఇప్పుడు మిగిలిన explanation చూద్దాం.';
+  prepareSamSpeech.mockResolvedValue({ speechText });
   open();
+  generateLocalTtsAudio.mockResolvedValueOnce(tts).mockReturnValueOnce(second.promise);
   await ask();
   await waitFor(() => expect(players).toHaveLength(1));
-  expect(generateLocalTtsAudio.mock.calls[0][0]).toBe('First short sentence.');
+  expect(prepareSamSpeech).toHaveBeenCalledTimes(1);
+  expect(prepareSamSpeech).toHaveBeenCalledWith('First short sentence. Then the rest of the answer.', 'te-IN', 'student', 'Science');
+  expect(generateLocalTtsAudio.mock.calls[0][0]).toBe('ఇది మొదటి concept.');
+  expect(generateLocalTtsAudio.mock.calls.map((call) => call[0]).join(' ')).toBe(speechText);
+  expect(generateLocalTtsAudio.mock.calls[0][1]).toBe('te-IN');
   expect(generateLocalTtsAudio.mock.calls[0][4]).toBe(1);
+  expect(generateLocalTtsAudio.mock.calls[0][5]).toBe('Science');
+  expect(generateLocalTtsAudio.mock.calls.every((call) => call[6] === true)).toBe(true);
   expect(screen.getByText('First short sentence. Then the rest of the answer.')).toBeInTheDocument();
   expect(generateLocalTtsAudio).toHaveBeenCalledTimes(2);
   await act(async () => second.resolve(tts));
@@ -100,6 +139,7 @@ test('plays the short first segment before remaining speech is ready, with no ov
   await act(async () => players[0].onended());
   await waitFor(() => expect(players).toHaveLength(2));
   expect(players[1].play).toHaveBeenCalledTimes(1);
+  expect(screen.getByRole('button', { name: 'Stop Sam speaking' })).toBeEnabled();
 });
 
 test('only 1x and 2x are offered and update playback without another TTS request', async () => {
@@ -116,15 +156,56 @@ test('only 1x and 2x are offered and update playback without another TTS request
   await waitFor(() => expect(players).toHaveLength(2));
   expect(players[1].playbackRate).toBe(2);
   expect(generateLocalTtsAudio).toHaveBeenCalledTimes(2);
+  expect(prepareSamSpeech).not.toHaveBeenCalled();
 });
 
-test.each(['mute', 'close', 'new question'])('late TTS cannot start after %s', async (action) => {
+test.each(['stop', 'mute', 'close', 'new question', 'unmount'])('late regional script cannot start speech after %s', async (action) => {
   const old = deferred();
-  generateLocalTtsAudio.mockReturnValueOnce(old.promise);
+  prepareSamSpeech.mockReturnValueOnce(old.promise);
+  sendQuickSamChat.mockResolvedValueOnce({ reply: 'Old concept explanation.', speechLanguage: 'ml-IN', speechSubject: 'Science' });
+  const view = open();
+  await ask();
+  await waitFor(() => expect(prepareSamSpeech).toHaveBeenCalledTimes(1));
+  expect(generateLocalTtsAudio).not.toHaveBeenCalled();
+  if (action === 'stop') {
+    fireEvent.click(screen.getByRole('button', { name: 'Stop Sam speaking' }));
+  } else if (action === 'mute') {
+    fireEvent.click(screen.getByRole('button', { name: '🔇 Mute' }));
+    fireEvent.click(screen.getByRole('button', { name: '🔈 Unmute' }));
+  } else if (action === 'close') {
+    fireEvent.click(screen.getByRole('button', { name: 'Close Sam' }));
+  } else if (action === 'unmount') {
+    view.unmount();
+  } else {
+    sendQuickSamChat.mockResolvedValueOnce({ reply: 'Newest answer' });
+    await ask('Another question');
+    await waitFor(() => expect(players).toHaveLength(1));
+  }
+  const count = generateLocalTtsAudio.mock.calls.length;
+  await act(async () => old.resolve({ speechText: 'പഴയ concept explanation.' }));
+  expect(generateLocalTtsAudio).toHaveBeenCalledTimes(count);
+  expect(players).toHaveLength(action === 'new question' ? 1 : 0);
+});
+
+test('regional script failures keep the English reply visible and never synthesize an English fallback', async () => {
+  sendQuickSamChat.mockResolvedValueOnce({ reply: 'Approved English explanation.', speechLanguage: 'hi-IN' });
+  prepareSamSpeech.mockRejectedValueOnce(new Error('Sam could not verify the spoken explanation.'));
   open();
   await ask();
+  expect(await screen.findByText('Sam could not verify the spoken explanation.')).toBeInTheDocument();
+  expect(screen.getByText('Approved English explanation.')).toBeInTheDocument();
+  expect(generateLocalTtsAudio).not.toHaveBeenCalled();
+});
+
+test.each(['stop', 'mute', 'close', 'new question'])('late TTS cannot start after %s', async (action) => {
+  const old = deferred();
+  open();
+  generateLocalTtsAudio.mockReturnValueOnce(old.promise);
+  await ask();
   await waitFor(() => expect(generateLocalTtsAudio).toHaveBeenCalledTimes(1));
-  if (action === 'mute') {
+  if (action === 'stop') {
+    fireEvent.click(screen.getByRole('button', { name: 'Stop Sam speaking' }));
+  } else if (action === 'mute') {
     fireEvent.click(screen.getByRole('button', { name: '🔇 Mute' }));
     fireEvent.click(screen.getByRole('button', { name: '🔈 Unmute' }));
   } else if (action === 'close') {
@@ -139,11 +220,11 @@ test.each(['mute', 'close', 'new question'])('late TTS cannot start after %s', a
   expect(players).toHaveLength(count);
 });
 
-test('muting stops audible speech and discards prefetched segments', async () => {
+test.each(['stop', 'mute'])('%s stops audible speech and discards prefetched segments', async (action) => {
   open();
   await ask();
   await waitFor(() => expect(players).toHaveLength(1));
-  fireEvent.click(screen.getByRole('button', { name: '🔇 Mute' }));
+  fireEvent.click(screen.getByRole('button', { name: action === 'stop' ? 'Stop Sam speaking' : '🔇 Mute' }));
   await waitFor(() => expect(URL.revokeObjectURL).toHaveBeenCalled());
   expect(players[0].pause).toHaveBeenCalledTimes(1);
   expect(players).toHaveLength(1);
@@ -171,9 +252,8 @@ test('slow lip-sync audio-context setup does not delay sound', async () => {
 
 test('unmounting discards unfinished voice generation', async () => {
   const old = deferred();
+  const view = open();
   generateLocalTtsAudio.mockReturnValueOnce(old.promise);
-  const view = render(<QuickSamBubble studentId="student" />);
-  fireEvent.click(screen.getByRole('button', { name: 'Ask Sam a quick question' }));
   await ask();
   view.unmount();
   await act(async () => old.resolve(tts));

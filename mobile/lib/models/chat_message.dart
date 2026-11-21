@@ -6,8 +6,10 @@ class ChatMessage {
   final String text;
   final String ts;
   final List<String> imageDataUrls;
+  final String speechLanguage;
+  final String speechSubject;
 
-  const ChatMessage({required this.id, required this.role, required this.text, required this.ts, this.imageDataUrls = const []});
+  const ChatMessage({required this.id, required this.role, required this.text, required this.ts, this.imageDataUrls = const [], this.speechLanguage = 'en-US', this.speechSubject = ''});
 
   bool get isUser => role == 'user';
 
@@ -20,6 +22,8 @@ class ChatMessage {
       text: (json['text'] ?? json['message'])?.toString() ?? '',
       ts: json['ts'] as String? ?? DateTime.now().toIso8601String(),
       imageDataUrls: urls.isNotEmpty ? urls : (singleUrl != null && singleUrl.isNotEmpty ? [singleUrl] : const []),
+      speechLanguage: json['speechLanguage'] as String? ?? 'en-US',
+      speechSubject: json['speechSubject'] as String? ?? '',
     );
   }
 
@@ -31,10 +35,12 @@ class ChatMessage {
         imageDataUrls: imageDataUrls,
       );
 
-  factory ChatMessage.ai(String text) => ChatMessage(
+  factory ChatMessage.ai(String text, {String speechLanguage = 'en-US', String speechSubject = ''}) => ChatMessage(
         id: 'ai-${DateTime.now().millisecondsSinceEpoch}',
         role: 'ai',
         text: text,
+        speechLanguage: speechLanguage,
+        speechSubject: speechSubject,
         ts: DateTime.now().toIso8601String(),
       );
 }

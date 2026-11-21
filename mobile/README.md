@@ -106,6 +106,42 @@ The existing app/backend URL configuration is unchanged.
 
 ## Home Sam voice
 
+Opening Home Sam speaks a local greeting and asks what the student wants to
+learn, without sending a teaching request or adding the greeting to model history.
+Automatic Homework Help goes straight to its existing hint request instead.
+While speech is being prepared or played, the mic becomes a Stop button: tapping
+it cancels speech and pending audio without recording or muting future replies.
+It then returns to the mic for a new voice question. Typed chat remains available.
+
+Sam accepts requests such as "Explain in Telugu" or "Speak in Hindi". Chat
+responses include `speechLanguage` and `speechSubject`, which both voice players
+pass to the shared TTS endpoint as `targetLanguage` and `subject`. Non-language
+subjects retain English written replies and use originally phrased, everyday regional
+speech with familiar English technical terms where natural, not literal translation
+or a forced English-word quota. This policy applies to every
+supported Indian voice language. Speech language is separate from enrolled
+subjects and the written tutor's topic checks. Language-subject
+playback retains proper vocabulary and quotations. A language-only follow-up
+continues the same concept without changing source or homework boundaries;
+regional-language subjects can use the subject language, and English subjects
+stay in English. Requested-language playback creates a complete native spoken
+explanation of the approved teaching, followed by an independent meaning and
+hint/refusal safety check. Home Sam prepares it via `/chat/speech-script` before
+splitting the native script into audio segments; `speechPrepared: true` prevents
+each TTS segment from being regenerated. Talk to Sam prepares inside whole-message TTS.
+Stale preparation is discarded after mute/close/new questions. Preparation and
+verification incur two model calls and extra startup delay at regional playback
+time; English playback is unchanged. Indian-language quality
+depends on the configured speech provider and needs real-device checks.
+
+Sam protects only each subject's latest released, active, unsubmitted homework.
+Submitted homework is explainable one hour after its latest submission or
+resubmission; older or history-only unsubmitted homework
+(four days overdue) is explainable even if unsubmitted. The homework submission
+and resubmission permissions themselves are unchanged. Non-language voice
+explanations use natural English/regional code-switching with familiar technical
+terms, rather than forcing every word into the regional language.
+
 Sam's thinking animation ends in a cloud and stays inside the cropped avatar
 used by both Home Sam and the unit tutor.
 

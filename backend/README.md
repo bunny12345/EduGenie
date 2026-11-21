@@ -1,5 +1,64 @@
 # AcademiX Backend Prototype
 
+## Sam language behavior
+
+Sam keeps written explanations for non-language subjects in English. Regional
+language subjects can be explained in that subject's language; English-subject
+explanations stay in English. Requests such as "Explain in Telugu" select voice
+playback language, with English plus Indian languages supported.
+
+`POST /chat` and `/chat/quick` return `speechLanguage` and `speechSubject`; clients
+pass these as `targetLanguage` and `subject` to `/chat/tts-audio`. Non-language
+subjects use original, everyday regional explanations with familiar English
+technical terms where natural, without an English-word quota,
+literal translation or bilingual glossaries. Language subjects
+keep proper subject-language vocabulary and quotations. A language-only follow-up
+continues the previous student concept for retrieval and homework checks; a new,
+unrelated concept is still checked against the existing source boundaries.
+For non-language subjects, speech-language clauses are removed from the written
+tutor's current question and user history, while the original messages still
+determine voice language and are preserved in conversation storage. Thus asking
+for Malayalam audio does not require Malayalam to be an enrolled subject.
+Home Sam prioritizes excerpts from an explicitly named, visible class Unit so
+other subjects' stronger embedding matches cannot crowd out that Unit.
+Non-English playback generates one complete, originally phrased spoken explanation
+from the approved teaching, then independently verifies meaning, facts and hint/refusal
+boundaries using the existing LLM. Unsafe or malformed results are withheld with an error.
+Home Quick Sam calls authenticated `POST /chat/speech-script` with
+`text`, `targetLanguage`, `studentId` and `subject`, receiving `{ success: true, speechText }`.
+It splits that verified native script, not the English reply, and sends its audio
+segments to `/chat/tts-audio` with `speechPrepared: true` to avoid per-segment regeneration.
+Tutor whole-message TTS prepares and verifies inside `/chat/tts-audio` instead.
+Preparation accepts at most 12,000 characters; a TTS segment accepts at most 2,200
+characters. Regional explanations are never silently truncated; ask for a shorter
+explanation if whole-message playback exceeds the segment limit.
+This adds two model calls (generation plus verification), usage cost and startup
+delay at regional playback time, not to the initial written reply. English retains
+its existing playback path. No new provider or paid subscription is
+added. Non-Indian voice languages are excluded. Support and pronunciation vary
+by the configured provider; verify with native speakers before rollout.
+Unit/source boundaries and exam access checks remain unchanged.
+
+Web and mobile Home Sam speak a local greeting on ordinary opening, asking what
+the student wants to learn. This greeting is excluded from model history and does
+not issue a teaching request. Automatic Homework Help retains its immediate hint
+request. The mic becomes a Stop button during speech preparation/playback and
+cancels pending audio without muting later replies; typed chat remains available.
+
+Sam's homework protection applies only to the latest released assignment in each
+subject while it is unsubmitted and still active. Submitted work is explainable
+only after one hour has elapsed since its latest submission/resubmission. Older
+assignments and history-only work (four days overdue, matching the portal) are
+explainable even if unsubmitted. Future scheduled assignments do not replace the
+current one. Submission status is checked fresh using attempts, saved status and
+local-feed submission markers and their timestamps. Legacy submitted/resubmitted
+rows can use their saved update timestamp when no explicit submission timestamp
+exists; assignment creation dates are never used as submission dates. If no
+submission time can be verified, Sam reports that explicitly instead of treating
+the homework as unsubmitted indefinitely. Linked Homework Help follows the same policy;
+an old question that repeats a currently protected task remains restricted.
+This changes Sam's explanation eligibility only, not submission/edit permissions.
+
 This is a small NestJS-style prototype intended to provide a `/chat` endpoint that forwards prompts to a local LLM service and stores minimal memory via Supabase.
 
 Quick start (development):

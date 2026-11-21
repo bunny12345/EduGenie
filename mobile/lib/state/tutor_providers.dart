@@ -298,7 +298,7 @@ class TutorNotifier extends Notifier<TutorState> {
             imageDataUrls: images.map((i) => i.dataUrl).toList(),
             imageNames: images.map((i) => i.name).toList(),
           );
-      final aiMsg = ChatMessage.ai(res['reply'].toString());
+      final aiMsg = ChatMessage.ai(res['reply'].toString(), speechLanguage: res['speechLanguage'] as String? ?? 'en-US', speechSubject: res['speechSubject'] as String? ?? '');
       final followups = (res['followups'] as List? ?? []).map((f) => f.toString()).toList();
       _sendEpoch++;
       state = state.copyWith(messages: [...state.messages, aiMsg], sending: false, followups: followups);

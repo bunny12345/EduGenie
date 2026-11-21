@@ -17,6 +17,31 @@ import 'package:mobile/widgets/quick_sam_bubble.dart';
 class _QuickSamStub extends QuickSamNotifier {
   String? sent;
   int closeCalls = 0;
+  int stopCalls = 0;
+  int recordingCalls = 0;
+
+  void startSpeaking() {
+    state = state.copyWith(
+      speechActive: true,
+      voicePlaying: true,
+      messages: const [QuickSamMessage(isUser: false, text: 'Your written explanation stays here.')],
+    );
+  }
+
+  @override
+  Future<void> stopSpeaking() async {
+    stopCalls++;
+    state = state.copyWith(speechActive: false, voicePlaying: false);
+  }
+
+  @override
+  Future<void> toggleRecording() async {
+    if (state.speechActive) {
+      await stopSpeaking();
+    } else {
+      recordingCalls++;
+    }
+  }
 
   @override
   void open({String firstName = '', String? homeworkId}) {
@@ -52,6 +77,32 @@ class _Session extends SessionNotifier {
 }
 
 void main() {
+  testWidgets('Home Sam mic becomes Stop while speaking and retains typed chat after interruption', (tester) async {
+    final notifier = _QuickSamStub();
+    await tester.pumpWidget(ProviderScope(
+      overrides: [
+        examAccessProvider.overrideWith((ref) => Stream.value(const ExamAccess())),
+        quickSamProvider.overrideWith(() => notifier),
+        dashboardProvider.overrideWith((ref) async => const DashboardData()),
+      ],
+      child: const MaterialApp(home: QuickSamScreen()),
+    ));
+    await tester.pump();
+    notifier.startSpeaking();
+    await tester.pump();
+    await tester.enterText(find.byType(TextField), 'Explain fractions');
+    await tester.tap(find.byTooltip('Stop Sam speaking'));
+    await tester.pump();
+    expect(notifier.stopCalls, 1);
+    expect(notifier.recordingCalls, 0);
+    expect(find.byTooltip('Speak your question'), findsOneWidget);
+    expect(find.text('Your written explanation stays here.'), findsOneWidget);
+    await tester.tap(find.byTooltip('Send'));
+    expect(notifier.sent, 'Explain fractions');
+    expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
   for (final blocked in [false, true]) {
     testWidgets('homework help returns to Home and opens Sam only when exam access permits (blocked=$blocked)', (tester) async {
       final notifier = _QuickSamStub();

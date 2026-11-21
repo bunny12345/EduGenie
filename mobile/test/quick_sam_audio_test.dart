@@ -51,6 +51,15 @@ class _Player implements AudioPlayer {
 class _Chat extends ChatApiService {
   _Chat() : super(ApiClient());
   String reply = 'First short sentence. Then the rest of the answer.';
+  String language = 'en-US';
+  String subject = 'Science';
+  final voiceLanguages = <String>[];
+  final voiceSubjects = <String>[];
+  final preparedFlags = <bool>[];
+  final scriptRequests = <({String text, String language, String subject})>[];
+  String speechText = 'पहला concept समझें। अब बाकी explanation देखें।';
+  Completer<Map<String, dynamic>>? pendingScript;
+  String? scriptFailure;
   final requests = <({String text, Completer<Map<String, dynamic>> result})>[];
   final quickRequests = <({String? homeworkId, List<Map<String, String>> history})>[];
   String? failure;
@@ -64,7 +73,13 @@ class _Chat extends ChatApiService {
   }) async {
     quickRequests.add((homeworkId: homeworkId, history: recentMessages));
     if (failure != null) throw Exception(failure);
-    return {'reply': reply};
+    return {'reply': reply, 'speechLanguage': language, 'speechSubject': subject};
+  }
+  @override
+  Future<Map<String, dynamic>> prepareSamSpeech(String text, String studentId, {required String targetLanguage, String subject = ''}) async {
+    scriptRequests.add((text: text, language: targetLanguage, subject: subject));
+    if (scriptFailure != null) throw StateError(scriptFailure!);
+    return pendingScript != null ? pendingScript!.future : {'speechText': speechText};
   }
   @override
   Future<Map<String, dynamic>> generateLocalTtsAudio(
@@ -74,8 +89,13 @@ class _Chat extends ChatApiService {
     String? voice,
     double speed = 1,
     String? format,
+    String subject = '',
+    bool speechPrepared = false,
   }) {
     expect(speed, 1);
+    voiceLanguages.add(targetLanguage);
+    voiceSubjects.add(subject);
+    preparedFlags.add(speechPrepared);
     final result = Completer<Map<String, dynamic>>();
     requests.add((text: text, result: result));
     return result.future;
@@ -107,10 +127,42 @@ void main() {
     await container.read(sessionProvider.future);
     notifier = container.read(quickSamProvider.notifier);
     notifier.open();
+    await notifier.stopSpeaking();
   });
   tearDown(() async {
     container.dispose();
     await _flush();
+  });
+
+  test('opening Sam speaks a local greeting and mic interrupts without recording or changing history', () async {
+    notifier.open(firstName: 'Alex');
+    await _flush();
+    expect(chat.requests.single.text, 'Hi Alex!');
+    expect(chat.quickRequests, isEmpty);
+    expect(container.read(quickSamProvider).messages.single.local, isTrue);
+    expect(container.read(quickSamProvider).messages.single.text, contains('What would you like to learn today?'));
+    chat.requests.first.result.complete(_tts);
+    await _flush();
+    expect(player.plays, 1);
+    expect(chat.requests.length, 2);
+    await notifier.toggleRecording();
+    expect(container.read(quickSamProvider).speechActive, isFalse);
+    expect(container.read(quickSamProvider).recording, isFalse);
+    expect(container.read(quickSamProvider).muted, isFalse);
+    chat.requests.last.result.complete(_tts);
+    await _flush();
+    expect(player.plays, 1);
+    await notifier.send('Explain fractions');
+    expect(chat.quickRequests.single.history, isEmpty);
+  });
+
+  test('muted opening retains the greeting without speaking', () async {
+    await notifier.toggleMute();
+    notifier.open();
+    await _flush();
+    expect(chat.requests, isEmpty);
+    expect(container.read(quickSamProvider).messages.single.text, contains('What would you like to learn today?'));
+    expect(container.read(quickSamProvider).speechActive, isFalse);
   });
 
   test('short first segment preserves all speech and bounds synthesis requests', () {
@@ -146,19 +198,28 @@ void main() {
   });
 
   test('first audio starts before remaining synthesis completes; prefetched audio waits for completion', () async {
+    chat.language = 'hi-IN';
     await notifier.send('Question');
-    expect(chat.requests.single.text, 'First short sentence.');
+    await _flush();
+    expect(chat.scriptRequests.single, (text: chat.reply, language: 'hi-IN', subject: 'Science'));
+    expect(chat.voiceLanguages.single, 'hi-IN');
+    expect(chat.voiceSubjects.single, 'Science');
+    expect(chat.requests.single.text, 'पहला concept समझें।');
+    expect(chat.preparedFlags.single, isTrue);
     expect(container.read(quickSamProvider).messages.last.text, chat.reply);
     chat.requests.first.result.complete(_tts);
     await _flush();
     expect(player.plays, 1);
     expect(chat.requests.length, 2);
+    expect(chat.requests.map((request) => request.text).join(' '), chat.speechText);
+    expect(chat.scriptRequests.length, 1);
     chat.requests.last.result.complete(_tts);
     await _flush();
     expect(player.plays, 1);
     player.complete.add(null);
     await _flush();
     expect(player.plays, 2);
+    expect(container.read(quickSamProvider).speechActive, isTrue);
   });
 
   test('Home Sam supplies WAV MIME and finalized streaming lengths to the player', () async {
@@ -167,6 +228,8 @@ void main() {
     data.setUint32(4, 0xffffffff, Endian.little);
     data.setUint32(40, 0xffffffff, Endian.little);
     await notifier.send('Question');
+    expect(chat.scriptRequests, isEmpty);
+    expect(chat.preparedFlags.single, isFalse);
     chat.requests.first.result.complete({
       'audioBase64': base64Encode(wav),
       'mimeType': 'audio/wav',
@@ -209,11 +272,14 @@ void main() {
     expect(player.rates, isEmpty);
   });
 
-  for (final action in ['mute', 'close', 'new question']) {
+  for (final action in ['stop', 'mute', 'close', 'new question']) {
     test('late TTS cannot play after $action', () async {
       await notifier.send('Question');
       final old = chat.requests.single;
-      if (action == 'mute') {
+      if (action == 'stop') {
+        await notifier.toggleRecording();
+        expect(container.read(quickSamProvider).recording, isFalse);
+      } else if (action == 'mute') {
         await notifier.toggleMute();
         await notifier.toggleMute();
       } else if (action == 'close') {
@@ -226,6 +292,44 @@ void main() {
       expect(player.plays, 0);
     });
   }
+
+  for (final action in ['stop', 'mute', 'close', 'new question']) {
+    test('late regional preparation cannot start audio after $action', () async {
+      final pending = Completer<Map<String, dynamic>>();
+      chat.language = 'hi-IN';
+      chat.pendingScript = pending;
+      await notifier.send('Old question');
+      expect(chat.scriptRequests.length, 1);
+      expect(chat.requests, isEmpty);
+      if (action == 'stop') {
+        await notifier.toggleRecording();
+      } else if (action == 'mute') {
+        await notifier.toggleMute();
+        await notifier.toggleMute();
+      } else if (action == 'close') {
+        await notifier.close();
+      } else {
+        chat.language = 'en-US';
+        await notifier.send('New question');
+      }
+      final count = chat.requests.length;
+      pending.complete({'speechText': chat.speechText});
+      await _flush();
+      expect(chat.requests.length, count);
+      expect(player.plays, 0);
+    });
+  }
+
+  test('regional preparation failure retains the written reply without English fallback', () async {
+    chat.language = 'hi-IN';
+    chat.scriptFailure = 'Spoken explanation verification failed';
+    await notifier.send('Question');
+    await _flush();
+    expect(container.read(quickSamProvider).error, contains('voice is unavailable'));
+    expect(container.read(quickSamProvider).messages.last.text, chat.reply);
+    expect(chat.requests, isEmpty);
+    expect(player.plays, 0);
+  });
 
   test('mute stops current audio and drops already prefetched audio', () async {
     await notifier.send('Question');

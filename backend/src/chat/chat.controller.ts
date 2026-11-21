@@ -3,6 +3,7 @@ import { ChatService } from './chat.service';
 import { AuthGuard } from '../auth/auth.guard';
 import { LocalFeedService } from '../shared/local-feed.service';
 import { requireStudentIdentity } from '../auth/student-identity';
+import { spokenLanguage } from './sam-languages';
 
 @Controller('chat')
 export class ChatController {
@@ -50,7 +51,7 @@ export class ChatController {
         details: String(message || '').slice(0, 120),
         meta: { conversationId: conversationId || null }
       });
-      return { success: true, ...response };
+      return { success: true, ...response, speechLanguage: response.speechLanguage || spokenLanguage(message, recentMessages, lessonSubject) };
     } catch (error) {
       console.warn('AI Tutor request failed', error);
       return { success: false, error: error instanceof Error ? error.message : 'Sam could not answer right now. Please try again.' };
@@ -70,7 +71,7 @@ export class ChatController {
         recentMessages: payload?.recentMessages,
         homeworkId: payload?.homeworkId,
       });
-      return { success: true, ...response };
+      return { success: true, ...response, speechLanguage: ('speechLanguage' in response ? response.speechLanguage : '') || spokenLanguage(payload.message, payload.recentMessages) };
     } catch (e: any) {
       return { success: false, error: String(e?.message || 'Sam could not answer right now') };
     }
@@ -107,14 +108,14 @@ export class ChatController {
   @UseGuards(AuthGuard)
   async localTtsAudio(
     @Req() req: any,
-    @Body() payload: { studentId?: string; text: string; targetLanguage?: string; voice?: string; speed?: number; format?: string }
+    @Body() payload: { studentId?: string; text: string; targetLanguage?: string; voice?: string; speed?: number; format?: string; subject?: string; speechPrepared?: boolean }
   ) {
     const id = req.studentId || payload.studentId || 'anon';
-    const tts = await this.chatService.generateLocalTtsAudio(payload?.text, payload?.targetLanguage, payload?.voice, payload?.speed, payload?.format);
+    const tts = await this.chatService.generateLocalTtsAudio(payload?.text, payload?.targetLanguage, payload?.voice, payload?.speed, payload?.format, payload?.subject, payload?.speechPrepared === true);
     if (!tts?.audioBase64) {
       return {
         success: false,
-        error: 'TTS is unavailable. Ensure OPENAI_API_KEY is set.'
+        error: "Sam's voice explanation is unavailable. Please try again; you can still read the written reply."
       };
     }
 
@@ -127,6 +128,22 @@ export class ChatController {
     });
 
     return { success: true, ...tts };
+  }
+
+  @Post('speech-script')
+  @UseGuards(AuthGuard)
+  async speechScript(
+    @Req() req: any,
+    @Body() payload: { studentId?: string; text: string; targetLanguage?: string; subject?: string },
+  ) {
+    requireStudentIdentity(req, payload?.studentId);
+    try {
+      const speechText = await this.chatService.prepareSpokenExplanation(payload?.text, payload?.targetLanguage, payload?.subject);
+      return { success: true, speechText };
+    } catch (error) {
+      console.warn('Sam spoken explanation preparation failed', error);
+      return { success: false, error: error instanceof Error ? error.message : 'Sam could not prepare the spoken explanation. Please try again.' };
+    }
   }
 
   @Post('transcribe')

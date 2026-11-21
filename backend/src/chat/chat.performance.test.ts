@@ -12,6 +12,7 @@ import { OrchardService } from '../orchard/orchard.service';
 import { LocalFeedService } from '../shared/local-feed.service';
 import { SchoolworkStatusService } from './schoolwork-status.service';
 import { LearningScoreService } from '../progress/learning-score.service';
+import { SAM_LANGUAGES } from './sam-languages';
 
 type Row = Record<string, unknown>;
 
@@ -21,7 +22,7 @@ function deferred() {
   return { promise, resolve };
 }
 
-function fixture(options: { holdEmbedding?: boolean; holdPersistence?: boolean; failHistory?: boolean; failChunks?: boolean; latencyMs?: number; unsafeReply?: boolean; invalidReview?: boolean; reviewOnceInvalid?: boolean } = {}) {
+function fixture(options: { holdEmbedding?: boolean; holdPersistence?: boolean; failHistory?: boolean; failChunks?: boolean; latencyMs?: number; unsafeReply?: boolean; invalidReview?: boolean; reviewOnceInvalid?: boolean; outOfScopeReply?: boolean; reply?: string } = {}) {
   const studentId = randomUUID();
   const conversationId = `conv-${studentId}:subject-science:lesson-lesson`;
   const embedding = deferred();
@@ -35,6 +36,7 @@ function fixture(options: { holdEmbedding?: boolean; holdPersistence?: boolean; 
   const writes: Array<{ table: string; rows: Row[] }> = [];
   const prompts: Array<Array<{ role: string; content: string }>> = [];
   const requestOptions: Array<Parameters<LlmService['query']>[1]> = [];
+  const embeddingTexts: string[] = [];
   const tables: Record<string, Row[]> = {
     students: [{ id: studentId, name: 'Learner', class_name: 'Class 8' }],
     lessons: [{ id: 'lesson', title: 'Plants', subject: 'Science' }],
@@ -104,11 +106,13 @@ function fixture(options: { holdEmbedding?: boolean; holdPersistence?: boolean; 
       return JSON.stringify({ homeworkIndex: options.unsafeReply || payload.knownAssignedHomework ? 0 : null, safe: !options.unsafeReply });
     }
     if (options.unsafeReply) return 'The angles always add to 180 degrees, or half a turn.';
+    if (options.outOfScopeReply) return 'OUT_OF_SCOPE';
     if (options.reviewOnceInvalid) return 'Think about what the leaf uses to get started. What could you look for in your lesson?';
-    return 'Leaves use sunlight to make food. Why is sunlight important?';
+    return options.reply || 'Leaves use sunlight to make food. Why is sunlight important?';
   };
   const embeddings: EmbeddingsService = Object.create(EmbeddingsService.prototype);
-  embeddings.embed = async () => {
+  embeddings.embed = async (text) => {
+    embeddingTexts.push(text);
     embeddingStarted.resolve();
     await embedding.promise;
     if (options.latencyMs) await new Promise((resolve) => setTimeout(resolve, options.latencyMs));
@@ -142,7 +146,7 @@ function fixture(options: { holdEmbedding?: boolean; holdPersistence?: boolean; 
   });
   return {
     chat, studentId, conversationId, embedding, embeddingStarted, persistence, backgroundDone, reads, filters, writes,
-    prompts, requestOptions, tables, snapshots, growth: () => growth,
+    prompts, requestOptions, tables, snapshots, embeddingTexts, feed, auth, growth: () => growth,
   };
 }
 
@@ -225,6 +229,77 @@ test('Home Sam reads homework during embedding and still reviews the class-groun
   assert.match(f.prompts[1][0].content, /HOMEWORK ANSWER-LEAK REVIEW/);
   assert.deepEqual(result.subjects, ['Science']);
   assert.match(result.reply, /Leaves use sunlight to make food/);
+});
+
+test('Home and Unit Sam retrieve the current concept rather than the requested speech language', async () => {
+  for (const unitMode of [false, true]) {
+    const f = fixture();
+    const recentMessages = [
+      { role: 'user', content: 'Why do plants need sunlight?' },
+      { role: 'assistant', content: 'Leaves use sunlight to make food. Why is sunlight important?' },
+      { role: 'user', content: 'Explain in Hindi' },
+    ];
+    const message = 'Please explain the same concept again in Telugu so I can understand it';
+    const result = unitMode
+      ? await f.chat.handleMessage(f.studentId, message, { recentMessages, lessonId: 'lesson', lessonSubject: 'Science', conversationId: f.conversationId })
+      : await f.chat.handleQuickMessage(f.studentId, message, { recentMessages });
+    assert.equal(f.embeddingTexts[0], 'Why do plants need sunlight?');
+    assert.match(f.prompts[0][0].content, /presentation preference, NOT a new subject or topic/);
+    assert.equal(f.prompts[0][f.prompts[0].length - 1].content, 'Why do plants need sunlight?');
+    assert('speechLanguage' in result && 'speechSubject' in result);
+    assert.equal(result.speechLanguage, 'te-IN');
+    assert.equal(result.speechSubject, 'Science');
+    assert.match(result.reply, /Leaves use sunlight/);
+  }
+});
+
+test('a language-only follow-up cannot bypass the outside-Unit homework redirect', async () => {
+  const f = fixture();
+  f.tables.homework = [{
+    id: 'outside', subject: 'Science', title: 'Electric circuits worksheet',
+    tasks: { meta: { lessonIds: ['energy'], lessonTitles: ['Energy'] } },
+  }];
+  const result = await f.chat.handleMessage(f.studentId, 'Explain in Telugu', {
+    lessonId: 'lesson', lessonSubject: 'Science', conversationId: f.conversationId,
+    recentMessages: [{ role: 'user', content: 'Give me a hint for the Electric circuits worksheet.' }],
+  });
+
+  assert.match(result.reply, /Science → Energy.*ask Sam on Home/);
+  assert.deepEqual(f.prompts, []);
+});
+
+test('a language-only follow-up still drops leaked answers and applies locked-homework checks', async () => {
+  const f = fixture({ unsafeReply: true });
+  const result = await f.chat.handleMessage(f.studentId, 'Explain the same concept in Telugu', {
+    lessonId: 'lesson', lessonSubject: 'Science', conversationId: f.conversationId,
+    recentMessages: [
+      { role: 'user', content: 'Describe the function of a leaf' },
+      { role: 'assistant', content: 'An old direct homework answer' },
+    ],
+  });
+  assert.equal(f.prompts[0].length, 2);
+  assert.match(f.prompts[0][0].content, /Do NOT solve this specific problem/);
+  assert(!JSON.stringify(f.prompts[0]).includes('An old direct homework answer'));
+  assert.doesNotMatch(result.reply, /180|half a turn/);
+});
+
+test('a language switch after reopening uses stored student context for retrieval', async () => {
+  const f = fixture();
+  f.tables.messages = [{ role: 'user', message: 'Why do plants need sunlight?' }];
+  await f.chat.handleMessage(f.studentId, 'Explain in Telugu', {
+    lessonId: 'lesson', lessonSubject: 'Science', conversationId: f.conversationId,
+  });
+  assert.equal(f.embeddingTexts[0], 'Why do plants need sunlight?');
+});
+
+test('a new uncovered concept stays out of scope even when requested in Telugu', async () => {
+  const f = fixture({ outOfScopeReply: true });
+  const result = await f.chat.handleQuickMessage(f.studentId, 'Explain black holes in Telugu', {
+    recentMessages: [{ role: 'user', content: 'Why do plants need sunlight?' }],
+  });
+  assert.equal(f.embeddingTexts[0], 'Explain black holes');
+  assert.match(result.reply, /isn't covered in your class lessons/);
+  assert.match(f.prompts[0][0].content, /Teach ONLY what is covered by the CLASS MATERIALS/);
 });
 
 test('embedding, history, profile, lesson and homework reads start together without losing context', async () => {
@@ -408,4 +483,247 @@ test('lesson reply preparation takes fewer than seven simulated network round tr
   await f.backgroundDone.promise;
   t.diagnostic(`Reply preparation: ${elapsed.toFixed(1)}ms with ${latencyMs}ms per embedding/database request; model is stubbed.`);
   assert(elapsed < latencyMs * 7, `Preparation took ${elapsed.toFixed(1)}ms; independent requests should overlap`);
+});
+
+test('week-old Rational Numbers submissions do not block a Telugu Unit explanation', async () => {
+  const weekAgo = new Date(Date.now() - 7 * 86_400_000).toISOString();
+  for (const submission of ['saved-status', 'attempt', 'local-status']) {
+    const explanation = 'A rational number can be written as p/q, where p and q are integers and q is not zero.';
+    const f = fixture({ reply: explanation });
+    f.tables.lessons = [{ id: 'lesson', title: 'Rational Numbers', subject: 'Mathematics' }];
+    f.tables.lesson_chunks = [{ id: 'rational-chunk', lesson_id: 'lesson', document_id: 'textbook', chunk_text: explanation, embedding: [1, 0] }];
+    f.tables.homework = [{
+      id: 'rational-homework', subject: 'Mathematics', title: 'testing notifications',
+      note: 'Explain rational numbers', created_at: new Date(Date.now() - 8 * 86_400_000).toISOString(),
+      status: submission === 'saved-status' ? 'submitted' : 'pending',
+      updated_at: submission === 'saved-status' ? weekAgo : undefined,
+    }];
+    if (submission === 'attempt') f.tables.homework_attempts = [{ homework_id: 'rational-homework', created_at: weekAgo }];
+    if (submission === 'local-status') f.feed.listHomeworkForStudent = () => [{ ...f.tables.homework[0], status: 'submitted', submittedAt: weekAgo }];
+    const result = await f.chat.handleMessage(f.studentId, 'explain rational numbers in telugu language', {
+      conversationId: f.conversationId, lessonId: 'lesson', lessonSubject: 'Mathematics',
+      recentMessages: [{ role: 'assistant', content: "I can't give or confirm the finished homework answer." }],
+    });
+    await f.backgroundDone.promise;
+    assert.match(result.reply, /A rational number can be written as p\/q/);
+    assert.equal(result.speechLanguage, 'te-IN');
+    assert.match(f.prompts[0][0].content, /ANSWER ALLOWED — submitted at least 1 hour ago/);
+    assert.equal(f.prompts.length, 1, `${submission} must not enter the locked-homework review`);
+  }
+});
+
+test('older unsubmitted homework is explainable while the latest assignment in each subject stays protected', async () => {
+  const f = fixture();
+  const now = Date.now();
+  f.tables.homework = [
+    { id: 'older', subject: 'Science', title: 'Older worksheet', note: 'Explain leaf functions', created_at: new Date(now - 86_400_000).toISOString() },
+    { id: 'maths', subject: 'Mathematics', title: 'Maths worksheet', note: 'Add two thirds and one third', created_at: new Date(now).toISOString() },
+    { id: 'science', subject: 'Science', title: 'Science worksheet', note: 'Describe root functions', created_at: new Date(now - 60_000).toISOString() },
+  ];
+  await f.chat.handleQuickMessage(f.studentId, 'Explain leaf functions in Telugu');
+  assert.match(f.prompts[0][0].content, /Older worksheet.*ANSWER ALLOWED — older or history-only homework/);
+  const firstReview = f.prompts.find((prompt) => prompt[0].content.includes('HOMEWORK ANSWER-LEAK REVIEW'))!;
+  const assignments = JSON.parse(firstReview[1].content).assignments;
+  assert.deepEqual(assignments.map((entry: { homeworkId: string }) => entry.homeworkId).sort(), ['maths', 'science']);
+  assert.equal(JSON.parse(firstReview[1].content).knownAssignedHomework, null);
+
+  for (const question of ['Describe root functions', 'Add two thirds and one third']) {
+    const start = f.prompts.length;
+    await f.chat.handleQuickMessage(f.studentId, `${question} in Telugu`);
+    assert.match(f.prompts[start][0].content, /Do NOT solve this specific problem/);
+  }
+});
+
+test('submitting the newest assignment does not re-lock older unsubmitted homework', async () => {
+  const f = fixture();
+  f.tables.homework = [
+    { id: 'older', subject: 'Science', title: 'Older worksheet', note: 'Describe the function of a leaf', created_at: new Date(Date.now() - 3 * 3_600_000).toISOString() },
+    { id: 'newest', subject: 'Science', title: 'Newest worksheet', note: 'Describe root functions', created_at: new Date(Date.now() - 2 * 3_600_000).toISOString(), status: 'submitted', submitted_at: new Date(Date.now() - 3_600_000).toISOString() },
+  ];
+  await f.chat.handleQuickMessage(f.studentId, 'Describe the function of a leaf in Telugu');
+  assert.equal(f.prompts.length, 1);
+  assert.match(f.prompts[0][0].content, /Older worksheet.*ANSWER ALLOWED — older or history-only homework/);
+});
+
+test('history-only status unlocks the latest unsubmitted assignment at four days overdue, not before', async (t) => {
+  const now = Date.now();
+  t.mock.method(Date, 'now', () => now);
+  const fourDays = 4 * 86_400_000;
+  for (const age of [fourDays - 1, fourDays]) {
+    const f = fixture();
+    f.tables.homework = [{
+      id: 'latest', subject: 'Science', title: 'Latest worksheet', note: 'Describe the function of a leaf',
+      created_at: new Date(now - 5 * 86_400_000).toISOString(), due_at: new Date(now - age).toISOString(),
+    }];
+    await f.chat.handleQuickMessage(f.studentId, 'Describe the function of a leaf in Telugu');
+    assert.equal(f.prompts[0][0].content.includes('Do NOT solve this specific problem'), age < fourDays);
+    assert.equal(f.prompts.length, age < fourDays ? 2 : 1);
+  }
+});
+
+test('a scheduled future assignment does not unlock the current unsubmitted homework', async () => {
+  const f = fixture();
+  f.tables.homework = [
+    { id: 'future', subject: 'Science', title: 'Future worksheet', note: 'Explain root functions', start_at: new Date(Date.now() + 86_400_000).toISOString() },
+    { id: 'current', subject: 'Science', title: 'Current worksheet', note: 'Describe the function of a leaf', created_at: new Date().toISOString() },
+  ];
+  await f.chat.handleQuickMessage(f.studentId, 'Describe the function of a leaf in Telugu');
+  assert.match(f.prompts[0][0].content, /Do NOT solve this specific problem/);
+  assert.doesNotMatch(f.prompts[0][0].content, /Future worksheet/);
+});
+
+test('linked homework help waits one hour for submissions and still explains older unsubmitted work', async () => {
+  for (const state of ['submitted', 'recent-submission', 'historical', 'current']) {
+    const f = fixture();
+    const now = Date.now();
+    f.tables.homework = [{
+      id: 'linked', student_id: f.studentId, subject: 'Science', title: 'Linked worksheet', note: 'Explain leaf functions',
+      created_at: new Date(now - 8 * 86_400_000).toISOString(),
+      status: state === 'submitted' || state === 'recent-submission' ? 'submitted' : 'pending',
+      submitted_at: state === 'submitted' ? new Date(now - 7 * 86_400_000).toISOString()
+        : state === 'recent-submission' ? new Date(now - 60_000).toISOString() : undefined,
+      due_at: new Date(now + 86_400_000).toISOString(),
+    }];
+    if (state === 'historical') f.tables.homework.push({
+      id: 'newer', student_id: f.studentId, subject: 'Science', title: 'Newer worksheet', note: 'Describe root functions',
+      created_at: new Date(now).toISOString(),
+    });
+    const result = await f.chat.handleQuickMessage(f.studentId, 'Explain leaf functions in Telugu', { homeworkId: 'linked' });
+    assert.match(result.reply, /Leaves use sunlight/);
+    const locked = state === 'current' || state === 'recent-submission';
+    assert.equal(f.prompts[0][0].content.includes('STRICT HOMEWORK RULE on EVERY turn'), locked);
+    if (!locked) assert.match(f.prompts[0][0].content, /ANSWER ALLOWED: This homework/);
+  }
+});
+
+test('submitted homework stays protected before one hour and unlocks at exactly one hour in Home and Unit Sam', async (t) => {
+  const now = Date.now();
+  t.mock.method(Date, 'now', () => now);
+  const hour = 3_600_000;
+  for (const unitMode of [false, true]) {
+    for (const age of [hour - 1, hour, 7 * 86_400_000]) {
+      const f = fixture({ unsafeReply: true });
+      f.tables.homework = [{
+        id: 'submitted', subject: 'Science', title: 'Submitted worksheet',
+        note: 'What is the sum of all angles in a triangle?', status: 'submitted',
+        created_at: new Date(now - 8 * 86_400_000).toISOString(),
+        due_at: new Date(now - 7 * 86_400_000).toISOString(),
+        submitted_at: new Date(now - age).toISOString(),
+      }];
+      const question = 'What is the sum of all angles in a triangle in Telugu?';
+      const result = unitMode
+        ? await f.chat.handleMessage(f.studentId, question, { conversationId: f.conversationId, lessonId: 'lesson', lessonSubject: 'Science' })
+        : await f.chat.handleQuickMessage(f.studentId, question);
+      if (unitMode) await f.backgroundDone.promise;
+      assert.equal(f.prompts[0][0].content.includes('Do NOT solve this specific problem'), age < hour);
+      assert.equal(/180/.test(result.reply), age >= hour);
+    }
+  }
+});
+
+test('the latest resubmission time wins over an older database submission in both attempt and local records', async () => {
+  const now = Date.now();
+  for (const source of ['attempt', 'local']) {
+    const f = fixture();
+    f.tables.homework = [{
+      id: 'resubmitted', subject: 'Science', title: 'Worksheet', note: 'Describe the function of a leaf',
+      status: 'submitted', submitted_at: new Date(now - 7 * 86_400_000).toISOString(),
+    }];
+    if (source === 'attempt') f.tables.homework_attempts = [
+      { homework_id: 'resubmitted', created_at: new Date(now - 7 * 86_400_000).toISOString() },
+      { homework_id: 'resubmitted', created_at: new Date(now - 60_000).toISOString() },
+    ];
+    else f.feed.listHomeworkForStudent = () => [{
+      ...f.tables.homework[0], status: 'resubmitted', submitted_at: new Date(now - 60_000).toISOString(),
+    }];
+    await f.chat.handleQuickMessage(f.studentId, 'Describe the function of a leaf in Telugu');
+    assert.match(f.prompts[0][0].content, /Do NOT solve this specific problem/);
+  }
+});
+
+test('a submitted flag without a verifiable submission time produces an explicit error, not an indefinite homework refusal', async () => {
+  const f = fixture();
+  f.tables.homework = [{
+    id: 'missing-time', subject: 'Science', title: 'Worksheet', note: 'Describe the function of a leaf',
+    status: 'submitted', created_at: new Date(Date.now() - 7 * 86_400_000).toISOString(),
+  }];
+  await assert.rejects(f.chat.handleQuickMessage(f.studentId, 'Explain leaves in Telugu'), /could not verify when this homework was submitted/);
+  assert.equal(f.prompts.length, 0);
+});
+
+test('Rational Numbers uses the same written question for Telugu, Malayalam and every supported speech language', async () => {
+  const explanation = 'Rational numbers can be written as p/q, where p and q are integers and q is not zero.';
+  const f = fixture({ reply: explanation });
+  f.tables.lessons = [{ id: 'lesson', title: 'Rational Numbers', subject: 'Mathematics' }];
+  f.tables.lesson_chunks = [{ id: 'rational', lesson_id: 'lesson', chunk_text: explanation, embedding: [1, 0] }];
+  f.tables.homework = [];
+  f.auth.listClassTeachers = async () => [{ id: 'maths-teacher', name: 'Maths teacher', subject: 'Mathematics' }];
+  const recentMessages = [
+    { role: 'user', content: 'explain me rational numbers in Telugu' },
+    { role: 'assistant', content: explanation },
+  ];
+  let writtenReply: string | undefined;
+  for (const [code, name] of SAM_LANGUAGES) {
+    const start = f.prompts.length;
+    const result = await f.chat.handleQuickMessage(f.studentId, `explain me rational numbers in ${name}`, { recentMessages });
+    const modelMessages = f.prompts[start];
+    assert.equal(modelMessages[modelMessages.length - 1].content, 'explain me rational numbers');
+    assert.equal(modelMessages[1].content, 'explain me rational numbers');
+    if (writtenReply === undefined) writtenReply = result.reply;
+    assert.equal(result.reply, writtenReply);
+    assert.match(result.reply, /Rational numbers can be written as p\/q/);
+    assert('speechLanguage' in result);
+    assert.equal(result.speechLanguage, code === 'en' ? 'en-US' : `${code}-IN`);
+    assert.deepEqual(result.subjects, ['Mathematics'], 'The speech language does not need to be an enrolled subject');
+  }
+});
+
+test('language-subject requests retain the requested writing language in Home and Unit Sam', async () => {
+  for (const unitMode of [false, true]) {
+    const f = fixture({ reply: 'ഈ കവിതയിലെ ആശയം മനസ്സിലാക്കാം.' });
+    f.tables.lessons = [{ id: 'lesson', title: 'Poetry', subject: 'Malayalam' }];
+    f.tables.lesson_chunks = [{ id: 'poem', lesson_id: 'lesson', chunk_text: 'ഈ കവിതയിലെ ആശയം മനസ്സിലാക്കാം.', embedding: [1, 0] }];
+    f.tables.homework = [];
+    f.auth.listClassTeachers = async () => [{ id: 'language-teacher', name: 'Language teacher', subject: 'Malayalam' }];
+    const message = 'Explain this poem in Malayalam';
+    const result = unitMode
+      ? await f.chat.handleMessage(f.studentId, message, { conversationId: f.conversationId, lessonId: 'lesson', lessonSubject: 'Malayalam' })
+      : await f.chat.handleQuickMessage(f.studentId, message);
+    if (unitMode) await f.backgroundDone.promise;
+    const modelMessages = f.prompts[0];
+    assert.equal(modelMessages[modelMessages.length - 1].content, message);
+    assert('speechLanguage' in result && 'speechSubject' in result);
+    assert.equal(result.speechLanguage, 'ml-IN');
+    assert.equal(result.speechSubject, 'Malayalam');
+  }
+});
+
+test('a named Mathematics Unit is not crowded out by stronger English excerpts when requesting regional speech', async () => {
+  const explanation = 'Rational numbers can be written as p/q, where p and q are integers and q is not zero.';
+  const f = fixture({ reply: explanation });
+  f.tables.lessons = [
+    { id: 'lesson', title: 'Rational Numbers', subject: 'Mathematics' },
+    { id: 'english', title: 'A Christmas Gift', subject: 'English' },
+  ];
+  f.tables.lesson_class_visibility = [{ lesson_id: 'lesson' }, { lesson_id: 'english' }];
+  f.tables.lesson_chunks = [
+    { id: 'rational', lesson_id: 'lesson', chunk_text: explanation, embedding: [0, 1] },
+    ...Array.from({ length: 15 }, (_, index) => ({
+      id: `english-${index}`, lesson_id: 'english', chunk_text: 'The gift is a surprise for the family.', embedding: [1, 0],
+    })),
+  ];
+  f.tables.homework = [];
+  f.auth.listClassTeachers = async () => [
+    { id: 'maths-teacher', name: 'Maths teacher', subject: 'Mathematics' },
+    { id: 'english-teacher', name: 'English teacher', subject: 'English' },
+  ];
+  for (const message of ['explain me rational numbers in telugu ?', 'explain me rational numbers in malayalam']) {
+    const start = f.prompts.length;
+    const result = await f.chat.handleQuickMessage(f.studentId, message);
+    assert.match(f.prompts[start][0].content, /Rational numbers can be written as p\/q/);
+    assert('speechSubject' in result && 'speechLanguage' in result);
+    assert.equal(result.speechSubject, 'Mathematics');
+    assert.equal(result.speechLanguage, message.includes('malayalam') ? 'ml-IN' : 'te-IN');
+    assert.match(result.reply, /Rational numbers can be written as p\/q/);
+  }
 });

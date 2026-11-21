@@ -314,12 +314,21 @@ export async function getLearningTimeline(studentId, limit = 20) {
   return getJsonChecked(url, 'getLearningTimeline');
 }
 
-export async function generateLocalTtsAudio(text, targetLanguage = 'en-US', studentId, voice, speed = 1) {
+export async function prepareSamSpeech(text, targetLanguage, studentId, subject = '') {
+  const res = await fetch(`${API_BASE}/chat/speech-script`, {
+    method: 'POST',
+    headers: await authHeaders(),
+    body: JSON.stringify({ text, targetLanguage, studentId, subject }),
+  });
+  return checkSuccess(await res.json(), 'prepareSamSpeech');
+}
+
+export async function generateLocalTtsAudio(text, targetLanguage = 'en-US', studentId, voice, speed = 1, subject = '', speechPrepared = false) {
   const headers = await authHeaders();
   const res = await fetch(`${API_BASE}/chat/tts-audio`, {
     method: 'POST',
     headers,
-    body: JSON.stringify({ text, targetLanguage, studentId, voice, speed })
+    body: JSON.stringify({ text, targetLanguage, studentId, voice, speed, subject, speechPrepared })
   });
   const data = await res.json();
   return checkSuccess(data, 'generateLocalTtsAudio');

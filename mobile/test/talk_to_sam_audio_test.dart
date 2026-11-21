@@ -50,12 +50,16 @@ class _Player implements AudioPlayer {
 class _Chat extends ChatApiService {
   _Chat() : super(ApiClient());
   final requests = <Completer<Map<String, dynamic>>>[];
+  final languages = <String>[];
+  final subjects = <String>[];
   @override
   Future<Map<String, dynamic>> generateLocalTtsAudio(
     String text, String studentId, {
-    String targetLanguage = 'en-US', String? voice, double speed = 1, String? format,
+    String targetLanguage = 'en-US', String? voice, double speed = 1, String? format, String subject = '', bool speechPrepared = false,
   }) {
     final result = Completer<Map<String, dynamic>>();
+    languages.add(targetLanguage);
+    subjects.add(subject);
     requests.add(result);
     return result.future;
   }
@@ -96,7 +100,9 @@ void main() {
   });
 
   test('Tutor uses finalized WAV with MIME and waits for real completion', () async {
-    final speaking = notifier.speak('Hello', messageId: 'message');
+    final speaking = notifier.speak('Hello', messageId: 'message', language: 'te-IN', subject: 'Telugu');
+    expect(chat.languages, ['te-IN']);
+    expect(chat.subjects, ['Telugu']);
     chat.requests.single.complete(_tts());
     await _flush();
     final source = player.sources.single as BytesSource;

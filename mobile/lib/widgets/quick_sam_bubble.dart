@@ -235,7 +235,7 @@ class _QuickSamScreenState extends ConsumerState<QuickSamScreen> {
             : s.sending
                 ? '💭 Sam is thinking…'
                 : s.voicePlaying
-                    ? '🔊 Sam is talking…'
+                    ? '🔊 Sam is talking… tap stop to interrupt'
                     : '';
 
     return Scaffold(
@@ -409,10 +409,10 @@ class _QuickSamScreenState extends ConsumerState<QuickSamScreen> {
                       Row(
                         children: [
                           _RoundIcon(
-                            icon: s.recording ? Icons.stop_rounded : Icons.mic_rounded,
+                            icon: s.recording || s.speechActive ? Icons.stop_rounded : Icons.mic_rounded,
                             color: s.recording ? const Color(0xFFE5384F) : const Color(0x335B6CFF),
-                            tooltip: s.recording ? 'Stop and send' : 'Speak your question',
-                            onTap: (s.sending || s.transcribing) ? null : notifier.toggleRecording,
+                            tooltip: s.recording ? 'Stop and send' : s.speechActive ? 'Stop Sam speaking' : 'Speak your question',
+                            onTap: !s.speechActive && (s.sending || s.transcribing) ? null : notifier.toggleRecording,
                           ),
                           const SizedBox(width: 8),
                           Expanded(
