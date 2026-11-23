@@ -309,6 +309,32 @@ export class ChatService {
     }
   }
 
+  purgeSchoolData(studentIds: string[]) {
+    const students = new Set((studentIds || []).map((id) => String(id || '').trim()).filter(Boolean));
+    if (!students.size) return { removedSnapshots: 0, removedCacheEntries: 0 };
+
+    let removedCacheEntries = 0;
+    for (const key of ChatService.conversationCache.keys()) {
+      const studentId = String(key || '').split('::', 1)[0];
+      if (students.has(studentId)) {
+        ChatService.conversationCache.delete(key);
+        removedCacheEntries += 1;
+      }
+    }
+
+    const store = this.readLocalSnapshots();
+    let removedSnapshots = 0;
+    for (const key of Object.keys(store)) {
+      const studentId = String(key || '').split('::', 1)[0];
+      if (students.has(studentId)) {
+        delete store[key];
+        removedSnapshots += 1;
+      }
+    }
+    if (removedSnapshots) this.writeLocalSnapshots(store);
+    return { removedSnapshots, removedCacheEntries };
+  }
+
   private loadLocalSnapshotHistory(studentId: string, conversationId: string): ChatTurn[] {
     const store = this.readLocalSnapshots();
     const key = this.getSnapshotKey(studentId, conversationId);

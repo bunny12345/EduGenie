@@ -17,6 +17,38 @@ export class AuthGuard implements CanActivate {
       throw new UnauthorizedException('Invalid or expired token');
     }
 
+    if (!(this.supabase.client as any)?.isMock) {
+      const role = String(payload.role || '');
+      const schoolId = String((payload as any).schoolId || '');
+      if (role === 'school_admin') {
+        const id = schoolId || String(payload.sub || '');
+        const result: any = await this.supabase.client.from('schools').select('id').eq('id', id).limit(1);
+        if (result?.error || !Array.isArray(result?.data) || !result.data.length) {
+          throw new UnauthorizedException('This school account is no longer active.');
+        }
+      } else if (role === 'teacher') {
+        const teacherId = String(payload.sub || '');
+        const result: any = await this.supabase.client.from('teachers').select('id').eq('id', teacherId).limit(1);
+        if (result?.error || !Array.isArray(result?.data) || !result.data.length) {
+          throw new UnauthorizedException('This teacher account is no longer active.');
+        }
+        if (schoolId) {
+          const row = result.data[0];
+          void row;
+          const scoped: any = await this.supabase.client.from('teachers').select('id').eq('id', teacherId).eq('school_id', schoolId).limit(1);
+          if (scoped?.error || !Array.isArray(scoped?.data) || !scoped.data.length) {
+            throw new UnauthorizedException('This teacher account is no longer active for this school.');
+          }
+        }
+      } else if (role === 'student') {
+        const studentId = String(payload.sub || '');
+        const result: any = await this.supabase.client.from('students').select('id').eq('id', studentId).limit(1);
+        if (result?.error || !Array.isArray(result?.data) || !result.data.length) {
+          throw new UnauthorizedException('This student account is no longer active.');
+        }
+      }
+    }
+
     // Attach user info and studentId to request for downstream handlers
     req.user = payload;
     req.actorId = payload.sub || payload.user_id || payload.id || null;

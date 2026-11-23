@@ -122,6 +122,59 @@ export class LocalFeedService implements OnModuleInit {
     return removed;
   }
 
+  purgeSchoolData(schoolId: string, studentIds: string[], teacherIds: string[]) {
+    const school = String(schoolId || '').trim();
+    const students = new Set((studentIds || []).map((id) => String(id || '').trim()).filter(Boolean));
+    const teachers = new Set((teacherIds || []).map((id) => String(id || '').trim()).filter(Boolean));
+    if (!school && !students.size && !teachers.size) return { removedHomework: 0, removedTests: 0 };
+
+    const beforeHomework = this.homeworkAssignments.length;
+    this.homeworkAssignments = this.homeworkAssignments.filter((row) => {
+      const studentId = String(row?.student_id || row?.studentId || '').trim();
+      const teacherId = String(row?.created_by || row?.teacherId || row?.tasks?.meta?.teacherId || '').trim();
+      const rowSchool = String(row?.school_id || row?.schoolId || '').trim();
+      return !students.has(studentId)
+        && !teachers.has(teacherId)
+        && (!school || rowSchool !== school);
+    });
+    const removedHomework = beforeHomework - this.homeworkAssignments.length;
+    if (removedHomework) this.persistFeed();
+
+    const beforeTests = this.tests.length;
+    const removedTestIds = new Set<string>();
+    this.tests = this.tests.filter((row) => {
+      const rowSchool = String(row?.school_id || row?.schoolId || '').trim();
+      const teacherId = String(row?.teacher_id || row?.teacherId || row?.created_by || '').trim();
+      const keep = (!school || rowSchool !== school) && !teachers.has(teacherId);
+      if (!keep) removedTestIds.add(String(row?.id || '').trim());
+      return keep;
+    });
+    const removedTests = beforeTests - this.tests.length;
+    for (const id of removedTestIds) if (id) this.questionsByTest.delete(id);
+
+    this.announcements = this.announcements.filter((row) => {
+      const rowSchool = String(row?.school_id || row?.schoolId || '').trim();
+      const createdBy = String(row?.created_by || '').trim();
+      return (!school || rowSchool !== school)
+        && !teachers.has(createdBy)
+        && createdBy !== school;
+    });
+
+    for (const studentId of students) {
+      this.rewardsByStudent.delete(studentId);
+      this.activityByStudent.delete(studentId);
+      this.attempts.delete(studentId);
+    }
+
+    this.events = this.events.filter((row) => {
+      const studentId = String(row?.student_id || row?.studentId || '').trim();
+      const rowSchool = String(row?.school_id || row?.schoolId || '').trim();
+      return !students.has(studentId) && (!school || rowSchool !== school);
+    });
+
+    return { removedHomework, removedTests };
+  }
+
   getHomeworkById(id: string) {
     const targetId = String(id || '').trim();
     if (!targetId) return null;

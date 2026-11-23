@@ -9026,6 +9026,52 @@ textarea {
 .eg-owner-tabs button { flex: 1; border: 1px solid #ccd3f8; border-radius: 12px; padding: 12px; background: #f2f4ff; color: #303a79; font-weight: 700; cursor: pointer; }
 .eg-owner-tabs button[aria-pressed="true"] { background: #3546cb; color: #fff; border-color: #3546cb; }
 .eg-owner-card:has(.eg-support-owner) { max-width: 1100px; }
+.eg-owner-card:has(.eg-owner-school-management) { max-width: 1100px; }
+.eg-owner-school-management { margin-top: 18px; text-align: left; }
+.eg-owner-school-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; padding: 20px; border: 1px solid #d9def3; border-radius: 18px; background: linear-gradient(135deg, #edf4ff, #f6f1ff); }
+.eg-owner-school-header h2 { margin: 4px 0 6px; color: #17254a; }
+.eg-owner-school-header p { margin: 0; color: #5a6681; }
+.eg-owner-school-eyebrow { display: block; color: #485cb0; text-transform: uppercase; font-size: 10px; font-weight: 800; letter-spacing: 1.2px; margin-bottom: 4px; }
+.eg-owner-school-refresh, .eg-owner-school-edit, .eg-owner-school-delete, .eg-owner-school-close, .eg-owner-school-save, .eg-owner-school-delete-confirm,
+.eg-owner-contact-edit button { border: 1px solid #cbd5ec; background: #f5f7ff; color: #334776; border-radius: 10px; padding: 9px 12px; cursor: pointer; font-weight: 750; }
+.eg-owner-school-refresh:disabled, .eg-owner-school-edit:disabled, .eg-owner-school-delete:disabled, .eg-owner-school-close:disabled,
+.eg-owner-school-save:disabled, .eg-owner-school-delete-confirm:disabled, .eg-owner-contact-edit button:disabled { opacity: .55; cursor: default; }
+.eg-owner-school-list { display: grid; gap: 12px; margin-top: 14px; }
+.eg-owner-school-card { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: start; gap: 16px; padding: 16px; border: 1px solid #dde3f4; border-radius: 16px; background: #fff; }
+.eg-owner-school-details h3 { margin: 0 0 8px; color: #17254a; }
+.eg-owner-school-details p { margin: 3px 0; color: #53617e; font-size: 14px; }
+.eg-owner-school-counts { margin-top: 8px !important; color: #354acb !important; font-weight: 800; }
+.eg-owner-school-actions { display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; }
+.eg-owner-school-delete, .eg-owner-school-delete-confirm { color: #a32020; border-color: #efc1c1; background: #fff5f5; }
+.eg-owner-school-save { background: #354acb; color: #fff; border-color: #354acb; }
+.eg-owner-school-delete-confirm { background: #ba1c2d; color: #fff; border-color: #ba1c2d; }
+.eg-owner-school-skeleton { height: 120px; border-radius: 16px; background: linear-gradient(90deg, #f2f4fa, #e8edfa, #f2f4fa); }
+.eg-owner-school-empty { padding: 24px; text-align: center; color: #5d6982; }
+.eg-owner-school-modal, .eg-owner-delete-modal { margin-top: 14px; padding: 18px; border: 1px solid #d5dcf3; border-radius: 18px; background: #fff; box-shadow: 0 16px 38px rgba(38, 52, 81, .12); }
+.eg-owner-school-modal-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; margin-bottom: 10px; }
+.eg-owner-school-modal h2, .eg-owner-delete-modal h2 { margin: 4px 0 8px; color: #17254a; }
+.eg-owner-school-modal label, .eg-owner-delete-modal label { display: grid; gap: 7px; margin-top: 12px; color: #43516b; font-weight: 700; }
+.eg-owner-school-modal input, .eg-owner-school-modal select, .eg-owner-delete-modal input { width: 100%; box-sizing: border-box; border: 1px solid #cfd6ea; border-radius: 10px; padding: 10px 12px; background: #fff; color: #1d2945; }
+.eg-owner-contact-edit { display: grid; gap: 8px; margin-top: 14px; padding: 12px; border: 1px solid #e1e5f2; border-radius: 12px; background: #f8f9ff; }
+.eg-owner-contact-edit label { margin: 0; }
+.eg-owner-code-row { display: grid; grid-template-columns: 1fr auto; align-items: end; gap: 8px; }
+.eg-owner-code-row label { margin: 0; }
+.eg-owner-school-modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
+.eg-owner-delete-modal { border-color: #efb9c0; background: #fffafa; }
+.eg-owner-delete-modal p { color: #5b5968; line-height: 1.55; }
+.eg-owner-delete-modal code { overflow-wrap: anywhere; }
+.eg-owner-school-inline, .eg-owner-delete-inline { grid-column: 1 / -1; width: 100%; box-sizing: border-box; margin-top: 4px; padding: 18px; border: 1px solid #d5dcf3; border-radius: 14px; background: #fafbff; box-shadow: inset 0 1px 0 rgba(255,255,255,.8); }
+.eg-owner-delete-inline { border-color: #efb9c0; background: #fffafa; }
+.eg-owner-delete-inline p { color: #5b5968; line-height: 1.55; }
+.eg-owner-delete-inline code { overflow-wrap: anywhere; }
+.eg-owner-delete-inline label { display: grid; gap: 7px; margin-top: 12px; color: #43516b; font-weight: 700; }
+.eg-owner-delete-inline input { width: 100%; box-sizing: border-box; border: 1px solid #cfd6ea; border-radius: 10px; padding: 10px 12px; background: #fff; color: #1d2945; }
+@media (max-width: 720px) {
+  .eg-owner-school-header { flex-direction: column; }
+  .eg-owner-school-card { grid-template-columns: 1fr; }
+  .eg-owner-school-actions { justify-content: flex-start; }
+  .eg-owner-code-row { grid-template-columns: 1fr; }
+}
 .eg-support { margin-top: 18px; border: 1px solid #d5dcf3; border-radius: 20px; overflow: hidden; background: #fff; color: #263451; box-shadow: 0 12px 30px rgba(38, 52, 81, .07); text-align: left; }
 .eg-support-header { display: flex; justify-content: space-between; align-items: center; gap: 18px; padding: 22px; background: linear-gradient(120deg, #edf4ff, #f4efff); border-bottom: 1px solid #e0e5f6; }
 .eg-support h3, .eg-support h4 { margin: 0 0 8px; color: #17254a; }

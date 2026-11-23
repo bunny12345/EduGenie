@@ -1,8 +1,9 @@
-import { BadRequestException, Body, Controller, Get, HttpException, Param, Post, Req, UseGuards } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Get, HttpException, Optional, Param, Post, Req, UseGuards } from '@nestjs/common';
 import { StudentAuthService } from '../auth/student-auth.service';
 import { OwnerGuard, OwnerIdentityGuard } from '../auth/owner.guard';
 import { RegistrationPhoneService } from '../auth/registration-phone.service';
 import { PasswordResetService } from '../auth/password-reset.service';
+import { SchoolManagementService } from '../auth/school-management.service';
 
 type ClientRequest = { ip?: string; headers?: Record<string, string | string[] | undefined> };
 
@@ -20,29 +21,99 @@ export class AuthController {
   constructor(
     private readonly studentAuth: StudentAuthService,
     private readonly registrationPhone: RegistrationPhoneService,
-    private readonly passwordReset: PasswordResetService
+    private readonly passwordReset: PasswordResetService,
+    @Optional() private readonly schoolManagement?: SchoolManagementService
   ) {}
 
   private ownerScope(req: { owner: { id: string } }) {
     return { schoolId: 'owner-school-registration', actorId: req.owner.id };
   }
 
+  private async ownerSchoolScope(req: { owner: { id: string } }, body: any) {
+    if (body?.accountId !== undefined) {
+      const schoolId = String(body.accountId || '').trim();
+      if (!schoolId) throw new BadRequestException('School id is required.');
+      if (this.schoolManagement) await this.schoolManagement.assertSchoolExists(schoolId);
+      return { schoolId, actorId: req.owner.id };
+    }
+    return this.ownerScope(req);
+  }
+
   @Post('school/register/phone/request')
   @UseGuards(OwnerGuard)
-  requestSchoolPhone(@Req() req: { owner: { id: string } }, @Body() body: any) {
-    return this.registrationPhone.request(this.ownerScope(req), { ...body, role: 'school' });
+  async requestSchoolPhone(@Req() req: { owner: { id: string } }, @Body() body: any) {
+    const scope = await this.ownerSchoolScope(req, body);
+    return this.registrationPhone.request(scope, { ...body, role: 'school' });
   }
 
   @Post('school/register/phone/verify')
   @UseGuards(OwnerGuard)
-  verifySchoolPhone(@Req() req: { owner: { id: string } }, @Body() body: any) {
-    return this.registrationPhone.verify(this.ownerScope(req), { ...body, role: 'school' });
+  async verifySchoolPhone(@Req() req: { owner: { id: string } }, @Body() body: any) {
+    const scope = await this.ownerSchoolScope(req, body);
+    return this.registrationPhone.verify(scope, { ...body, role: 'school' });
   }
 
   @Get('owner/access')
   @UseGuards(OwnerIdentityGuard)
   ownerAccess(@Req() req: { owner: { mfaVerified: boolean } }) {
     return { success: true, mfaVerified: req.owner.mfaVerified };
+  }
+
+  @Get('owner/schools')
+  @UseGuards(OwnerGuard)
+  listOwnerSchools() {
+    if (!this.schoolManagement) throw new BadRequestException('School management is not configured.');
+    return this.schoolManagement.listSchools();
+  }
+
+  @Post('owner/schools/:schoolId')
+  @UseGuards(OwnerGuard)
+  updateOwnerSchool(
+    @Param('schoolId') schoolId: string,
+    @Req() req: { owner: { id: string } },
+    @Body() body: any
+  ) {
+    if (!this.schoolManagement) throw new BadRequestException('School management is not configured.');
+    return this.schoolManagement.updateSchool(schoolId, req.owner.id, body || {});
+  }
+
+  @Post('owner/schools/:schoolId/delete')
+  @UseGuards(OwnerGuard)
+  deleteOwnerSchool(
+    @Param('schoolId') schoolId: string,
+    @Req() req: { owner: { id: string } },
+    @Body() body: any
+  ) {
+    if (!this.schoolManagement) throw new BadRequestException('School management is not configured.');
+    return this.schoolManagement.deleteSchool(schoolId, req.owner.id, body?.confirmation);
+  }
+
+  @Post('owner/schools/:schoolId/email/request')
+  @UseGuards(OwnerGuard)
+  requestOwnerSchoolEmail(
+    @Param('schoolId') schoolId: string,
+    @Req() req: { owner: { id: string } },
+    @Body() body: any
+  ) {
+    if (!this.schoolManagement) throw new BadRequestException('School management is not configured.');
+    return this.schoolManagement.requestEmailVerification(schoolId, req.owner.id, body?.email);
+  }
+
+  @Post('owner/schools/:schoolId/email/verify')
+  @UseGuards(OwnerGuard)
+  verifyOwnerSchoolEmail(
+    @Param('schoolId') schoolId: string,
+    @Req() req: { owner: { id: string } },
+    @Body() body: any
+  ) {
+    if (!this.schoolManagement) throw new BadRequestException('School management is not configured.');
+    return this.schoolManagement.verifyEmailVerification(
+      schoolId,
+      req.owner.id,
+      body?.email,
+      body?.challengeId,
+      body?.code
+    );
   }
 
   @Post('school/register')

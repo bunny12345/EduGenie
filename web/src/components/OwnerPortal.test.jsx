@@ -3,7 +3,16 @@ import { act, fireEvent, render, screen } from '@testing-library/react';
 import OwnerPortal from './OwnerPortal';
 import RoleGateway from './RoleGateway';
 import { createOwnerClient } from '../ownerAuthClient';
-import { getOwnerAccess, schoolRegisterRequestOtp, schoolRegisterVerifyOtp, requestSchoolPhoneCode, verifySchoolPhoneCode } from '../api';
+import {
+  getOwnerAccess,
+  schoolRegisterRequestOtp,
+  schoolRegisterVerifyOtp,
+  requestSchoolPhoneCode,
+  verifySchoolPhoneCode,
+  listOwnerSchools,
+  updateOwnerSchool,
+  deleteOwnerSchool
+} from '../api';
 
 jest.mock('../ownerAuthClient', () => ({ createOwnerClient: jest.fn() }));
 jest.mock('../api', () => ({
@@ -12,6 +21,9 @@ jest.mock('../api', () => ({
   schoolRegisterVerifyOtp: jest.fn(),
   requestSchoolPhoneCode: jest.fn(),
   verifySchoolPhoneCode: jest.fn(),
+  listOwnerSchools: jest.fn(),
+  updateOwnerSchool: jest.fn(),
+  deleteOwnerSchool: jest.fn(),
 }));
 
 let client;
@@ -144,6 +156,63 @@ test('invalid MFA does not expose the registration form', async () => {
   fireEvent.click(screen.getByRole('button', { name: 'Verify & continue' }));
   await screen.findByRole('alert');
   expect(screen.queryByLabelText('School name')).not.toBeInTheDocument();
+});
+
+test('owner school management expands delete inline and requires the exact school-name phrase', async () => {
+  listOwnerSchools.mockResolvedValue({
+    success: true,
+    schools: [{
+      id: 'owner-test-school-id',
+      email: 'test@example.test',
+      schoolName: 'Owner Test School',
+      branch: 'Main',
+      location: 'Test City',
+      phone: '+919876543210',
+      teacherCount: 1,
+      studentCount: 1
+    }]
+  });
+  render(<OwnerPortal />);
+  await login();
+  await verify();
+  fireEvent.click(screen.getByRole('button', { name: 'Registered schools' }));
+  await screen.findByRole('heading', { name: 'Owner Test School' });
+  fireEvent.click(screen.getByRole('button', { name: 'Delete permanently' }));
+  expect(screen.getByText(/Permanent deletion warning/)).toBeInTheDocument();
+  const confirmation = screen.getByLabelText(/delete Owner Test School permanently/i);
+  const submit = document.querySelector('.eg-owner-school-delete-confirm');
+  expect(submit).toBeDisabled();
+  fireEvent.change(confirmation, { target: { value: 'delete permanently' } });
+  expect(submit).toBeDisabled();
+  fireEvent.change(confirmation, { target: { value: 'delete Owner Test School permanently' } });
+  expect(submit).toBeEnabled();
+  fireEvent.change(confirmation, { target: { value: 'Delete This Never' } });
+  expect(deleteOwnerSchool).not.toHaveBeenCalled();
+});
+
+test('owner school management opens Edit inline and closes it on the selected school', async () => {
+  listOwnerSchools.mockResolvedValue({
+    success: true,
+    schools: [{
+      id: 'owner-edit-school-id',
+      email: 'edit@example.test',
+      schoolName: 'Owner Edit School',
+      branch: 'Main',
+      location: 'Test City',
+      phone: '+919876543210',
+      teacherCount: 2,
+      studentCount: 3
+    }]
+  });
+  render(<OwnerPortal />);
+  await login();
+  await verify();
+  fireEvent.click(screen.getByRole('button', { name: 'Registered schools' }));
+  await screen.findByRole('heading', { name: 'Owner Edit School' });
+  fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
+  expect(screen.getByText('Edit school')).toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+  expect(screen.queryByText('Edit school')).not.toBeInTheDocument();
 });
 
 test('MFA owner must verify both school mobile and email and stays in the owner portal', async () => {

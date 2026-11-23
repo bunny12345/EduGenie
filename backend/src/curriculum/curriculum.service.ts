@@ -39,6 +39,7 @@ type UploadInput = {
   fileName: string;
   data: string;
   mimeType?: string;
+  schoolId?: string;
 };
 
 type AdminUploadInput = Omit<UploadInput, 'teacherId'> & {
@@ -428,6 +429,17 @@ export class CurriculumService {
         const result = await this.db.client.from(table).insert(rows);
         if (result.error) throw new Error(`Could not save ${table}: ${result.error.message}`);
       }
+      if (documentRows.length) {
+        const assetResult = await this.db.client.from('school_asset_registry').insert(
+          documentRows.map((row) => ({
+            school_id: preview.input.schoolId,
+            teacher_id: preview.input.teacherId,
+            asset_type: 'curriculum',
+            file_url: String(row.file_url || '')
+          }))
+        );
+        if ((assetResult as any)?.error) throw new Error(`Could not register imported PDFs for permanent deletion: ${(assetResult as any).error.message}`);
+      }
       const allLessons = await this.lessonsForSubjectClass(preview.input.schoolId, preview.input.subject, preview.input.className);
       const importedIds = new Set(lessonIds);
       const originalLessons = allLessons.filter((lesson) => !importedIds.has(String(lesson.id)));
@@ -759,6 +771,25 @@ export class CurriculumService {
       throw new Error((insertedDoc as any)?.error?.message || 'Failed to create lesson document');
     }
 
+    let schoolId = String(input.schoolId || '').trim();
+    if (!schoolId) {
+      const teacherRow = await this.db.client.from('teachers').select('school_id').eq('id', teacherId).limit(1);
+      schoolId = String(Array.isArray((teacherRow as any)?.data) ? (teacherRow as any).data[0]?.school_id || '' : '').trim();
+    }
+    if (schoolId) {
+      const tracked = await this.db.client.from('school_asset_registry').insert([{
+        school_id: schoolId,
+        teacher_id: teacherId,
+        asset_type: 'curriculum',
+        file_url: saved.relativeUrl
+      }]);
+      if ((tracked as any)?.error) {
+        await this.db.client.from('lesson_documents').delete().eq('id', doc.id);
+        try { fs.unlinkSync(saved.fullPath); } catch (_cleanupError) { /* best-effort cleanup */ }
+        throw new Error('Could not register the upload for permanent deletion. Please retry.');
+      }
+    }
+
     try {
       const extracted = mimeType === 'text/plain'
         ? { pages: [{ pageNumber: 1, text: this.normalizeExtractedText(fileBuffer.toString('utf8')) }], pageCount: 1 }
@@ -831,6 +862,7 @@ export class CurriculumService {
     return this.uploadLessonDocument({
       teacherId: String(lesson.teacher_id || '').trim(),
       lessonId,
+      schoolId,
       fileName: input.fileName,
       data: input.data,
       mimeType: input.mimeType
@@ -846,6 +878,7 @@ export class CurriculumService {
     const lesson = await this.assertLessonInSchool(lessonId, schoolId);
     return this.uploadLessonDocument({
       teacherId: String(lesson.teacher_id || '').trim(), lessonId,
+      schoolId,
       fileName: `${lesson.title || 'lesson-content'}.txt`, mimeType: 'text/plain',
       data: Buffer.from(input.content.trim(), 'utf8').toString('base64'),
     });

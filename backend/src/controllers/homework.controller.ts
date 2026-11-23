@@ -61,6 +61,25 @@ export class HomeworkController {
       const isLocalHost = /^(localhost|127\.0\.0\.1)(:\d+)?$/i.test(host);
       const protocol = isLocalHost ? 'http' : 'https';
       const url = host ? `${protocol}://${host}${relativeUrl}` : relativeUrl;
+      let schoolId = String(req?.user?.schoolId || req?.actor?.schoolId || '').trim();
+      const studentId = String(req?.studentId || req?.actorId || req?.user?.sub || '').trim();
+      if (!schoolId && studentId) {
+        const profile = await this.studentAuth.resolveStudentProfile(studentId);
+        schoolId = String(profile?.schoolId || '').trim();
+      }
+      if (schoolId && studentId) {
+        const tracked = await this.db.client.from('school_asset_registry').insert([{
+          school_id: schoolId,
+          student_id: studentId,
+          asset_type: 'homework',
+          file_url: relativeUrl
+        }]);
+        if ((tracked as any)?.error) {
+          const fullPath = path.resolve(process.cwd(), `local-data${relativeUrl}`);
+          try { fs.unlinkSync(fullPath); } catch (_cleanupError) { /* best-effort cleanup */ }
+          return { success: false, error: 'Could not register the upload for permanent deletion. Please retry.' };
+        }
+      }
       return { success: true, url };
     } catch (e) {
       return { success: false, error: String((e as any)?.message || e || 'upload failed') };

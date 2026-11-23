@@ -644,6 +644,139 @@ export class StudentAuthService implements OnModuleInit {
     StudentAuthService.schoolAccounts.set(account.email.toLowerCase(), account);
   }
 
+  listLocalSchools() {
+    const byId = new Map<string, SchoolAccount>();
+    for (const account of StudentAuthService.schoolAccounts.values()) {
+      if (account.schoolId) byId.set(String(account.schoolId), account);
+    }
+    return Array.from(byId.values()).map((account) => ({
+      id: account.schoolId,
+      email: account.email,
+      schoolName: account.schoolName,
+      branch: account.branch,
+      location: account.location,
+      phone: account.phone || null,
+      createdAt: null,
+      updatedAt: null
+    }));
+  }
+
+  async updateSchoolProfileByOwner(schoolIdRaw: string, patch: {
+    email?: string;
+    schoolName: string;
+    branch: string;
+    location: string;
+    phone?: string | null;
+  }): Promise<{ ok: true; school: any } | { ok: false; error: string }> {
+    const schoolId = String(schoolIdRaw || '').trim();
+    if (!schoolId) return { ok: false, error: 'schoolId is required' };
+
+    const dbPatch: Record<string, any> = {
+      school_name: patch.schoolName,
+      branch: patch.branch,
+      location: patch.location,
+      updated_at: new Date().toISOString()
+    };
+    if (patch.email !== undefined) dbPatch.email = patch.email;
+    if (patch.phone !== undefined) dbPatch.phone = patch.phone;
+
+    let updatedRow: any = null;
+    try {
+      const result: any = await this.db.client
+        .from('schools')
+        .update(dbPatch)
+        .eq('id', schoolId)
+        .select('*');
+      if (result?.error) throw new Error(result.error.message || 'School update failed');
+      updatedRow = Array.isArray(result?.data) ? result.data[0] || null : null;
+    } catch (error) {
+      if (process.env.SUPABASE_URL && (process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY)) {
+        return { ok: false, error: 'Could not save the school profile. Please retry or contact the site operator.' };
+      }
+    }
+
+    let existing: SchoolAccount | null = null;
+    for (const account of StudentAuthService.schoolAccounts.values()) {
+      if (String(account.schoolId) === schoolId) {
+        existing = account;
+        break;
+      }
+    }
+    if (!existing && updatedRow) {
+      existing = {
+        schoolId,
+        email: String(updatedRow.email || patch.email || ''),
+        schoolName: String(updatedRow.school_name || patch.schoolName),
+        branch: String(updatedRow.branch || patch.branch),
+        location: String(updatedRow.location || patch.location),
+        phone: updatedRow.phone ? String(updatedRow.phone) : (patch.phone || undefined),
+        passwordSalt: String(updatedRow.password_salt || ''),
+        passwordHash: String(updatedRow.password_hash || '')
+      };
+    }
+    const next: SchoolAccount = {
+      schoolId,
+      email: patch.email || existing?.email || '',
+      schoolName: patch.schoolName,
+      branch: patch.branch,
+      location: patch.location,
+      phone: patch.phone === undefined ? existing?.phone : patch.phone || undefined,
+      passwordSalt: existing?.passwordSalt || '',
+      passwordHash: existing?.passwordHash || ''
+    };
+    if (existing) {
+      for (const [key, account] of StudentAuthService.schoolAccounts.entries()) {
+        if (String(account.schoolId) === schoolId) StudentAuthService.schoolAccounts.delete(key);
+      }
+    }
+    this.rememberSchool(next);
+
+    return {
+      ok: true,
+      school: updatedRow || {
+        id: schoolId,
+        email: next.email,
+        school_name: next.schoolName,
+        branch: next.branch,
+        location: next.location,
+        phone: next.phone || null
+      }
+    };
+  }
+
+  purgeSchoolLocalAccounts(schoolIdRaw: string) {
+    const schoolId = String(schoolIdRaw || '').trim();
+    if (!schoolId) return { studentIds: [] as string[], teacherIds: [] as string[] };
+
+    const studentIds = new Set<string>();
+    for (const [loginId, account] of StudentAuthService.localAccounts.entries()) {
+      if (String(account.schoolId || '') === schoolId) {
+        studentIds.add(String(account.studentId || '').trim());
+        StudentAuthService.localAccounts.delete(loginId);
+      }
+    }
+    this.persistStudentAccounts();
+
+    const teacherIds = new Set<string>();
+    for (const [loginId, account] of StudentAuthService.teacherAccounts.entries()) {
+      if (String(account.schoolId || '') === schoolId) {
+        teacherIds.add(String(account.teacherId || '').trim());
+        StudentAuthService.teacherAccounts.delete(loginId);
+      }
+    }
+    this.persistTeacherAccounts();
+    StudentAuthService.bumpRosterVersion();
+
+    for (const [email, account] of StudentAuthService.schoolAccounts.entries()) {
+      if (String(account.schoolId || '') === schoolId) StudentAuthService.schoolAccounts.delete(email);
+    }
+
+    return {
+      studentIds: Array.from(studentIds).filter(Boolean),
+      teacherIds: Array.from(teacherIds).filter(Boolean)
+    };
+  }
+
   private findSchoolByEmail(email: string) {
     return StudentAuthService.schoolAccounts.get(String(email || '').toLowerCase()) || null;
   }

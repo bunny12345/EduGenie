@@ -151,6 +151,13 @@ export const schoolRegisterRequestOtp = (payload, token) => ownerRequest('school
 export const schoolRegisterVerifyOtp = (email, otp, token, phoneVerificationId) => ownerRequest('school/register/verify-otp', token, { email, otp, phoneVerificationId });
 export const requestSchoolPhoneCode = (payload, token) => ownerRequest('school/register/phone/request', token, payload);
 export const verifySchoolPhoneCode = (payload, token) => ownerRequest('school/register/phone/verify', token, payload);
+export const listOwnerSchools = (token) => ownerRequest('owner/schools', token);
+export const updateOwnerSchool = (schoolId, payload, token) => ownerRequest(`owner/schools/${encodeURIComponent(schoolId)}`, token, payload);
+export const deleteOwnerSchool = (schoolId, confirmation, token) => ownerRequest(`owner/schools/${encodeURIComponent(schoolId)}/delete`, token, { confirmation });
+export const requestOwnerSchoolEmailCode = (schoolId, email, token) =>
+  ownerRequest(`owner/schools/${encodeURIComponent(schoolId)}/email/request`, token, { email });
+export const verifyOwnerSchoolEmailCode = (schoolId, email, challengeId, code, token) =>
+  ownerRequest(`owner/schools/${encodeURIComponent(schoolId)}/email/verify`, token, { email, challengeId, code });
 
 async function supportRequest(path, { token, body, signal } = {}) {
   const headers = token ? { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' } : await authHeaders();
@@ -1628,6 +1635,11 @@ const api = {
   schoolRegister,
   schoolRegisterRequestOtp,
   schoolRegisterVerifyOtp,
+  listOwnerSchools,
+  updateOwnerSchool,
+  deleteOwnerSchool,
+  requestOwnerSchoolEmailCode,
+  verifyOwnerSchoolEmailCode,
   schoolLogin,
   getInviteInfo,
   acceptInvite,

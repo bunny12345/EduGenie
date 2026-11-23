@@ -14,6 +14,7 @@ import { LearningScoreService } from '../progress/learning-score.service';
 @Module({
   imports: [SharedModule],
   controllers: [ChatController],
-  providers: [ChatService, LlmService, SupabaseService, EmbeddingsService, StudentAuthService, EmailService, OrchardService, LearningScoreService, SchoolworkStatusService]
+  providers: [ChatService, LlmService, SupabaseService, EmbeddingsService, StudentAuthService, EmailService, OrchardService, LearningScoreService, SchoolworkStatusService],
+  exports: [ChatService]
 })
 export class ChatModule {}

@@ -4,6 +4,7 @@ import { createOwnerClient } from '../ownerAuthClient';
 import TechnicalSupport from './TechnicalSupport';
 import SchoolEnquiriesInbox from './SchoolEnquiriesInbox';
 import RegistrationContactField, { EMPTY_REGISTRATION_PHONE, isRegistrationVerified, registrationPhoneNumber } from './RegistrationContactField';
+import OwnerSchoolManagement from './OwnerSchoolManagement';
 
 function OwnerPasswordField({ label, ...inputProps }) {
   const id = useId();
@@ -169,7 +170,12 @@ export default function OwnerPortal() {
         <header className="rg-head">
           <img src="/logo.png" alt="AcademiX" className="rg-logo" />
           <p className="rg-kicker">Private owner access</p>
-          <h1>{phase === 'register' ? ownerTab === 'support' ? 'Support Inbox' : ownerTab === 'enquiries' ? 'School enquiries' : 'Register a school' : 'AcademiX Owner'}</h1>
+          <h1>{phase === 'register'
+            ? ownerTab === 'support' ? 'Support Inbox'
+              : ownerTab === 'enquiries' ? 'School enquiries'
+                : ownerTab === 'manage' ? 'Registered schools'
+                  : 'Register a school'
+            : 'AcademiX Owner'}</h1>
           <p>Only the configured owner can register schools. Authenticator verification is required.</p>
         </header>
         {!client ? (
@@ -184,11 +190,13 @@ export default function OwnerPortal() {
           <>
             <nav className="eg-owner-tabs" aria-label="Owner tools">
               <button type="button" aria-pressed={ownerTab === 'schools'} onClick={() => setOwnerTab('schools')}>Register school</button>
+              <button type="button" aria-pressed={ownerTab === 'manage'} onClick={() => setOwnerTab('manage')}>Registered schools</button>
               <button type="button" aria-pressed={ownerTab === 'support'} onClick={() => setOwnerTab('support')}>Support Inbox</button>
               <button type="button" aria-pressed={ownerTab === 'enquiries'} onClick={() => setOwnerTab('enquiries')}>School enquiries</button>
             </nav>
             {ownerTab === 'support' ? <TechnicalSupport ownerToken={session.access_token} onAuthError={signOut} /> :
               ownerTab === 'enquiries' ? <SchoolEnquiriesInbox token={session.access_token} onAuthError={signOut} /> :
+              ownerTab === 'manage' ? <OwnerSchoolManagement token={session.access_token} onSessionExpired={signOut} /> :
               <OwnerSchoolRegistration token={session.access_token} onSessionExpired={signOut} />}
           </>
         ) : (
