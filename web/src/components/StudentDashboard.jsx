@@ -4108,6 +4108,15 @@ export default function StudentDashboard({ studentId = 'test', onLogout }) {
             <button className="eg-inline-btn" disabled={settingsSaving} onClick={() => onSaveTheme(currentTheme === 'Dark' ? 'Light' : 'Dark')}>
               {settingsSaving ? 'Saving...' : 'Toggle Theme'}
             </button>
+            <a
+              className="eg-inline-btn"
+              href="/privacy-policy.html"
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{ textDecoration: 'none', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}
+            >
+              Privacy Policy
+            </a>
           </div>
         </article>
       ) : null}

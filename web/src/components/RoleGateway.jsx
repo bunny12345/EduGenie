@@ -387,6 +387,14 @@ export default function RoleGateway({ onLogin }) {
           </form>
         ) : null}
       </main>
+      <a
+        href="/privacy-policy.html"
+        target="_blank"
+        rel="noopener noreferrer"
+        style={{ color: '#354acb', fontSize: '13px', fontWeight: 700, textDecoration: 'none', marginTop: '-8px' }}
+      >
+        Privacy Policy
+      </a>
       <WelcomeAssistant />
     </div>
   );
