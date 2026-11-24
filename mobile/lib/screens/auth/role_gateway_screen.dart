@@ -289,12 +289,10 @@ class _RoleGatewayScreenState extends ConsumerState<RoleGatewayScreen> {
           autofillHints: const [AutofillHints.password],
           decoration: InputDecoration(
             labelText: 'Password',
-            suffixIcon: GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onTapDown: (_) => setState(() => _showPassword = true),
-              onTapUp: (_) => setState(() => _showPassword = false),
-              onTapCancel: () => setState(() => _showPassword = false),
-              child: Icon(
+            suffixIcon: IconButton(
+              tooltip: _showPassword ? 'Hide password' : 'Show password',
+              onPressed: () => setState(() => _showPassword = !_showPassword),
+              icon: Icon(
                 _showPassword ? Icons.visibility_off_rounded : Icons.visibility_rounded,
                 size: 20,
                 color: AppColors.muted,

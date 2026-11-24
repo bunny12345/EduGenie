@@ -57,6 +57,48 @@ Future<void> _pump(WidgetTester tester, _MemoryStorage storage) async {
 String _text(WidgetTester tester, String key) => tester.widget<TextField>(find.byKey(Key(key))).controller!.text;
 
 void main() {
+  for (final role in ['Student', 'Teacher']) {
+    testWidgets('$role password visibility toggles and remains visible while editing', (tester) async {
+      await _pump(tester, _MemoryStorage());
+      if (role == 'Teacher') {
+        await tester.tap(find.text('Teacher'));
+        await tester.pumpAndSettle();
+      }
+
+      final password = find.byKey(const Key('login-password'));
+      await tester.enterText(password, 'Sample#Pass1');
+      expect(tester.widget<TextField>(password).obscureText, isTrue);
+
+      await tester.tap(find.byTooltip('Show password'));
+      await tester.pumpAndSettle();
+      await tester.pump(const Duration(seconds: 1));
+      expect(tester.widget<TextField>(password).obscureText, isFalse);
+      expect(_text(tester, 'login-password'), 'Sample#Pass1');
+
+      await tester.enterText(password, 'Sample#Pass2');
+      await tester.pump();
+      expect(tester.widget<TextField>(password).obscureText, isFalse);
+
+      await tester.tap(find.byTooltip('Hide password'));
+      await tester.pumpAndSettle();
+      expect(tester.widget<TextField>(password).obscureText, isTrue);
+      expect(_text(tester, 'login-password'), 'Sample#Pass2');
+    });
+  }
+
+  testWidgets('switching roles preserves password visibility state', (tester) async {
+    await _pump(tester, _MemoryStorage());
+    await tester.tap(find.byTooltip('Show password'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Teacher'));
+    await tester.pumpAndSettle();
+
+    expect(tester.widget<TextField>(find.byKey(const Key('login-password'))).obscureText, isFalse);
+    await tester.tap(find.byTooltip('Hide password'));
+    await tester.pumpAndSettle();
+    expect(tester.widget<TextField>(find.byKey(const Key('login-password'))).obscureText, isTrue);
+  });
+
   testWidgets('prefills the last remembered role and login, per role', (tester) async {
     final storage = _MemoryStorage()
       ..lastRole = 'teacher'
