@@ -6,6 +6,18 @@ sessions show a web-only/unsupported notice and can sign out, never fall through
 to the student portal. Web school administration and existing API/session
 contracts remain unchanged.
 
+## App updates
+
+Student More and the teacher three-dot menu show the installed version.
+On Android, Google Play checks the release available to that account and
+shows an Update button only when an update is available. The available version
+is shown as a build number because Play's in-app update API does not provide
+the release name. Tapping Update opens Play's in-app flow, or the Play listing
+if that flow is unavailable. Checks can be retried after an error and refresh
+when the app resumes. iOS and other platforms show the installed version only.
+Google Play must distribute this feature before it can check later releases;
+verify on a Play-installed, opted-in test account with a newer eligible build.
+
 ## Optional strict mock exams
 
 Teachers can enable Strict exam before assigning a scheduled mock test. Their

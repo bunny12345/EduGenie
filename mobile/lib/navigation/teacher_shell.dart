@@ -13,6 +13,7 @@ import '../theme/app_colors.dart';
 import '../theme/subject_background.dart';
 import '../widgets/teacher_support_bubble.dart';
 import '../widgets/teacher_profile_chip.dart';
+import '../widgets/app_update_tile.dart';
 
 /// The site-wide "3D button" frame — a light-black ring border + soft drop
 /// shadow, ported from `.eg-subject-hw-card button`/the Academics panel.
@@ -161,6 +162,10 @@ class _TeacherShellState extends ConsumerState<TeacherShell> {
                     );
                   },
                 ),
+              ),
+              const PopupMenuItem(
+                enabled: false,
+                child: AppUpdateTile(compact: true),
               ),
               const PopupMenuItem(
                 value: 'logout',

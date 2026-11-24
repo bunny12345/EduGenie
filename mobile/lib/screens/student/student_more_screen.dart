@@ -5,6 +5,7 @@ import '../../state/session_provider.dart';
 import '../../state/student_providers.dart';
 import '../../state/theme_provider.dart';
 import '../../theme/app_colors.dart';
+import '../../widgets/app_update_tile.dart';
 import '../../widgets/section_card.dart';
 import '../shared/parental_lock_screen.dart';
 import 'student_notifications_screen.dart';
@@ -117,6 +118,8 @@ class _StudentMoreScreenState extends ConsumerState<StudentMoreScreen> {
                     subtitle: '6:30 PM plan, 9:00 PM recap & school updates',
                     onTap: () => _open(const StudentNotificationsScreen()),
                   ),
+                  Divider(height: 1, indent: 64, color: palette.line),
+                  const AppUpdateTile(),
                 ],
               ),
             ),
