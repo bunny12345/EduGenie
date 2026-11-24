@@ -56,6 +56,8 @@ void main() {
       addTearDown(container.dispose);
       await container.read(sessionProvider.future);
       await container.read(themeModeProvider.notifier).setDark(true);
+      expect(container.read(activeThemeModeProvider), ThemeMode.dark);
+      await container.read(teacherThemeModeProvider.notifier).setDark(false);
       expect(container.read(activeThemeModeProvider), ThemeMode.light);
       await container.read(teacherThemeModeProvider.notifier).setDark(true);
       expect(container.read(activeThemeModeProvider), ThemeMode.dark);
@@ -104,8 +106,8 @@ void main() {
       await tester.pump(const Duration(milliseconds: 300));
       final shell = tester.state(find.byType(TeacherShell));
       final home = tester.element(find.byType(TeacherHomeTab));
-      expect(Theme.of(home).brightness, Brightness.light);
-      expect(AppColors.isDark, isFalse);
+      expect(Theme.of(home).brightness, Brightness.dark);
+      expect(AppColors.isDark, isTrue);
 
       await tester.tap(find.text('Students'));
       await tester.pump(const Duration(milliseconds: 250));
@@ -115,6 +117,11 @@ void main() {
         tester.getTopLeft(find.text('Dark theme')).dy,
         lessThan(tester.getTopLeft(find.text('Logout')).dy),
       );
+      await tester.tap(find.byType(SwitchListTile));
+      await tester.pumpAndSettle();
+      expect(container.read(teacherThemeModeProvider), ThemeMode.light);
+      expect(Theme.of(home).brightness, Brightness.light);
+      expect(AppColors.isDark, isFalse);
       await tester.tap(find.byType(SwitchListTile));
       await tester.pumpAndSettle();
       expect(container.read(teacherThemeModeProvider), ThemeMode.dark);

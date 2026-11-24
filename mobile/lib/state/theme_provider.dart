@@ -22,7 +22,7 @@ class ThemeModeNotifier extends Notifier<ThemeMode> {
     if (_hydratedFromPrefs) return state;
     final dark = teacher ? saved?.teacherDark : saved?.studentDark;
     _hydratedFromPrefs = dark != null;
-    return dark == true ? ThemeMode.dark : ThemeMode.light;
+    return dark == false ? ThemeMode.light : ThemeMode.dark;
   }
 
   Future<void> setDark(bool dark) {

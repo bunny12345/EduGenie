@@ -34,6 +34,13 @@ class _OfflineApi extends StudentApiService {
   }
 }
 
+class _SettingsApi extends StudentApiService {
+  _SettingsApi() : super(ApiClient());
+
+  @override
+  Future<Map<String, dynamic>> saveSettings(String studentId, Map<String, dynamic> prefs) async => {};
+}
+
 class _DelayedStorage extends SecureStorageService {
   final ready = Completer<StoredThemePreferences>();
   final writes = <bool>[];
@@ -62,6 +69,13 @@ void main() {
   setUp(() => FlutterSecureStorage.setMockInitialValues({}));
 
   for (final teacher in [false, true]) {
+    test('${teacher ? 'teacher' : 'student'} defaults to dark without a saved choice', () async {
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+      await container.read(storedThemePreferencesProvider.future);
+      expect(container.read(teacher ? teacherThemeModeProvider : themeModeProvider), ThemeMode.dark);
+    });
+
     test('${teacher ? 'teacher' : 'student'} dark and light choices survive cold restarts', () async {
       final provider = teacher ? teacherThemeModeProvider : themeModeProvider;
       final first = ProviderContainer();
@@ -72,7 +86,7 @@ void main() {
       final reopened = ProviderContainer();
       await reopened.read(storedThemePreferencesProvider.future);
       expect(reopened.read(provider), ThemeMode.dark);
-      expect(reopened.read(teacher ? themeModeProvider : teacherThemeModeProvider), ThemeMode.light);
+      expect(reopened.read(teacher ? themeModeProvider : teacherThemeModeProvider), ThemeMode.dark);
       await reopened.read(provider.notifier).setDark(false);
       reopened.dispose();
 
@@ -82,6 +96,14 @@ void main() {
       expect(nextOpen.read(provider), ThemeMode.light);
     });
   }
+
+  test('a backend light preference is respected when there is no device choice', () async {
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+    await container.read(storedThemePreferencesProvider.future);
+    await container.read(themeModeProvider.notifier).hydrateFromPrefs('Light');
+    expect(container.read(themeModeProvider), ThemeMode.light);
+  });
 
   test('a saved device choice wins over stale backend settings and session logout', () async {
     final storage = SecureStorageService();
@@ -188,4 +210,43 @@ void main() {
     expect(reopened.read(themeModeProvider), ThemeMode.dark);
     expect(tester.takeException(), isNull);
   });
+
+  testWidgets('student can switch from the default dark theme to light and back', (tester) async {
+    final container = ProviderContainer(overrides: [
+      sessionProvider.overrideWith(_Student.new),
+      studentApiServiceProvider.overrideWithValue(_SettingsApi()),
+      settingsProvider.overrideWith((ref) async => {'prefs': {}}),
+    ]);
+    addTearDown(container.dispose);
+    await container.read(storedThemePreferencesProvider.future);
+    await container.read(sessionProvider.future);
+    await tester.pumpWidget(UncontrolledProviderScope(
+      container: container,
+      child: const _StudentThemeHost(),
+    ));
+    await tester.pumpAndSettle();
+    expect(container.read(themeModeProvider), ThemeMode.dark);
+    expect(tester.widget<Switch>(find.byType(Switch)).value, isTrue);
+    await tester.tap(find.byType(Switch));
+    await tester.pumpAndSettle();
+    expect(container.read(themeModeProvider), ThemeMode.light);
+    expect((await SecureStorageService().readThemePreferences()).studentDark, isFalse);
+    await tester.tap(find.byType(Switch));
+    await tester.pumpAndSettle();
+    expect(container.read(themeModeProvider), ThemeMode.dark);
+    expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+}
+
+class _StudentThemeHost extends ConsumerWidget {
+  const _StudentThemeHost();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) => MaterialApp(
+    theme: AppTheme.light(),
+    darkTheme: AppTheme.dark(),
+    themeMode: ref.watch(themeModeProvider),
+    home: const StudentMoreScreen(),
+  );
 }

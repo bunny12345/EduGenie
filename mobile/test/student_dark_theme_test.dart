@@ -121,7 +121,7 @@ void main() {
           settingsProvider.overrideWith((ref) async => {'prefs': {}}),
         ],
       );
-      addTearDown(container.dispose);
+      await container.read(themeModeProvider.notifier).setDark(false);
       await tester.pumpWidget(
         UncontrolledProviderScope(
           container: container,
@@ -173,6 +173,7 @@ void main() {
       );
       expect(tester.takeException(), isNull);
       await tester.pumpWidget(const SizedBox.shrink());
+      container.dispose();
     },
   );
 
