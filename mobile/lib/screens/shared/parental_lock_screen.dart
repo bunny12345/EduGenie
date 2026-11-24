@@ -62,16 +62,14 @@ class _ExplainerCard extends StatelessWidget {
           Text('🔒 Focus Mode', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
           SizedBox(height: 8),
           Text(
-            'Pins AcademiX to the screen so your child can\'t switch to other apps — '
-            'the Home and Recent Apps buttons stop working while it\'s on.',
+            'Uses Android screen pinning to help keep AcademiX on the screen. '
+            'Android controls screen pinning; it is not a full device lock.',
             style: TextStyle(fontSize: 12.5, color: AppColors.of(context).text),
           ),
           SizedBox(height: 8),
           Text(
-            'Honest limit: this uses Android\'s own screen-pinning feature, not full '
-            'device management. A tech-savvy kid holding Back + Recent Apps together can '
-            'reach Android\'s own unpin screen — but that asks for the PHONE\'s screen lock, '
-            'not this PIN. Set here is still a strong, real deterrent for everyday use.',
+            'In AcademiX, enter the parent PIN to turn Focus Mode off early. '
+            'It also turns off automatically after the selected time.',
             style: TextStyle(fontSize: 11.5, color: AppColors.of(context).muted),
           ),
         ],
@@ -126,7 +124,7 @@ class _CreatePinCardState extends ConsumerState<_CreatePinCard> {
         children: [
           const Text('Create a parent PIN', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14)),
           const SizedBox(height: 4),
-          Text('Only you should know this — it\'s required to turn Focus Mode off.', style: TextStyle(fontSize: 12, color: AppColors.of(context).muted)),
+          Text('Only you should know this — it\'s required to turn Focus Mode off early in AcademiX.', style: TextStyle(fontSize: 12, color: AppColors.of(context).muted)),
           const SizedBox(height: 14),
           _PinField(controller: _pinController, label: '6-digit PIN'),
           const SizedBox(height: 10),
@@ -203,8 +201,8 @@ class _ManageLockCardState extends ConsumerState<_ManageLockCard> {
           mainAxisSize: MainAxisSize.min,
           children: [
             Text(
-              'AcademiX will pin to the screen for the chosen time. Home and Recent Apps '
-              'stop working until it unlocks — either automatically, or earlier with your PIN.',
+              'AcademiX will use Android screen pinning for the chosen time. '
+              'Focus Mode turns off automatically, or earlier with your parent PIN.',
               style: TextStyle(fontSize: 12.5, color: AppColors.of(context).muted),
             ),
             const SizedBox(height: 14),

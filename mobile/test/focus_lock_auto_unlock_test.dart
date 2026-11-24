@@ -2,7 +2,8 @@ import 'package:mobile/services/focus_lock_service.dart';
 import 'package:mobile/services/secure_storage_service.dart';
 import 'package:mobile/state/focus_lock_provider.dart';
 import 'package:mobile/state/session_provider.dart';
-import 'package:flutter/widgets.dart';
+import 'package:mobile/screens/shared/parental_lock_screen.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -66,6 +67,27 @@ void main() {
     tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
     tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
   }
+
+  testWidgets('parental lock omits bypass instructions while explaining its limits', (tester) async {
+    storage = _MemoryStorage()..pin = null;
+    pinning = _FakePinning();
+    container = ProviderContainer(overrides: [
+      secureStorageServiceProvider.overrideWithValue(storage),
+      focusLockServiceProvider.overrideWithValue(pinning),
+    ]);
+    await tester.pumpWidget(UncontrolledProviderScope(
+      container: container,
+      child: const MaterialApp(home: ParentalLockScreen()),
+    ));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('not a full device lock'), findsOneWidget);
+    expect(find.textContaining('Back + Recent Apps'), findsNothing);
+    expect(find.textContaining('unpin screen'), findsNothing);
+    expect(find.textContaining('parent PIN to turn Focus Mode off early'), findsOneWidget);
+    expect(find.text('Save PIN'), findsOneWidget);
+    await tester.pumpWidget(const SizedBox.shrink());
+    container.dispose();
+  });
 
   testWidgets('unlocks on app resume once the scheduled time has passed', (tester) async {
     await lockThenSleepPastSchedule(tester);
