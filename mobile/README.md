@@ -20,6 +20,12 @@ verify on a Play-installed, opted-in test account with a newer eligible build.
 
 ## Optional strict mock exams
 
+The teacher Mock Tests tab separates draft creation, question editing, and
+scheduling. Creating or selecting a test opens its question editor; **View
+tests & assign** returns to the selected test, where **Schedule & assign**
+reveals the attempt window and strict-exam controls. Drafts remain invisible
+to students until assigned.
+
 Teachers can enable Strict exam before assigning a scheduled mock test. Their
 assigned-test Exam monitor shows student statuses and interruption summaries,
 with individual Resume and **Resume all** actions available only to the

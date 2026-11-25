@@ -314,7 +314,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('Mock Tests'));
     await tester.pumpAndSettle();
-    final list = find.textContaining('Assigned Tests');
+    final list = find.textContaining('View tests');
     await tester.ensureVisible(list);
     await tester.tap(list);
     await tester.pumpAndSettle();
