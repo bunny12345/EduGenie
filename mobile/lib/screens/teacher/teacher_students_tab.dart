@@ -1496,16 +1496,7 @@ class _HomeworkStatusTile extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(height: 6),
-                  TextField(
-                    controller: gradeFeedbackCtrl,
-                    maxLines: 2,
-                    decoration: InputDecoration(
-                      hintText: 'Feedback for student',
-                      isDense: true,
-                      filled: true,
-                      fillColor: AppColors.of(context).card,
-                    ),
-                  ),
+                  _ExpandableFeedbackField(controller: gradeFeedbackCtrl),
                   const SizedBox(height: 8),
                   Row(
                     mainAxisAlignment: MainAxisAlignment.end,
@@ -1531,6 +1522,51 @@ class _HomeworkStatusTile extends StatelessWidget {
           ],
         ],
       ),
+    );
+  }
+}
+
+class _ExpandableFeedbackField extends StatefulWidget {
+  final TextEditingController controller;
+
+  const _ExpandableFeedbackField({required this.controller});
+
+  @override
+  State<_ExpandableFeedbackField> createState() =>
+      _ExpandableFeedbackFieldState();
+}
+
+class _ExpandableFeedbackFieldState extends State<_ExpandableFeedbackField> {
+  bool _expanded = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        TextField(
+          controller: widget.controller,
+          maxLines: _expanded ? 8 : 2,
+          decoration: InputDecoration(
+            hintText: 'Feedback for student',
+            isDense: true,
+            filled: true,
+            fillColor: AppColors.of(context).card,
+          ),
+        ),
+        Align(
+          alignment: Alignment.centerRight,
+          child: TextButton.icon(
+            onPressed: () => setState(() => _expanded = !_expanded),
+            icon: Icon(_expanded ? Icons.unfold_less : Icons.unfold_more),
+            label: Text(_expanded ? 'Collapse feedback' : 'Expand feedback'),
+            style: TextButton.styleFrom(
+              visualDensity: VisualDensity.compact,
+              textStyle: const TextStyle(fontSize: 12),
+            ),
+          ),
+        ),
+      ],
     );
   }
 }
