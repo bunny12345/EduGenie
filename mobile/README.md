@@ -116,6 +116,16 @@ Image-based correction requires the updated backend and a working vision
 model; rebuild the app and deploy the backend for these changes to reach phones.
 The existing app/backend URL configuration is unchanged.
 
+The assignment form pre-fills private AI marking guidance separately from the
+instructions students see. Teachers can append textbook key points, an
+expected answer, or partial-credit rules; Autocorrect uses this guidance,
+linked unit titles, and retrieved curriculum text. The subject-aware default
+rubric is prefilled and always applied, even when an older assignment has no
+saved guidance. When no unit is linked, the backend searches the teacher's
+uploaded curriculum for that subject; a unit title alone does not provide
+textbook content. The guidance is not included in student-facing homework
+responses, and the teacher still reviews and submits the suggested grade.
+
 ## Home Sam voice
 
 Opening Home Sam speaks a local greeting and asks what the student wants to

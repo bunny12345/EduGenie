@@ -331,6 +331,7 @@ class TeacherApiService {
     required String title,
     required String subject,
     String? note,
+    String? gradingGuidance,
     List<String> attachmentUrls = const [],
     String? startAt,
     String? dueAt,
@@ -342,6 +343,7 @@ class TeacherApiService {
       'title': title,
       'subject': subject,
       'note': note,
+      'gradingGuidance': gradingGuidance,
       'attachmentUrls': attachmentUrls,
       'attachmentUrl': attachmentUrls.isNotEmpty ? attachmentUrls.first : null,
       'startAt': startAt,
@@ -360,6 +362,7 @@ class TeacherApiService {
     required String title,
     required String subject,
     String? note,
+    String? gradingGuidance,
     List<String> attachmentUrls = const [],
     String? startAt,
     String? dueAt,
@@ -373,6 +376,7 @@ class TeacherApiService {
         'title': title,
         'subject': subject,
         'note': note,
+        'gradingGuidance': gradingGuidance,
         'attachmentUrls': attachmentUrls,
         'attachmentUrl': attachmentUrls.isNotEmpty
             ? attachmentUrls.first

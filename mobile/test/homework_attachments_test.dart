@@ -26,6 +26,7 @@ class _TeacherApi extends TeacherApiService {
   _TeacherApi() : super(ApiClient());
   int? savedGrade;
   String? savedFeedback;
+  String? assignedGradingGuidance;
   bool failAi = false;
   bool twoStudents = false;
   Completer<Map<String, dynamic>>? pendingAi;
@@ -58,12 +59,34 @@ class _TeacherApi extends TeacherApiService {
     return {'success': true, 'score': 87, 'feedback': 'Good explanation. Add how roots absorb water.'};
   }
   @override
+  Future<Map<String, dynamic>> assignHomework({
+    required String title,
+    required String subject,
+    String? note,
+    String? gradingGuidance,
+    List<String> attachmentUrls = const [],
+    String? startAt,
+    String? dueAt,
+    required String className,
+    List<String> lessonIds = const [],
+    List<String> lessonTitles = const [],
+  }) async {
+    assignedGradingGuidance = gradingGuidance;
+    return {'success': true, 'created': 3};
+  }
+
+  @override
   Future<Map<String, dynamic>> gradeHomework(String hwId, {int? grade, String? feedback}) async {
     expect(hwId, 'submitted');
     savedGrade = grade;
     savedFeedback = feedback;
     return {'success': true};
   }
+}
+
+class _Class8TargetClassNotifier extends TeacherTargetClassNotifier {
+  @override
+  String build() => 'Class 8';
 }
 
 Widget _teacherStudentApp(_TeacherApi api, {bool dark = false}) => ProviderScope(
@@ -254,6 +277,55 @@ void main() {
       },
     );
   }
+
+  testWidgets('teacher can assign private AI marking guidance separately from student instructions', (tester) async {
+    tester.view.physicalSize = const Size(430, 1100);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final api = _TeacherApi();
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          teacherApiServiceProvider.overrideWithValue(api),
+          teacherTargetClassProvider.overrideWith(_Class8TargetClassNotifier.new),
+          teacherProfileProvider.overrideWith((ref) async => {'subject': 'Science'}),
+          teacherLessonsProvider.overrideWith((ref) async => []),
+          teacherHomeworkProvider.overrideWith((ref) async => []),
+          teacherAnnouncementsProvider.overrideWith((ref) async => []),
+          teacherTestsProvider.overrideWith((ref) async => []),
+        ],
+        child: MaterialApp(
+          theme: AppTheme.light(),
+          home: const Scaffold(body: TeacherHomeTab(activeClassBanner: SizedBox.shrink())),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Homework'));
+    await tester.pumpAndSettle();
+
+    final title = find.byWidgetPredicate((widget) =>
+        widget is TextField && widget.decoration?.hintText?.startsWith('Homework title') == true);
+    final guidance = find.widgetWithText(TextField, 'AI marking guidance (prefilled, teacher-only)');
+    final prefilledGuidance = tester.widget<TextField>(guidance).controller!.text;
+    expect(prefilledGuidance, startsWith('Grade as a strict but fair teacher for school-age learners.'));
+    expect(prefilledGuidance, contains('For mathematics, check the method'));
+    await tester.ensureVisible(title);
+    await tester.enterText(title, 'Plant worksheet');
+    await tester.ensureVisible(guidance);
+    final customGuidance =
+        '$prefilledGuidance\nUse Unit 5; accept equivalent wording for root water absorption.';
+    await tester.enterText(guidance, customGuidance);
+
+    final assign = find.text('✅ Assign to Class 8');
+    await tester.ensureVisible(assign);
+    await tester.tap(assign);
+    await tester.pumpAndSettle();
+
+    expect(api.assignedGradingGuidance, customGuidance);
+    expect(tester.takeException(), isNull);
+  });
 
   testWidgets('teacher reviews and edits AI suggestions before publishing a grade', (tester) async {
     tester.view.physicalSize = const Size(430, 1100);

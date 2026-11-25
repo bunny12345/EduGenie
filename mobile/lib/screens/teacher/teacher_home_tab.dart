@@ -15,6 +15,18 @@ import '../../widgets/image_source_sheet.dart';
 import '../../widgets/cupertino_time_picker_sheet.dart';
 import '../student/homework/lightbox.dart';
 
+final _defaultHomeworkGradingGuidance = [
+  'Grade as a strict but fair teacher for school-age learners.',
+  'Use the actual assignment and retrieved uploaded curriculum as the primary sources; identify the subject and most relevant unit from the assignment and work.',
+  'Treat the assigned subject as a starting point and verify it against the question and curriculum; if they conflict, request manual teacher review.',
+  'Assess whether the student understands the concept and can explain the reasoning, not just whether the final phrase matches an answer key. Accept accurate paraphrases and equivalent valid methods unless exact wording is required. Award partial credit only for correct, supported work; do not reward unsupported guesses.',
+  'For mathematics, check the method, each shown step, calculations, units, and final answer; identify the first incorrect step and preserve credit for correct steps.',
+  'For language tasks, prioritize meaning, comprehension, and requested evidence; assess grammar, spelling, vocabulary, and style only as appropriate to the task and learner level.',
+  'For science and social studies, check factual accuracy, key concepts, use of relevant evidence, and cause/effect reasoning.',
+  'For multi-part work, evaluate each question or requested point separately, cite its number when visible, and base the score on demonstrated work. Give specific, age-appropriate feedback stating what is correct, what needs fixing, and one next step. Be firm, constructive, and never give generic praise or reveal a complete model answer unless the assignment asks for it.',
+  'Never invent textbook facts or expected criteria. If the uploaded material, question, or submission is missing, unreadable, or insufficient to judge reliably, request manual teacher review instead of guessing.',
+].join(' ');
+
 String _normalizeClassName(String value) => value.trim().toLowerCase().replaceAll(RegExp(r'\s+'), ' ');
 
 bool _sameClass(dynamic value, String targetClass) => _normalizeClassName(value?.toString() ?? '') == _normalizeClassName(targetClass);
@@ -620,6 +632,7 @@ class _AssignHomeworkPanel extends ConsumerStatefulWidget {
 class _AssignHomeworkPanelState extends ConsumerState<_AssignHomeworkPanel> {
   final _titleCtrl = TextEditingController();
   final _noteCtrl = TextEditingController();
+  final _gradingGuidanceCtrl = TextEditingController(text: _defaultHomeworkGradingGuidance);
   DateTime? _startAt;
   DateTime? _dueAt;
   final List<String> _attachmentUrls = [];
@@ -636,6 +649,7 @@ class _AssignHomeworkPanelState extends ConsumerState<_AssignHomeworkPanel> {
   String? _editingHwId;
   final _editingTitleCtrl = TextEditingController();
   final _editingNoteCtrl = TextEditingController();
+  final _editingGradingGuidanceCtrl = TextEditingController(text: _defaultHomeworkGradingGuidance);
   DateTime? _editingStartAt;
   DateTime? _editingDueAt;
   final List<String> _editingAttachmentUrls = [];
@@ -663,8 +677,10 @@ class _AssignHomeworkPanelState extends ConsumerState<_AssignHomeworkPanel> {
     _pruneTimer?.cancel();
     _titleCtrl.dispose();
     _noteCtrl.dispose();
+    _gradingGuidanceCtrl.dispose();
     _editingTitleCtrl.dispose();
     _editingNoteCtrl.dispose();
+    _editingGradingGuidanceCtrl.dispose();
     super.dispose();
   }
 
@@ -720,6 +736,7 @@ class _AssignHomeworkPanelState extends ConsumerState<_AssignHomeworkPanel> {
             title: _titleCtrl.text.trim(),
             subject: subject,
             note: _noteCtrl.text.trim().isEmpty ? null : _noteCtrl.text.trim(),
+            gradingGuidance: _gradingGuidanceCtrl.text.trim().isEmpty ? null : _gradingGuidanceCtrl.text.trim(),
             attachmentUrls: _attachmentUrls,
             startAt: _startAt?.toIso8601String(),
             dueAt: _dueAt?.toIso8601String(),
@@ -731,6 +748,7 @@ class _AssignHomeworkPanelState extends ConsumerState<_AssignHomeworkPanel> {
       if (created > 0) {
         _titleCtrl.clear();
         _noteCtrl.clear();
+        _gradingGuidanceCtrl.text = _defaultHomeworkGradingGuidance;
         setState(() {
           _attachmentUrls.clear();
           _lessonIds.clear();
@@ -752,10 +770,13 @@ class _AssignHomeworkPanelState extends ConsumerState<_AssignHomeworkPanel> {
   /// Populates the edit form from a "Recently assigned" row — mirrors
   /// `onStartEditHomework(homework)` in `TeacherDashboard.jsx`.
   void _startEdit(Map<String, dynamic> hw) {
+    final savedGuidance = hw['gradingGuidance']?.toString().trim() ?? '';
     setState(() {
       _editingHwId = hw['id']?.toString();
       _editingTitleCtrl.text = hw['title']?.toString() ?? '';
       _editingNoteCtrl.text = hw['note']?.toString() ?? '';
+      _editingGradingGuidanceCtrl.text =
+          savedGuidance.isEmpty ? _defaultHomeworkGradingGuidance : savedGuidance;
       _editingStartAt = _parseDate(hw['startAt'] ?? hw['start_at']);
       _editingDueAt = _parseDate(hw['dueAt'] ?? hw['due_at']);
       _editingAttachmentUrls
@@ -775,6 +796,7 @@ class _AssignHomeworkPanelState extends ConsumerState<_AssignHomeworkPanel> {
       _editingHwId = null;
       _editingTitleCtrl.clear();
       _editingNoteCtrl.clear();
+      _editingGradingGuidanceCtrl.text = _defaultHomeworkGradingGuidance;
       _editingStartAt = null;
       _editingDueAt = null;
       _editingAttachmentUrls.clear();
@@ -838,6 +860,7 @@ class _AssignHomeworkPanelState extends ConsumerState<_AssignHomeworkPanel> {
             title: _editingTitleCtrl.text.trim(),
             subject: subject,
             note: _editingNoteCtrl.text.trim().isEmpty ? null : _editingNoteCtrl.text.trim(),
+            gradingGuidance: _editingGradingGuidanceCtrl.text.trim().isEmpty ? null : _editingGradingGuidanceCtrl.text.trim(),
             attachmentUrls: _editingAttachmentUrls,
             startAt: _editingStartAt?.toIso8601String(),
             dueAt: _editingDueAt?.toIso8601String(),
@@ -968,7 +991,28 @@ class _AssignHomeworkPanelState extends ConsumerState<_AssignHomeworkPanel> {
             }),
           ),
           const SizedBox(height: 8),
-          TextField(controller: _noteCtrl, maxLines: 4, decoration: const InputDecoration(hintText: 'Homework instructions / notes for students...')),
+          TextField(
+            controller: _noteCtrl,
+            maxLines: 4,
+            decoration: const InputDecoration(
+              labelText: 'Instructions / question for students',
+              hintText: 'Describe the task or paste the question',
+              helperText: 'Students can see these instructions.',
+              alignLabelWithHint: true,
+            ),
+          ),
+          const SizedBox(height: 10),
+          TextField(
+            controller: _gradingGuidanceCtrl,
+            maxLines: 3,
+            maxLength: 4000,
+            decoration: const InputDecoration(
+              labelText: 'AI marking guidance (prefilled, teacher-only)',
+              hintText: 'Add unit-specific key points, expected answers, or partial-credit rules',
+              helperText: 'Default subject-aware rules are already applied. Add criteria below; students cannot see this.',
+              alignLabelWithHint: true,
+            ),
+          ),
           const SizedBox(height: 10),
           OutlinedButton.icon(
             onPressed: _uploading ? null : _pickImages,
@@ -1092,7 +1136,28 @@ class _AssignHomeworkPanelState extends ConsumerState<_AssignHomeworkPanel> {
                     }),
                   ),
                   const SizedBox(height: 8),
-                  TextField(controller: _editingNoteCtrl, maxLines: 4, decoration: const InputDecoration(hintText: 'Homework instructions / notes for students...')),
+                  TextField(
+                    controller: _editingNoteCtrl,
+                    maxLines: 4,
+                    decoration: const InputDecoration(
+                      labelText: 'Instructions / question for students',
+                      hintText: 'Describe the task or paste the question',
+                      helperText: 'Students can see these instructions.',
+                      alignLabelWithHint: true,
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  TextField(
+                    controller: _editingGradingGuidanceCtrl,
+                    maxLines: 3,
+                    maxLength: 4000,
+                    decoration: const InputDecoration(
+                      labelText: 'AI marking guidance (prefilled, teacher-only)',
+                      hintText: 'Add unit-specific key points, expected answers, or partial-credit rules',
+                      helperText: 'Default subject-aware rules are already applied. Add criteria below; students cannot see this.',
+                      alignLabelWithHint: true,
+                    ),
+                  ),
                   const SizedBox(height: 10),
                   OutlinedButton.icon(
                     onPressed: _editingUploading ? null : _pickEditImages,

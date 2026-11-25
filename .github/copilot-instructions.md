@@ -47,6 +47,14 @@ infra/aws/    Terraform and deployment tooling
 - Teacher test authoring supports the existing create/edit/clone and question-management flows; keep dependent API behavior consistent.
 - School administrators manage teachers/invites, curriculum, students, and class filters. Preserve invite-link registration and tenant scoping.
 
+## Teacher Homework Autocorrection
+
+- Homework assignment has two separate text fields: student-facing instructions/question (`note`) and teacher-only AI marking guidance (`gradingGuidance`). The subject-aware default rubric is prefilled in web/mobile and is also always applied server-side; teachers can append assignment-specific criteria. Never merge the rubric into the student-visible note.
+- The rubric is stored in existing homework metadata; do not add a table/column or migration for it. Teacher APIs may return it so teachers can edit it, but student-facing homework, dashboard, and Sam responses must not expose it.
+- AI correction retrieves indexed `lesson_chunks` for linked units, or automatically searches the signed-in teacher's curriculum for the assignment subject when no unit is linked. It semantically/lexically ranks chunks from the assignment title and instructions and includes source unit/document/page labels. Unit titles alone are not textbook content; do not claim textbook verification without retrieved text.
+- The default rubric requires concept-and-reasoning checks, step-by-step mathematics marking, subject-appropriate language/science/social-studies marking, evidence-based partial credit, specific learner-facing feedback, and manual review when material is insufficient. Preserve this rubric when changing the prompt; teachers may append textbook key points, expected answers, or partial-credit rules.
+- Autocorrect only suggests a score and feedback. Keep the existing teacher review/edit/submit step; never publish an AI grade automatically.
+
 ### Owner
 
 - The owner portal is a separate web entry selected at `/owner`; retain its route and authorization boundary when changing app-level routing.
@@ -64,7 +72,7 @@ infra/aws/    Terraform and deployment tooling
 - State management uses Riverpod; HTTP requests use Dio through `mobile/lib/services/api_client.dart`. Keep bearer-token handling centralized there.
 - `state/session_provider.dart` restores the session from secure storage and coordinates the API token; `navigation/role_router.dart` restores/routs supported roles. Verify current source before assuming a role is supported.
 - Student navigation currently uses **Home / Services / More** (not the old five-tab layout); AI Tutor is reachable from the student experience. Check the shell before describing or changing tab structure.
-- The teacher shell has navigation destinations, but the tab content is still placeholder/in progress. Do not describe the native teacher portal as complete or build out the school-admin native portal unless explicitly asked. School-admin mobile sessions currently receive a web-only notice/sign-out flow.
+- The mobile teacher Home includes announcements, homework assignment/edit/delete, and mock-test flows; Students includes roster, submission review, and teacher-controlled grading with AI suggestions. The AI suggestion is not published until the teacher reviews and submits it. Verify each other tab in its current screen before describing it as complete. Do not build out the school-admin native portal unless explicitly asked; school-admin mobile sessions receive a web-only notice/sign-out flow.
 - Student and teacher light/dark theme preferences are persisted separately; the app has light and dark Material themes, and AI Tutor has its own dark palette. Preserve saved preferences when changing defaults or theme controls.
 - Push-notification initialization and session behavior are part of startup/auth flows; review these before changing app initialization or logout.
 - The student More page and teacher menu include installed-version/update UI. Update checks and the Google Play in-app update flow are Android-specific; do not promise an update mechanism on other platforms.

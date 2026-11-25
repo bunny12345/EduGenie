@@ -46,6 +46,18 @@ import {
   generateLocalTtsAudio
 } from '../api';
 
+const DEFAULT_HOMEWORK_GRADING_GUIDANCE = [
+  'Grade as a strict but fair teacher for school-age learners.',
+  'Use the actual assignment and retrieved uploaded curriculum as the primary sources; identify the subject and most relevant unit from the assignment and work.',
+  'Treat the assigned subject as a starting point and verify it against the question and curriculum; if they conflict, request manual teacher review.',
+  'Assess whether the student understands the concept and can explain the reasoning, not just whether the final phrase matches an answer key. Accept accurate paraphrases and equivalent valid methods unless exact wording is required. Award partial credit only for correct, supported work; do not reward unsupported guesses.',
+  'For mathematics, check the method, each shown step, calculations, units, and final answer; identify the first incorrect step and preserve credit for correct steps.',
+  'For language tasks, prioritize meaning, comprehension, and requested evidence; assess grammar, spelling, vocabulary, and style only as appropriate to the task and learner level.',
+  'For science and social studies, check factual accuracy, key concepts, use of relevant evidence, and cause/effect reasoning.',
+  'For multi-part work, evaluate each question or requested point separately, cite its number when visible, and base the score on demonstrated work. Give specific, age-appropriate feedback stating what is correct, what needs fixing, and one next step. Be firm, constructive, and never give generic praise or reveal a complete model answer unless the assignment asks for it.',
+  'Never invent textbook facts or expected criteria. If the uploaded material, question, or submission is missing, unreadable, or insufficient to judge reliably, request manual teacher review instead of guessing.'
+].join(' ');
+
 function shortDate(value) {
   if (!value) return 'TBD';
   const dt = new Date(value);
@@ -319,6 +331,7 @@ export default function TeacherDashboard({ session, onLogout }) {
   const [assignTitle, setAssignTitle] = useState('');
   const [assignSubject, setAssignSubject] = useState(session?.subject || 'Mathematics');
   const [assignNote, setAssignNote] = useState('');
+  const [assignGradingGuidance, setAssignGradingGuidance] = useState(DEFAULT_HOMEWORK_GRADING_GUIDANCE);
   const [assignAttachmentUrls, setAssignAttachmentUrls] = useState([]);
   const [assignAttachmentUploading, setAssignAttachmentUploading] = useState(false);
   const [assignPreviewUrls, setAssignPreviewUrls] = useState([]); // local object URLs for instant preview
@@ -339,6 +352,7 @@ export default function TeacherDashboard({ session, onLogout }) {
   const [editingHwId, setEditingHwId] = useState(null);
   const [editingHwTitle, setEditingHwTitle] = useState('');
   const [editingHwNote, setEditingHwNote] = useState('');
+  const [editingHwGradingGuidance, setEditingHwGradingGuidance] = useState('');
   const [editingHwSubject, setEditingHwSubject] = useState('');
   const [editingHwStartAt, setEditingHwStartAt] = useState('');
   const [editingHwDueAt, setEditingHwDueAt] = useState('');
@@ -1521,6 +1535,7 @@ export default function TeacherDashboard({ session, onLogout }) {
         title: assignTitle,
         subject: assignSubject,
         note: assignNote || null,
+        gradingGuidance: assignGradingGuidance.trim() || null,
         attachmentUrls: allAttachmentUrls,
         // Keep legacy single-url field for compatibility.
         attachmentUrl: allAttachmentUrls[0] || null,
@@ -1540,6 +1555,7 @@ export default function TeacherDashboard({ session, onLogout }) {
           title: assignTitle,
           subject: assignSubject,
           note: assignNote,
+          gradingGuidance: assignGradingGuidance.trim(),
           attachmentUrls: allAttachmentUrls,
           attachmentUrl: allAttachmentUrls[0] || null,
           startAt: assignStartAt || null,
@@ -1570,6 +1586,7 @@ export default function TeacherDashboard({ session, onLogout }) {
         // Clear form
         setAssignTitle('');
         setAssignNote('');
+        setAssignGradingGuidance(DEFAULT_HOMEWORK_GRADING_GUIDANCE);
         setAssignAttachmentUrls([]);
         setAssignPreviewUrls([]);
         setAssignStartAt('');
@@ -1728,6 +1745,7 @@ export default function TeacherDashboard({ session, onLogout }) {
     setEditingHwId(homework.id);
     setEditingHwTitle(homework.title || '');
     setEditingHwNote(homework.note || '');
+    setEditingHwGradingGuidance(homework.gradingGuidance || DEFAULT_HOMEWORK_GRADING_GUIDANCE);
     setEditingHwSubject(homework.subject || 'Mathematics');
     setEditingHwStartAt(homework.startAt || '');
     setEditingHwDueAt(homework.dueAt || '');
@@ -1783,6 +1801,7 @@ export default function TeacherDashboard({ session, onLogout }) {
         title: editingHwTitle.trim(),
         subject: editingHwSubject,
         note: editingHwNote || null,
+        gradingGuidance: editingHwGradingGuidance.trim() || null,
         startAt: editingHwStartAt || null,
         dueAt: editingHwDueAt || null,
         attachmentUrls: editingHwAttachmentUrls,
@@ -1796,6 +1815,7 @@ export default function TeacherDashboard({ session, onLogout }) {
         title: editingHwTitle.trim(),
         subject: editingHwSubject,
         note: editingHwNote || null,
+        gradingGuidance: editingHwGradingGuidance.trim(),
         startAt: editingHwStartAt || null,
         dueAt: editingHwDueAt || null,
         assignmentGroupId: activeAssignments.find((a) => a.id === editingHwId)?.assignmentGroupId || null,
@@ -1816,6 +1836,7 @@ export default function TeacherDashboard({ session, onLogout }) {
                 title: updatedHomework.title,
                 subject: updatedHomework.subject,
                 note: updatedHomework.note,
+                gradingGuidance: updatedHomework.gradingGuidance ?? editingHwGradingGuidance.trim(),
                 startAt: updatedHomework.startAt,
                 dueAt: updatedHomework.dueAt,
                 className: updatedHomework.className || a.className,
@@ -1836,6 +1857,7 @@ export default function TeacherDashboard({ session, onLogout }) {
                 title: updatedHomework.title,
                 subject: updatedHomework.subject,
                 note: updatedHomework.note,
+                gradingGuidance: updatedHomework.gradingGuidance ?? editingHwGradingGuidance.trim(),
                 startAt: updatedHomework.startAt,
                 dueAt: updatedHomework.dueAt,
                 className: updatedHomework.className || a.className,
@@ -1857,6 +1879,7 @@ export default function TeacherDashboard({ session, onLogout }) {
       setEditingHwId(null);
       setEditingHwTitle('');
       setEditingHwNote('');
+      setEditingHwGradingGuidance(DEFAULT_HOMEWORK_GRADING_GUIDANCE);
       setEditingHwSubject('');
       setEditingHwStartAt('');
       setEditingHwDueAt('');
@@ -1875,6 +1898,7 @@ export default function TeacherDashboard({ session, onLogout }) {
     setEditingHwId(null);
     setEditingHwTitle('');
     setEditingHwNote('');
+    setEditingHwGradingGuidance(DEFAULT_HOMEWORK_GRADING_GUIDANCE);
     setEditingHwSubject('');
     setEditingHwStartAt('');
     setEditingHwDueAt('');
@@ -1930,6 +1954,7 @@ export default function TeacherDashboard({ session, onLogout }) {
           dueAt: item?.dueAt || item?.due_at || meta?.dueAt || null,
           createdAt: item?.createdAt || item?.created_at || null,
           note: item?.note || item?.homework_note || meta?.note || '',
+          gradingGuidance: item?.gradingGuidance || meta?.gradingGuidance || '',
           attachmentUrls,
           attachmentUrl: attachmentUrls[0] || null
         };
@@ -2022,6 +2047,7 @@ export default function TeacherDashboard({ session, onLogout }) {
             dueAt: item?.dueAt || item?.due_at || meta?.dueAt || null,
             createdAt: item?.createdAt || item?.created_at || null,
             note: item?.note || item?.homework_note || meta?.note || '',
+            gradingGuidance: item?.gradingGuidance || meta?.gradingGuidance || '',
             attachmentUrls,
             attachmentUrl: attachmentUrls[0] || null
           };
@@ -2667,13 +2693,39 @@ export default function TeacherDashboard({ session, onLogout }) {
                     </div>
                   )}
                 </div>
+                <label htmlFor="td-homework-student-instructions" style={{ display: 'block', fontSize: '13px', fontWeight: 700, color: '#374151', marginBottom: '-6px' }}>
+                  Instructions / question for students
+                </label>
                 <textarea
+                  id="td-homework-student-instructions"
                   rows={4}
                   value={assignNote}
                   onChange={(e) => setAssignNote(e.target.value)}
                   placeholder="Homework instructions / notes for students (e.g. Read pages 45–52 and answer questions 1–5...)"
                   style={{ resize: 'vertical', fontFamily: 'inherit', fontSize: '14px', padding: '10px', borderRadius: '8px', border: '1px solid #ddd', width: '100%', boxSizing: 'border-box' }}
                 />
+                <small style={{ color: '#6b7280', marginTop: '-6px' }}>Students can see these instructions.</small>
+                <div style={{ padding: '12px', borderRadius: '10px', border: '1px solid #c7d2fe', background: '#f5f7ff' }}>
+                  <label htmlFor="td-homework-grading-guidance" style={{ display: 'block', fontSize: '13px', fontWeight: 700, color: '#312e81', marginBottom: '4px' }}>
+                    AI marking guidance (prefilled, teacher-only)
+                  </label>
+                  <p style={{ margin: '0 0 8px', fontSize: '12px', lineHeight: 1.45, color: '#4b5563' }}>
+                    Default subject-aware marking rules are prefilled and always applied. Add unit-specific textbook points, expected answers, or partial-credit rules after them; students will not see this.
+                  </p>
+                  <textarea
+                    id="td-homework-grading-guidance"
+                    rows={3}
+                    maxLength={4000}
+                    value={assignGradingGuidance}
+                    onChange={(e) => setAssignGradingGuidance(e.target.value)}
+                    placeholder="Example: Use Unit 5, pages 42–43. Full credit requires explaining that roots absorb water; accept equivalent wording. Award partial credit for identifying the roots."
+                    aria-label="Private AI marking guidance"
+                    style={{ resize: 'vertical', fontFamily: 'inherit', fontSize: '13px', padding: '9px', borderRadius: '8px', border: '1px solid #c7d2fe', width: '100%', boxSizing: 'border-box' }}
+                  />
+                  <div style={{ marginTop: '4px', textAlign: 'right', fontSize: '11px', color: '#6b7280' }}>
+                    {assignGradingGuidance.length}/4000
+                  </div>
+                </div>
                 <div
                   onDragOver={(e) => { e.preventDefault(); setAssignDropActive(true); }}
                   onDragLeave={() => setAssignDropActive(false)}
@@ -2881,12 +2933,33 @@ export default function TeacherDashboard({ session, onLogout }) {
                       )}
                     </div>
                     <div>
-                      <label style={{ display: 'block', fontSize: '13px', color: '#666', marginBottom: '4px' }}>Instructions / Note</label>
+                      <label htmlFor="td-edit-homework-student-instructions" style={{ display: 'block', fontSize: '13px', color: '#666', marginBottom: '4px' }}>Instructions / question for students</label>
                       <textarea
+                        id="td-edit-homework-student-instructions"
                         value={editingHwNote}
                         onChange={(e) => setEditingHwNote(e.target.value)}
                         style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #ddd', fontSize: '13px', minHeight: '60px', fontFamily: 'inherit' }}
                       />
+                    </div>
+                    <div style={{ padding: '12px', borderRadius: '10px', border: '1px solid #c7d2fe', background: '#f5f7ff' }}>
+                      <label htmlFor="td-edit-homework-grading-guidance" style={{ display: 'block', fontSize: '13px', fontWeight: 700, color: '#312e81', marginBottom: '4px' }}>
+                        AI marking guidance (prefilled, teacher-only)
+                      </label>
+                      <p style={{ margin: '0 0 8px', fontSize: '12px', lineHeight: 1.45, color: '#4b5563' }}>
+                        Default subject-aware rules are prefilled and always applied. Add unit-specific criteria after them; students will not see this.
+                      </p>
+                      <textarea
+                        id="td-edit-homework-grading-guidance"
+                        rows={3}
+                        maxLength={4000}
+                        value={editingHwGradingGuidance}
+                        onChange={(e) => setEditingHwGradingGuidance(e.target.value)}
+                        aria-label="Private AI marking guidance"
+                        style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #c7d2fe', fontSize: '13px', minHeight: '60px', fontFamily: 'inherit', boxSizing: 'border-box' }}
+                      />
+                      <div style={{ marginTop: '4px', textAlign: 'right', fontSize: '11px', color: '#6b7280' }}>
+                        {editingHwGradingGuidance.length}/4000
+                      </div>
                     </div>
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
                       <div>
