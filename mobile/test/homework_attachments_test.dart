@@ -27,6 +27,9 @@ class _TeacherApi extends TeacherApiService {
   int? savedGrade;
   String? savedFeedback;
   String? assignedGradingGuidance;
+  final List<Map<String, dynamic>> assignments = [];
+  bool failAssignment = false;
+  Completer<List<Map<String, dynamic>>>? pendingHomeworkRefresh;
   bool failAi = false;
   bool twoStudents = false;
   Completer<Map<String, dynamic>>? pendingAi;
@@ -59,6 +62,14 @@ class _TeacherApi extends TeacherApiService {
     return {'success': true, 'score': 87, 'feedback': 'Good explanation. Add how roots absorb water.'};
   }
   @override
+  Future<List<Map<String, dynamic>>> getHomework() async {
+    if (assignments.isNotEmpty && pendingHomeworkRefresh != null) {
+      return pendingHomeworkRefresh!.future;
+    }
+    return List.of(assignments);
+  }
+
+  @override
   Future<Map<String, dynamic>> assignHomework({
     required String title,
     required String subject,
@@ -71,7 +82,15 @@ class _TeacherApi extends TeacherApiService {
     List<String> lessonIds = const [],
     List<String> lessonTitles = const [],
   }) async {
+    if (failAssignment) throw Exception('Unable to assign homework.');
     assignedGradingGuidance = gradingGuidance;
+    assignments.add({
+      'id': 'new-assignment',
+      'title': title,
+      'subject': subject,
+      'className': className,
+      'createdAt': DateTime.now().toIso8601String(),
+    });
     return {'success': true, 'created': 3};
   }
 
@@ -323,11 +342,179 @@ void main() {
     await tester.enterText(guidance, customGuidance);
 
     final assign = find.text('✅ Assign to Class 8');
+    FocusManager.instance.primaryFocus?.unfocus();
+    await tester.pumpAndSettle();
     await tester.ensureVisible(assign);
+    await tester.pumpAndSettle();
     await tester.tap(assign);
     await tester.pumpAndSettle();
 
     expect(api.assignedGradingGuidance, customGuidance);
+    expect(tester.takeException(), isNull);
+  });
+
+  for (final dark in [false, true]) {
+    testWidgets('successful assignment scrolls to the updated recent list in ${dark ? 'dark' : 'light'} mode', (tester) async {
+      tester.view.physicalSize = const Size(360, 640);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final api = _TeacherApi();
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            teacherApiServiceProvider.overrideWithValue(api),
+            teacherTargetClassProvider.overrideWith(_Class8TargetClassNotifier.new),
+            teacherProfileProvider.overrideWith((ref) async => {'subject': 'Science'}),
+            teacherLessonsProvider.overrideWith((ref) async => []),
+            teacherHomeworkProvider.overrideWith((ref) => api.getHomework()),
+            teacherAnnouncementsProvider.overrideWith((ref) async => []),
+            teacherTestsProvider.overrideWith((ref) async => []),
+          ],
+          child: MaterialApp(
+            theme: dark ? AppTheme.dark() : AppTheme.light(),
+            home: const Scaffold(body: TeacherHomeTab(activeClassBanner: SizedBox.shrink())),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Homework'));
+      await tester.pumpAndSettle();
+      expect(find.text('Homework details'), findsOneWidget);
+      final title = find.byWidgetPredicate((w) => w is TextField && w.decoration?.labelText == 'Homework title');
+      await tester.enterText(title, 'Plant worksheet');
+      final assign = find.text('✅ Assign to Class 8');
+      FocusManager.instance.primaryFocus?.unfocus();
+      await tester.pumpAndSettle();
+      await tester.ensureVisible(assign);
+      await tester.pumpAndSettle();
+      await tester.tap(assign);
+      await tester.pumpAndSettle();
+
+      expect(find.text('✅ Assigned to Class 8 | Students: 3'), findsOneWidget);
+      final assignment = find.text('Science: Plant worksheet');
+      expect(assignment, findsOneWidget);
+      final listY = tester.getTopLeft(assignment).dy;
+      expect(listY, greaterThanOrEqualTo(0));
+      expect(listY, lessThan(640));
+      expect(tester.takeException(), isNull);
+    });
+  }
+
+  testWidgets('failed assignment stays on the form and reports the error', (tester) async {
+    tester.view.physicalSize = const Size(360, 640);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final api = _TeacherApi()..failAssignment = true;
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          teacherApiServiceProvider.overrideWithValue(api),
+          teacherTargetClassProvider.overrideWith(_Class8TargetClassNotifier.new),
+          teacherProfileProvider.overrideWith((ref) async => {'subject': 'Science'}),
+          teacherLessonsProvider.overrideWith((ref) async => []),
+          teacherHomeworkProvider.overrideWith((ref) => api.getHomework()),
+          teacherAnnouncementsProvider.overrideWith((ref) async => []),
+          teacherTestsProvider.overrideWith((ref) async => []),
+        ],
+        child: MaterialApp(theme: AppTheme.light(), home: const Scaffold(body: TeacherHomeTab(activeClassBanner: SizedBox.shrink()))),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Homework'));
+    await tester.pumpAndSettle();
+    final title = find.byWidgetPredicate((w) => w is TextField && w.decoration?.labelText == 'Homework title');
+    await tester.enterText(title, 'Plant worksheet');
+    final assign = find.text('✅ Assign to Class 8');
+    FocusManager.instance.primaryFocus?.unfocus();
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(assign);
+    await tester.pumpAndSettle();
+    await tester.tap(assign);
+    await tester.pumpAndSettle();
+    expect(find.text('Unable to assign homework.'), findsOneWidget);
+    expect(tester.widget<TextField>(title).controller!.text, 'Plant worksheet');
+    expect(api.assignments, isEmpty);
+    expect(tester.getTopLeft(assign).dy, lessThan(640));
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('assignment scroll waits for a delayed recent-list refresh', (tester) async {
+    tester.view.physicalSize = const Size(360, 640);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final api = _TeacherApi()..pendingHomeworkRefresh = Completer<List<Map<String, dynamic>>>();
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          teacherApiServiceProvider.overrideWithValue(api),
+          teacherTargetClassProvider.overrideWith(_Class8TargetClassNotifier.new),
+          teacherProfileProvider.overrideWith((ref) async => {'subject': 'Science'}),
+          teacherLessonsProvider.overrideWith((ref) async => []),
+          teacherHomeworkProvider.overrideWith((ref) => api.getHomework()),
+          teacherAnnouncementsProvider.overrideWith((ref) async => []),
+          teacherTestsProvider.overrideWith((ref) async => []),
+        ],
+        child: MaterialApp(theme: AppTheme.light(), home: const Scaffold(body: TeacherHomeTab(activeClassBanner: SizedBox.shrink()))),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Homework'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byWidgetPredicate((w) => w is TextField && w.decoration?.labelText == 'Homework title'), 'Plant worksheet');
+    FocusManager.instance.primaryFocus?.unfocus();
+    await tester.pumpAndSettle();
+    final assign = find.text('✅ Assign to Class 8');
+    await tester.ensureVisible(assign);
+    await tester.pumpAndSettle();
+    await tester.tap(assign);
+    await tester.pump();
+    expect(api.assignments, hasLength(1));
+    api.pendingHomeworkRefresh!.complete(List.of(api.assignments));
+    await tester.pumpAndSettle();
+    final assignment = find.text('Science: Plant worksheet');
+    expect(assignment, findsOneWidget);
+    expect(tester.getTopLeft(assignment).dy, inInclusiveRange(0, 639));
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('assignment success remains clear if refreshing the recent list fails', (tester) async {
+    tester.view.physicalSize = const Size(360, 640);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final api = _TeacherApi()..pendingHomeworkRefresh = Completer<List<Map<String, dynamic>>>();
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          teacherApiServiceProvider.overrideWithValue(api),
+          teacherTargetClassProvider.overrideWith(_Class8TargetClassNotifier.new),
+          teacherProfileProvider.overrideWith((ref) async => {'subject': 'Science'}),
+          teacherLessonsProvider.overrideWith((ref) async => []),
+          teacherHomeworkProvider.overrideWith((ref) => api.getHomework()),
+          teacherAnnouncementsProvider.overrideWith((ref) async => []),
+          teacherTestsProvider.overrideWith((ref) async => []),
+        ],
+        child: MaterialApp(theme: AppTheme.light(), home: const Scaffold(body: TeacherHomeTab(activeClassBanner: SizedBox.shrink()))),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Homework'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byWidgetPredicate((w) => w is TextField && w.decoration?.labelText == 'Homework title'), 'Plant worksheet');
+    FocusManager.instance.primaryFocus?.unfocus();
+    await tester.pumpAndSettle();
+    final assign = find.text('✅ Assign to Class 8');
+    await tester.ensureVisible(assign);
+    await tester.pumpAndSettle();
+    await tester.tap(assign);
+    await tester.pump();
+    api.pendingHomeworkRefresh!.completeError(Exception('Connection lost'));
+    await tester.pumpAndSettle();
+    expect(find.text('✅ Assigned to Class 8 | Students: 3'), findsOneWidget);
+    expect(find.text('Could not load homework: Connection lost'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 

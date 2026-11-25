@@ -126,6 +126,10 @@ saved guidance. When no unit is linked, the backend searches the teacher's
 uploaded curriculum for that subject; a unit title alone does not provide
 textbook content. The guidance is not included in student-facing homework
 responses, and the teacher still reviews and submits the suggested grade.
+The teacher Homework tab groups the form into details, optional resources and
+schedule, with a separate recent-assignments section and a history shortcut.
+After a successful assignment it scrolls to the recent list; expired
+assignments remain available in history.
 
 ## Home Sam voice
 

@@ -188,6 +188,7 @@ class _TeacherShellState extends ConsumerState<TeacherShell> {
               index: _index,
               children: [
                 TeacherHomeTab(
+                  isActive: _index == 0,
                   activeClassBanner: _ActiveClassBanner(
                     classOptions:
                         ref.watch(teacherClassOptionsProvider).value ??

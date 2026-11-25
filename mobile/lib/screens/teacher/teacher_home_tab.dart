@@ -122,9 +122,10 @@ Future<DateTime?> _pickDateTime(BuildContext context, {DateTime? initial}) async
 enum _TeacherHomeSection { announcements, homework, tests }
 
 class TeacherHomeTab extends ConsumerStatefulWidget {
-  const TeacherHomeTab({super.key, required this.activeClassBanner});
+  const TeacherHomeTab({super.key, required this.activeClassBanner, this.isActive = true});
 
   final Widget activeClassBanner;
+  final bool isActive;
 
   @override
   ConsumerState<TeacherHomeTab> createState() => _TeacherHomeTabState();
@@ -138,7 +139,10 @@ class _TeacherHomeTabState extends ConsumerState<TeacherHomeTab> {
     final targetClass = ref.watch(teacherTargetClassProvider);
     final panels = [
       _AnnouncementsPanel(targetClass: targetClass),
-      _AssignHomeworkPanel(targetClass: targetClass),
+      _AssignHomeworkPanel(
+        targetClass: targetClass,
+        isActive: widget.isActive && _section == _TeacherHomeSection.homework,
+      ),
       _MockTestsPanel(targetClass: targetClass),
     ];
     return Column(
@@ -622,8 +626,9 @@ class _AnnouncementTileState extends State<_AnnouncementTile> {
 
 class _AssignHomeworkPanel extends ConsumerStatefulWidget {
   final String targetClass;
+  final bool isActive;
 
-  const _AssignHomeworkPanel({required this.targetClass});
+  const _AssignHomeworkPanel({required this.targetClass, required this.isActive});
 
   @override
   ConsumerState<_AssignHomeworkPanel> createState() => _AssignHomeworkPanelState();
@@ -641,6 +646,7 @@ class _AssignHomeworkPanelState extends ConsumerState<_AssignHomeworkPanel> {
   bool _uploading = false;
   bool _assigning = false;
   String? _info;
+  final _recentKey = GlobalKey();
 
   // ── Edit-homework state — mirrors web's separate `editingHw*` state
   // (`onStartEditHomework` / `onSaveHomeworkEdit` / `onCancelEditHomework` in
@@ -712,7 +718,10 @@ class _AssignHomeworkPanelState extends ConsumerState<_AssignHomeworkPanel> {
   }
 
   Future<void> _submit() async {
-    if (_titleCtrl.text.trim().isEmpty) return;
+    if (_titleCtrl.text.trim().isEmpty) {
+      setState(() => _info = 'Please enter a homework title.');
+      return;
+    }
     if (widget.targetClass == 'all') {
       setState(() => _info = 'Please select a class at the top of the page before assigning homework.');
       return;
@@ -721,6 +730,8 @@ class _AssignHomeworkPanelState extends ConsumerState<_AssignHomeworkPanel> {
       setState(() => _info = 'Please wait for image upload to finish before assigning homework.');
       return;
     }
+    final assignedClass = widget.targetClass;
+    FocusScope.of(context).unfocus();
     setState(() {
       _assigning = true;
       _info = null;
@@ -740,10 +751,11 @@ class _AssignHomeworkPanelState extends ConsumerState<_AssignHomeworkPanel> {
             attachmentUrls: _attachmentUrls,
             startAt: _startAt?.toIso8601String(),
             dueAt: _dueAt?.toIso8601String(),
-            className: widget.targetClass,
+            className: assignedClass,
             lessonIds: _lessonIds,
             lessonTitles: lessonTitles,
           );
+      if (!mounted) return;
       final created = (res['created'] as num?)?.toInt() ?? 0;
       if (created > 0) {
         _titleCtrl.clear();
@@ -754,17 +766,38 @@ class _AssignHomeworkPanelState extends ConsumerState<_AssignHomeworkPanel> {
           _lessonIds.clear();
           _startAt = null;
           _dueAt = null;
-          _info = '✅ Assigned to ${widget.targetClass} | Students: $created';
+          _info = '✅ Assigned to $assignedClass | Students: $created';
         });
         ref.invalidate(teacherHomeworkProvider);
+        _showRecentAfterRefresh(assignedClass);
       } else {
         setState(() => _info = res['error']?.toString() ?? 'No assignments created.');
       }
     } catch (e) {
-      setState(() => _info = e.toString().replaceFirst('Exception: ', ''));
+      if (mounted) setState(() => _info = e.toString().replaceFirst('Exception: ', ''));
     } finally {
       if (mounted) setState(() => _assigning = false);
     }
+  }
+
+  Future<void> _showRecentAfterRefresh(String assignedClass) async {
+    try {
+      await ref.read(teacherHomeworkProvider.future);
+    } catch (error) {
+      if (!mounted) return;
+      debugPrint('Homework refresh after assignment failed: $error');
+    }
+    if (!mounted) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final recentContext = _recentKey.currentContext;
+      if (!mounted || !widget.isActive || widget.targetClass != assignedClass || recentContext == null) return;
+      Scrollable.ensureVisible(
+        recentContext,
+        alignment: 0.05,
+        duration: const Duration(milliseconds: 400),
+        curve: Curves.easeInOut,
+      );
+    });
   }
 
   /// Populates the edit form from a "Recently assigned" row — mirrors
@@ -927,407 +960,499 @@ class _AssignHomeworkPanelState extends ConsumerState<_AssignHomeworkPanel> {
       });
     final recentTop2 = recent.take(2).toList();
 
-    return _SectionCard(
-      title: 'Assign Homework',
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Wrap(
-            alignment: WrapAlignment.end,
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _SectionCard(
+          title: 'Assign Homework',
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              TextButton.icon(
-                onPressed: () => ref.invalidate(teacherHomeworkProvider),
-                icon: const Icon(Icons.refresh_rounded, size: 16),
-                label: const Text('Refresh', style: TextStyle(fontSize: 12)),
-                style: TextButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 6)),
-              ),
-              TextButton.icon(
-                onPressed: () => showModalBottomSheet(
-                  context: context,
-                  isScrollControlled: true,
-                  backgroundColor: Colors.transparent,
-                  builder: (_) => _HistoryCalendarSheet(history: classScoped),
-                ),
-                icon: const Icon(Icons.event_note_rounded, size: 16),
-                label: const Text('View History', style: TextStyle(fontSize: 12)),
-                style: TextButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 6)),
-              ),
-            ],
-          ),
-          Text.rich(
-            TextSpan(
-              text: 'Send homework to every student in ',
-              style: TextStyle(fontSize: 13, color: AppColors.of(context).muted),
-              children: [
+              Text.rich(
                 TextSpan(
-                  text: widget.targetClass == 'all' ? 'the selected class' : widget.targetClass,
-                  style: TextStyle(fontWeight: FontWeight.w700, color: AppColors.of(context).text),
-                ),
-                const TextSpan(text: '.'),
-              ],
-            ),
-          ),
-          const SizedBox(height: 10),
-          TextField(controller: _titleCtrl, decoration: const InputDecoration(hintText: 'Homework title (e.g. Unit 5 – Photosynthesis)')),
-          const SizedBox(height: 8),
-          IgnorePointer(
-            child: TextField(
-              controller: TextEditingController(text: subject),
-              decoration: InputDecoration(hintText: 'Subject', filled: true, fillColor: AppColors.of(context).background),
-            ),
-          ),
-          const SizedBox(height: 8),
-          _LessonPicker(
-            lessons: lessons,
-            selectedIds: _lessonIds,
-            expanded: _showLessonPicker,
-            classSelected: widget.targetClass != 'all',
-            targetClass: widget.targetClass,
-            onToggle: () => setState(() => _showLessonPicker = !_showLessonPicker),
-            onChanged: (ids) => setState(() {
-              _lessonIds
-                ..clear()
-                ..addAll(ids);
-            }),
-          ),
-          const SizedBox(height: 8),
-          TextField(
-            controller: _noteCtrl,
-            maxLines: 4,
-            decoration: const InputDecoration(
-              labelText: 'Instructions / question for students',
-              hintText: 'Describe the task or paste the question',
-              helperText: 'Students can see these instructions.',
-              alignLabelWithHint: true,
-            ),
-          ),
-          const SizedBox(height: 8),
-          ExpansionTile(
-            initiallyExpanded: false,
-            tilePadding: const EdgeInsets.symmetric(horizontal: 12),
-            childrenPadding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
-            backgroundColor: AppColors.of(context).card,
-            collapsedBackgroundColor: AppColors.of(context).card,
-            shape: RoundedRectangleBorder(
-              side: BorderSide(color: AppColors.of(context).line),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            collapsedShape: RoundedRectangleBorder(
-              side: BorderSide(color: AppColors.of(context).line),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            title: Text(
-              'AI marking guidance',
-              style: TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.w700,
-                color: AppColors.of(context).text,
-              ),
-            ),
-            subtitle: Text(
-              'Teacher-only · default rubric always applies',
-              style: TextStyle(fontSize: 11, color: AppColors.of(context).muted),
-            ),
-            children: [
-              Align(
-                alignment: Alignment.centerLeft,
-                child: Padding(
-                  padding: const EdgeInsets.only(bottom: 8),
-                  child: Text(
-                    'Customize with textbook points, expected answers, or partial-credit rules. Students never see this.',
-                    style: TextStyle(
-                      fontSize: 11,
-                      height: 1.4,
-                      color: AppColors.of(context).muted,
+                  text: 'Create a task for ',
+                  style: TextStyle(fontSize: 13, color: AppColors.of(context).muted),
+                  children: [
+                    TextSpan(
+                      text: widget.targetClass == 'all' ? 'your selected class' : widget.targetClass,
+                      style: TextStyle(fontWeight: FontWeight.w700, color: AppColors.of(context).text),
                     ),
-                  ),
+                    const TextSpan(text: '.'),
+                  ],
                 ),
               ),
+              Wrap(
+                spacing: 4,
+                children: [
+                  TextButton.icon(
+                    onPressed: () {
+                      final recentContext = _recentKey.currentContext;
+                      if (recentContext != null) {
+                        Scrollable.ensureVisible(recentContext, alignment: 0.05, duration: const Duration(milliseconds: 400), curve: Curves.easeInOut);
+                      }
+                    },
+                    icon: const Icon(Icons.assignment_outlined, size: 16),
+                    label: const Text('Recent', style: TextStyle(fontSize: 12)),
+                    style: TextButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 6)),
+                  ),
+                  TextButton.icon(
+                    onPressed: () => ref.invalidate(teacherHomeworkProvider),
+                    icon: const Icon(Icons.refresh_rounded, size: 16),
+                    label: const Text('Refresh', style: TextStyle(fontSize: 12)),
+                    style: TextButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 6)),
+                  ),
+                  TextButton.icon(
+                    onPressed: () => showModalBottomSheet(
+                      context: context,
+                      isScrollControlled: true,
+                      backgroundColor: Colors.transparent,
+                      builder: (_) => _HistoryCalendarSheet(history: classScoped),
+                    ),
+                    icon: const Icon(Icons.event_note_rounded, size: 16),
+                    label: const Text('View History', style: TextStyle(fontSize: 12)),
+                    style: TextButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 6)),
+                  ),
+                ],
+              ),
+              const _HomeworkStep(number: '1', title: 'Homework details', subtitle: 'What should students do?'),
+              const SizedBox(height: 10),
               TextField(
-                controller: _gradingGuidanceCtrl,
-                maxLines: 3,
-                maxLength: 4000,
+                controller: _titleCtrl,
                 decoration: const InputDecoration(
-                  labelText: 'Private marking guidance',
-                  hintText: 'Add unit-specific key points, expected answers, or partial-credit rules',
+                  labelText: 'Homework title',
+                  hintText: 'Homework title (e.g. Unit 5 – Photosynthesis)',
+                ),
+              ),
+              const SizedBox(height: 10),
+              InputDecorator(
+                decoration: InputDecoration(
+                  labelText: 'Subject',
+                  filled: true,
+                  fillColor: AppColors.of(context).background,
+                ),
+                child: Text(subject.isEmpty ? 'Not set' : subject),
+              ),
+              const SizedBox(height: 10),
+              TextField(
+                controller: _noteCtrl,
+                maxLines: 4,
+                decoration: const InputDecoration(
+                  labelText: 'Instructions / question for students',
+                  hintText: 'Describe the task or paste the question',
+                  helperText: 'Students can see these instructions.',
                   alignLabelWithHint: true,
                 ),
               ),
-            ],
-          ),
-          const SizedBox(height: 10),
-          OutlinedButton.icon(
-            onPressed: _uploading ? null : _pickImages,
-            icon: const Icon(Icons.attach_file_rounded, size: 18),
-            label: Text(_uploading ? 'Uploading...' : 'Choose Files'),
-          ),
-          if (_attachmentUrls.isNotEmpty) ...[
-            const SizedBox(height: 8),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                for (final url in _attachmentUrls)
-                  Stack(
-                    clipBehavior: Clip.none,
-                    children: [
-                      ClipRRect(
-                        borderRadius: BorderRadius.circular(6),
-                        child: Image.network(
-                          url,
-                          width: 56,
-                          height: 56,
-                          fit: BoxFit.cover,
-                          errorBuilder: (_, _, _) => Container(width: 56, height: 56, color: AppColors.of(context).background),
-                        ),
-                      ),
-                      Positioned(
-                        top: -6,
-                        right: -6,
-                        child: GestureDetector(
-                          onTap: () => setState(() => _attachmentUrls.remove(url)),
-                          child: Container(
-                            width: 18,
-                            height: 18,
-                            decoration: const BoxDecoration(color: AppColors.danger, shape: BoxShape.circle),
-                            alignment: Alignment.center,
-                            child: const Icon(Icons.close_rounded, size: 12, color: Colors.white),
-                          ),
-                        ),
-                      ),
-                    ],
+              const SizedBox(height: 18),
+              const _HomeworkStep(number: '2', title: 'Resources & marking', subtitle: 'Optional: link units, add images or customize AI guidance.'),
+              const SizedBox(height: 10),
+              _LessonPicker(
+                lessons: lessons,
+                selectedIds: _lessonIds,
+                expanded: _showLessonPicker,
+                classSelected: widget.targetClass != 'all',
+                targetClass: widget.targetClass,
+                onToggle: () => setState(() => _showLessonPicker = !_showLessonPicker),
+                onChanged: (ids) => setState(() {
+                  _lessonIds
+                    ..clear()
+                    ..addAll(ids);
+                }),
+              ),
+              const SizedBox(height: 10),
+              ExpansionTile(
+                initiallyExpanded: false,
+                tilePadding: const EdgeInsets.symmetric(horizontal: 12),
+                childrenPadding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+                backgroundColor: AppColors.of(context).card,
+                collapsedBackgroundColor: AppColors.of(context).card,
+                shape: RoundedRectangleBorder(
+                  side: BorderSide(color: AppColors.of(context).line),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                collapsedShape: RoundedRectangleBorder(
+                  side: BorderSide(color: AppColors.of(context).line),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                title: Text(
+                  'AI marking guidance',
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.of(context).text,
                   ),
-              ],
-            ),
-          ],
-          const SizedBox(height: 10),
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Expanded(child: _DateTimeField(label: 'START DATE & TIME', value: _startAt, onChanged: (v) => setState(() => _startAt = v))),
-              const SizedBox(width: 10),
-              Expanded(child: _DateTimeField(label: 'END / DUE DATE & TIME', value: _dueAt, onChanged: (v) => setState(() => _dueAt = v))),
-            ],
-          ),
-          const SizedBox(height: 12),
-          SizedBox(
-            width: double.infinity,
-            child: ElevatedButton(
-              onPressed: (_assigning || _uploading) ? null : _submit,
-              child: Text(_assigning
-                  ? 'Assigning...'
-                  : _uploading
-                      ? 'Uploading image...'
-                      : widget.targetClass == 'all'
-                          ? 'Select a class first'
-                          : '✅ Assign to ${widget.targetClass}'),
-            ),
-          ),
-          if (_info != null) ...[
-            const SizedBox(height: 8),
-            Text(_info!, style: TextStyle(fontSize: 12, color: AppColors.readableAccent(_info!.startsWith('✅') ? AppColors.ok : AppColors.danger, dark: AppColors.of(context).isDark))),
-          ],
-          if (recentTop2.isNotEmpty) ...[
-            const SizedBox(height: 14),
-            Text('Recently assigned', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: AppColors.of(context).muted)),
-            for (final h in recentTop2)
-              _HomeworkTile(
-                homework: h,
-                onEdit: () => _startEdit(h),
-                onDelete: () => _deleteHomework(h['id']?.toString() ?? ''),
-              ),
-          ] else if (homeworkAsync.isLoading && !homeworkAsync.hasValue) ...[
-            const SizedBox(height: 14),
-            const SkeletonBox(height: 56),
-            const SkeletonBox(height: 56),
-          ],
-          if (_editingHwId != null) ...[
-            const SizedBox(height: 14),
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: AppColors.of(context).brandSoft,
-                border: Border.all(color: AppColors.brand, width: 2),
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
+                ),
+                subtitle: Text(
+                  'Teacher-only · default rubric always applies',
+                  style: TextStyle(fontSize: 11, color: AppColors.of(context).muted),
+                ),
                 children: [
-                  const Text('Edit Homework', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w800)),
-                  const SizedBox(height: 10),
-                  TextField(controller: _editingTitleCtrl, decoration: const InputDecoration(hintText: 'Homework title')),
-                  const SizedBox(height: 8),
-                  IgnorePointer(
-                    child: TextField(
-                      controller: TextEditingController(text: subject),
-                      decoration: InputDecoration(hintText: 'Subject', filled: true, fillColor: AppColors.of(context).card),
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: Padding(
+                      padding: const EdgeInsets.only(bottom: 8),
+                      child: Text(
+                        'Customize with textbook points, expected answers, or partial-credit rules. Students never see this.',
+                        style: TextStyle(
+                          fontSize: 11,
+                          height: 1.4,
+                          color: AppColors.of(context).muted,
+                        ),
+                      ),
                     ),
                   ),
-                  const SizedBox(height: 8),
-                  _LessonPicker(
-                    lessons: lessons,
-                    selectedIds: _editingLessonIds,
-                    expanded: _editingShowLessonPicker,
-                    classSelected: widget.targetClass != 'all',
-                    targetClass: widget.targetClass,
-                    onToggle: () => setState(() => _editingShowLessonPicker = !_editingShowLessonPicker),
-                    onChanged: (ids) => setState(() {
-                      _editingLessonIds
-                        ..clear()
-                        ..addAll(ids);
-                    }),
-                  ),
-                  const SizedBox(height: 8),
                   TextField(
-                    controller: _editingNoteCtrl,
-                    maxLines: 4,
+                    controller: _gradingGuidanceCtrl,
+                    maxLines: 3,
+                    maxLength: 4000,
                     decoration: const InputDecoration(
-                      labelText: 'Instructions / question for students',
-                      hintText: 'Describe the task or paste the question',
-                      helperText: 'Students can see these instructions.',
+                      labelText: 'Private marking guidance',
+                      hintText: 'Add unit-specific key points, expected answers, or partial-credit rules',
                       alignLabelWithHint: true,
                     ),
                   ),
+                ],
+              ),
+              const SizedBox(height: 10),
+              OutlinedButton.icon(
+                onPressed: _uploading ? null : _pickImages,
+                icon: const Icon(Icons.attach_file_rounded, size: 18),
+                label: Text(_uploading ? 'Uploading...' : 'Add images'),
+              ),
+              if (_attachmentUrls.isNotEmpty) ...[
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    for (final url in _attachmentUrls)
+                      Stack(
+                        clipBehavior: Clip.none,
+                        children: [
+                          ClipRRect(
+                            borderRadius: BorderRadius.circular(6),
+                            child: Image.network(
+                              url,
+                              width: 56,
+                              height: 56,
+                              fit: BoxFit.cover,
+                              errorBuilder: (_, _, _) => Container(width: 56, height: 56, color: AppColors.of(context).background),
+                            ),
+                          ),
+                          Positioned(
+                            top: -6,
+                            right: -6,
+                            child: GestureDetector(
+                              onTap: () => setState(() => _attachmentUrls.remove(url)),
+                              child: Container(
+                                width: 18,
+                                height: 18,
+                                decoration: const BoxDecoration(color: AppColors.danger, shape: BoxShape.circle),
+                                alignment: Alignment.center,
+                                child: const Icon(Icons.close_rounded, size: 12, color: Colors.white),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                  ],
+                ),
+              ],
+              const SizedBox(height: 18),
+              const _HomeworkStep(number: '3', title: 'Schedule', subtitle: 'Optional: choose when the task starts and is due.'),
+              const SizedBox(height: 10),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(child: _DateTimeField(label: 'START DATE & TIME', value: _startAt, onChanged: (v) => setState(() => _startAt = v))),
+                  const SizedBox(width: 10),
+                  Expanded(child: _DateTimeField(label: 'END / DUE DATE & TIME', value: _dueAt, onChanged: (v) => setState(() => _dueAt = v))),
+                ],
+              ),
+              const SizedBox(height: 12),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  onPressed: (_assigning || _uploading) ? null : _submit,
+                  child: Text(_assigning
+                      ? 'Assigning...'
+                      : _uploading
+                          ? 'Uploading image...'
+                          : widget.targetClass == 'all'
+                              ? 'Select a class first'
+                              : '✅ Assign to ${widget.targetClass}'),
+                ),
+              ),
+              if (_info != null && !_info!.startsWith('✅')) ...[
+                const SizedBox(height: 8),
+                Text(_info!, style: TextStyle(fontSize: 12, color: AppColors.readableAccent(AppColors.danger, dark: AppColors.of(context).isDark))),
+              ],
+            ],
+          ),
+        ),
+        KeyedSubtree(
+          key: _recentKey,
+          child: _SectionCard(
+            title: 'Recently assigned',
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                if (_info != null && _info!.startsWith('✅')) ...[
+                  Text(_info!, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.readableAccent(AppColors.ok, dark: AppColors.of(context).isDark))),
+                  const SizedBox(height: 6),
+                ],
+                Text('Active homework for ${widget.targetClass == 'all' ? 'all classes' : widget.targetClass}. View History includes past assignments.', style: TextStyle(fontSize: 12, color: AppColors.of(context).muted)),
+                if (homeworkAsync.hasError) ...[
                   const SizedBox(height: 8),
-                  ExpansionTile(
-                    initiallyExpanded: false,
-                    tilePadding: const EdgeInsets.symmetric(horizontal: 12),
-                    childrenPadding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
-                    backgroundColor: AppColors.of(context).card,
-                    collapsedBackgroundColor: AppColors.of(context).card,
-                    shape: RoundedRectangleBorder(
-                      side: BorderSide(color: AppColors.of(context).line),
-                      borderRadius: BorderRadius.circular(12),
+                  ErrorInline(message: 'Could not load homework: ${homeworkAsync.error.toString().replaceFirst('Exception: ', '')}'),
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: TextButton.icon(
+                      onPressed: () => ref.invalidate(teacherHomeworkProvider),
+                      icon: const Icon(Icons.refresh_rounded, size: 16),
+                      label: const Text('Retry'),
                     ),
-                    collapsedShape: RoundedRectangleBorder(
-                      side: BorderSide(color: AppColors.of(context).line),
-                      borderRadius: BorderRadius.circular(12),
+                  ),
+                ],
+                if (recentTop2.isNotEmpty) ...[
+                  for (final h in recentTop2)
+                    _HomeworkTile(
+                      homework: h,
+                      onEdit: () => _startEdit(h),
+                      onDelete: () => _deleteHomework(h['id']?.toString() ?? ''),
                     ),
-                    title: Text(
-                      'AI marking guidance',
-                      style: TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w700,
-                        color: AppColors.of(context).text,
-                      ),
+                ] else if (homeworkAsync.isLoading && !homeworkAsync.hasValue) ...[
+                  const SizedBox(height: 8),
+                  const SkeletonBox(height: 56),
+                ] else if (!homeworkAsync.hasError) ...[
+                  const SizedBox(height: 8),
+                  Text('No active homework yet.', style: TextStyle(fontSize: 12, color: AppColors.of(context).muted)),
+                ],
+                if (_editingHwId != null) ...[
+                  const SizedBox(height: 14),
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: AppColors.of(context).brandSoft,
+                      border: Border.all(color: AppColors.brand, width: 2),
+                      borderRadius: BorderRadius.circular(10),
                     ),
-                    subtitle: Text(
-                      'Teacher-only · default rubric always applies',
-                      style: TextStyle(
-                        fontSize: 11,
-                        color: AppColors.of(context).muted,
-                      ),
-                    ),
-                    children: [
-                      Align(
-                        alignment: Alignment.centerLeft,
-                        child: Padding(
-                          padding: const EdgeInsets.only(bottom: 8),
-                          child: Text(
-                            'Customize with textbook points, expected answers, or partial-credit rules. Students never see this.',
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        const Text('Edit Homework', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w800)),
+                        const SizedBox(height: 10),
+                        TextField(controller: _editingTitleCtrl, decoration: const InputDecoration(hintText: 'Homework title')),
+                        const SizedBox(height: 8),
+                        IgnorePointer(
+                          child: TextField(
+                            controller: TextEditingController(text: subject),
+                            decoration: InputDecoration(hintText: 'Subject', filled: true, fillColor: AppColors.of(context).card),
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        _LessonPicker(
+                          lessons: lessons,
+                          selectedIds: _editingLessonIds,
+                          expanded: _editingShowLessonPicker,
+                          classSelected: widget.targetClass != 'all',
+                          targetClass: widget.targetClass,
+                          onToggle: () => setState(() => _editingShowLessonPicker = !_editingShowLessonPicker),
+                          onChanged: (ids) => setState(() {
+                            _editingLessonIds
+                              ..clear()
+                              ..addAll(ids);
+                          }),
+                        ),
+                        const SizedBox(height: 8),
+                        TextField(
+                          controller: _editingNoteCtrl,
+                          maxLines: 4,
+                          decoration: const InputDecoration(
+                            labelText: 'Instructions / question for students',
+                            hintText: 'Describe the task or paste the question',
+                            helperText: 'Students can see these instructions.',
+                            alignLabelWithHint: true,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        ExpansionTile(
+                          initiallyExpanded: false,
+                          tilePadding: const EdgeInsets.symmetric(horizontal: 12),
+                          childrenPadding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+                          backgroundColor: AppColors.of(context).card,
+                          collapsedBackgroundColor: AppColors.of(context).card,
+                          shape: RoundedRectangleBorder(
+                            side: BorderSide(color: AppColors.of(context).line),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          collapsedShape: RoundedRectangleBorder(
+                            side: BorderSide(color: AppColors.of(context).line),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          title: Text(
+                            'AI marking guidance',
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w700,
+                              color: AppColors.of(context).text,
+                            ),
+                          ),
+                          subtitle: Text(
+                            'Teacher-only · default rubric always applies',
                             style: TextStyle(
                               fontSize: 11,
-                              height: 1.4,
                               color: AppColors.of(context).muted,
                             ),
                           ),
-                        ),
-                      ),
-                      TextField(
-                        controller: _editingGradingGuidanceCtrl,
-                        maxLines: 3,
-                        maxLength: 4000,
-                        decoration: const InputDecoration(
-                          labelText: 'Private marking guidance',
-                          hintText: 'Add unit-specific key points, expected answers, or partial-credit rules',
-                          alignLabelWithHint: true,
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 10),
-                  OutlinedButton.icon(
-                    onPressed: _editingUploading ? null : _pickEditImages,
-                    icon: const Icon(Icons.attach_file_rounded, size: 18),
-                    label: Text(_editingUploading ? 'Uploading...' : 'Add / Replace Images'),
-                  ),
-                  if (_editingAttachmentUrls.isNotEmpty) ...[
-                    const SizedBox(height: 8),
-                    Wrap(
-                      spacing: 8,
-                      runSpacing: 8,
-                      children: [
-                        for (final url in _editingAttachmentUrls)
-                          Stack(
-                            clipBehavior: Clip.none,
-                            children: [
-                              ClipRRect(
-                                borderRadius: BorderRadius.circular(6),
-                                child: Image.network(
-                                  url,
-                                  width: 56,
-                                  height: 56,
-                                  fit: BoxFit.cover,
-                                  errorBuilder: (_, _, _) => Container(width: 56, height: 56, color: AppColors.of(context).background),
-                                ),
-                              ),
-                              Positioned(
-                                top: -6,
-                                right: -6,
-                                child: GestureDetector(
-                                  onTap: () => setState(() => _editingAttachmentUrls.remove(url)),
-                                  child: Container(
-                                    width: 18,
-                                    height: 18,
-                                    decoration: const BoxDecoration(color: AppColors.danger, shape: BoxShape.circle),
-                                    alignment: Alignment.center,
-                                    child: const Icon(Icons.close_rounded, size: 12, color: Colors.white),
+                          children: [
+                            Align(
+                              alignment: Alignment.centerLeft,
+                              child: Padding(
+                                padding: const EdgeInsets.only(bottom: 8),
+                                child: Text(
+                                  'Customize with textbook points, expected answers, or partial-credit rules. Students never see this.',
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    height: 1.4,
+                                    color: AppColors.of(context).muted,
                                   ),
                                 ),
                               ),
+                            ),
+                            TextField(
+                              controller: _editingGradingGuidanceCtrl,
+                              maxLines: 3,
+                              maxLength: 4000,
+                              decoration: const InputDecoration(
+                                labelText: 'Private marking guidance',
+                                hintText: 'Add unit-specific key points, expected answers, or partial-credit rules',
+                                alignLabelWithHint: true,
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 10),
+                        OutlinedButton.icon(
+                          onPressed: _editingUploading ? null : _pickEditImages,
+                          icon: const Icon(Icons.attach_file_rounded, size: 18),
+                          label: Text(_editingUploading ? 'Uploading...' : 'Add / Replace Images'),
+                        ),
+                        if (_editingAttachmentUrls.isNotEmpty) ...[
+                          const SizedBox(height: 8),
+                          Wrap(
+                            spacing: 8,
+                            runSpacing: 8,
+                            children: [
+                              for (final url in _editingAttachmentUrls)
+                                Stack(
+                                  clipBehavior: Clip.none,
+                                  children: [
+                                    ClipRRect(
+                                      borderRadius: BorderRadius.circular(6),
+                                      child: Image.network(
+                                        url,
+                                        width: 56,
+                                        height: 56,
+                                        fit: BoxFit.cover,
+                                        errorBuilder: (_, _, _) => Container(width: 56, height: 56, color: AppColors.of(context).background),
+                                      ),
+                                    ),
+                                    Positioned(
+                                      top: -6,
+                                      right: -6,
+                                      child: GestureDetector(
+                                        onTap: () => setState(() => _editingAttachmentUrls.remove(url)),
+                                        child: Container(
+                                          width: 18,
+                                          height: 18,
+                                          decoration: const BoxDecoration(color: AppColors.danger, shape: BoxShape.circle),
+                                          alignment: Alignment.center,
+                                          child: const Icon(Icons.close_rounded, size: 12, color: Colors.white),
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
                             ],
                           ),
+                        ],
+                        const SizedBox(height: 10),
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Expanded(child: _DateTimeField(label: 'START DATE & TIME', value: _editingStartAt, onChanged: (v) => setState(() => _editingStartAt = v))),
+                            const SizedBox(width: 10),
+                            Expanded(child: _DateTimeField(label: 'END / DUE DATE & TIME', value: _editingDueAt, onChanged: (v) => setState(() => _editingDueAt = v))),
+                          ],
+                        ),
+                        const SizedBox(height: 12),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: OutlinedButton(
+                                onPressed: (_editingSaving || _editingUploading) ? null : _cancelEdit,
+                                child: const Text('Cancel'),
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              flex: 2,
+                              child: ElevatedButton(
+                                onPressed: (_editingSaving || _editingUploading) ? null : _saveEdit,
+                                child: Text(_editingSaving ? 'Saving...' : 'Update & Resend to All Students'),
+                              ),
+                            ),
+                          ],
+                        ),
+                        if (_editingInfo != null) ...[
+                          const SizedBox(height: 8),
+                          Text(_editingInfo!, style: TextStyle(fontSize: 12, color: AppColors.readableAccent(_editingInfo!.startsWith('✅') ? AppColors.ok : AppColors.danger, dark: AppColors.of(context).isDark))),
+                        ],
                       ],
                     ),
-                  ],
-                  const SizedBox(height: 10),
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Expanded(child: _DateTimeField(label: 'START DATE & TIME', value: _editingStartAt, onChanged: (v) => setState(() => _editingStartAt = v))),
-                      const SizedBox(width: 10),
-                      Expanded(child: _DateTimeField(label: 'END / DUE DATE & TIME', value: _editingDueAt, onChanged: (v) => setState(() => _editingDueAt = v))),
-                    ],
                   ),
-                  const SizedBox(height: 12),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: OutlinedButton(
-                          onPressed: (_editingSaving || _editingUploading) ? null : _cancelEdit,
-                          child: const Text('Cancel'),
-                        ),
-                      ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        flex: 2,
-                        child: ElevatedButton(
-                          onPressed: (_editingSaving || _editingUploading) ? null : _saveEdit,
-                          child: Text(_editingSaving ? 'Saving...' : 'Update & Resend to All Students'),
-                        ),
-                      ),
-                    ],
-                  ),
-                  if (_editingInfo != null) ...[
-                    const SizedBox(height: 8),
-                    Text(_editingInfo!, style: TextStyle(fontSize: 12, color: AppColors.readableAccent(_editingInfo!.startsWith('✅') ? AppColors.ok : AppColors.danger, dark: AppColors.of(context).isDark))),
-                  ],
                 ],
-              ),
+              ],
             ),
-          ],
-        ],
-      ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _HomeworkStep extends StatelessWidget {
+  final String number;
+  final String title;
+  final String subtitle;
+
+  const _HomeworkStep({required this.number, required this.title, required this.subtitle});
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = AppColors.of(context);
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          width: 28,
+          height: 28,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(color: colors.brandSoft, borderRadius: BorderRadius.circular(9)),
+          child: Text(number, style: TextStyle(color: colors.accent, fontWeight: FontWeight.w800)),
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(title, style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: colors.text)),
+              Text(subtitle, style: TextStyle(fontSize: 12, color: colors.muted)),
+            ],
+          ),
+        ),
+      ],
     );
   }
 }
