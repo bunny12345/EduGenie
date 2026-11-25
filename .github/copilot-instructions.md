@@ -1,182 +1,145 @@
 # AcademiX — Copilot Instructions
 
+Use this file as durable project context, not as a live deployment/status dashboard. Check the current source, worktree, and official console/docs when behavior or release status may have changed.
+
 ## Project Overview
 
-AcademiX is a school/teacher/student portal with an integrated AI Tutor. It has three user roles, each with its own dashboard. The backend is NestJS + Supabase (PostgreSQL with RLS). The web frontend is React (CRA). There is also a Flutter mobile app (early stage).
+AcademiX serves students, teachers, and school administrators through a React web app and a Flutter mobile app, backed by NestJS and Supabase. The web app also has an owner portal. The mobile app currently supports student and teacher flows; the school-admin role is not implemented as a native portal.
 
-## Architecture
-
-```
-web/          React SPA (Create React App, no router — hash-based navigation)
-backend/      NestJS (TypeScript), deployed independently
-mobile/       Flutter app — Student portal complete, Teacher portal complete,
-              School Admin portal not yet started (see "Mobile App" section below)
-supabase/     Supabase project config
+```text
+web/          React SPA (Create React App)
+backend/      NestJS API (TypeScript)
+mobile/       Flutter app
+backend/db/   Database migrations and SQL policies
+infra/aws/    Terraform and deployment tooling
 ```
 
-- **No React Router.** Navigation is driven by component state synced to `window.location.hash`. On login the hash is cleared so users always land on the home/overview page.
-- **Single-file dashboards.** Each portal is one large component: `StudentDashboard.jsx`, `TeacherDashboard.jsx`, `SchoolDashboard.jsx`. Do not split them into separate route-based pages without explicit instruction.
-- **API layer:** `web/src/api.js` contains all fetch wrappers. Endpoints return `{ success: true, ...payload }` envelopes.
+### Navigation and app boundaries
 
-## Supabase Rules (CRITICAL)
+- The web app does not use React Router. Role dashboards use component state synchronized with `window.location.hash`; login and logout clear the hash. The owner portal is selected by the `/owner` pathname. Check `web/src/App.js` before changing routing.
+- The student, teacher, and school dashboards are intentionally large, established components. Do not split them into route-based pages or replace the hash navigation without explicit instruction.
+- Web API wrappers live in `web/src/api.js`. Inspect each endpoint's actual request and response shape; do not assume every endpoint has the same response envelope.
+- Backend API routes are explicitly routed through CloudFront in `infra/aws/`. When adding or renaming a backend route, verify its prefix is routed to the backend origin; routing is not automatic.
 
-- Supabase is the production database. All table schemas, RLS policies, and migrations live in `backend/db/`.
-- **Never drop or alter existing tables** without explicit user approval.
-- **Never disable or rewrite RLS policies** — they enforce multi-tenant isolation.
-- `SupabaseService` (backend) uses `SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY` env vars. When those are missing, a local mock DB is used. Do not change this fallback behavior.
-- Chat persistence uses `conversationId` scoped keys. Do not change the conversation ID format (`conv-<student>:subject-<subject>:lesson-<id>`).
+## Critical Data, Security, and Compatibility Rules
 
-## Three Portals
+- Supabase is production data. Schemas and migrations live under `backend/db/`. Never drop, rename, or alter existing tables without explicit approval.
+- Never disable or rewrite RLS policies. Review the migrations as well as `backend/db/rls_policies.sql`; that SQL file is not necessarily the complete/current policy inventory.
+- Preserve `SupabaseService` behavior. It uses `SUPABASE_SERVICE_ROLE_KEY` when configured, can fall back to the anon key, and uses file-backed mock persistence (`backend/local-data/mock-store.json`) when Supabase configuration is unavailable. Do not replace or silently change these fallbacks. Avoid committing local data, uploaded user content, `.env` files, API keys, or other secrets.
+- Preserve the chat `conversationId` format: `conv-<student>:subject-<subject>:lesson-<id>`.
+- Authentication is not identical on every endpoint. Most protected controllers use `AuthGuard`, school/teacher endpoints add role checks, owner endpoints use owner authorization, and some endpoints (such as health and public support intake) are intentionally public. Follow the existing route's intended access policy; do not add blanket guards or make routes public without checking callers and requirements.
+- Do not remove or change `DISABLE_SESSION_EXPIRY_GUARD` without explicit instruction. Session-expiry handling is currently disabled in the web app/API; verify current behavior before changing it.
+- Do not expose credentials or copy values from environment files into code, docs, logs, or chat.
 
-### Student Portal (`StudentDashboard.jsx`)
+## Web Portals
 
-- **Sidebar (MUST REMAIN):** A persistent left sidebar (`<aside className="eg-sidebar">`) with navigation items: Home, My Orchard, Games, AI Tutor, Homework, Mock Tests, Progress, Calendar, Rewards, Library, Settings.
-- **Do not remove or hide the sidebar** except via the existing responsive `@media (max-width: 1100px)` collapse.
-- `activeSidebarTab` controls which panel is shown; `activeView` controls home vs. subject-specific views.
-- The AI Tutor panel renders inline when `activeSidebarTab === 'AI Tutor'`.
-- Subject-specific pages show homework, tests, and lessons for one subject.
+### Student
 
-### Teacher Portal (`TeacherDashboard.jsx`)
+- Keep the persistent student sidebar (`.eg-sidebar`) and its responsive behavior. Do not remove or hide it except through existing responsive rules.
+- The current sidebar includes **Report Card** (not the older “Mock Tests” label); games and mock tests can still appear in subject/content flows. Check `StudentDashboard.jsx` before relying on an old navigation list.
+- `activeSidebarTab` and `activeView` control the student panels and subject-specific views. The AI Tutor is integrated into the student experience, not a separate route.
+- A separate floating Quick Sam assistant also exists (`QuickSamBubble.jsx`); do not conflate it with the inline AI Tutor.
+- AI Tutor features include lesson-aware chat and additional learning modes/voice UI. Preserve lesson scoping, prompt boundaries, and conversation persistence when changing tutor behavior.
 
-- Sidebar with sections: teacher overview, curriculum upload, students, tests.
-- Teachers are scoped to a school and assigned grades/classes.
-- Test authoring supports create, edit, clone, add/edit/delete questions.
+### Teacher and school administrator
 
-### School Admin Portal (`SchoolDashboard.jsx`)
+- Teacher and school portals remain web dashboards with their existing sidebars and hash-based section persistence. Preserve the current class/school scoping and server-side filtering.
+- Teacher test authoring supports the existing create/edit/clone and question-management flows; keep dependent API behavior consistent.
+- School administrators manage teachers/invites, curriculum, students, and class filters. Preserve invite-link registration and tenant scoping.
 
-- Sidebar with sections: overview, teacher registration, teachers & invites, curriculum upload, student registration, students.
-- Has class filter dropdowns for teachers and students (server-side filtering via `className` query param).
-- Admin can register teachers/students, create invite links, manage curriculum.
+### Owner
 
-## Sidebar & Navigation Rules
+- The owner portal is a separate web entry selected at `/owner`; retain its route and authorization boundary when changing app-level routing.
 
-1. The sidebar is the primary navigation in all three portals. Never remove it.
-2. Hash-based persistence: the active section is stored in `window.location.hash` so browser refresh stays on the same page.
-3. On login (`handleLogin`) and logout (`handleLogout`), the hash is cleared so the user always starts at the default home/overview page.
+## Web Design, Loading, and Student Activity
 
-## AI Tutor
+- Main styles are in `web/src/App.css`, but component styles also exist in files such as `StudentGames.css`, `StudentOrchard.css`, `StudentProgress.css`, and `CurriculumContent.css`; check for existing styles before adding or moving CSS.
+- Student styles commonly use `eg-`; school/teacher styles use `sd-` / `td-`. Preserve established visual patterns and responsive behavior.
+- Do not show a generic “Loading…” message for background portal data loads. Use the existing silent-loading pattern; user-initiated actions may show progress, and panel errors must remain visible.
+- Streaks represent real activity, not login alone. Preserve the existing qualifying activity sources and the rewards check-in behavior when editing streak/reward logic; verify the implementation before changing its rules.
 
-- Lives inside `StudentDashboard.jsx` as a chat panel (not a separate route).
-- Scoped to a selected subject + optional lesson.
-- Sends a hidden "lesson onboarding" message once per lesson to trigger a warm intro.
-- Lesson-mode prompt is strict: the PDF is the teaching boundary, off-topic is redirected.
-- Follow-up chip suggestions are lesson-aware.
-- Voice playback via TTS endpoint.
+## Flutter Mobile App
 
-## Design & CSS Rules
+- Mobile intentionally uses native bottom navigation, not the web sidebars. Do not add a sidebar/drawer to imitate web.
+- State management uses Riverpod; HTTP requests use Dio through `mobile/lib/services/api_client.dart`. Keep bearer-token handling centralized there.
+- `state/session_provider.dart` restores the session from secure storage and coordinates the API token; `navigation/role_router.dart` restores/routs supported roles. Verify current source before assuming a role is supported.
+- Student navigation currently uses **Home / Services / More** (not the old five-tab layout); AI Tutor is reachable from the student experience. Check the shell before describing or changing tab structure.
+- The teacher shell has navigation destinations, but the tab content is still placeholder/in progress. Do not describe the native teacher portal as complete or build out the school-admin native portal unless explicitly asked. School-admin mobile sessions currently receive a web-only notice/sign-out flow.
+- Student and teacher light/dark theme preferences are persisted separately; the app has light and dark Material themes, and AI Tutor has its own dark palette. Preserve saved preferences when changing defaults or theme controls.
+- Push-notification initialization and session behavior are part of startup/auth flows; review these before changing app initialization or logout.
+- The student More page and teacher menu include installed-version/update UI. Update checks and the Google Play in-app update flow are Android-specific; do not promise an update mechanism on other platforms.
+- Web contracts remain the reference when implementing mobile API calls. Verify API base URL configuration in `mobile/lib/config/env.dart`, the web environment, and deployment settings before diagnosing missing or mismatched data. Do not change a default URL based on assumption.
+- Mobile README (`mobile/README.md`) describes current features and known rollout/testing considerations. Read it before adding features or treating an area as complete.
 
-- All CSS is in `web/src/App.css` (single file). Class prefix: `eg-` for student portal, `sd-` / `td-` for school/teacher.
-- Glass-effect cards use `.eg-home-glass` on the student home page.
-- Dark sidebar gradient: `var(--sidebar)` to `var(--sidebar-2)`.
-- No "Loading..." text visible to users — use silent background loading pattern (see below).
+## Backend and Deployment
 
-## Silent Loading Pattern
+- NestJS controllers are in `backend/src/controllers/`; module registration is in `backend/src/app.module.ts`. Many controllers are registered directly by `AppModule`; follow nearby conventions rather than assuming every feature has its own module.
+- School and teacher routes generally combine `AuthGuard` with explicit role checks. Preserve school/grade/class scoping.
+- Supabase integration is in `backend/src/supabase.service.ts`. Local mock persistence uses files under `backend/local-data/`; do not assume local fallback data is in-memory or disposable.
+- New API paths may require changes to the explicit CloudFront backend route-prefix configuration in `infra/aws/variables.tf`. Check routing and deployment configuration together with the controller and web API wrapper.
+- Production web builds must use the API URL intended for production. Check `infra/aws/deploy.sh` and current deployment configuration; do not bake a developer-local `.env.local` API URL into a production build. Verify the configured backend health endpoint before diagnosing cross-app data issues.
+- Never claim a Play Console release is published, a review is complete, or a testing period has elapsed without checking the current Play Console status. Release and testing state changes over time.
 
-- Portals load data in the background. No "Loading…" text is ever shown on screen.
-- Only user-initiated actions show feedback (Save/Upload/Refresh spinners, AI typing dots).
-- `panelError.*` messages are always shown.
-- Baseline lint warnings: exactly 8 pre-existing (4 StudentDashboard, 4 TeacherDashboard). Do not introduce more.
+## Tests and Build Commands
 
-## Streaks & Rewards
-
-- Streak counts days with real activity: homework submissions, test attempts, progress_metrics rows, orchard_activity, or student_rewards check-ins.
-- Login alone does NOT count as streak activity.
-- The "Check-in (+10 coins)" button in Rewards earns coins and should also count for streak (via `student_rewards` table).
-- Weekly goal is `min(streakDays, 7) / 7 * 100%`.
-
-## Mobile App (Flutter)
-
-The Flutter app (`mobile/`) is a native client for the same three portals, calling the identical NestJS backend/API contracts as web. `web/src/api.js` remains the canonical source of every endpoint's request/response shape — mirror it in Dart, don't invent new contracts.
-
-- **State management:** Riverpod (`flutter_riverpod`, no codegen — `Provider`/`NotifierProvider`/`FutureProvider.autoDispose`).
-- **HTTP client:** Dio, wrapped in `mobile/lib/services/api_client.dart` (bearer token injected via interceptor).
-- **Session:** `flutter_secure_storage` (key `academix_session`), mirrors web's `AcademiX.session` shape. `state/session_provider.dart` is the single source of truth; `navigation/role_router.dart` dispatches to the right shell (student/teacher/school) by role, mirroring `App.js`.
-- **No sidebar on mobile.** This intentionally overrides the web sidebar rule — Flutter uses native bottom nav per portal instead. Web is the functional/branding reference for mobile (colors, features, copy), not the layout reference.
-- **API base URL parity is critical:** `mobile/lib/config/env.dart`'s `Env.apiBaseUrl` must point at the same backend web is using (check `web/.env.local`'s `REACT_APP_API_URL`) or student/teacher data silently looks "missing" between the two apps — this has been the single most common mobile/web data-mismatch bug. Verify both with `curl <url>/health` before assuming an app bug, and never assume the current default is correct without checking.
-
-### Student portal (mobile) — feature-complete
-`navigation/student_nav_shell.dart` (5-tab bottom nav: Home / Learn / AI Tutor / Tasks / More) plus a 9-icon "Academics" grid on Home (exact mirror of web's `eg-academ-grid`, same GIF icons under `mobile/assets/gifs/`) linking to every other section: Homework, My Orchard, Mock Tests, Progress, Games, Calendar, Rewards, Library, Settings. Screens live under `mobile/lib/screens/student/`.
-
-- Every section mirrors web's real design/colors (not a simplified generic mobile version).
-- AI Tutor (`screens/student/student_ai_tutor_screen.dart`) has its own bespoke **dark theme** (`theme/ai_tutor_colors.dart`, ported 1:1 from web's `.eg-ai-panel` CSS) — the only dark-themed screen in the app — plus Quiz Rush, Explain Back, Story Mode, and voice ("Talk to Sam", via `record`/`audioplayers`), matching web feature-for-feature. Same `conversationId` format as web — do not change it.
-- Games (`screens/student/games/`): hub + all 3 live catalog games (Flashcards, Quiz Rush, Memory Maze) fully playable, mirroring `StudentGames.jsx`.
-- Progress (`screens/student/progress/`): full "Learning Report" mirror (gauge, radar chart, growth trend charts via hand-rolled `CustomPainter`s, no chart package) reading `GET /progress/learning-score`.
-- Homework (`screens/student/homework/`): per-subject view mirroring web exactly (filters, history calendar, image attach/lightbox, resubmission window).
-- Shared reusable primitives — reuse these, don't re-invent per screen: `widgets/section_card.dart` (`SectionCard`/`SkeletonBox`/`ErrorInline`), `widgets/pressable_scale.dart` (`PressableScale`, the "3D button" tactile press effect used across cards/buttons), `widgets/coming_soon_view.dart` (never a bare "Loading...", follows the same silent-loading rule as web).
-- Known deferred/simplified items — do not "fix" unless asked: homework image drag-to-reorder, flashcard "Ask AI to explain" cross-tab deep link, Orchard chapter drill-down, full month calendar view.
-
-### Teacher portal (mobile) — just completed
-`navigation/teacher_shell.dart` — bottom nav mirrors `TeacherDashboard.jsx`'s sidebar sections: Home, AI Assistant, Students, Progress (`screens/teacher/teacher_*_tab.dart`).
-
-### School Admin portal (mobile) — not started
-`navigation/school_shell.dart` is still a placeholder (`ComingSoonView`) — session/logout work, no real UI yet. Do not build this out unless explicitly asked.
-
-### Mobile-only gotchas (full history in repo memory `mobile-app-plan.md`)
-- New/changed `pubspec.yaml` `assets:` entries need a full stop + relaunch of `flutter run`, not hot reload/restart.
-- `flutter run -d web-server` does not hot-reload a manually-opened browser tab without the Dart Debug Chrome extension attached — kill and relaunch for every change when using that target.
-- `Row`/`Column` with `CrossAxisAlignment.stretch` inside a scrollable/unbounded parent needs `IntrinsicHeight`, or restructure with plain nested `Container`s instead.
-- Android SDK / Xcode are not installed on the dev machine — verification is `flutter analyze` + `flutter test` only (no on-device/simulator run available).
-
-## Backend Conventions
-
-- Controllers are in `backend/src/controllers/`.
-- Auth guard: `@UseGuards(AuthGuard)` on all controllers.
-- Role check: `ensureSchoolAdmin(req)` / `ensureTeacher(req)` per endpoint.
-- Student auth service: `backend/src/auth/student-auth.service.ts` — has local in-memory fallback for accounts when DB inserts fail.
-- Dev token generation: `node backend/scripts/make_dev_token.js <id> <role>`.
-- Type-check: `cd backend && npx tsc --noEmit`.
-
-## Things Copilot Must NOT Do
-
-1. Remove or hide the sidebar in any portal.
-2. Drop, rename, or alter Supabase tables without explicit approval.
-3. Change RLS policies.
-4. Show "Loading..." text to users (use silent pattern).
-5. Install a client-side router (React Router, etc.) — use hash-based state.
-6. Split dashboard components into separate files/routes without instruction.
-7. Change the `conversationId` key format for chat scoping.
-8. Remove the `DISABLE_SESSION_EXPIRY_GUARD` flag without instruction.
-9. Remove or rewrite the invite-link registration flow.
-10. Change how `handleLogin`/`handleLogout` clear the hash.
-11. Add a sidebar/drawer to the mobile (Flutter) app for parity with web — mobile intentionally uses native bottom nav instead.
-12. Change `mobile/lib/config/env.dart`'s default API base URL without first confirming which backend web (`web/.env.local`) is currently pointed at.
-13. Build out the School Admin mobile portal (`school_shell.dart`) beyond its current placeholder unless explicitly asked.
-
-## Build & Verify Commands
+Run the narrowest relevant check first. Check each package's README/package scripts for current commands.
 
 ```bash
 # Backend type-check
 cd backend && npx tsc --noEmit
 
+# Focused backend Node test (replace the test path with the relevant file)
+cd backend && TS_NODE_TRANSPILE_ONLY=1 node --test -r ts-node/register src/auth/password-reset.test.ts
+
+# Web tests (Create React App)
+cd web && CI=true npm test -- --watchAll=false
+
 # Web production build
-cd web && CI=true npx react-scripts build
+cd web && CI=true npm run build
 
-# Generate dev tokens
-cd backend && set -a && source .env && set +a && node scripts/make_dev_token.js <id> <role>
-
-# Mobile analyze + test (no device/simulator available on this machine)
+# Flutter static analysis and tests
 cd mobile && flutter analyze && flutter test
 ```
+
+- Web `package.json` does not define a lint script. Do not invent a lint command or attribute existing warnings to a change without comparing against the baseline.
+- Backend tests use Node's test runner; there is no general `npm test` script in the backend package.
+- For mobile release builds, verify signing, versioning, API configuration, and the intended Play track before building or uploading. Never publish/upload a release unless the user explicitly asks.
+
+## Things Copilot Must Not Do
+
+1. Remove or hide a web portal sidebar except through its established responsive behavior.
+2. Drop/rename/alter Supabase tables or weaken/rewrite RLS without explicit user approval.
+3. Change the chat `conversationId` format.
+4. Change auth/session expiry behavior or remove `DISABLE_SESSION_EXPIRY_GUARD` without explicit instruction.
+5. Install a client-side router or replace hash-based web portal navigation without explicit instruction.
+6. Split dashboard components into route-based pages without explicit instruction.
+7. Remove or rewrite invite-link registration or weaken tenant/class scoping.
+8. Add web-style sidebars to mobile.
+9. Treat mobile teacher placeholder tabs as completed features, or build the mobile school-admin portal, unless explicitly asked.
+10. Change API base URLs, deployment routing, or the Supabase fallback based on assumption.
+11. Show generic “Loading…” text for silent background loads.
+12. Include secrets, personal tester credentials, or environment-file values in source or documentation.
 
 ## File Quick Reference
 
 | Purpose | Path |
-|---------|------|
-| App entry + role routing | `web/src/App.js` |
-| Student portal | `web/src/components/StudentDashboard.jsx` |
-| Teacher portal | `web/src/components/TeacherDashboard.jsx` |
-| School admin portal | `web/src/components/SchoolDashboard.jsx` |
-| Login/role selection | `web/src/components/RoleGateway.jsx` |
-| All API calls | `web/src/api.js` |
-| All CSS | `web/src/App.css` |
-| Auth service | `backend/src/auth/student-auth.service.ts` |
-| School controller | `backend/src/controllers/school.controller.ts` |
-| Teacher controller | `backend/src/controllers/teacher.controller.ts` |
-| Dashboard controller | `backend/src/controllers/dashboard.controller.ts` |
-| DB migrations | `backend/db/migrations/` |
-| RLS policies | `backend/db/rls_policies.sql` |
-| Mobile entry + role routing | `mobile/lib/main.dart` + `mobile/lib/navigation/role_router.dart` |
+|---|---|
+| Web entry, role routing, session | `web/src/App.js` |
+| Web student portal | `web/src/components/StudentDashboard.jsx` |
+| Web teacher portal | `web/src/components/TeacherDashboard.jsx` |
+| Web school portal | `web/src/components/SchoolDashboard.jsx` |
+| Floating Quick Sam | `web/src/components/QuickSamBubble.jsx` |
+| Web API wrappers | `web/src/api.js` |
+| Web shared styles | `web/src/App.css` |
+| Mobile entry | `mobile/lib/main.dart` |
+| Mobile role routing | `mobile/lib/navigation/role_router.dart` |
 | Mobile student shell | `mobile/lib/navigation/student_nav_shell.dart` |
 | Mobile teacher shell | `mobile/lib/navigation/teacher_shell.dart` |
-| Mobile school shell (placeholder) | `mobile/lib/navigation/school_shell.dart` |
-| Mobile API client / env config | `mobile/lib/services/api_client.dart` / `mobile/lib/config/env.dart` |
+| Mobile session state | `mobile/lib/state/session_provider.dart` |
+| Mobile API client/config | `mobile/lib/services/api_client.dart` / `mobile/lib/config/env.dart` |
+| Backend module registration | `backend/src/app.module.ts` |
+| Backend Supabase integration | `backend/src/supabase.service.ts` |
+| Backend auth service | `backend/src/auth/student-auth.service.ts` |
+| Backend controllers | `backend/src/controllers/` |
+| DB migrations and policies | `backend/db/` |
+| AWS infrastructure/deploy | `infra/aws/` |
