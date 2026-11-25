@@ -1001,17 +1001,59 @@ class _AssignHomeworkPanelState extends ConsumerState<_AssignHomeworkPanel> {
               alignLabelWithHint: true,
             ),
           ),
-          const SizedBox(height: 10),
-          TextField(
-            controller: _gradingGuidanceCtrl,
-            maxLines: 3,
-            maxLength: 4000,
-            decoration: const InputDecoration(
-              labelText: 'AI marking guidance (prefilled, teacher-only)',
-              hintText: 'Add unit-specific key points, expected answers, or partial-credit rules',
-              helperText: 'Default subject-aware rules are already applied. Add criteria below; students cannot see this.',
-              alignLabelWithHint: true,
+          const SizedBox(height: 8),
+          ExpansionTile(
+            initiallyExpanded: false,
+            tilePadding: const EdgeInsets.symmetric(horizontal: 12),
+            childrenPadding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+            backgroundColor: AppColors.of(context).card,
+            collapsedBackgroundColor: AppColors.of(context).card,
+            shape: RoundedRectangleBorder(
+              side: BorderSide(color: AppColors.of(context).line),
+              borderRadius: BorderRadius.circular(12),
             ),
+            collapsedShape: RoundedRectangleBorder(
+              side: BorderSide(color: AppColors.of(context).line),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            title: Text(
+              'AI marking guidance',
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w700,
+                color: AppColors.of(context).text,
+              ),
+            ),
+            subtitle: Text(
+              'Teacher-only · default rubric always applies',
+              style: TextStyle(fontSize: 11, color: AppColors.of(context).muted),
+            ),
+            children: [
+              Align(
+                alignment: Alignment.centerLeft,
+                child: Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: Text(
+                    'Customize with textbook points, expected answers, or partial-credit rules. Students never see this.',
+                    style: TextStyle(
+                      fontSize: 11,
+                      height: 1.4,
+                      color: AppColors.of(context).muted,
+                    ),
+                  ),
+                ),
+              ),
+              TextField(
+                controller: _gradingGuidanceCtrl,
+                maxLines: 3,
+                maxLength: 4000,
+                decoration: const InputDecoration(
+                  labelText: 'Private marking guidance',
+                  hintText: 'Add unit-specific key points, expected answers, or partial-credit rules',
+                  alignLabelWithHint: true,
+                ),
+              ),
+            ],
           ),
           const SizedBox(height: 10),
           OutlinedButton.icon(
@@ -1146,17 +1188,62 @@ class _AssignHomeworkPanelState extends ConsumerState<_AssignHomeworkPanel> {
                       alignLabelWithHint: true,
                     ),
                   ),
-                  const SizedBox(height: 10),
-                  TextField(
-                    controller: _editingGradingGuidanceCtrl,
-                    maxLines: 3,
-                    maxLength: 4000,
-                    decoration: const InputDecoration(
-                      labelText: 'AI marking guidance (prefilled, teacher-only)',
-                      hintText: 'Add unit-specific key points, expected answers, or partial-credit rules',
-                      helperText: 'Default subject-aware rules are already applied. Add criteria below; students cannot see this.',
-                      alignLabelWithHint: true,
+                  const SizedBox(height: 8),
+                  ExpansionTile(
+                    initiallyExpanded: false,
+                    tilePadding: const EdgeInsets.symmetric(horizontal: 12),
+                    childrenPadding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+                    backgroundColor: AppColors.of(context).card,
+                    collapsedBackgroundColor: AppColors.of(context).card,
+                    shape: RoundedRectangleBorder(
+                      side: BorderSide(color: AppColors.of(context).line),
+                      borderRadius: BorderRadius.circular(12),
                     ),
+                    collapsedShape: RoundedRectangleBorder(
+                      side: BorderSide(color: AppColors.of(context).line),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    title: Text(
+                      'AI marking guidance',
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.of(context).text,
+                      ),
+                    ),
+                    subtitle: Text(
+                      'Teacher-only · default rubric always applies',
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: AppColors.of(context).muted,
+                      ),
+                    ),
+                    children: [
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: Padding(
+                          padding: const EdgeInsets.only(bottom: 8),
+                          child: Text(
+                            'Customize with textbook points, expected answers, or partial-credit rules. Students never see this.',
+                            style: TextStyle(
+                              fontSize: 11,
+                              height: 1.4,
+                              color: AppColors.of(context).muted,
+                            ),
+                          ),
+                        ),
+                      ),
+                      TextField(
+                        controller: _editingGradingGuidanceCtrl,
+                        maxLines: 3,
+                        maxLength: 4000,
+                        decoration: const InputDecoration(
+                          labelText: 'Private marking guidance',
+                          hintText: 'Add unit-specific key points, expected answers, or partial-credit rules',
+                          alignLabelWithHint: true,
+                        ),
+                      ),
+                    ],
                   ),
                   const SizedBox(height: 10),
                   OutlinedButton.icon(

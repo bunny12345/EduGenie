@@ -2705,27 +2705,33 @@ export default function TeacherDashboard({ session, onLogout }) {
                   style={{ resize: 'vertical', fontFamily: 'inherit', fontSize: '14px', padding: '10px', borderRadius: '8px', border: '1px solid #ddd', width: '100%', boxSizing: 'border-box' }}
                 />
                 <small style={{ color: '#6b7280', marginTop: '-6px' }}>Students can see these instructions.</small>
-                <div style={{ padding: '12px', borderRadius: '10px', border: '1px solid #c7d2fe', background: '#f5f7ff' }}>
-                  <label htmlFor="td-homework-grading-guidance" style={{ display: 'block', fontSize: '13px', fontWeight: 700, color: '#312e81', marginBottom: '4px' }}>
-                    AI marking guidance (prefilled, teacher-only)
-                  </label>
-                  <p style={{ margin: '0 0 8px', fontSize: '12px', lineHeight: 1.45, color: '#4b5563' }}>
-                    Default subject-aware marking rules are prefilled and always applied. Add unit-specific textbook points, expected answers, or partial-credit rules after them; students will not see this.
-                  </p>
-                  <textarea
-                    id="td-homework-grading-guidance"
-                    rows={3}
-                    maxLength={4000}
-                    value={assignGradingGuidance}
-                    onChange={(e) => setAssignGradingGuidance(e.target.value)}
-                    placeholder="Example: Use Unit 5, pages 42–43. Full credit requires explaining that roots absorb water; accept equivalent wording. Award partial credit for identifying the roots."
-                    aria-label="Private AI marking guidance"
-                    style={{ resize: 'vertical', fontFamily: 'inherit', fontSize: '13px', padding: '9px', borderRadius: '8px', border: '1px solid #c7d2fe', width: '100%', boxSizing: 'border-box' }}
-                  />
-                  <div style={{ marginTop: '4px', textAlign: 'right', fontSize: '11px', color: '#6b7280' }}>
-                    {assignGradingGuidance.length}/4000
+                <details className="td-grading-guidance">
+                  <summary>
+                    <span className="td-grading-guidance-heading">
+                      <strong>AI marking guidance</strong>
+                      <small>Teacher-only · default rubric applied automatically</small>
+                    </span>
+                    <span className="td-grading-guidance-action">Customize</span>
+                  </summary>
+                  <div className="td-grading-guidance-body">
+                    <p>
+                      Add textbook-specific points, expected answers, or partial-credit rules. Leave the prefilled rubric as-is to use the default.
+                    </p>
+                    <label htmlFor="td-homework-grading-guidance">Private marking guidance</label>
+                    <textarea
+                      id="td-homework-grading-guidance"
+                      rows={3}
+                      maxLength={4000}
+                      value={assignGradingGuidance}
+                      onChange={(e) => setAssignGradingGuidance(e.target.value)}
+                      placeholder="Example: Use Unit 5, pages 42–43. Full credit requires explaining that roots absorb water; accept equivalent wording. Award partial credit for identifying the roots."
+                      aria-label="Private AI marking guidance"
+                    />
+                    <div className="td-grading-guidance-count">
+                      {assignGradingGuidance.length}/4000
+                    </div>
                   </div>
-                </div>
+                </details>
                 <div
                   onDragOver={(e) => { e.preventDefault(); setAssignDropActive(true); }}
                   onDragLeave={() => setAssignDropActive(false)}
@@ -2941,26 +2947,32 @@ export default function TeacherDashboard({ session, onLogout }) {
                         style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #ddd', fontSize: '13px', minHeight: '60px', fontFamily: 'inherit' }}
                       />
                     </div>
-                    <div style={{ padding: '12px', borderRadius: '10px', border: '1px solid #c7d2fe', background: '#f5f7ff' }}>
-                      <label htmlFor="td-edit-homework-grading-guidance" style={{ display: 'block', fontSize: '13px', fontWeight: 700, color: '#312e81', marginBottom: '4px' }}>
-                        AI marking guidance (prefilled, teacher-only)
-                      </label>
-                      <p style={{ margin: '0 0 8px', fontSize: '12px', lineHeight: 1.45, color: '#4b5563' }}>
-                        Default subject-aware rules are prefilled and always applied. Add unit-specific criteria after them; students will not see this.
-                      </p>
-                      <textarea
-                        id="td-edit-homework-grading-guidance"
-                        rows={3}
-                        maxLength={4000}
-                        value={editingHwGradingGuidance}
-                        onChange={(e) => setEditingHwGradingGuidance(e.target.value)}
-                        aria-label="Private AI marking guidance"
-                        style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #c7d2fe', fontSize: '13px', minHeight: '60px', fontFamily: 'inherit', boxSizing: 'border-box' }}
-                      />
-                      <div style={{ marginTop: '4px', textAlign: 'right', fontSize: '11px', color: '#6b7280' }}>
-                        {editingHwGradingGuidance.length}/4000
+                    <details className="td-grading-guidance">
+                      <summary>
+                        <span className="td-grading-guidance-heading">
+                          <strong>AI marking guidance</strong>
+                          <small>Teacher-only · default rubric applied automatically</small>
+                        </span>
+                        <span className="td-grading-guidance-action">Customize</span>
+                      </summary>
+                      <div className="td-grading-guidance-body">
+                        <p>
+                          Add textbook-specific points, expected answers, or partial-credit rules. Leave the prefilled rubric as-is to use the default.
+                        </p>
+                        <label htmlFor="td-edit-homework-grading-guidance">Private marking guidance</label>
+                        <textarea
+                          id="td-edit-homework-grading-guidance"
+                          rows={3}
+                          maxLength={4000}
+                          value={editingHwGradingGuidance}
+                          onChange={(e) => setEditingHwGradingGuidance(e.target.value)}
+                          aria-label="Private AI marking guidance"
+                        />
+                        <div className="td-grading-guidance-count">
+                          {editingHwGradingGuidance.length}/4000
+                        </div>
                       </div>
-                    </div>
+                    </details>
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
                       <div>
                         <label style={{ display: 'block', fontSize: '13px', color: '#666', marginBottom: '4px' }}>Start Date &amp; Time</label>

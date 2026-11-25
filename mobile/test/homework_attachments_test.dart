@@ -307,7 +307,11 @@ void main() {
 
     final title = find.byWidgetPredicate((widget) =>
         widget is TextField && widget.decoration?.hintText?.startsWith('Homework title') == true);
-    final guidance = find.widgetWithText(TextField, 'AI marking guidance (prefilled, teacher-only)');
+    final guidance = find.widgetWithText(TextField, 'Private marking guidance');
+    expect(guidance, findsNothing);
+    await tester.tap(find.text('AI marking guidance'));
+    await tester.pumpAndSettle();
+    expect(guidance, findsOneWidget);
     final prefilledGuidance = tester.widget<TextField>(guidance).controller!.text;
     expect(prefilledGuidance, startsWith('Grade as a strict but fair teacher for school-age learners.'));
     expect(prefilledGuidance, contains('For mathematics, check the method'));

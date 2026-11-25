@@ -116,9 +116,10 @@ Image-based correction requires the updated backend and a working vision
 model; rebuild the app and deploy the backend for these changes to reach phones.
 The existing app/backend URL configuration is unchanged.
 
-The assignment form pre-fills private AI marking guidance separately from the
-instructions students see. Teachers can append textbook key points, an
-expected answer, or partial-credit rules; Autocorrect uses this guidance,
+The assignment form keeps private AI marking guidance in a collapsed
+disclosure by default, separately from the instructions students see. Teachers
+can expand it to append textbook key points, an expected answer, or
+partial-credit rules; Autocorrect uses this guidance,
 linked unit titles, and retrieved curriculum text. The subject-aware default
 rubric is prefilled and always applied, even when an older assignment has no
 saved guidance. When no unit is linked, the backend searches the teacher's
