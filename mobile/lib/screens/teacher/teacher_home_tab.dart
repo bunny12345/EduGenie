@@ -133,15 +133,41 @@ class TeacherHomeTab extends ConsumerStatefulWidget {
 
 class _TeacherHomeTabState extends ConsumerState<TeacherHomeTab> {
   _TeacherHomeSection _section = _TeacherHomeSection.announcements;
+  final _homeworkClassKey = GlobalKey();
+  int _classPulse = 0;
+  String? _homeworkClassError;
+
+  void _showHomeworkClass(String? error) {
+    FocusScope.of(context).unfocus();
+    setState(() {
+      if (error != null) _homeworkClassError = error;
+      _classPulse++;
+    });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final target = _homeworkClassKey.currentContext;
+      if (!mounted || !widget.isActive || _section != _TeacherHomeSection.homework || target == null) return;
+      Scrollable.ensureVisible(target, alignment: 0.05, duration: const Duration(milliseconds: 350), curve: Curves.easeInOut);
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
     final targetClass = ref.watch(teacherTargetClassProvider);
+    ref.listen(teacherTargetClassProvider, (previous, next) {
+      if (previous != next && _homeworkClassError != null) {
+        setState(() => _homeworkClassError = null);
+      }
+    });
     final panels = [
       _AnnouncementsPanel(targetClass: targetClass),
       _AssignHomeworkPanel(
         targetClass: targetClass,
         isActive: widget.isActive && _section == _TeacherHomeSection.homework,
+        onShowClass: _showHomeworkClass,
+        onClearClassError: () {
+          if (_homeworkClassError != null) setState(() => _homeworkClassError = null);
+        },
+        classError: _homeworkClassError,
       ),
       _MockTestsPanel(
         targetClass: targetClass,
@@ -198,7 +224,28 @@ class _TeacherHomeTabState extends ConsumerState<TeacherHomeTab> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
-                          widget.activeClassBanner,
+                          if (index == _TeacherHomeSection.homework.index)
+                            _GuidedHighlight(
+                              key: _homeworkClassKey,
+                              active: widget.isActive && _section == _TeacherHomeSection.homework && (targetClass == 'all' || _homeworkClassError != null),
+                              pulseVersion: _classPulse,
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.stretch,
+                                children: [
+                                  widget.activeClassBanner,
+                                  if (_homeworkClassError != null)
+                                    Padding(
+                                      padding: const EdgeInsets.fromLTRB(4, 6, 4, 2),
+                                      child: Semantics(
+                                        liveRegion: true,
+                                        child: Text(_homeworkClassError!, style: TextStyle(fontSize: 12, color: AppColors.readableAccent(AppColors.danger, dark: AppColors.of(context).isDark))),
+                                      ),
+                                    ),
+                                ],
+                              ),
+                            )
+                          else
+                            widget.activeClassBanner,
                           const SizedBox(height: 10),
                           panel,
                         ],
@@ -627,11 +674,22 @@ class _AnnouncementTileState extends State<_AnnouncementTile> {
 
 // ── Assign Homework ──────────────────────────────────────────────────────
 
+enum _HomeworkGuideStep { instructions, resources, schedule, assign }
+
 class _AssignHomeworkPanel extends ConsumerStatefulWidget {
   final String targetClass;
   final bool isActive;
+  final ValueChanged<String?> onShowClass;
+  final VoidCallback onClearClassError;
+  final String? classError;
 
-  const _AssignHomeworkPanel({required this.targetClass, required this.isActive});
+  const _AssignHomeworkPanel({
+    required this.targetClass,
+    required this.isActive,
+    required this.onShowClass,
+    required this.onClearClassError,
+    required this.classError,
+  });
 
   @override
   ConsumerState<_AssignHomeworkPanel> createState() => _AssignHomeworkPanelState();
@@ -649,6 +707,18 @@ class _AssignHomeworkPanelState extends ConsumerState<_AssignHomeworkPanel> {
   bool _uploading = false;
   bool _assigning = false;
   String? _info;
+  String? _titleError;
+  String? _startError;
+  String? _dueError;
+  int _validationPulse = 0;
+  _HomeworkGuideStep _guideStep = _HomeworkGuideStep.instructions;
+  final _titleKey = GlobalKey();
+  final _instructionsKey = GlobalKey();
+  final _resourcesKey = GlobalKey();
+  final _scheduleKey = GlobalKey();
+  final _startKey = GlobalKey();
+  final _dueKey = GlobalKey();
+  final _assignKey = GlobalKey();
   final _recentKey = GlobalKey();
 
   // ── Edit-homework state — mirrors web's separate `editingHw*` state
@@ -721,12 +791,32 @@ class _AssignHomeworkPanelState extends ConsumerState<_AssignHomeworkPanel> {
   }
 
   Future<void> _submit() async {
-    if (_titleCtrl.text.trim().isEmpty) {
-      setState(() => _info = 'Please enter a homework title.');
+    if (widget.targetClass == 'all') {
+      setState(() => _info = null);
+      widget.onShowClass('Please select a class before assigning homework.');
       return;
     }
-    if (widget.targetClass == 'all') {
-      setState(() => _info = 'Please select a class at the top of the page before assigning homework.');
+    if (_titleCtrl.text.trim().isEmpty) {
+      setState(() {
+        _titleError = 'Please enter a homework title.';
+        _info = null;
+        _validationPulse++;
+      });
+      _showField(_titleKey);
+      return;
+    }
+    if (_startError != null || _dueError != null) {
+      setState(() => _validationPulse++);
+      _showField(_startError != null ? _startKey : _dueKey);
+      return;
+    }
+    if (_startAt != null && _dueAt != null && _dueAt!.isBefore(_startAt!)) {
+      setState(() {
+        _dueError = 'Due date and time cannot be before the start.';
+        _info = null;
+        _validationPulse++;
+      });
+      _showField(_dueKey);
       return;
     }
     if (_uploading) {
@@ -761,6 +851,7 @@ class _AssignHomeworkPanelState extends ConsumerState<_AssignHomeworkPanel> {
       if (!mounted) return;
       final created = (res['created'] as num?)?.toInt() ?? 0;
       if (created > 0) {
+        widget.onClearClassError();
         _titleCtrl.clear();
         _noteCtrl.clear();
         _gradingGuidanceCtrl.text = _defaultHomeworkGradingGuidance;
@@ -769,17 +860,57 @@ class _AssignHomeworkPanelState extends ConsumerState<_AssignHomeworkPanel> {
           _lessonIds.clear();
           _startAt = null;
           _dueAt = null;
+          _titleError = null;
+          _startError = null;
+          _dueError = null;
+          _guideStep = _HomeworkGuideStep.instructions;
           _info = '✅ Assigned to $assignedClass | Students: $created';
         });
         ref.invalidate(teacherHomeworkProvider);
         _showRecentAfterRefresh(assignedClass);
       } else {
-        setState(() => _info = res['error']?.toString() ?? 'No assignments created.');
+        _showAssignmentError(res['error']?.toString() ?? 'No assignments created.');
       }
     } catch (e) {
-      if (mounted) setState(() => _info = e.toString().replaceFirst('Exception: ', ''));
+      if (mounted) _showAssignmentError(e.toString().replaceFirst('Exception: ', ''));
     } finally {
       if (mounted) setState(() => _assigning = false);
+    }
+  }
+
+  void _showField(GlobalKey key) {
+    FocusScope.of(context).unfocus();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final target = key.currentContext;
+      if (!mounted || !widget.isActive || target == null) return;
+      Scrollable.ensureVisible(target, alignment: 0.2, duration: const Duration(milliseconds: 350), curve: Curves.easeInOut);
+    });
+  }
+
+  void _showAssignmentError(String error) {
+    if (error.startsWith('You do not teach ') || error.startsWith('No students found in class ') || error == 'Provide either className or studentIds') {
+      setState(() => _info = null);
+      widget.onShowClass(error);
+    } else if (error == 'startAt cannot be in a past day' || error == 'Invalid startAt date') {
+      setState(() {
+        _startError = error == 'Invalid startAt date' ? 'Choose a valid start date.' : 'Start date cannot be in a past day.';
+        _info = null;
+        _validationPulse++;
+      });
+      _showField(_startKey);
+    } else if (error == 'dueAt cannot be in a past day' || error == 'Invalid dueAt date' || error == 'dueAt must be after startAt') {
+      setState(() {
+        _dueError = error == 'Invalid dueAt date'
+            ? 'Choose a valid due date.'
+            : error == 'dueAt cannot be in a past day'
+                ? 'Due date cannot be in a past day.'
+                : 'Due date and time cannot be before the start.';
+        _info = null;
+        _validationPulse++;
+      });
+      _showField(_dueKey);
+    } else {
+      setState(() => _info = error);
     }
   }
 
@@ -962,6 +1093,41 @@ class _AssignHomeworkPanelState extends ConsumerState<_AssignHomeworkPanel> {
         return bCreated.compareTo(aCreated);
       });
     final recentTop2 = recent.take(2).toList();
+    final needsClass = widget.targetClass == 'all' || widget.classError != null;
+    final needsTitle = _titleCtrl.text.trim().isEmpty;
+    final nextStep = needsClass
+        ? (widget.targetClass == 'all' ? 'Select a class' : 'Review the selected class')
+        : needsTitle
+            ? 'Enter a homework title'
+            : _startError != null
+                ? 'Correct the start date'
+                : _dueError != null
+                    ? 'Correct the due date'
+                    : switch (_guideStep) {
+                        _HomeworkGuideStep.instructions => 'Add instructions (optional)',
+                        _HomeworkGuideStep.resources => 'Review resources and marking (optional)',
+                        _HomeworkGuideStep.schedule => 'Set a schedule (optional)',
+                        _HomeworkGuideStep.assign => 'Review and assign',
+                      };
+    final canSkip = !needsClass && !needsTitle && _startError == null && _dueError == null && _guideStep != _HomeworkGuideStep.assign;
+    void showNextStep() {
+      if (needsClass) {
+        widget.onShowClass(null);
+      } else if (needsTitle) {
+        _showField(_titleKey);
+      } else if (_startError != null) {
+        _showField(_startKey);
+      } else if (_dueError != null) {
+        _showField(_dueKey);
+      } else {
+        _showField(switch (_guideStep) {
+          _HomeworkGuideStep.instructions => _instructionsKey,
+          _HomeworkGuideStep.resources => _resourcesKey,
+          _HomeworkGuideStep.schedule => _scheduleKey,
+          _HomeworkGuideStep.assign => _assignKey,
+        });
+      }
+    }
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -1017,13 +1183,49 @@ class _AssignHomeworkPanelState extends ConsumerState<_AssignHomeworkPanel> {
                   ),
                 ],
               ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                decoration: BoxDecoration(
+                  color: AppColors.of(context).brandSoft,
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('Next: $nextStep', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: AppColors.of(context).text)),
+                    Wrap(
+                      spacing: 8,
+                      children: [
+                        TextButton(onPressed: showNextStep, child: const Text('Show me')),
+                        if (canSkip)
+                          TextButton(
+                            onPressed: () => setState(() {
+                              _guideStep = _HomeworkGuideStep.values[_guideStep.index + 1];
+                            }),
+                            child: const Text('Skip optional step'),
+                          ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 14),
               const _FormStep(number: '1', title: 'Homework details', subtitle: 'What should students do?'),
               const SizedBox(height: 10),
-              TextField(
-                controller: _titleCtrl,
-                decoration: const InputDecoration(
-                  labelText: 'Homework title',
-                  hintText: 'Homework title (e.g. Unit 5 – Photosynthesis)',
+              _GuidedHighlight(
+                key: _titleKey,
+                active: widget.isActive && !needsClass && needsTitle,
+                pulseVersion: _validationPulse,
+                child: TextField(
+                  controller: _titleCtrl,
+                  onChanged: (_) => setState(() {
+                    _titleError = null;
+                  }),
+                  decoration: InputDecoration(
+                    labelText: 'Homework title',
+                    hintText: 'Homework title (e.g. Unit 5 – Photosynthesis)',
+                    errorText: _titleError,
+                  ),
                 ),
               ),
               const SizedBox(height: 10),
@@ -1036,18 +1238,31 @@ class _AssignHomeworkPanelState extends ConsumerState<_AssignHomeworkPanel> {
                 child: Text(subject.isEmpty ? 'Not set' : subject),
               ),
               const SizedBox(height: 10),
-              TextField(
-                controller: _noteCtrl,
-                maxLines: 4,
-                decoration: const InputDecoration(
-                  labelText: 'Instructions / question for students',
-                  hintText: 'Describe the task or paste the question',
-                  helperText: 'Students can see these instructions.',
-                  alignLabelWithHint: true,
+              _GuidedHighlight(
+                key: _instructionsKey,
+                active: widget.isActive && !needsClass && !needsTitle && _startError == null && _dueError == null && _guideStep == _HomeworkGuideStep.instructions,
+                child: TextField(
+                  controller: _noteCtrl,
+                  maxLines: 4,
+                  onChanged: (value) {
+                    if (value.trim().isNotEmpty && _guideStep == _HomeworkGuideStep.instructions) {
+                      setState(() => _guideStep = _HomeworkGuideStep.resources);
+                    }
+                  },
+                  decoration: const InputDecoration(
+                    labelText: 'Instructions / question for students',
+                    hintText: 'Describe the task or paste the question',
+                    helperText: 'Optional. Students can see these instructions.',
+                    alignLabelWithHint: true,
+                  ),
                 ),
               ),
               const SizedBox(height: 18),
-              const _FormStep(number: '2', title: 'Resources & marking', subtitle: 'Optional: link units, add images or customize AI guidance.'),
+              _GuidedHighlight(
+                key: _resourcesKey,
+                active: widget.isActive && !needsClass && !needsTitle && _startError == null && _dueError == null && _guideStep == _HomeworkGuideStep.resources,
+                child: const _FormStep(number: '2', title: 'Resources & marking', subtitle: 'Optional: link units, add images or customize AI guidance.'),
+              ),
               const SizedBox(height: 10),
               _LessonPicker(
                 lessons: lessons,
@@ -1055,7 +1270,10 @@ class _AssignHomeworkPanelState extends ConsumerState<_AssignHomeworkPanel> {
                 expanded: _showLessonPicker,
                 classSelected: widget.targetClass != 'all',
                 targetClass: widget.targetClass,
-                onToggle: () => setState(() => _showLessonPicker = !_showLessonPicker),
+                onToggle: () => setState(() {
+                  _showLessonPicker = !_showLessonPicker;
+                  if (_guideStep == _HomeworkGuideStep.resources) _guideStep = _HomeworkGuideStep.schedule;
+                }),
                 onChanged: (ids) => setState(() {
                   _lessonIds
                     ..clear()
@@ -1065,6 +1283,11 @@ class _AssignHomeworkPanelState extends ConsumerState<_AssignHomeworkPanel> {
               const SizedBox(height: 10),
               ExpansionTile(
                 initiallyExpanded: false,
+                onExpansionChanged: (expanded) {
+                  if (expanded && _guideStep == _HomeworkGuideStep.resources) {
+                    setState(() => _guideStep = _HomeworkGuideStep.schedule);
+                  }
+                },
                 tilePadding: const EdgeInsets.symmetric(horizontal: 12),
                 childrenPadding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
                 backgroundColor: AppColors.of(context).card,
@@ -1118,7 +1341,10 @@ class _AssignHomeworkPanelState extends ConsumerState<_AssignHomeworkPanel> {
               ),
               const SizedBox(height: 10),
               OutlinedButton.icon(
-                onPressed: _uploading ? null : _pickImages,
+                onPressed: _uploading ? null : () {
+                  if (_guideStep == _HomeworkGuideStep.resources) setState(() => _guideStep = _HomeworkGuideStep.schedule);
+                  _pickImages();
+                },
                 icon: const Icon(Icons.attach_file_rounded, size: 18),
                 label: Text(_uploading ? 'Uploading...' : 'Add images'),
               ),
@@ -1162,28 +1388,80 @@ class _AssignHomeworkPanelState extends ConsumerState<_AssignHomeworkPanel> {
                 ),
               ],
               const SizedBox(height: 18),
-              const _FormStep(number: '3', title: 'Schedule', subtitle: 'Optional: choose when the task starts and is due.'),
-              const SizedBox(height: 10),
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Expanded(child: _DateTimeField(label: 'START DATE & TIME', value: _startAt, onChanged: (v) => setState(() => _startAt = v))),
-                  const SizedBox(width: 10),
-                  Expanded(child: _DateTimeField(label: 'END / DUE DATE & TIME', value: _dueAt, onChanged: (v) => setState(() => _dueAt = v))),
-                ],
+              _GuidedHighlight(
+                key: _scheduleKey,
+                active: widget.isActive && !needsClass && !needsTitle && _startError == null && _dueError == null && _guideStep == _HomeworkGuideStep.schedule,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    const _FormStep(number: '3', title: 'Schedule', subtitle: 'Optional: choose when the task starts and is due.'),
+                    const SizedBox(height: 10),
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(
+                          child: _GuidedHighlight(
+                            key: _startKey,
+                            active: widget.isActive && !needsClass && !needsTitle && _startError != null,
+                            pulseVersion: _validationPulse,
+                            child: _DateTimeField(
+                              label: 'START DATE & TIME',
+                              value: _startAt,
+                              onChanged: (v) => setState(() {
+                                _startAt = v;
+                                _startError = null;
+                                _dueError = null;
+                                _guideStep = _HomeworkGuideStep.assign;
+                              }),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: _GuidedHighlight(
+                            key: _dueKey,
+                            active: widget.isActive && !needsClass && !needsTitle && _startError == null && _dueError != null,
+                            pulseVersion: _validationPulse,
+                            child: _DateTimeField(
+                              label: 'END / DUE DATE & TIME',
+                              value: _dueAt,
+                              onChanged: (v) => setState(() {
+                                _dueAt = v;
+                                _dueError = null;
+                                _guideStep = _HomeworkGuideStep.assign;
+                              }),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    if (_startError != null || _dueError != null)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 6),
+                        child: Semantics(
+                          liveRegion: true,
+                          child: Text(_startError ?? _dueError!, style: TextStyle(fontSize: 12, color: AppColors.readableAccent(AppColors.danger, dark: AppColors.of(context).isDark))),
+                        ),
+                      ),
+                  ],
+                ),
               ),
               const SizedBox(height: 12),
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton(
-                  onPressed: (_assigning || _uploading) ? null : _submit,
-                  child: Text(_assigning
-                      ? 'Assigning...'
-                      : _uploading
-                          ? 'Uploading image...'
-                          : widget.targetClass == 'all'
-                              ? 'Select a class first'
-                              : '✅ Assign to ${widget.targetClass}'),
+              _GuidedHighlight(
+                key: _assignKey,
+                active: widget.isActive && !needsClass && !needsTitle && _startError == null && _dueError == null && _guideStep == _HomeworkGuideStep.assign && !_assigning,
+                child: SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    onPressed: (_assigning || _uploading) ? null : _submit,
+                    child: Text(_assigning
+                        ? 'Assigning...'
+                        : _uploading
+                            ? 'Uploading image...'
+                            : widget.targetClass == 'all'
+                                ? 'Select a class first'
+                                : '✅ Assign to ${widget.targetClass}'),
+                  ),
                 ),
               ),
               if (_info != null && !_info!.startsWith('✅')) ...[
@@ -1421,6 +1699,75 @@ class _AssignHomeworkPanelState extends ConsumerState<_AssignHomeworkPanel> {
           ),
         ),
       ],
+    );
+  }
+}
+
+class _GuidedHighlight extends StatefulWidget {
+  final bool active;
+  final int pulseVersion;
+  final Widget child;
+
+  const _GuidedHighlight({super.key, required this.active, this.pulseVersion = 0, required this.child});
+
+  @override
+  State<_GuidedHighlight> createState() => _GuidedHighlightState();
+}
+
+class _GuidedHighlightState extends State<_GuidedHighlight> with SingleTickerProviderStateMixin {
+  late final AnimationController _pulse = AnimationController(vsync: this, duration: const Duration(milliseconds: 900));
+  bool? _animating;
+
+  void _syncAnimation({bool restart = false}) {
+    final media = MediaQuery.of(context);
+    final animate = widget.active && !media.disableAnimations && !media.accessibleNavigation;
+    if (!restart && animate == _animating) return;
+    _animating = animate;
+    _pulse.stop();
+    if (animate) {
+      _pulse.value = 0;
+      _pulse.repeat(reverse: true, count: 4);
+    }
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _syncAnimation();
+  }
+
+  @override
+  void didUpdateWidget(covariant _GuidedHighlight oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    _syncAnimation(restart: widget.active && oldWidget.pulseVersion != widget.pulseVersion);
+  }
+
+  @override
+  void dispose() {
+    _pulse.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final color = AppColors.of(context).isDark ? const Color(0xFF82D8FF) : const Color(0xFF147BB6);
+    return AnimatedBuilder(
+      animation: _pulse,
+      child: widget.child,
+      builder: (context, child) {
+        final glow = _animating == true ? _pulse.value : 0.5;
+        return Container(
+          padding: const EdgeInsets.all(3),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(13),
+            border: Border.all(color: widget.active ? color.withValues(alpha: 0.65 + 0.35 * glow) : Colors.transparent, width: 1.5),
+            boxShadow: widget.active
+                ? [BoxShadow(color: color.withValues(alpha: 0.12 + 0.2 * glow), blurRadius: 5 + 7 * glow)]
+                : null,
+          ),
+          child: child,
+        );
+      },
     );
   }
 }

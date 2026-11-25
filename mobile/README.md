@@ -136,6 +136,11 @@ The teacher Homework tab groups the form into details, optional resources and
 schedule, with a separate recent-assignments section and a history shortcut.
 After a successful assignment it scrolls to the recent list; expired
 assignments remain available in history.
+The next-step guide highlights the class, title and suggested optional sections
+in turn; teachers can skip optional steps or assign directly. Invalid class,
+title or schedule input is shown at the relevant control. The blue highlight
+pulses briefly, or stays still when reduced motion or accessible navigation is
+enabled.
 
 ## Home Sam voice
 
