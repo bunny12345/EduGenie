@@ -44,6 +44,7 @@ infra/aws/    Terraform and deployment tooling
 ### Teacher and school administrator
 
 - Teacher and school portals remain web dashboards with their existing sidebars and hash-based section persistence. Preserve the current class/school scoping and server-side filtering.
+- Teacher class options come from the registered profile grades when available, including classes with no students. Automatically select only a single registered class; keep multi-class selection explicit and preserve manual choices. Legacy profiles without grades may use roster-derived options.
 - Teacher test authoring supports the existing create/edit/clone and question-management flows; keep dependent API behavior consistent.
 - School administrators manage teachers/invites, curriculum, students, and class filters. Preserve invite-link registration and tenant scoping.
 

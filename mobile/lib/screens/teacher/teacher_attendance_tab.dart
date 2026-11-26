@@ -128,8 +128,12 @@ class _TeacherAttendanceTabState extends ConsumerState<TeacherAttendanceTab> {
           .getAttendance(className: className, date: date);
       if (!mounted) return;
       setState(() {
-        _register = result;
-        _className = result['className'] as String?;
+        final classes = (result['classes'] as List? ?? []);
+        final needsClass = className == null && classes.length > 1;
+        _register = needsClass
+            ? {...result, 'className': null, 'students': <Map>[]}
+            : result;
+        _className = needsClass ? null : result['className'] as String?;
         _date = result['date'] as String?;
         _marks = {
           for (final row in _students)
@@ -309,7 +313,7 @@ class _TeacherAttendanceTabState extends ConsumerState<TeacherAttendanceTab> {
                   initialValue: _className,
                   isExpanded: true,
                   decoration: const InputDecoration(labelText: 'Class'),
-                  hint: const Text('No assigned classes'),
+                  hint: Text(classes.isEmpty ? 'No assigned classes' : 'Select a class'),
                   items: [
                     for (final name in classes)
                       DropdownMenuItem(value: name, child: Text(name)),
@@ -334,6 +338,8 @@ class _TeacherAttendanceTabState extends ConsumerState<TeacherAttendanceTab> {
                   const Text(
                     'The school attendance period has not started yet.',
                   )
+                else if (_className == null && classes.isNotEmpty)
+                  const Text('Select a class to view its register.')
                 else if (_students.isEmpty)
                   const Text('No students in this class register.'),
               ],

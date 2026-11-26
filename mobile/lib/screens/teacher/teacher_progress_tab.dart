@@ -113,6 +113,7 @@ class TeacherProgressTab extends ConsumerStatefulWidget {
 class _TeacherProgressTabState extends ConsumerState<TeacherProgressTab> {
   final _searchCtrl = TextEditingController();
   String _classFilter = 'all';
+  bool _classChosen = false;
   int _page = 0;
   Timer? _searchDebounce;
   Timer? _progressRefresh;
@@ -136,6 +137,13 @@ class _TeacherProgressTabState extends ConsumerState<TeacherProgressTab> {
   @override
   void initState() {
     super.initState();
+    _classFilter = ref.read(teacherSingleClassProvider) ?? 'all';
+    ref.listenManual<String?>(teacherSingleClassProvider, (previous, next) {
+      if (next != null && !_classChosen && _classFilter == 'all') {
+        setState(() => _classFilter = next);
+        _loadStudents();
+      }
+    });
     _loadStudents();
     _progressRefresh = Timer.periodic(const Duration(minutes: 1), (_) {
       if (!_loadingReport) _loadReport();
@@ -240,8 +248,8 @@ class _TeacherProgressTabState extends ConsumerState<TeacherProgressTab> {
 
   @override
   Widget build(BuildContext context) {
-    final classOptions =
-        ref.watch(teacherClassOptionsProvider).value ?? const <String>[];
+    final classOptionsAsync = ref.watch(teacherClassOptionsProvider);
+    final classOptions = classOptionsAsync.value ?? const <String>[];
     final int pageCount = _students.isEmpty
         ? 1
         : (_students.length / _studentsPageSize).ceil();
@@ -366,11 +374,14 @@ class _TeacherProgressTabState extends ConsumerState<TeacherProgressTab> {
                   ),
                 ),
                 const SizedBox(height: 12),
+                if (classOptionsAsync.hasError)
+                  ErrorInline(message: 'Unable to load classes: ${classOptionsAsync.error}'),
                 TeacherClassFilter(
                   options: classOptions,
                   value: _classFilter,
                   onChanged: (value) {
                     _searchDebounce?.cancel();
+                    _classChosen = true;
                     setState(() => _classFilter = value);
                     _loadStudents();
                   },

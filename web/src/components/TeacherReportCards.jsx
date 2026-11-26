@@ -13,7 +13,7 @@ import { subjectTheme, formatMarks } from './reportCardTheme';
 // template shared by every teacher of that class, then enter marks for their own
 // subject only. The server enforces subject ownership and exam-name ownership;
 // this UI just reflects it.
-export default function TeacherReportCards({ classOptions = [], mySubject = '' }) {
+export default function TeacherReportCards({ classOptions = [], mySubject = '', autoSelectSingle = false }) {
   const [className, setClassName] = useState('');
   const [search, setSearch] = useState('');
   const [students, setStudents] = useState([]);
@@ -41,8 +41,8 @@ export default function TeacherReportCards({ classOptions = [], mySubject = '' }
   const exam = exams.find((e) => e.id === selectedExamId) || null;
 
   useEffect(() => {
-    if (!className && classOptions.length) setClassName(classOptions[0]);
-  }, [classOptions, className]);
+    if (!className && autoSelectSingle && classOptions.length === 1) setClassName(classOptions[0]);
+  }, [classOptions, className, autoSelectSingle]);
 
   // Roster for the chosen class.
   useEffect(() => {
@@ -205,7 +205,7 @@ export default function TeacherReportCards({ classOptions = [], mySubject = '' }
         <div className="invite-toolbar">
           <input className="invite-search" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search students by name" />
           <select className="invite-filter" value={className} onChange={(e) => setClassName(e.target.value)}>
-            {!classOptions.length ? <option value="">No classes</option> : null}
+            <option value="" disabled>{classOptions.length ? 'Select a class' : 'No classes'}</option>
             {classOptions.map((c) => <option key={c} value={c}>{c}</option>)}
           </select>
         </div>
@@ -227,7 +227,8 @@ export default function TeacherReportCards({ classOptions = [], mySubject = '' }
               </button>
             );
           })}
-          {!visibleStudents.length ? <p className="td-empty">No students available yet for this class.</p> : null}
+          {!className ? <p className="td-empty">Select a class to see its students.</p> :
+            !visibleStudents.length ? <p className="td-empty">No students available yet for this class.</p> : null}
         </div>
       </article>
 

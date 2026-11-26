@@ -85,7 +85,7 @@ void main() {
           sessionProvider.overrideWith(_Session.new),
           teacherApiServiceProvider.overrideWithValue(_TeacherApi()),
           teacherProfileProvider.overrideWith(
-            (ref) async => {'subject': 'Mathematics'},
+            (ref) async => {'subject': 'Mathematics', 'grades': ['Class 8']},
           ),
           teacherClassOptionsProvider.overrideWith((ref) async => []),
           teacherAnnouncementsProvider.overrideWith((ref) async => []),

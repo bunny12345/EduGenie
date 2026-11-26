@@ -23,8 +23,10 @@ export function TeacherAttendance() {
     setError('');
     getTeacherAttendance(query.className, query.date).then((data) => {
       if (!active) return;
-      setRegister(data);
-      setMarks(Object.fromEntries(data.students.map((student) => [student.id, student.present])));
+      const needsClass = !query.className && data.classes.length > 1;
+      const visibleRegister = needsClass ? { ...data, className: null, students: [] } : data;
+      setRegister(visibleRegister);
+      setMarks(Object.fromEntries(visibleRegister.students.map((student) => [student.id, student.present])));
     }).catch((failure) => { if (active) setError(failure.message); });
     return () => { active = false; };
   }, [query]);
@@ -68,7 +70,7 @@ export function TeacherAttendance() {
         <div className="td-attendance-controls">
           <label>Class <select value={register.className || ''} disabled={busy || !register.classes.length}
             onChange={(e) => changeQuery({ className: e.target.value, date: register.date || undefined })}>
-            {!register.classes.length && <option value="">No assigned classes</option>}
+            <option value="" disabled>{register.classes.length ? 'Select a class' : 'No assigned classes'}</option>
             {register.classes.map((name) => <option key={name}>{name}</option>)}
           </select></label>
           {register.date && <label>Roll-call date <input type="date" value={register.date} min={register.period.startDate}
@@ -78,7 +80,8 @@ export function TeacherAttendance() {
         {!register.period ? <p>Ask your school admin to set the Progress Graph dates to begin taking attendance.</p> :
           <p>School period: {formatDate(register.period.startDate)} – {formatDate(register.period.endDate)}.</p>}
         {register.period && !register.date && <p>The school attendance period has not started yet.</p>}
-        {register.date && rows.length === 0 && <p>No students in this class register.</p>}
+        {!register.className && register.classes.length > 0 && <p>Select a class to view its register.</p>}
+        {register.className && register.date && rows.length === 0 && <p>No students in this class register.</p>}
         {rows.length > 0 && <>
           <div className="td-attendance-totals">
             <label><input ref={allBox} type="checkbox" checked={present === rows.length} disabled={busy}

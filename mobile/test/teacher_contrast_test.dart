@@ -173,11 +173,11 @@ void _readableField(WidgetTester tester, Finder finder) {
   expect(_contrast(hint, background), greaterThanOrEqualTo(4.5));
 }
 
-Widget _app(Widget child, _Api api, ValueNotifier<bool> dark) => ProviderScope(
+Widget _app(Widget child, _Api api, ValueNotifier<bool> dark, {List<String> grades = const []}) => ProviderScope(
   overrides: [
     teacherApiServiceProvider.overrideWithValue(api),
     teacherClassOptionsProvider.overrideWith((ref) async => ['Class 8']),
-    teacherProfileProvider.overrideWith((ref) async => {'subject': 'Mathematics'}),
+    teacherProfileProvider.overrideWith((ref) async => {'subject': 'Mathematics', 'grades': grades}),
     teacherAnnouncementsProvider.overrideWith((ref) async => []),
     teacherHomeworkProvider.overrideWith((ref) async => []),
     teacherLessonsProvider.overrideWith((ref) async => []),
@@ -394,7 +394,7 @@ void main() {
     final dark = ValueNotifier(false);
     addTearDown(dark.dispose);
     final api = _Api();
-    await tester.pumpWidget(_app(const TeacherReportCardsTab(), api, dark));
+    await tester.pumpWidget(_app(const TeacherReportCardsTab(), api, dark, grades: ['Class 8']));
     await tester.pumpAndSettle();
     final marks = find.byWidgetPredicate((w) => w is TextField && w.style?.fontSize == 28);
     await tester.scrollUntilVisible(marks, 200, scrollable: find.byType(Scrollable).first);
@@ -422,7 +422,7 @@ void main() {
     final dark = ValueNotifier(true);
     addTearDown(dark.dispose);
     final api = _Api();
-    await tester.pumpWidget(_app(const TeacherReportCardsTab(), api, dark));
+    await tester.pumpWidget(_app(const TeacherReportCardsTab(), api, dark, grades: ['Class 8']));
     await tester.pumpAndSettle();
     _readable(tester, find.text('Annual Exam').last);
     _readable(tester, find.text('Class 8 · out of 100 per subject'));

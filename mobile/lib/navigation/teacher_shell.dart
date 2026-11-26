@@ -193,6 +193,11 @@ class _TeacherShellState extends ConsumerState<TeacherShell> {
                     classOptions:
                         ref.watch(teacherClassOptionsProvider).value ??
                         const <String>[],
+                    classError: ref.watch(teacherClassOptionsProvider).error,
+                    onRetry: () {
+                      ref.invalidate(teacherProfileProvider);
+                      ref.invalidate(teacherClassOptionsProvider);
+                    },
                     targetClass: ref.watch(teacherTargetClassProvider),
                     onChanged: (value) => ref
                         .read(teacherTargetClassProvider.notifier)
@@ -362,11 +367,15 @@ class _ActiveClassBanner extends StatelessWidget {
   final List<String> classOptions;
   final String targetClass;
   final ValueChanged<String> onChanged;
+  final Object? classError;
+  final VoidCallback onRetry;
 
   const _ActiveClassBanner({
     required this.classOptions,
     required this.targetClass,
     required this.onChanged,
+    required this.classError,
+    required this.onRetry,
   });
 
   @override
@@ -423,7 +432,7 @@ class _ActiveClassBanner extends StatelessWidget {
                     value: 'all',
                     child: Text('— Select a class —'),
                   ),
-                  for (final className in classOptions)
+                  for (final className in {...classOptions, if (hasClass) targetClass})
                     DropdownMenuItem(value: className, child: Text(className)),
                 ],
                 onChanged: (value) {
@@ -441,6 +450,11 @@ class _ActiveClassBanner extends StatelessWidget {
               fontSize: 11,
             ),
           ),
+          if (classError != null)
+            TextButton(
+              onPressed: onRetry,
+              child: const Text('Unable to load classes. Retry', style: TextStyle(color: Colors.white)),
+            ),
         ],
       ),
     );

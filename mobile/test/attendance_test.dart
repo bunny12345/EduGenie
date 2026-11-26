@@ -44,7 +44,38 @@ class _AttendanceApi extends TeacherApiService {
   }
 }
 
+class _MultipleClassesApi extends _AttendanceApi {
+  @override
+  Future<Map<String, dynamic>> getAttendance({String? className, String? date}) async => {
+    'classes': ['Class 8', 'Class 9'],
+    'className': className ?? 'Class 8',
+    'date': '2026-06-02',
+    'today': '2026-06-02',
+    'period': _period,
+    'saved': false,
+    'students': [
+      {'id': 'a', 'name': className == 'Class 9' ? 'Blair' : 'Alex', 'present': true, 'recorded': false},
+    ],
+  };
+}
+
 void main() {
+  testWidgets('multiple attendance classes require an explicit choice', (tester) async {
+    final api = _MultipleClassesApi();
+    await tester.pumpWidget(ProviderScope(
+      overrides: [teacherApiServiceProvider.overrideWithValue(api)],
+      child: const MaterialApp(home: Scaffold(body: TeacherAttendanceTab())),
+    ));
+    await tester.pumpAndSettle();
+    expect(find.text('Select a class to view its register.'), findsOneWidget);
+    expect(find.text('Alex'), findsNothing);
+    await tester.tap(find.byType(DropdownButtonFormField<String>));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Class 9').last);
+    await tester.pumpAndSettle();
+    expect(find.text('Blair'), findsOneWidget);
+  });
+
   testWidgets('teacher can clear all, recheck all and correct one student', (
     tester,
   ) async {

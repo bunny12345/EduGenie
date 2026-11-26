@@ -290,9 +290,11 @@ class _TeacherReportCardsTabState extends ConsumerState<TeacherReportCardsTab> {
       loading: () => const Center(child: CircularProgressIndicator()),
       error: (e, _) => Center(child: ErrorInline(message: 'Unable to load classes: $e')),
       data: (classOptions) {
-        if (_className.isEmpty && classOptions.isNotEmpty) {
+        if (_className.isEmpty && classOptions.length == 1 &&
+            ref.read(teacherSingleClassProvider) == classOptions.single) {
           _className = classOptions.first;
           WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (!mounted) return;
             _loadStudents();
             _loadExams();
           });
@@ -309,7 +311,9 @@ class _TeacherReportCardsTabState extends ConsumerState<TeacherReportCardsTab> {
                       Expanded(
                         child: DropdownButtonFormField<String>(
                           initialValue: classOptions.contains(_className) ? _className : null,
+                          isExpanded: true,
                           decoration: const InputDecoration(labelText: 'Class', isDense: true),
+                          hint: const Text('Select a class'),
                           items: [for (final c in classOptions) DropdownMenuItem(value: c, child: Text(c))],
                           onChanged: (v) {
                             if (v == null) return;

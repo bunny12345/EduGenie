@@ -144,6 +144,7 @@ enum _StudentsSection { roster, homework, progress }
 class _TeacherStudentsTabState extends ConsumerState<TeacherStudentsTab> {
   final _searchCtrl = TextEditingController();
   String _classFilter = 'all';
+  bool _classChosen = false;
   int _page = 0;
   Timer? _searchDebounce;
   int _studentsRequest = 0;
@@ -180,6 +181,13 @@ class _TeacherStudentsTabState extends ConsumerState<TeacherStudentsTab> {
   @override
   void initState() {
     super.initState();
+    _classFilter = ref.read(teacherSingleClassProvider) ?? 'all';
+    ref.listenManual<String?>(teacherSingleClassProvider, (previous, next) {
+      if (next != null && !_classChosen && _classFilter == 'all') {
+        setState(() => _classFilter = next);
+        _loadStudents();
+      }
+    });
     _loadStudents();
   }
 
@@ -416,8 +424,8 @@ class _TeacherStudentsTabState extends ConsumerState<TeacherStudentsTab> {
 
   @override
   Widget build(BuildContext context) {
-    final classOptions =
-        ref.watch(teacherClassOptionsProvider).value ?? const <String>[];
+    final classOptionsAsync = ref.watch(teacherClassOptionsProvider);
+    final classOptions = classOptionsAsync.value ?? const <String>[];
     final int pageCount = _students.isEmpty
         ? 1
         : (_students.length / _studentsPageSize).ceil();
@@ -524,11 +532,14 @@ class _TeacherStudentsTabState extends ConsumerState<TeacherStudentsTab> {
                           ),
                         ),
                         const SizedBox(height: 12),
+                        if (classOptionsAsync.hasError)
+                          ErrorInline(message: 'Unable to load classes: ${classOptionsAsync.error}'),
                         TeacherClassFilter(
                           options: classOptions,
                           value: _classFilter,
                           onChanged: (value) {
                             _searchDebounce?.cancel();
+                            _classChosen = true;
                             setState(() => _classFilter = value);
                             _loadStudents();
                           },

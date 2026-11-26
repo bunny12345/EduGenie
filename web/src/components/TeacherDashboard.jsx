@@ -228,7 +228,7 @@ function isInTargetClass(item, targetClass) {
   return normalizeClassName(getClassNameFromItem(item)) === normalizeClassName(targetClass);
 }
 
-function ClassRecords({ classOptions, mySubject }) {
+function ClassRecords({ classOptions, mySubject, autoSelectSingle }) {
   const [section, setSection] = useState('Report Cards');
   const [attendanceOpened, setAttendanceOpened] = useState(false);
   return <>
@@ -239,7 +239,7 @@ function ClassRecords({ classOptions, mySubject }) {
           if (name === 'Attendance') setAttendanceOpened(true);
         }}>{name}</button>)}
     </nav>
-    <div hidden={section !== 'Report Cards'}><TeacherReportCards classOptions={classOptions} mySubject={mySubject} /></div>
+    <div hidden={section !== 'Report Cards'}><TeacherReportCards classOptions={classOptions} mySubject={mySubject} autoSelectSingle={autoSelectSingle} /></div>
     {attendanceOpened && <div hidden={section !== 'Attendance'}><TeacherAttendance /></div>}
     {section === 'Timetable' && <article className="td-card"><h3>Timetable</h3><p>Class timetables are not available yet.</p></article>}
   </>;
@@ -247,6 +247,7 @@ function ClassRecords({ classOptions, mySubject }) {
 
 export default function TeacherDashboard({ session, onLogout }) {
   const [teacherProfile, setTeacherProfile] = useState(null);
+  const [teacherProfileError, setTeacherProfileError] = useState('');
 
   const [panelLoading, setPanelLoading] = useState({
     summary: false,
@@ -276,6 +277,7 @@ export default function TeacherDashboard({ session, onLogout }) {
   const [students, setStudents] = useState([]);
   const [studentSearch, setStudentSearch] = useState('');
   const [studentClassFilter, setStudentClassFilter] = useState('all');
+  const studentClassChosenRef = useRef(false);
   const [studentPage, setStudentPage] = useState(0);
   const [selectedStudentId, setSelectedStudentId] = useState('');
   const [selectedStudentIds, setSelectedStudentIds] = useState([]);
@@ -365,6 +367,7 @@ export default function TeacherDashboard({ session, onLogout }) {
   const [historyFilterDate, setHistoryFilterDate] = useState('');
   const [historyCalMonth, setHistoryCalMonth] = useState(() => { const n = new Date(); return { year: n.getFullYear(), month: n.getMonth() }; });
   const [teacherTargetClass, setTeacherTargetClass] = useState('all');
+  const teacherClassChosenRef = useRef(false);
   const lastTeacherTargetClassRef = React.useRef('all');
   const [allKnownClasses, setAllKnownClasses] = useState([]);
   const [hwAttemptsByHwId, setHwAttemptsByHwId] = useState({});
@@ -427,6 +430,12 @@ export default function TeacherDashboard({ session, onLogout }) {
   const [editingQuestionCorrect, setEditingQuestionCorrect] = useState(0);
 
   const lockedSubject = String(teacherProfile?.subject || session?.subject || '').trim();
+  const assignedClasses = useMemo(() => (
+    Array.isArray(teacherProfile?.grades)
+      ? [...new Set(teacherProfile.grades.map((grade) => String(grade || '').trim()).filter(Boolean))]
+      : []
+  ), [teacherProfile]);
+  const classOptions = assignedClasses.length ? assignedClasses : allKnownClasses;
 
   // Panels load silently — nothing on screen ever announces "loading". The flag
   // below is kept only for the *first* fetch of each panel, so an empty-state
@@ -1141,7 +1150,10 @@ export default function TeacherDashboard({ session, onLogout }) {
         loadStudentsPanel(''),
         loadAnnouncementsPanel(),
         loadTestsPanel(),
-        getTeacherProfile().then((res) => { if (active && res?.profile) setTeacherProfile(res.profile); }).catch(() => {}),
+        getTeacherProfile().then((res) => {
+          if (!res?.profile) throw new Error('Teacher profile is unavailable.');
+          if (active) setTeacherProfile(res.profile);
+        }).catch((e) => { if (active) setTeacherProfileError(e?.message || 'Unable to load teacher profile.'); }),
         loadHomeworkHistory()
       ]);
     }
@@ -1207,11 +1219,11 @@ export default function TeacherDashboard({ session, onLogout }) {
     setStudentPage(0);
   }, [studentSearch, studentClassFilter]);
 
-  // Auto-select the class when teacher only teaches one
   useEffect(() => {
-    if (teacherTargetClass !== 'all') return;
-    if (allKnownClasses.length === 1) setTeacherTargetClass(allKnownClasses[0]);
-  }, [allKnownClasses, teacherTargetClass]);
+    if (assignedClasses.length === 1 && !teacherClassChosenRef.current) {
+      setTeacherTargetClass((current) => current === 'all' ? assignedClasses[0] : current);
+    }
+  }, [assignedClasses]);
 
   // Load available lessons for homework chapter picker
   useEffect(() => {
@@ -1300,8 +1312,6 @@ export default function TeacherDashboard({ session, onLogout }) {
   function clearSelectedStudents() {
     setSelectedStudentIds([]);
   }
-
-  const classOptions = allKnownClasses;
 
   const classScopedStudents = useMemo(
     () => {
@@ -1445,12 +1455,14 @@ export default function TeacherDashboard({ session, onLogout }) {
 
   useEffect(() => {
     const previousTeacherTargetClass = lastTeacherTargetClassRef.current;
-    if (teacherTargetClass !== 'all') {
+    if (teacherTargetClass !== 'all' && teacherTargetClass !== previousTeacherTargetClass) {
       const studentMatchesPreviousTeacherClass =
         previousTeacherTargetClass !== 'all'
         && normalizeClassName(studentClassFilter) === normalizeClassName(previousTeacherTargetClass);
       // Keep student filter in sync until user manually diverges from the last teacher-selected class.
-      const shouldAutoSyncStudentFilter = studentClassFilter === 'all' || studentMatchesPreviousTeacherClass;
+      const initialAutoSelection = previousTeacherTargetClass === 'all' && !teacherClassChosenRef.current;
+      const shouldAutoSyncStudentFilter = (studentClassFilter === 'all' || studentMatchesPreviousTeacherClass)
+        && !(initialAutoSelection && studentClassChosenRef.current);
       if (shouldAutoSyncStudentFilter && studentClassFilter !== teacherTargetClass) {
         setStudentClassFilter(teacherTargetClass);
       }
@@ -2244,6 +2256,7 @@ export default function TeacherDashboard({ session, onLogout }) {
 
       {/* ── Main content ── */}
       <div className="td-main td-main-themed" style={{ position: 'relative', overflow: 'hidden' }}>
+        {teacherProfileError && <p role="alert">{teacherProfileError}</p>}
         {/* Subject-themed SVG background */}
         <SubjectBackground subject={teacherProfile?.subject || session?.subject || 'General'} />
         {activeSection !== 'progress' && activeSection !== 'students' && activeSection !== 'ai-assistant' && activeSection !== 'report-cards' && (
@@ -2292,7 +2305,10 @@ export default function TeacherDashboard({ session, onLogout }) {
               <select
                 className="td-class-banner-select"
                 value={teacherTargetClass}
-                onChange={(e) => setTeacherTargetClass(e.target.value)}
+                onChange={(e) => {
+                  teacherClassChosenRef.current = true;
+                  setTeacherTargetClass(e.target.value);
+                }}
               >
                 <option value="all">— Select a class —</option>
                 {classOptions.map((cn) => (
@@ -3542,7 +3558,10 @@ export default function TeacherDashboard({ session, onLogout }) {
                 <select
                   className="invite-filter"
                   value={studentClassFilter}
-                  onChange={(e) => setStudentClassFilter(e.target.value)}
+                  onChange={(e) => {
+                    studentClassChosenRef.current = true;
+                    setStudentClassFilter(e.target.value);
+                  }}
                 >
                   <option value="all">All classes</option>
                   {classOptions.map((className) => (
@@ -4053,7 +4072,10 @@ export default function TeacherDashboard({ session, onLogout }) {
                 <select
                   className="invite-filter"
                   value={studentClassFilter}
-                  onChange={(e) => setStudentClassFilter(e.target.value)}
+                  onChange={(e) => {
+                    studentClassChosenRef.current = true;
+                    setStudentClassFilter(e.target.value);
+                  }}
                 >
                   <option value="all">All classes</option>
                   {classOptions.map((className) => (
@@ -4126,7 +4148,7 @@ export default function TeacherDashboard({ session, onLogout }) {
 
         {/* ══════════ REPORT CARDS SECTION ══════════ */}
         {activeSection === 'report-cards' && (
-          <ClassRecords classOptions={classOptions} mySubject={lockedSubject} />
+          <ClassRecords classOptions={classOptions} mySubject={lockedSubject} autoSelectSingle={assignedClasses.length === 1} />
         )}
       </div>
 

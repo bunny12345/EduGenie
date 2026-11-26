@@ -38,8 +38,23 @@ test('student sees a real zero and only recorded roll-call days', async () => {
     period, percentage: 0, recordedDays: 1, presentDays: 0, absentDays: 1,
     records: [{ date: '2026-06-02', present: false }],
   });
+
   render(<StudentAttendance />);
   expect(await screen.findByText('0%')).toBeInTheDocument();
   expect(screen.getByText('0 present · 1 absent · 1 recorded days')).toBeInTheDocument();
   expect(screen.getByText('Only saved roll-call days count.')).toBeInTheDocument();
+});
+
+test('multiple classes require choosing a register before students are shown', async () => {
+  getTeacherAttendance.mockImplementation(async (className) => ({
+    classes: ['Class 8', 'Class 9'], className: className || 'Class 8',
+    date: '2026-06-02', today: '2026-06-02', period, saved: false,
+    students: [{ id: 'a', name: className === 'Class 9' ? 'Blair' : 'Alex', present: true, recorded: false }],
+  }));
+  render(<TeacherAttendance />);
+  expect(await screen.findByText('Select a class to view its register.')).toBeInTheDocument();
+  expect(screen.queryByText('Alex')).not.toBeInTheDocument();
+  fireEvent.change(screen.getByLabelText('Class'), { target: { value: 'Class 9' } });
+  expect(await screen.findByText('Blair')).toBeInTheDocument();
+  expect(getTeacherAttendance).toHaveBeenLastCalledWith('Class 9', '2026-06-02');
 });

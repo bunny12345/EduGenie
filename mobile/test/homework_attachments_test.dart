@@ -113,6 +113,7 @@ Widget _teacherStudentApp(_TeacherApi api, {bool dark = false}) => ProviderScope
   overrides: [
     teacherApiServiceProvider.overrideWithValue(api),
     teacherClassOptionsProvider.overrideWith((ref) async => ['Class 8']),
+    teacherProfileProvider.overrideWith((ref) async => {'grades': <String>[]}),
   ],
   child: MaterialApp(
     theme: dark ? AppTheme.dark() : AppTheme.light(),
