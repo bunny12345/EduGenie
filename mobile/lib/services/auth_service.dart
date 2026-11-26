@@ -45,6 +45,18 @@ class AuthService {
   Future<Map<String, dynamic>> schoolLogin(String email, String password) =>
       _post('/auth/school/login', {'email': email, 'password': password});
 
+  Future<String> renewSession(String token) async {
+    final response = await _client.dio.post(
+      '/auth/session/refresh',
+      options: Options(headers: {'Authorization': 'Bearer $token'}),
+    );
+    final data = response.data;
+    if (data is! Map || data['success'] != true || data['token'] is! String || (data['token'] as String).isEmpty) {
+      throw const FormatException('The server returned an invalid session.');
+    }
+    return data['token'] as String;
+  }
+
   Future<Map<String, dynamic>> schoolRegisterRequestOtp({
     required String email,
     required String schoolName,

@@ -4,6 +4,7 @@ import { OwnerGuard, OwnerIdentityGuard } from '../auth/owner.guard';
 import { RegistrationPhoneService } from '../auth/registration-phone.service';
 import { PasswordResetService } from '../auth/password-reset.service';
 import { SchoolManagementService } from '../auth/school-management.service';
+import { AuthGuard } from '../auth/auth.guard';
 
 type ClientRequest = { ip?: string; headers?: Record<string, string | string[] | undefined> };
 
@@ -177,6 +178,12 @@ export class AuthController {
       role: res.role,
       student: res.student
     };
+  }
+
+  @Post('session/refresh')
+  @UseGuards(AuthGuard)
+  refreshSession(@Req() req: { user: { sub: string; role: string; schoolId?: string } }) {
+    return { success: true, token: this.studentAuth.renewSession(req.user) };
   }
 
   @Post('password/forgot/request')

@@ -17,6 +17,7 @@ infra/aws/    Terraform and deployment tooling
 ### Navigation and app boundaries
 
 - The web app does not use React Router. Role dashboards use component state synchronized with `window.location.hash`; login and logout clear the hash. The owner portal is selected by the `/owner` pathname. Check `web/src/App.js` before changing routing.
+- Student, teacher and school-admin tokens expire after 48 hours of inactivity; deliberate interactions renew them through `/auth/session/refresh`, not background polling. Web and mobile clear expired sessions on expiry or resume. The owner portal has its separate Supabase/MFA session.
 - The student, teacher, and school dashboards are intentionally large, established components. Do not split them into route-based pages or replace the hash navigation without explicit instruction.
 - Web API wrappers live in `web/src/api.js`. Inspect each endpoint's actual request and response shape; do not assume every endpoint has the same response envelope.
 - Backend API routes are explicitly routed through CloudFront in `infra/aws/`. When adding or renaming a backend route, verify its prefix is routed to the backend origin; routing is not automatic.

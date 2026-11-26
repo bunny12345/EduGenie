@@ -26,6 +26,14 @@ class _MemoryStorage extends SecureStorageService {
   }
 }
 
+String _validToken() {
+  final payload = base64Url.encode(utf8.encode(jsonEncode({
+    'sub': 'fixture', 'role': 'student',
+    'exp': DateTime.now().add(const Duration(hours: 48)).millisecondsSinceEpoch ~/ 1000,
+  }))).replaceAll('=', '');
+  return 'header.$payload.signature';
+}
+
 void main() {
   test('missing roles never become student sessions', () {
     expect(Session.fromJson({'token': 'fixture'}).isStudent, isFalse);
@@ -40,7 +48,7 @@ void main() {
       tester,
     ) async {
       final storage = _MemoryStorage(
-        jsonEncode(Session(role: role, token: 'fixture').toJson()),
+        jsonEncode(Session(role: role, token: _validToken()).toJson()),
       );
       await tester.pumpWidget(
         ProviderScope(

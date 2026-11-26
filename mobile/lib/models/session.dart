@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 /// Mirrors the web app's `AcademiX.session` shape (see `web/src/App.js`
 /// `handleLogin`). Keep field names/semantics identical across platforms.
 class Session {
@@ -22,6 +24,32 @@ class Session {
   bool get isStudent => role == 'student';
   bool get isTeacher => role == 'teacher';
   bool get isSchoolAdmin => role == 'school_admin';
+
+  Map<String, dynamic>? get tokenClaims {
+    try {
+      final parts = token.split('.');
+      if (parts.length != 3) return null;
+      final decoded = jsonDecode(utf8.decode(base64Url.decode(base64Url.normalize(parts[1]))));
+      return decoded is Map<String, dynamic> ? decoded : null;
+    } on FormatException {
+      return null;
+    }
+  }
+
+  DateTime? get expiresAt {
+    final exp = tokenClaims?['exp'];
+    if (exp is! num || !exp.isFinite || exp <= 0) return null;
+    try {
+      return DateTime.fromMillisecondsSinceEpoch((exp * 1000).toInt(), isUtc: true);
+    } on ArgumentError {
+      return null;
+    }
+  }
+
+  Session withToken(String value) => Session(
+    role: role, token: value, userId: userId, schoolId: schoolId,
+    name: name, className: className, email: email,
+  );
 
   Map<String, dynamic> toJson() => {
         'role': role,

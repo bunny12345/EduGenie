@@ -9286,3 +9286,16 @@ textarea {
 .td-support-dialog-bar { position: sticky; top: 0; z-index: 1; display: flex; justify-content: space-between; align-items: center; padding: 12px 18px; background: #e9edff; color: #263458; }
 .td-support-dialog-bar button { border: 0; border-radius: 50%; width: 36px; height: 36px; color: #263458; background: #fff; cursor: pointer; }
 .td-support-dialog .eg-support { border: 0; border-radius: 0; }
+.session-renewal-warning {
+  position: fixed;
+  z-index: 10000;
+  top: 8px;
+  left: 50%;
+  transform: translateX(-50%);
+  max-width: min(90vw, 520px);
+  padding: 10px 16px;
+  border-radius: 8px;
+  background: #fff3cd;
+  color: #663c00;
+  box-shadow: 0 2px 8px #0003;
+}

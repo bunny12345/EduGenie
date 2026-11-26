@@ -106,6 +106,8 @@ class _RoleGatewayScreenState extends ConsumerState<RoleGatewayScreen> {
             name: teacher['name']?.toString() ?? 'Teacher',
             className: teacher['subject']?.toString() ?? 'General',
           ));
+    } on FormatException catch (error) {
+      if (mounted) setState(() => _error = error.message);
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -132,6 +134,8 @@ class _RoleGatewayScreenState extends ConsumerState<RoleGatewayScreen> {
             name: student['name']?.toString() ?? 'Student',
             className: student['className']?.toString() ?? 'Class',
           ));
+    } on FormatException catch (error) {
+      if (mounted) setState(() => _error = error.message);
     } finally {
       if (mounted) setState(() => _busy = false);
     }

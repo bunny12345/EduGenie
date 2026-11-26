@@ -1,7 +1,8 @@
 import React from 'react';
 import './App.css';
 import RoleGateway from './components/RoleGateway';
-import { setRuntimeDevToken } from './api';
+import { renewPortalSession, setRuntimeDevToken } from './api';
+import { watchSessionActivity } from './sessionActivity';
 
 const StudentDashboard = React.lazy(() => import('./components/StudentDashboard'));
 const TeacherDashboard = React.lazy(() => import('./components/TeacherDashboard'));
@@ -73,9 +74,93 @@ function AppContent() {
 
   // Shows the re-login modal without losing UI context
   const [sessionExpired, setSessionExpired] = React.useState(false);
+  const [sessionWarning, setSessionWarning] = React.useState('');
+  const sessionActivityPendingRef = React.useRef(false);
+  const sessionLastAttemptRef = React.useRef(0);
 
   React.useEffect(() => {
     setRuntimeDevToken(session?.token || '');
+  }, [session]);
+
+  React.useEffect(() => {
+    function syncSession(event) {
+      if (event.key !== 'AcademiX.session') return;
+      try {
+        const next = event.newValue ? JSON.parse(event.newValue) : null;
+        if (!next) window.location.hash = '';
+        setSession(next);
+        setSessionExpired(false);
+        setSessionWarning('');
+        setRuntimeDevToken(next?.token || '');
+      } catch (error) {
+        console.error('Unable to synchronize the session:', error);
+      }
+    }
+    window.addEventListener('storage', syncSession);
+    return () => window.removeEventListener('storage', syncSession);
+  }, []);
+
+  React.useEffect(() => {
+    if (!session?.token || window.location.pathname.replace(/\/+$/, '') === '/owner') return undefined;
+    const exp = Number(parseJwtPayload(session.token)?.exp);
+    if (!Number.isFinite(exp) || exp <= 0) return undefined;
+    const originalToken = session.token;
+    function currentStoredSession() {
+      const raw = localStorage.getItem('AcademiX.session');
+      return raw ? JSON.parse(raw) : null;
+    }
+    function withCurrentSession(action) {
+      try {
+        const current = currentStoredSession();
+        if (current?.token !== originalToken) {
+          setSession(current);
+          setRuntimeDevToken(current?.token || '');
+          return true;
+        }
+        action(current);
+        return true;
+      } catch (error) {
+        console.error('Unable to update the session:', error);
+        setSessionWarning('Unable to update your session. Check browser storage and try again.');
+        return false;
+      }
+    }
+    return watchSessionActivity({
+      token: originalToken,
+      expiresAt: exp * 1000,
+      renew: renewPortalSession,
+      lastAttemptAt: sessionLastAttemptRef.current,
+      onAttempt: (timestamp) => { sessionLastAttemptRef.current = timestamp; },
+      resumeActivity: sessionActivityPendingRef.current,
+      onRenew: (token, activityWhilePending) => withCurrentSession((current) => {
+        sessionActivityPendingRef.current = activityWhilePending;
+        const updated = { ...current, token };
+        localStorage.setItem('AcademiX.session', JSON.stringify(updated));
+        setRuntimeDevToken(token);
+        setSession(updated);
+        setSessionWarning('');
+      }),
+      onExpired: () => {
+        const updated = withCurrentSession(() => {
+          sessionActivityPendingRef.current = false;
+          sessionLastAttemptRef.current = 0;
+          window.location.hash = '';
+          localStorage.removeItem('AcademiX.session');
+          setRuntimeDevToken('');
+          setSession(null);
+          setSessionExpired(false);
+          setSessionWarning('');
+        });
+        if (!updated) {
+          window.location.hash = '';
+          setRuntimeDevToken('');
+          setSession(null);
+          setSessionExpired(false);
+          setSessionWarning('Session expired, but browser storage could not be cleared.');
+        }
+      },
+      onError: () => setSessionWarning('Unable to renew your session. Check your connection and try again.'),
+    });
   }, [session]);
 
   // Proactive expiry check — polls every 60 s; shows re-login modal 2 min before expiry
@@ -108,17 +193,23 @@ function AppContent() {
   }, []);
 
   function handleLogin(nextSession) {
+    sessionActivityPendingRef.current = false;
+    sessionLastAttemptRef.current = 0;
     window.location.hash = '';
     setSession(nextSession);
     setSessionExpired(false);
+    setSessionWarning('');
     localStorage.setItem('AcademiX.session', JSON.stringify(nextSession));
     setRuntimeDevToken(nextSession?.token || '');
   }
 
   function handleLogout() {
+    sessionActivityPendingRef.current = false;
+    sessionLastAttemptRef.current = 0;
     window.location.hash = '';
     setSession(null);
     setSessionExpired(false);
+    setSessionWarning('');
     localStorage.removeItem('AcademiX.session');
     setRuntimeDevToken('');
   }
@@ -163,18 +254,18 @@ function AppContent() {
   }
 
   if (!session) {
-    return <RoleGateway onLogin={handleLogin} />;
+    return <>{sessionWarning && <p role="alert" className="session-renewal-warning">{sessionWarning}</p>}<RoleGateway onLogin={handleLogin} /></>;
   }
 
   if (session.role === 'teacher') {
-    return <TeacherDashboard session={session} onLogout={handleLogout} />;
+    return <>{sessionWarning && <p role="alert" className="session-renewal-warning">{sessionWarning}</p>}<TeacherDashboard session={session} onLogout={handleLogout} /></>;
   }
 
   if (session.role === 'school_admin') {
-    return <SchoolDashboard session={session} onLogout={handleLogout} />;
+    return <>{sessionWarning && <p role="alert" className="session-renewal-warning">{sessionWarning}</p>}<SchoolDashboard session={session} onLogout={handleLogout} /></>;
   }
 
-  return <StudentDashboard key={session.userId || 'test'} studentId={session.userId || 'test'} onLogout={handleLogout} />;
+  return <>{sessionWarning && <p role="alert" className="session-renewal-warning">{sessionWarning}</p>}<StudentDashboard key={session.userId || 'test'} studentId={session.userId || 'test'} onLogout={handleLogout} /></>;
 }
 
 function App() {

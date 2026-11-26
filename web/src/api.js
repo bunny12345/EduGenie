@@ -206,6 +206,28 @@ export async function schoolLogin(email, password) {
   return res.json();
 }
 
+export async function renewPortalSession(token) {
+  const res = await fetch(`${API_BASE}/auth/session/refresh`, {
+    method: 'POST',
+    keepalive: true,
+    headers: { Authorization: `Bearer ${token}` }
+  });
+  if (!res.ok) {
+    const error = new Error(`Session renewal failed (${res.status}).`);
+    error.status = res.status;
+    throw error;
+  }
+  const data = await res.json();
+  const previous = parseJwtPayload(token);
+  const next = parseJwtPayload(data?.token);
+  if (!data?.success || typeof data.token !== 'string' || !next ||
+      next.sub !== previous?.sub || next.role !== previous?.role ||
+      !Number.isFinite(Number(next.exp)) || Number(next.exp) * 1000 <= Date.now()) {
+    throw new Error('The server returned an invalid session.');
+  }
+  return data.token;
+}
+
 export async function getInviteInfo(token) {
   return getJson(`${API_BASE}/auth/invite/${encodeURIComponent(token)}`);
 }

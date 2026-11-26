@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -37,8 +39,16 @@ class _FakeAuth extends AuthService {
 
   @override
   Future<Map<String, dynamic>> studentLogin(String loginId, String password) async => password == 'Right#Pass1'
-      ? {'success': true, 'token': 't', 'student': {'id': 's1', 'name': 'Stu', 'className': 'Class 7'}}
+      ? {'success': true, 'token': _token(), 'student': {'id': 's1', 'name': 'Stu', 'className': 'Class 7'}}
       : {'success': false, 'error': 'Invalid password'};
+}
+
+String _token() {
+  final payload = base64Url.encode(utf8.encode(jsonEncode({
+    'sub': 's1', 'role': 'student',
+    'exp': DateTime.now().add(const Duration(hours: 48)).millisecondsSinceEpoch ~/ 1000,
+  }))).replaceAll('=', '');
+  return 'header.$payload.signature';
 }
 
 Future<void> _pump(WidgetTester tester, _MemoryStorage storage) async {

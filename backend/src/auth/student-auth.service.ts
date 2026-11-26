@@ -1,4 +1,4 @@
-import { BadRequestException, ForbiddenException, Injectable, Logger, OnModuleInit, ServiceUnavailableException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, Logger, OnModuleInit, ServiceUnavailableException, UnauthorizedException } from '@nestjs/common';
 import { randomBytes, randomUUID, createHash, randomInt } from 'crypto';
 import * as jwt from 'jsonwebtoken';
 import { SupabaseService } from '../supabase.service';
@@ -415,13 +415,21 @@ export class StudentAuthService implements OnModuleInit {
 
   private makeToken(studentId: string) {
     const secret = jwtSecret();
-    return jwt.sign({ sub: studentId, role: 'student' }, secret, { expiresIn: '12h' });
+    return jwt.sign({ sub: studentId, role: 'student' }, secret, { expiresIn: '48h' });
   }
 
   private makeRoleToken(sub: string, role: string, extras?: Record<string, any>) {
     const secret = jwtSecret();
     const payload = { sub, role, ...(extras || {}) };
-    return jwt.sign(payload, secret, { expiresIn: '12h' });
+    return jwt.sign(payload, secret, { expiresIn: '48h' });
+  }
+
+  renewSession(user: { sub: string; role: string; schoolId?: string }) {
+    if (user.role === 'student') return this.makeToken(user.sub);
+    if (user.role === 'teacher' || user.role === 'school_admin') {
+      return this.makeRoleToken(user.sub, user.role, user.schoolId ? { schoolId: user.schoolId } : undefined);
+    }
+    throw new UnauthorizedException('Invalid session role');
   }
 
   private remember(account: StudentAccount) {
