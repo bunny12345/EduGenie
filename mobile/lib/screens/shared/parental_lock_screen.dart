@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../state/focus_lock_provider.dart';
 import '../../theme/app_colors.dart';
+import '../../widgets/guided_highlight.dart';
 
 /// Parent-facing "Focus Mode" lock, reachable from More → Parental Lock.
 ///
@@ -88,7 +89,11 @@ class _CreatePinCard extends ConsumerStatefulWidget {
 class _CreatePinCardState extends ConsumerState<_CreatePinCard> {
   final _pinController = TextEditingController();
   final _confirmController = TextEditingController();
+  final _pinKey = GlobalKey();
+  final _confirmKey = GlobalKey();
   String? _error;
+  bool _confirmError = false;
+  int _guidePulse = 0;
 
   @override
   void dispose() {
@@ -101,11 +106,21 @@ class _CreatePinCardState extends ConsumerState<_CreatePinCard> {
     final pin = _pinController.text.trim();
     final confirm = _confirmController.text.trim();
     if (pin.length != 6 || int.tryParse(pin) == null) {
-      setState(() => _error = 'PIN must be exactly 6 digits.');
+      setState(() {
+        _error = 'PIN must be exactly 6 digits.';
+        _confirmError = false;
+        _guidePulse++;
+      });
+      showGuidedTarget(_pinKey);
       return;
     }
     if (pin != confirm) {
-      setState(() => _error = 'PINs don\'t match.');
+      setState(() {
+        _error = 'PINs don\'t match.';
+        _confirmError = true;
+        _guidePulse++;
+      });
+      showGuidedTarget(_confirmKey);
       return;
     }
     setState(() => _error = null);
@@ -126,11 +141,22 @@ class _CreatePinCardState extends ConsumerState<_CreatePinCard> {
           const SizedBox(height: 4),
           Text('Only you should know this — it\'s required to turn Focus Mode off early in AcademiX.', style: TextStyle(fontSize: 12, color: AppColors.of(context).muted)),
           const SizedBox(height: 14),
-          _PinField(controller: _pinController, label: '6-digit PIN'),
+          GuidedHighlight(
+            key: _pinKey,
+            active: _pinController.text.length != 6,
+            pulseVersion: _guidePulse,
+            child: _PinField(controller: _pinController, label: '6-digit PIN', onChanged: (_) => setState(() => _error = null)),
+          ),
+          if (_error != null && !_confirmError)
+            Text(_error!, style: const TextStyle(color: AppColors.danger, fontSize: 12)),
           const SizedBox(height: 10),
-          _PinField(controller: _confirmController, label: 'Confirm PIN'),
-          if (_error != null) ...[
-            const SizedBox(height: 8),
+          GuidedHighlight(
+            key: _confirmKey,
+            active: _pinController.text.length == 6 && (_confirmController.text.length != 6 || _error != null && _confirmError),
+            pulseVersion: _guidePulse,
+            child: _PinField(controller: _confirmController, label: 'Confirm PIN', onChanged: (_) => setState(() => _error = null)),
+          ),
+          if (_error != null && _confirmError) ...[
             Text(_error!, style: const TextStyle(color: AppColors.danger, fontSize: 12)),
           ],
           const SizedBox(height: 14),
@@ -326,13 +352,15 @@ class _PinField extends StatelessWidget {
   final TextEditingController controller;
   final String label;
   final bool autofocus;
+  final ValueChanged<String>? onChanged;
 
-  const _PinField({required this.controller, required this.label, this.autofocus = false});
+  const _PinField({required this.controller, required this.label, this.autofocus = false, this.onChanged});
 
   @override
   Widget build(BuildContext context) {
     return TextField(
       controller: controller,
+      onChanged: onChanged,
       autofocus: autofocus,
       obscureText: true,
       keyboardType: TextInputType.number,

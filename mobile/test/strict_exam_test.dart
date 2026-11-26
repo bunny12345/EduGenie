@@ -14,6 +14,7 @@ import 'package:mobile/state/student_providers.dart';
 import 'package:mobile/state/teacher_providers.dart';
 import 'package:mobile/theme/app_colors.dart';
 import 'package:mobile/widgets/strict_exam_students.dart';
+import 'package:mobile/widgets/guided_highlight.dart';
 
 class _Session extends SessionNotifier {
   @override
@@ -77,6 +78,26 @@ class _Api extends StudentApiService {
   }
 }
 
+class _PracticeApi extends StudentApiService {
+  _PracticeApi() : super(ApiClient());
+  Map<String, int>? submitted;
+
+  @override
+  Future<Map<String, dynamic>> startTest(String testId, String studentId) async => {
+    'attemptId': 'practice',
+    'questions': [
+      {'id': 'q1', 'text': 'First question', 'options': ['A', 'B']},
+      {'id': 'q2', 'text': 'Second question', 'options': ['C', 'D']},
+    ],
+  };
+
+  @override
+  Future<Map<String, dynamic>> submitTestAttempt(String attemptId, String studentId, Map<String, int> answers) async {
+    submitted = Map.of(answers);
+    return {'score': 0, 'feedback': 'Finished', 'perQuestionFeedback': []};
+  }
+}
+
 class _TeacherApi extends TeacherApiService {
   _TeacherApi() : super(ApiClient());
   String? resumed;
@@ -127,6 +148,37 @@ class _TeacherApi extends TeacherApiService {
 
 void main() {
   tearDown(() => AppColors.isDark = false);
+  testWidgets('practice guidance permits skipping and reviewing unanswered questions', (tester) async {
+    final api = _PracticeApi();
+    await tester.pumpWidget(ProviderScope(
+      overrides: [
+        sessionProvider.overrideWith(_Session.new),
+        studentApiServiceProvider.overrideWithValue(api),
+      ],
+      child: const MaterialApp(home: TestTakingScreen(test: TestItem(id: 'test', title: 'Practice', subject: 'Mathematics'))),
+    ));
+    await tester.pumpAndSettle();
+    expect(tester.widget<GuidedHighlight>(find.byKey(const ValueKey('test-question-q1'))).active, isTrue);
+    await tester.tap(find.text('Next'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('C'));
+    await tester.pumpAndSettle();
+    expect(tester.widget<GuidedHighlight>(find.byKey(const ValueKey('test-next-q2'))).active, isTrue);
+    await tester.tap(find.text('Review & Submit'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('1 unanswered question'), findsOneWidget);
+    await tester.tap(find.text('Review unanswered'));
+    await tester.pumpAndSettle();
+    expect(find.text('First question'), findsOneWidget);
+    await tester.tap(find.text('Next'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Review & Submit'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Submit'));
+    await tester.pumpAndSettle();
+    expect(api.submitted, {'q2': 0});
+  });
+
   Future<void> start(WidgetTester tester, _Api api, {bool dark = false}) async {
     await tester.pumpWidget(
       ProviderScope(

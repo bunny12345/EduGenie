@@ -14,6 +14,7 @@ import 'package:mobile/services/teacher_api_service.dart';
 import 'package:mobile/state/teacher_providers.dart';
 import 'package:mobile/theme/app_colors.dart';
 import 'package:mobile/theme/app_theme.dart';
+import 'package:mobile/widgets/guided_highlight.dart';
 
 class _Api extends TeacherApiService {
   _Api() : super(ApiClient());
@@ -382,6 +383,34 @@ void main() {
     expect(api.savedGrade, 91);
     expect(api.savedFeedback, 'Detailed teacher feedback');
     expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  testWidgets('invalid marks are targeted and empty marks still clear the entry', (tester) async {
+    tester.view.physicalSize = const Size(390, 750);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final dark = ValueNotifier(false);
+    addTearDown(dark.dispose);
+    final api = _Api();
+    await tester.pumpWidget(_app(const TeacherReportCardsTab(), api, dark));
+    await tester.pumpAndSettle();
+    final marks = find.byWidgetPredicate((w) => w is TextField && w.style?.fontSize == 28);
+    await tester.scrollUntilVisible(marks, 200, scrollable: find.byType(Scrollable).first);
+    await tester.enterText(marks, '101');
+    final save = find.text('Save marks');
+    await tester.ensureVisible(save);
+    await tester.tap(save);
+    await tester.pumpAndSettle();
+    expect(api.savedMarks, isNull);
+    expect(marks.hitTestable(), findsOneWidget);
+    expect(tester.widget<GuidedHighlight>(find.ancestor(of: marks, matching: find.byType(GuidedHighlight)).first).active, isTrue);
+    await tester.enterText(marks, '');
+    await tester.ensureVisible(save);
+    await tester.tap(save);
+    await tester.pumpAndSettle();
+    expect(api.savedMarks!.single['marks'], '');
     await tester.pumpWidget(const SizedBox.shrink());
   });
 

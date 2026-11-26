@@ -73,6 +73,16 @@ and refresh the app's unit views to see newly imported content.
 
 ## Student Homework and Mock Tests
 
+Guided blue outlines indicate suggested actions in sign-in and recovery,
+homework, announcements, mock-test creation and grading, attendance, support
+reports, parent PIN setup and memory checks.
+Optional dates and existing score/feedback and written/photo submission rules
+are unchanged. Invalid calendar titles and report-card marks are highlighted and
+brought into view. Test navigation never indicates a correct answer; students
+can still skip questions and submit after confirmation, or review unanswered
+questions first. Highlights and guided scrolling respect reduced-motion
+settings.
+
 The Homework screen has a persistent, raised **Homework / Mock Tests** switch.
 Both views keep the selected subject; homework drafts, filters and expanded
 instructions/feedback survive switching views. Subject badges on Homework count

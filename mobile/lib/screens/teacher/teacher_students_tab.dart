@@ -9,6 +9,7 @@ import '../../services/attachment_url.dart';
 import '../../state/teacher_providers.dart';
 import '../../theme/app_colors.dart';
 import '../../widgets/section_card.dart';
+import '../../widgets/guided_highlight.dart';
 import '../../widgets/section_tab_button.dart';
 import '../../widgets/teacher_class_filter.dart';
 import '../student/progress/progress_charts.dart';
@@ -131,7 +132,8 @@ const int _studentsPageSize = 5;
 /// Status panel for whichever student is selected. Progress Snapshot and
 /// Delivery Status land in a later pass.
 class TeacherStudentsTab extends ConsumerStatefulWidget {
-  const TeacherStudentsTab({super.key});
+  final bool isActive;
+  const TeacherStudentsTab({super.key, this.isActive = true});
 
   @override
   ConsumerState<TeacherStudentsTab> createState() => _TeacherStudentsTabState();
@@ -164,6 +166,9 @@ class _TeacherStudentsTabState extends ConsumerState<TeacherStudentsTab> {
   final _gradeValueCtrl = TextEditingController();
   final _gradeFeedbackCtrl = TextEditingController();
   bool _gradingBusy = false;
+  final _gradeFieldsKey = GlobalKey();
+  bool _gradeMissing = false;
+  int _gradePulse = 0;
   String? _aiGradingId;
 
   SubjectProgress? _subjectProgress;
@@ -338,6 +343,7 @@ class _TeacherStudentsTabState extends ConsumerState<TeacherStudentsTab> {
         return;
       }
       _expandedGradeId = id;
+      _gradeMissing = false;
       _gradeValueCtrl.text = hw['grade'] != null ? hw['grade'].toString() : '';
       _gradeFeedbackCtrl.text = hw['feedback']?.toString() ?? '';
     });
@@ -346,6 +352,11 @@ class _TeacherStudentsTabState extends ConsumerState<TeacherStudentsTab> {
   Future<void> _submitGrade(String hwId) async {
     if (_gradeValueCtrl.text.trim().isEmpty &&
         _gradeFeedbackCtrl.text.trim().isEmpty) {
+      setState(() {
+        _gradeMissing = true;
+        _gradePulse++;
+      });
+      if (widget.isActive) showGuidedTarget(_gradeFieldsKey, canShow: () => mounted && widget.isActive && _expandedGradeId == hwId);
       return;
     }
     setState(() => _gradingBusy = true);
@@ -645,6 +656,10 @@ class _TeacherStudentsTabState extends ConsumerState<TeacherStudentsTab> {
                       gradeValueCtrl: _gradeValueCtrl,
                       gradeFeedbackCtrl: _gradeFeedbackCtrl,
                       gradingBusy: _gradingBusy,
+                      gradeFieldsKey: _gradeFieldsKey,
+                      gradeMissing: _gradeMissing,
+                      gradePulse: _gradePulse,
+                      guideActive: widget.isActive,
                       onSubmitGrade: _submitGrade,
                       onCancelGrade: () =>
                           setState(() => _expandedGradeId = null),
@@ -753,6 +768,10 @@ class _HomeworkStatusPanel extends StatelessWidget {
   final TextEditingController gradeValueCtrl;
   final TextEditingController gradeFeedbackCtrl;
   final bool gradingBusy;
+  final GlobalKey gradeFieldsKey;
+  final bool gradeMissing;
+  final int gradePulse;
+  final bool guideActive;
   final ValueChanged<String> onSubmitGrade;
   final VoidCallback onCancelGrade;
   final String? aiGradingId;
@@ -773,6 +792,10 @@ class _HomeworkStatusPanel extends StatelessWidget {
     required this.gradeValueCtrl,
     required this.gradeFeedbackCtrl,
     required this.gradingBusy,
+    required this.gradeFieldsKey,
+    required this.gradeMissing,
+    required this.gradePulse,
+    required this.guideActive,
     required this.onSubmitGrade,
     required this.onCancelGrade,
     required this.aiGradingId,
@@ -937,6 +960,10 @@ class _HomeworkStatusPanel extends StatelessWidget {
               gradeValueCtrl: gradeValueCtrl,
               gradeFeedbackCtrl: gradeFeedbackCtrl,
               busy: gradingBusy,
+              gradeFieldsKey: gradeFieldsKey,
+              gradeMissing: gradeMissing,
+              gradePulse: gradePulse,
+              guideActive: guideActive,
               onSubmit: () => onSubmitGrade(hw['id']?.toString() ?? ''),
               onCancel: onCancelGrade,
               aiBusy: aiGradingId == hw['id']?.toString(),
@@ -1209,6 +1236,10 @@ class _HomeworkStatusTile extends StatelessWidget {
   final TextEditingController gradeValueCtrl;
   final TextEditingController gradeFeedbackCtrl;
   final bool busy;
+  final GlobalKey gradeFieldsKey;
+  final bool gradeMissing;
+  final int gradePulse;
+  final bool guideActive;
   final VoidCallback onSubmit;
   final VoidCallback onCancel;
   final bool aiBusy;
@@ -1221,6 +1252,10 @@ class _HomeworkStatusTile extends StatelessWidget {
     required this.gradeValueCtrl,
     required this.gradeFeedbackCtrl,
     required this.busy,
+    required this.gradeFieldsKey,
+    required this.gradeMissing,
+    required this.gradePulse,
+    required this.guideActive,
     required this.onSubmit,
     required this.onCancel,
     required this.aiBusy,
@@ -1485,18 +1520,38 @@ class _HomeworkStatusTile extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  TextField(
-                    controller: gradeValueCtrl,
-                    keyboardType: TextInputType.number,
-                    decoration: InputDecoration(
-                      hintText: 'Score (0-100)',
-                      isDense: true,
-                      filled: true,
-                      fillColor: AppColors.of(context).card,
-                    ),
+                  ListenableBuilder(
+                    listenable: Listenable.merge([gradeValueCtrl, gradeFeedbackCtrl]),
+                    builder: (context, _) {
+                      final empty = gradeValueCtrl.text.trim().isEmpty && gradeFeedbackCtrl.text.trim().isEmpty;
+                      return GuidedHighlight(
+                        key: gradeFieldsKey,
+                        active: guideActive && empty && !busy,
+                        pulseVersion: gradePulse,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            Text(
+                              gradeMissing && empty ? 'Enter a score or feedback before submitting.' : 'Enter a score, feedback, or both.',
+                              style: TextStyle(fontSize: 12, color: gradeMissing && empty ? AppColors.readableAccent(AppColors.danger, dark: AppColors.of(context).isDark) : AppColors.of(context).muted),
+                            ),
+                            TextField(
+                              controller: gradeValueCtrl,
+                              keyboardType: TextInputType.number,
+                              decoration: InputDecoration(
+                                hintText: 'Score (0-100)',
+                                isDense: true,
+                                filled: true,
+                                fillColor: AppColors.of(context).card,
+                              ),
+                            ),
+                            const SizedBox(height: 6),
+                            _ExpandableFeedbackField(controller: gradeFeedbackCtrl),
+                          ],
+                        ),
+                      );
+                    },
                   ),
-                  const SizedBox(height: 6),
-                  _ExpandableFeedbackField(controller: gradeFeedbackCtrl),
                   const SizedBox(height: 8),
                   Row(
                     mainAxisAlignment: MainAxisAlignment.end,

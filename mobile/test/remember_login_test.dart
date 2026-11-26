@@ -6,6 +6,7 @@ import 'package:mobile/services/api_client.dart';
 import 'package:mobile/services/auth_service.dart';
 import 'package:mobile/services/secure_storage_service.dart';
 import 'package:mobile/state/session_provider.dart';
+import 'package:mobile/widgets/guided_highlight.dart';
 
 class _MemoryStorage extends SecureStorageService {
   final saved = <String, SavedLogin>{};
@@ -65,7 +66,12 @@ void main() {
         await tester.pumpAndSettle();
       }
 
+      final login = find.byKey(const Key('login-id'));
       final password = find.byKey(const Key('login-password'));
+      expect(tester.widget<GuidedHighlight>(find.ancestor(of: login, matching: find.byType(GuidedHighlight)).first).active, isTrue);
+      await tester.enterText(login, 'user1');
+      await tester.pump();
+      expect(tester.widget<GuidedHighlight>(find.ancestor(of: password, matching: find.byType(GuidedHighlight)).first).active, isTrue);
       await tester.enterText(password, 'Sample#Pass1');
       expect(tester.widget<TextField>(password).obscureText, isTrue);
 

@@ -6,6 +6,7 @@ import '../../state/session_provider.dart';
 import '../../state/student_providers.dart';
 import '../../theme/app_colors.dart';
 import '../../widgets/section_card.dart';
+import '../../widgets/guided_highlight.dart';
 
 /// The site-wide "3D button" frame — a light-black ring border + soft drop
 /// shadow, ported from `.eg-calendar-layout button:not(.eg-cal-cell)` in
@@ -70,6 +71,11 @@ class _StudentCalendarScreenState extends ConsumerState<StudentCalendarScreen> {
   late String _selectedDate;
 
   final _newTitleCtrl = TextEditingController();
+  final _newTitleKey = GlobalKey();
+  final _editTitleKey = GlobalKey();
+  bool _newTitleError = false;
+  bool _editTitleError = false;
+  int _guidePulse = 0;
   DateTime? _newDate;
   bool _adding = false;
   String? _note;
@@ -115,7 +121,15 @@ class _StudentCalendarScreenState extends ConsumerState<StudentCalendarScreen> {
   Future<void> _addEvent() async {
     final title = _newTitleCtrl.text.trim();
     final date = _newDate;
-    if (title.isEmpty || date == null) return;
+    if (title.isEmpty) {
+      setState(() {
+        _newTitleError = true;
+        _guidePulse++;
+      });
+      showGuidedTarget(_newTitleKey);
+      return;
+    }
+    if (date == null) return;
     final studentId = ref.read(sessionProvider).value?.userId ?? '';
     if (studentId.isEmpty) return;
     setState(() {
@@ -140,6 +154,7 @@ class _StudentCalendarScreenState extends ConsumerState<StudentCalendarScreen> {
       _editingEventId = event.id;
       _editTitleCtrl.text = event.title;
       _editDate = d ?? DateTime.now();
+      _editTitleError = false;
     });
   }
 
@@ -148,7 +163,15 @@ class _StudentCalendarScreenState extends ConsumerState<StudentCalendarScreen> {
   Future<void> _saveEdit(CalendarEvent event) async {
     final title = _editTitleCtrl.text.trim();
     final date = _editDate;
-    if (title.isEmpty || date == null) return;
+    if (title.isEmpty) {
+      setState(() {
+        _editTitleError = true;
+        _guidePulse++;
+      });
+      showGuidedTarget(_editTitleKey);
+      return;
+    }
+    if (date == null) return;
     setState(() => _busyEventId = event.id);
     try {
       await ref.read(studentApiServiceProvider).updateCalendarEvent(event.id, title, date);
@@ -222,6 +245,10 @@ class _StudentCalendarScreenState extends ConsumerState<StudentCalendarScreen> {
                   onToday: _goToToday,
                   onSelectDay: _selectDate,
                   titleCtrl: _newTitleCtrl,
+                  titleKey: _newTitleKey,
+                  titleError: _newTitleError,
+                  pulseVersion: _guidePulse,
+                  onTitleChanged: () => setState(() => _newTitleError = false),
                   newDate: _newDate,
                   onPickDate: () => _pickDate(forEdit: false),
                   adding: _adding,
@@ -233,6 +260,10 @@ class _StudentCalendarScreenState extends ConsumerState<StudentCalendarScreen> {
                   events: events,
                   editingEventId: _editingEventId,
                   editTitleCtrl: _editTitleCtrl,
+                  editTitleKey: _editTitleKey,
+                  editTitleError: _editTitleError,
+                  pulseVersion: _guidePulse,
+                  onEditTitleChanged: () => setState(() => _editTitleError = false),
                   editDate: _editDate,
                   busyEventId: _busyEventId,
                   onStartEdit: _startEdit,
@@ -260,6 +291,10 @@ class _MonthCard extends StatelessWidget {
   final VoidCallback onToday;
   final void Function(String iso, DateTime date) onSelectDay;
   final TextEditingController titleCtrl;
+  final GlobalKey titleKey;
+  final bool titleError;
+  final int pulseVersion;
+  final VoidCallback onTitleChanged;
   final DateTime? newDate;
   final VoidCallback onPickDate;
   final bool adding;
@@ -275,6 +310,10 @@ class _MonthCard extends StatelessWidget {
     required this.onToday,
     required this.onSelectDay,
     required this.titleCtrl,
+    required this.titleKey,
+    required this.titleError,
+    required this.pulseVersion,
+    required this.onTitleChanged,
     required this.newDate,
     required this.onPickDate,
     required this.adding,
@@ -375,7 +414,12 @@ class _MonthCard extends StatelessWidget {
                 child: Text('• ${e.title}', style: TextStyle(fontSize: 12, color: AppColors.of(context).text)),
               ),
           const SizedBox(height: 12),
-          TextField(controller: titleCtrl, decoration: _fieldDecoration(context, 'Event title')),
+          GuidedHighlight(
+            key: titleKey,
+            active: !adding && titleCtrl.text.trim().isEmpty,
+            pulseVersion: pulseVersion,
+            child: TextField(controller: titleCtrl, onChanged: (_) => onTitleChanged(), decoration: _fieldDecoration(context, 'Event title').copyWith(errorText: titleError ? 'Enter an event title.' : null)),
+          ),
           const SizedBox(height: 6),
           InkWell(
             borderRadius: BorderRadius.circular(8),
@@ -391,7 +435,10 @@ class _MonthCard extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 8),
-          _FramedButton(label: adding ? 'Adding...' : 'Add Event', onTap: adding ? null : onAdd, fullWidth: true),
+          GuidedHighlight(
+            active: !adding && titleCtrl.text.trim().isNotEmpty && newDate != null,
+            child: _FramedButton(label: adding ? 'Adding...' : 'Add Event', onTap: adding ? null : onAdd, fullWidth: true),
+          ),
           if (note != null) Padding(padding: const EdgeInsets.only(top: 6), child: Text(note!, style: TextStyle(fontSize: 10, color: AppColors.of(context).muted))),
         ],
       ),
@@ -500,6 +547,10 @@ class _UpcomingEventsCard extends StatelessWidget {
   final List<CalendarEvent> events;
   final String? editingEventId;
   final TextEditingController editTitleCtrl;
+  final GlobalKey editTitleKey;
+  final bool editTitleError;
+  final int pulseVersion;
+  final VoidCallback onEditTitleChanged;
   final DateTime? editDate;
   final String? busyEventId;
   final void Function(CalendarEvent) onStartEdit;
@@ -512,6 +563,10 @@ class _UpcomingEventsCard extends StatelessWidget {
     required this.events,
     required this.editingEventId,
     required this.editTitleCtrl,
+    required this.editTitleKey,
+    required this.editTitleError,
+    required this.pulseVersion,
+    required this.onEditTitleChanged,
     required this.editDate,
     required this.busyEventId,
     required this.onStartEdit,
@@ -549,6 +604,10 @@ class _UpcomingEventsCard extends StatelessWidget {
                 editing: editingEventId == e.id,
                 busy: busyEventId == e.id,
                 editTitleCtrl: editTitleCtrl,
+                editTitleKey: editTitleKey,
+                editTitleError: editTitleError,
+                pulseVersion: pulseVersion,
+                onEditTitleChanged: onEditTitleChanged,
                 editDate: editDate,
                 onEdit: () => onStartEdit(e),
                 onCancel: onCancelEdit,
@@ -569,6 +628,10 @@ class _UpcomingEventRow extends StatelessWidget {
   final bool editing;
   final bool busy;
   final TextEditingController editTitleCtrl;
+  final GlobalKey editTitleKey;
+  final bool editTitleError;
+  final int pulseVersion;
+  final VoidCallback onEditTitleChanged;
   final DateTime? editDate;
   final VoidCallback onEdit;
   final VoidCallback onCancel;
@@ -581,6 +644,10 @@ class _UpcomingEventRow extends StatelessWidget {
     required this.editing,
     required this.busy,
     required this.editTitleCtrl,
+    required this.editTitleKey,
+    required this.editTitleError,
+    required this.pulseVersion,
+    required this.onEditTitleChanged,
     required this.editDate,
     required this.onEdit,
     required this.onCancel,
@@ -599,7 +666,12 @@ class _UpcomingEventRow extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            TextField(controller: editTitleCtrl, decoration: _fieldDecoration(context, 'Event title')),
+            GuidedHighlight(
+              key: editTitleKey,
+              active: editTitleError,
+              pulseVersion: pulseVersion,
+              child: TextField(controller: editTitleCtrl, onChanged: (_) => onEditTitleChanged(), decoration: _fieldDecoration(context, 'Event title').copyWith(errorText: editTitleError ? 'Enter an event title.' : null)),
+            ),
             const SizedBox(height: 6),
             InkWell(
               borderRadius: BorderRadius.circular(8),

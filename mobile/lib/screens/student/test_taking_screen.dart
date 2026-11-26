@@ -11,6 +11,7 @@ import '../../state/exam_access_provider.dart';
 import '../../theme/app_colors.dart';
 import '../../widgets/section_card.dart';
 import '../../widgets/shimmer_wave.dart';
+import '../../widgets/guided_highlight.dart';
 
 /// One-question-at-a-time mobile test-taking flow (per the mobile design
 /// brief — not a copy of web's layout, which doesn't have this at all yet).
@@ -309,6 +310,15 @@ class _TestTakingScreenState extends ConsumerState<TestTakingScreen>
             onPressed: () => Navigator.of(ctx).pop(false),
             child: const Text('Cancel'),
           ),
+          if (unanswered > 0)
+            TextButton(
+              onPressed: () {
+                Navigator.of(ctx).pop(false);
+                final index = _questions.indexWhere((q) => !_answers.containsKey(q.id));
+                if (mounted && index >= 0) setState(() => _index = index);
+              },
+              child: const Text('Review unanswered'),
+            ),
           FilledButton(
             onPressed: () => Navigator.of(ctx).pop(true),
             child: const Text('Submit'),
@@ -477,20 +487,28 @@ class _TestTakingScreenState extends ConsumerState<TestTakingScreen>
                 ),
               ),
               const SizedBox(height: 16),
-              RadioGroup<int>(
-                groupValue: selected,
-                onChanged: (v) {
-                  if (v != null) _select(question.id, v);
-                },
-                child: Column(
-                  children: [
-                    for (var i = 0; i < question.options.length; i++)
-                      RadioListTile<int>(
-                        value: i,
-                        title: Text(question.options[i]),
-                        enabled: !_saving && !_submitting,
-                      ),
-                  ],
+              Text(
+                selected == null ? 'Choose an answer, or skip this question.' : 'You can change your answer or continue.',
+                style: TextStyle(fontSize: 12, color: AppColors.of(context).muted),
+              ),
+              GuidedHighlight(
+                key: ValueKey('test-question-${question.id}'),
+                active: selected == null && !_saving && !_submitting,
+                child: RadioGroup<int>(
+                  groupValue: selected,
+                  onChanged: (v) {
+                    if (v != null) _select(question.id, v);
+                  },
+                  child: Column(
+                    children: [
+                      for (var i = 0; i < question.options.length; i++)
+                        RadioListTile<int>(
+                          value: i,
+                          title: Text(question.options[i]),
+                          enabled: !_saving && !_submitting,
+                        ),
+                    ],
+                  ),
                 ),
               ),
             ],
@@ -509,26 +527,30 @@ class _TestTakingScreenState extends ConsumerState<TestTakingScreen>
                 ),
               if (_index > 0) const SizedBox(width: 12),
               Expanded(
-                child: _index < _questions.length - 1
-                    ? ElevatedButton(
-                        onPressed: () => setState(() => _index += 1),
-                        child: const Text('Next'),
-                      )
-                    : ElevatedButton(
-                        onPressed: _submitting || _saving
-                            ? null
-                            : _confirmAndSubmit,
-                        child: _submitting
-                            ? const SizedBox(
-                                height: 18,
-                                width: 18,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  color: Colors.white,
-                                ),
-                              )
-                            : const Text('Review & Submit'),
-                      ),
+                child: GuidedHighlight(
+                  key: ValueKey('test-next-${question.id}'),
+                  active: selected != null && !_saving && !_submitting,
+                  child: _index < _questions.length - 1
+                      ? ElevatedButton(
+                          onPressed: () => setState(() => _index += 1),
+                          child: const Text('Next'),
+                        )
+                      : ElevatedButton(
+                          onPressed: _submitting || _saving
+                              ? null
+                              : _confirmAndSubmit,
+                          child: _submitting
+                              ? const SizedBox(
+                                  height: 18,
+                                  width: 18,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: Colors.white,
+                                  ),
+                                )
+                              : const Text('Review & Submit'),
+                        ),
+                ),
               ),
             ],
           ),

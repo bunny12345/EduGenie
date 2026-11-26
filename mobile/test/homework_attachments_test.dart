@@ -19,6 +19,7 @@ import 'package:mobile/services/teacher_api_service.dart';
 import 'package:mobile/state/student_providers.dart';
 import 'package:mobile/state/teacher_providers.dart';
 import 'package:mobile/theme/app_theme.dart';
+import 'package:mobile/widgets/guided_highlight.dart';
 
 const _urls = ['/uploads/homework/one.png', '/uploads/homework/two.png'];
 
@@ -516,6 +517,37 @@ void main() {
     expect(find.text('✅ Assigned to Class 8 | Students: 3'), findsOneWidget);
     expect(find.text('Could not load homework: Connection lost'), findsOneWidget);
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('grading guidance accepts feedback without requiring a score', (tester) async {
+    tester.view.physicalSize = const Size(390, 750);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final api = _TeacherApi();
+    await tester.pumpWidget(_teacherStudentApp(api));
+    await tester.pumpAndSettle();
+    await _selectTeacherStudent(tester);
+    final grade = find.text('Grade').first;
+    await tester.ensureVisible(grade);
+    await tester.tap(grade);
+    await tester.pumpAndSettle();
+    final submit = find.text('Submit');
+    await tester.ensureVisible(submit);
+    await tester.tap(submit);
+    await tester.pumpAndSettle();
+    expect(find.text('Enter a score or feedback before submitting.'), findsOneWidget);
+    final score = find.widgetWithText(TextField, 'Score (0-100)');
+    expect(score.hitTestable(), findsOneWidget);
+    expect(tester.widget<GuidedHighlight>(find.ancestor(of: score, matching: find.byType(GuidedHighlight)).first).active, isTrue);
+    final feedback = find.widgetWithText(TextField, 'Feedback for student');
+    await tester.ensureVisible(feedback);
+    await tester.enterText(feedback, 'Explain your reasoning.');
+    await tester.ensureVisible(submit);
+    await tester.tap(submit);
+    await tester.pumpAndSettle();
+    expect(api.savedGrade, isNull);
+    expect(api.savedFeedback, 'Explain your reasoning.');
   });
 
   testWidgets('teacher reviews and edits AI suggestions before publishing a grade', (tester) async {

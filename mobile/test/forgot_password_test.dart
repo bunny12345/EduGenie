@@ -5,6 +5,7 @@ import 'package:mobile/screens/auth/role_gateway_screen.dart';
 import 'package:mobile/services/api_client.dart';
 import 'package:mobile/services/auth_service.dart';
 import 'package:mobile/state/session_provider.dart';
+import 'package:mobile/widgets/guided_highlight.dart';
 
 class _FakeAuth extends AuthService {
   _FakeAuth() : super(ApiClient());
@@ -46,6 +47,34 @@ class _FakeAuth extends AuthService {
 }
 
 void main() {
+  testWidgets('password recovery guides and scrolls to the first invalid field', (tester) async {
+    tester.view.physicalSize = const Size(360, 640);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    final auth = _FakeAuth();
+    await tester.pumpWidget(ProviderScope(
+      overrides: [authServiceProvider.overrideWithValue(auth)],
+      child: const MaterialApp(home: RoleGatewayScreen()),
+    ));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Forgot password?'));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('Send verification code'));
+    await tester.tap(find.text('Send verification code'));
+    await tester.pumpAndSettle();
+    final login = find.byKey(const Key('forgot-login-id'));
+    expect(login.hitTestable(), findsOneWidget);
+    expect(tester.widget<GuidedHighlight>(find.ancestor(of: login, matching: find.byType(GuidedHighlight)).first).active, isTrue);
+    await tester.enterText(login, 'stu1');
+    await tester.ensureVisible(find.text('Send verification code'));
+    await tester.tap(find.text('Send verification code'));
+    await tester.pumpAndSettle();
+    final email = find.byKey(const Key('forgot-email'));
+    expect(email.hitTestable(), findsOneWidget);
+    expect(tester.widget<GuidedHighlight>(find.ancestor(of: email, matching: find.byType(GuidedHighlight)).first).active, isTrue);
+    expect(auth.requests, isEmpty);
+  });
+
   testWidgets('student resets a forgotten password via mobile after an invalid email and returns to login', (tester) async {
     tester.view.physicalSize = const Size(1080, 2400);
     tester.view.devicePixelRatio = 2.6;
@@ -80,6 +109,8 @@ void main() {
     await tester.tap(find.text('Change password'));
     await tester.pumpAndSettle();
     expect(find.textContaining('include a letter, a number and a special character'), findsOneWidget);
+    final newPassword = find.byKey(const Key('forgot-new-password'));
+    expect(tester.widget<GuidedHighlight>(find.ancestor(of: newPassword, matching: find.byType(GuidedHighlight)).first).active, isTrue);
     expect(auth.resets, isEmpty);
 
     await tester.enterText(find.byKey(const Key('forgot-new-password')), 'New#Pass1');

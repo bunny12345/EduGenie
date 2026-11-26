@@ -13,6 +13,7 @@ import 'package:mobile/services/api_client.dart';
 import 'package:mobile/services/support_api_service.dart';
 import 'package:mobile/state/session_provider.dart';
 import 'package:mobile/theme/app_colors.dart';
+import 'package:mobile/widgets/guided_highlight.dart';
 
 const _id = '11111111-1111-4111-8111-111111111111';
 Map<String, dynamic> _ticketJson = {
@@ -438,6 +439,25 @@ void main() {
       },
     );
   }
+
+  testWidgets('report guidance targets the first missing field without sending', (tester) async {
+    final api = _SupportStub();
+    await _mount(tester, api);
+    await _tap(tester, find.text('Report an issue'));
+    await _tap(tester, find.text('Send to technician'));
+    final title = find.widgetWithText(TextFormField, 'Short title');
+    expect(title.hitTestable(), findsOneWidget);
+    expect(find.text('Please enter a short title.'), findsOneWidget);
+    expect(tester.widget<GuidedHighlight>(find.ancestor(of: title, matching: find.byType(GuidedHighlight)).first).active, isTrue);
+    await tester.enterText(title, 'Upload problem');
+    await tester.pumpAndSettle();
+    final description = find.widgetWithText(TextFormField, 'What happened?');
+    expect(tester.widget<GuidedHighlight>(find.ancestor(of: description, matching: find.byType(GuidedHighlight)).first).active, isTrue);
+    await _tap(tester, find.text('Send to technician'));
+    expect(description.hitTestable(), findsOneWidget);
+    expect(api.reportIds, isEmpty);
+    await _dispose(tester);
+  });
 
   testWidgets('report retries reuse ID, save chat and expose email retry', (
     tester,

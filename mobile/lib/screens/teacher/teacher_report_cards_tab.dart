@@ -5,6 +5,7 @@ import '../../theme/app_colors.dart';
 import '../../theme/report_card_theme.dart';
 import '../../state/teacher_providers.dart';
 import '../../widgets/section_card.dart';
+import '../../widgets/guided_highlight.dart';
 
 const Color _frame3dColor = Color(0xFF46464E);
 
@@ -19,7 +20,8 @@ List<BoxShadow> _frame3dShadow({double alpha = 0.18, double blur = 10}) =>
 /// teacher enters marks for their own subject only. A tracker shows how many
 /// students are fully released to the student app.
 class TeacherReportCardsTab extends ConsumerStatefulWidget {
-  const TeacherReportCardsTab({super.key});
+  final bool isActive;
+  const TeacherReportCardsTab({super.key, this.isActive = true});
 
   @override
   ConsumerState<TeacherReportCardsTab> createState() => _TeacherReportCardsTabState();
@@ -35,6 +37,9 @@ class _TeacherReportCardsTabState extends ConsumerState<TeacherReportCardsTab> {
   Map<String, dynamic>? _marksData;
   String? _selectedStudentId;
   final _marksCtrl = TextEditingController();
+  final _marksKey = GlobalKey();
+  String? _marksError;
+  int _marksPulse = 0;
   final _remarksCtrl = TextEditingController();
   bool _saving = false;
   String _noticeType = '';
@@ -141,6 +146,7 @@ class _TeacherReportCardsTabState extends ConsumerState<TeacherReportCardsTab> {
     final row = _savedRow;
     _marksCtrl.text = row == null || row['marks'] == null ? '' : row['marks'].toString();
     _remarksCtrl.text = row?['remarks']?.toString() ?? '';
+    _marksError = null;
   }
 
   void _notice(String type, String text) {
@@ -166,7 +172,10 @@ class _TeacherReportCardsTabState extends ConsumerState<TeacherReportCardsTab> {
             children: [
               Text('Every teacher of this class will use this same exam. Only you can rename it later.', style: TextStyle(fontSize: 12, color: AppColors.of(ctx).muted)),
               const SizedBox(height: 12),
-              TextField(controller: nameCtrl, autofocus: true, maxLength: 60, decoration: const InputDecoration(labelText: 'Exam name', hintText: 'e.g. Annual Exam')),
+              GuidedHighlight(
+                active: !creating && nameCtrl.text.trim().isEmpty,
+                child: TextField(controller: nameCtrl, onChanged: (_) => setDialogState(() {}), autofocus: true, maxLength: 60, decoration: const InputDecoration(labelText: 'Exam name', hintText: 'e.g. Annual Exam')),
+              ),
               TextField(controller: maxCtrl, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Maximum marks per subject')),
               if (error.isNotEmpty) Padding(padding: const EdgeInsets.only(top: 6), child: Text(error, style: const TextStyle(color: AppColors.danger, fontSize: 12))),
             ],
@@ -234,7 +243,13 @@ class _TeacherReportCardsTabState extends ConsumerState<TeacherReportCardsTab> {
       final n = num.tryParse(trimmed);
       final maxMarks = exam['maxMarks'] as num? ?? 100;
       if (n == null || n < 0 || n > maxMarks) {
-        _notice('error', 'Marks must be between 0 and ${formatMarks(maxMarks)}.');
+        final message = 'Marks must be between 0 and ${formatMarks(maxMarks)}.';
+        setState(() {
+          _marksError = message;
+          _marksPulse++;
+        });
+        _notice('error', message);
+        if (widget.isActive) showGuidedTarget(_marksKey, canShow: () => mounted && widget.isActive);
         return;
       }
     }
@@ -588,14 +603,30 @@ class _TeacherReportCardsTabState extends ConsumerState<TeacherReportCardsTab> {
                       Row(
                         crossAxisAlignment: CrossAxisAlignment.end,
                         children: [
-                          SizedBox(
-                            width: 120,
-                            child: TextField(
-                              controller: _marksCtrl,
-                              keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                              textAlign: TextAlign.center,
-                              style: TextStyle(fontSize: 28, fontWeight: FontWeight.w900, color: palette.isDark ? palette.text : theme.dark),
-                              decoration: InputDecoration(filled: true, fillColor: palette.card, border: OutlineInputBorder(borderRadius: BorderRadius.circular(12))),
+                          GuidedHighlight(
+                            key: _marksKey,
+                            active: widget.isActive && _marksError != null,
+                            pulseVersion: _marksPulse,
+                            child: SizedBox(
+                              width: 120,
+                              child: TextField(
+                                controller: _marksCtrl,
+                                onChanged: (_) {
+                                  if (_marksError != null) {
+                                    setState(() {
+                                      if (_noticeText == _marksError) {
+                                        _noticeType = '';
+                                        _noticeText = '';
+                                      }
+                                      _marksError = null;
+                                    });
+                                  }
+                                },
+                                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                                textAlign: TextAlign.center,
+                                style: TextStyle(fontSize: 28, fontWeight: FontWeight.w900, color: palette.isDark ? palette.text : theme.dark),
+                                decoration: InputDecoration(filled: true, fillColor: palette.card, border: OutlineInputBorder(borderRadius: BorderRadius.circular(12))),
+                              ),
                             ),
                           ),
                           const SizedBox(width: 10),
@@ -605,6 +636,8 @@ class _TeacherReportCardsTabState extends ConsumerState<TeacherReportCardsTab> {
                           ),
                         ],
                       ),
+                      if (_marksError != null)
+                        Text(_marksError!, style: TextStyle(fontSize: 12, color: AppColors.readableAccent(AppColors.danger, dark: palette.isDark))),
                       const SizedBox(height: 12),
                       TextField(
                         controller: _remarksCtrl,

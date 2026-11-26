@@ -11,6 +11,7 @@ import 'package:mobile/state/session_provider.dart';
 import 'package:mobile/state/student_providers.dart';
 import 'package:mobile/state/exam_access_provider.dart';
 import 'package:mobile/theme/app_theme.dart';
+import 'package:mobile/widgets/guided_highlight.dart';
 
 class _Session extends SessionNotifier {
   @override
@@ -252,7 +253,10 @@ void main() {
               scrollable: find.byType(Scrollable).first,
             );
             await tester.pumpAndSettle();
+            expect(tester.widget<GuidedHighlight>(find.ancestor(of: find.byType(TextField), matching: find.byType(GuidedHighlight)).first).active, isTrue);
             await tester.enterText(find.byType(TextField), 'Keep this draft');
+            await tester.pump();
+            expect(tester.widget<GuidedHighlight>(find.ancestor(of: find.text('Submit'), matching: find.byType(GuidedHighlight)).first).active, isTrue);
             await tester.tap(testsTab);
             await tester.pumpAndSettle();
             expect(find.text('Fractions mock exam'), findsOneWidget);

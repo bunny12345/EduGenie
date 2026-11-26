@@ -6,6 +6,7 @@ import 'package:mobile/screens/shared/parental_lock_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:mobile/widgets/guided_highlight.dart';
 
 class _MemoryStorage extends SecureStorageService {
   String? pin = '123456';
@@ -85,6 +86,19 @@ void main() {
     expect(find.textContaining('unpin screen'), findsNothing);
     expect(find.textContaining('parent PIN to turn Focus Mode off early'), findsOneWidget);
     expect(find.text('Save PIN'), findsOneWidget);
+    final pin = find.widgetWithText(TextField, '6-digit PIN');
+    final confirm = find.widgetWithText(TextField, 'Confirm PIN');
+    expect(tester.widget<GuidedHighlight>(find.ancestor(of: pin, matching: find.byType(GuidedHighlight)).first).active, isTrue);
+    await tester.enterText(pin, '123456');
+    await tester.pumpAndSettle();
+    expect(tester.widget<GuidedHighlight>(find.ancestor(of: confirm, matching: find.byType(GuidedHighlight)).first).active, isTrue);
+    await tester.enterText(confirm, '654321');
+    await tester.ensureVisible(find.text('Save PIN'));
+    await tester.tap(find.text('Save PIN'));
+    await tester.pumpAndSettle();
+    expect(find.text("PINs don't match."), findsOneWidget);
+    expect(confirm.hitTestable(), findsOneWidget);
+    expect(storage.pin, isNull);
     await tester.pumpWidget(const SizedBox.shrink());
     container.dispose();
   });

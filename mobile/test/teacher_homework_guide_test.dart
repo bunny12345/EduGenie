@@ -8,6 +8,7 @@ import 'package:mobile/services/api_client.dart';
 import 'package:mobile/services/teacher_api_service.dart';
 import 'package:mobile/state/teacher_providers.dart';
 import 'package:mobile/theme/app_theme.dart';
+import 'package:mobile/widgets/guided_highlight.dart';
 
 class _Class8 extends TeacherTargetClassNotifier {
   @override
@@ -38,14 +39,14 @@ class _Api extends TeacherApiService {
   }
 }
 
-Widget _app(_Api api, {bool hasClass = true, bool dark = false, bool reduceMotion = false}) {
+Widget _app(_Api api, {bool hasClass = true, bool dark = false, bool reduceMotion = false, List<Map<String, dynamic>> homework = const []}) {
   return ProviderScope(
     overrides: [
       teacherApiServiceProvider.overrideWithValue(api),
       if (hasClass) teacherTargetClassProvider.overrideWith(_Class8.new),
       teacherProfileProvider.overrideWith((ref) async => {'subject': 'Science'}),
       teacherLessonsProvider.overrideWith((ref) async => []),
-      teacherHomeworkProvider.overrideWith((ref) async => []),
+      teacherHomeworkProvider.overrideWith((ref) async => homework),
       teacherAnnouncementsProvider.overrideWith((ref) async => []),
       teacherTestsProvider.overrideWith((ref) async => []),
     ],
@@ -101,7 +102,7 @@ Future<void> _chooseDateTime(WidgetTester tester, String label, int hour) async 
 Color _guideBorder(WidgetTester tester, Finder field) {
   final guide = find.ancestor(
     of: field,
-    matching: find.byWidgetPredicate((w) => w.runtimeType.toString() == '_GuidedHighlight'),
+    matching: find.byType(GuidedHighlight),
   ).first;
   final container = tester.widget<Container>(find.descendant(of: guide, matching: find.byType(Container)).first);
   return ((container.decoration! as BoxDecoration).border! as Border).top.color;
@@ -109,6 +110,49 @@ Color _guideBorder(WidgetTester tester, Finder field) {
 
 void main() {
   setUpAll(() => GoogleFonts.config.allowRuntimeFetching = false);
+
+  for (final accessibleNavigation in [false, true]) {
+    testWidgets('guided scrolling jumps immediately with reduced motion ($accessibleNavigation)', (tester) async {
+      final target = GlobalKey();
+      final scroll = ScrollController();
+      addTearDown(scroll.dispose);
+      await tester.pumpWidget(MaterialApp(
+        builder: (context, child) => MediaQuery(
+          data: MediaQuery.of(context).copyWith(disableAnimations: !accessibleNavigation, accessibleNavigation: accessibleNavigation),
+          child: child!,
+        ),
+        home: Scaffold(body: SingleChildScrollView(
+          controller: scroll,
+          child: Column(children: [const SizedBox(height: 1800), SizedBox(key: target, height: 40)]),
+        )),
+      ));
+      showGuidedTarget(target);
+      await tester.pump();
+      expect(scroll.offset, greaterThan(0));
+    });
+  }
+
+  testWidgets('editing homework directs a missing title back to the field', (tester) async {
+    tester.view.physicalSize = const Size(360, 640);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    await tester.pumpWidget(_app(_Api(), homework: [
+      {'id': 'assignment', 'title': 'Worksheet', 'subject': 'Science', 'className': 'Class 8', 'createdAt': DateTime.now().toIso8601String()},
+    ]));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Homework'));
+    await tester.pumpAndSettle();
+    await _tapVisible(tester, find.byTooltip('Edit'));
+    final title = find.byWidgetPredicate((w) => w is TextField && w.decoration?.hintText == 'Homework title');
+    await tester.enterText(title, '');
+    FocusManager.instance.primaryFocus?.unfocus();
+    await tester.pumpAndSettle();
+    await _tapVisible(tester, find.text('Update & Resend to All Students'));
+    expect(title.hitTestable(), findsOneWidget);
+    expect(find.text('Enter a homework title.'), findsOneWidget);
+    expect(tester.widget<GuidedHighlight>(find.ancestor(of: title, matching: find.byType(GuidedHighlight)).first).active, isTrue);
+  });
 
   for (final dark in [false, true]) {
     testWidgets('guides optional steps without requiring them in ${dark ? 'dark' : 'light'} mode', (tester) async {

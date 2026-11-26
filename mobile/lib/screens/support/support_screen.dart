@@ -8,6 +8,7 @@ import '../../services/support_api_service.dart';
 import '../../state/session_provider.dart';
 import '../../theme/app_colors.dart';
 import '../../widgets/section_card.dart';
+import '../../widgets/guided_highlight.dart';
 
 const _blue = Color(0xFF3946C5);
 const _greeting = SupportMessage(
@@ -29,6 +30,9 @@ class _SupportScreenState extends ConsumerState<SupportScreen>
   final _subject = TextEditingController();
   final _description = TextEditingController();
   final _form = GlobalKey<FormState>();
+  final _reportSubjectKey = GlobalKey();
+  final _reportDescriptionKey = GlobalKey();
+  int _reportPulse = 0;
   final _cancel = CancelToken();
   final _scroll = ScrollController();
   final _botMessages = <SupportMessage>[_greeting];
@@ -283,7 +287,12 @@ class _SupportScreenState extends ConsumerState<SupportScreen>
   }
 
   Future<void> _submitReport() async {
-    if (_busy || !_form.currentState!.validate()) return;
+    if (_busy) return;
+    if (!_form.currentState!.validate()) {
+      setState(() => _reportPulse++);
+      showGuidedTarget(_subject.text.trim().isEmpty ? _reportSubjectKey : _reportDescriptionKey);
+      return;
+    }
     setState(() {
       _busy = true;
       _error = null;
@@ -541,32 +550,52 @@ class _SupportScreenState extends ConsumerState<SupportScreen>
           'Your account role, name, school and class identify this request automatically. Your recent questions are included; do not include passwords or private records.',
         ),
         const SizedBox(height: 16),
-        TextFormField(
-          controller: _subject,
-          maxLength: 120,
-          enabled: !_busy,
-          decoration: const InputDecoration(
-            labelText: 'Short title',
-            hintText: 'For example: Homework submit button is not responding',
-          ),
-          validator: (text) => text == null || text.trim().isEmpty
-              ? 'Please enter a short title.'
-              : null,
+        Text(
+          _subject.text.trim().isEmpty
+              ? 'Next: add a short title.'
+              : _description.text.trim().isEmpty
+                  ? 'Next: describe what happened.'
+                  : 'Review your request, then send it.',
+          style: TextStyle(fontSize: 12, color: AppColors.of(context).muted),
         ),
-        TextFormField(
-          controller: _description,
-          maxLength: 4000,
-          minLines: 4,
-          maxLines: 8,
-          enabled: !_busy,
-          decoration: const InputDecoration(
-            labelText: 'What happened?',
-            hintText:
-                'Which feature? What did you try, and what happened instead?',
+        GuidedHighlight(
+          key: _reportSubjectKey,
+          active: !_busy && _subject.text.trim().isEmpty,
+          pulseVersion: _reportPulse,
+          child: TextFormField(
+            controller: _subject,
+            maxLength: 120,
+            enabled: !_busy,
+            onChanged: (_) => setState(() {}),
+            decoration: const InputDecoration(
+              labelText: 'Short title',
+              hintText: 'For example: Homework submit button is not responding',
+            ),
+            validator: (text) => text == null || text.trim().isEmpty
+                ? 'Please enter a short title.'
+                : null,
           ),
-          validator: (text) => text == null || text.trim().isEmpty
-              ? 'Please describe the issue.'
-              : null,
+        ),
+        GuidedHighlight(
+          key: _reportDescriptionKey,
+          active: !_busy && _subject.text.trim().isNotEmpty && _description.text.trim().isEmpty,
+          pulseVersion: _reportPulse,
+          child: TextFormField(
+            controller: _description,
+            maxLength: 4000,
+            minLines: 4,
+            maxLines: 8,
+            enabled: !_busy,
+            onChanged: (_) => setState(() {}),
+            decoration: const InputDecoration(
+              labelText: 'What happened?',
+              hintText:
+                  'Which feature? What did you try, and what happened instead?',
+            ),
+            validator: (text) => text == null || text.trim().isEmpty
+                ? 'Please describe the issue.'
+                : null,
+          ),
         ),
         const Text(
           'A technician receives an email notification and replies here. This is not an instant live-chat guarantee—return to Your requests to check replies.',
@@ -584,9 +613,12 @@ class _SupportScreenState extends ConsumerState<SupportScreen>
               onPressed: _busy ? null : () => _select(null),
               child: const Text('Cancel'),
             ),
-            FilledButton(
-              onPressed: _busy ? null : _submitReport,
-              child: _busy ? _spinner() : const Text('Send to technician'),
+            GuidedHighlight(
+              active: !_busy && _subject.text.trim().isNotEmpty && _description.text.trim().isNotEmpty,
+              child: FilledButton(
+                onPressed: _busy ? null : _submitReport,
+                child: _busy ? _spinner() : const Text('Send to technician'),
+              ),
             ),
           ],
         ),

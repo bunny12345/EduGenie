@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../state/session_provider.dart';
 import '../../theme/app_colors.dart';
+import '../../widgets/guided_highlight.dart';
 
 /// Returned to the login screen after a successful reset.
 class ForgotPasswordResult {
@@ -81,6 +82,13 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
   bool _showNew = false;
   bool _showConfirm = false;
   String _error = '';
+  String? _validationTarget;
+  final _loginKey = GlobalKey();
+  final _contactKey = GlobalKey();
+  final _codeKey = GlobalKey();
+  final _newPasswordKey = GlobalKey();
+  final _confirmPasswordKey = GlobalKey();
+  int _guidePulse = 0;
   int _resendIn = 0;
   Timer? _timer;
 
@@ -110,22 +118,42 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
         if (mounted) setState(() => _resendIn = 0);
         return;
       }
+
       setState(() => _resendIn -= 1);
+    });
+  }
+
+  void _showValidation(String error, String field, GlobalKey key) {
+    setState(() {
+      _error = error;
+      _validationTarget = field;
+      _guidePulse++;
+    });
+    showGuidedTarget(key);
+  }
+
+  void _fieldChanged() {
+    setState(() {
+      if (_validationTarget != null) {
+        _validationTarget = null;
+        _error = '';
+      }
     });
   }
 
   Future<void> _sendCode() async {
     final loginId = _loginIdCtrl.text.trim();
-    if (loginId.isEmpty) return setState(() => _error = 'Enter your ${_label.toLowerCase()} login ID.');
+    if (loginId.isEmpty) return _showValidation('Enter your ${_label.toLowerCase()} login ID.', 'login', _loginKey);
     if (_channel == 'email' && !RegExp(r'^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$').hasMatch(_emailCtrl.text.trim())) {
-      return setState(() => _error = 'Enter a valid email address, or verify with your registered mobile number instead.');
+      return _showValidation('Enter a valid email address, or verify with your registered mobile number instead.', 'contact', _contactKey);
     }
     if (_channel == 'phone' && !RegExp(r'^[0-9 ()+-]{4,20}$').hasMatch(_phoneCtrl.text.trim())) {
-      return setState(() => _error = 'Enter a valid mobile number.');
+      return _showValidation('Enter a valid mobile number.', 'contact', _contactKey);
     }
     setState(() {
       _busy = true;
       _error = '';
+      _validationTarget = null;
     });
     try {
       final res = await ref.read(authServiceProvider).requestPasswordResetCode(
@@ -154,17 +182,18 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
 
   Future<void> _reset() async {
     if (!RegExp(r'^\d{6}$').hasMatch(_codeCtrl.text.trim())) {
-      return setState(() => _error = 'Enter the six-digit verification code.');
+      return _showValidation('Enter the six-digit verification code.', 'code', _codeKey);
     }
     if (!_rulesMet) {
-      return setState(() => _error = 'Password must be at least 8 characters and include a letter, a number and a special character.');
+      return _showValidation('Password must be at least 8 characters and include a letter, a number and a special character.', 'new', _newPasswordKey);
     }
     if (_newCtrl.text != _confirmCtrl.text) {
-      return setState(() => _error = 'The new password and confirmation do not match.');
+      return _showValidation('The new password and confirmation do not match.', 'confirm', _confirmPasswordKey);
     }
     setState(() {
       _busy = true;
       _error = '';
+      _validationTarget = null;
     });
     try {
       final loginId = _loginIdCtrl.text.trim();
@@ -213,10 +242,16 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
         style: TextStyle(color: AppColors.muted, fontSize: 13),
       ),
       const SizedBox(height: 16),
-      TextField(
-        key: const Key('forgot-login-id'),
-        controller: _loginIdCtrl,
-        decoration: InputDecoration(labelText: '$_label Login ID'),
+      GuidedHighlight(
+        key: _loginKey,
+        active: !_busy && (_validationTarget == 'login' || (_validationTarget == null && _loginIdCtrl.text.trim().isEmpty)),
+        pulseVersion: _guidePulse,
+        child: TextField(
+          key: const Key('forgot-login-id'),
+          controller: _loginIdCtrl,
+          onChanged: (_) => _fieldChanged(),
+          decoration: InputDecoration(labelText: '$_label Login ID', errorText: _validationTarget == 'login' ? _error : null),
+        ),
       ),
       const SizedBox(height: 14),
       SegmentedButton<String>(
@@ -228,15 +263,22 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
         onSelectionChanged: (s) => setState(() {
           _channel = s.first;
           _error = '';
+          _validationTarget = null;
         }),
       ),
       const SizedBox(height: 14),
       if (_channel == 'email')
-        TextField(
-          key: const Key('forgot-email'),
-          controller: _emailCtrl,
-          keyboardType: TextInputType.emailAddress,
-          decoration: const InputDecoration(labelText: 'Registered email'),
+        GuidedHighlight(
+          key: _contactKey,
+          active: !_busy && (_validationTarget == 'contact' || (_validationTarget == null && _loginIdCtrl.text.trim().isNotEmpty && _emailCtrl.text.trim().isEmpty)),
+          pulseVersion: _guidePulse,
+          child: TextField(
+            key: const Key('forgot-email'),
+            controller: _emailCtrl,
+            onChanged: (_) => _fieldChanged(),
+            keyboardType: TextInputType.emailAddress,
+            decoration: InputDecoration(labelText: 'Registered email', errorText: _validationTarget == 'contact' ? _error : null, errorMaxLines: 3),
+          ),
         )
       else
         Row(
@@ -257,17 +299,23 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
             ),
             const SizedBox(width: 10),
             Expanded(
-              child: TextField(
-                key: const Key('forgot-phone'),
-                controller: _phoneCtrl,
-                keyboardType: TextInputType.phone,
-                decoration: const InputDecoration(labelText: 'Registered mobile number'),
+              child: GuidedHighlight(
+                key: _contactKey,
+                active: !_busy && (_validationTarget == 'contact' || (_validationTarget == null && _loginIdCtrl.text.trim().isNotEmpty && _phoneCtrl.text.trim().isEmpty)),
+                pulseVersion: _guidePulse,
+                child: TextField(
+                  key: const Key('forgot-phone'),
+                  controller: _phoneCtrl,
+                  onChanged: (_) => _fieldChanged(),
+                  keyboardType: TextInputType.phone,
+                  decoration: InputDecoration(labelText: 'Registered mobile number', errorText: _validationTarget == 'contact' ? _error : null, errorMaxLines: 3),
+                ),
               ),
             ),
           ],
         ),
       const SizedBox(height: 14),
-      if (_error.isNotEmpty) _errorBanner(),
+      if (_error.isNotEmpty && _validationTarget == null) _errorBanner(),
       if (_suggestsOther)
         Align(
           alignment: Alignment.centerLeft,
@@ -275,6 +323,7 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
             onPressed: () => setState(() {
               _channel = _channel == 'email' ? 'phone' : 'email';
               _error = '';
+              _validationTarget = null;
             }),
             child: Text('Verify with ${_channel == 'email' ? 'mobile number' : 'email'} instead'),
           ),
@@ -304,30 +353,46 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
         ),
       ),
       const SizedBox(height: 14),
-      TextField(
-        key: const Key('forgot-code'),
-        controller: _codeCtrl,
-        keyboardType: TextInputType.number,
-        inputFormatters: [FilteringTextInputFormatter.digitsOnly, LengthLimitingTextInputFormatter(6)],
-        autofillHints: const [AutofillHints.oneTimeCode],
-        decoration: const InputDecoration(labelText: 'Verification code'),
+      GuidedHighlight(
+        key: _codeKey,
+        active: !_busy && (_validationTarget == 'code' || (_validationTarget == null && _codeCtrl.text.length != 6)),
+        pulseVersion: _guidePulse,
+        child: TextField(
+          key: const Key('forgot-code'),
+          controller: _codeCtrl,
+          onChanged: (_) => _fieldChanged(),
+          keyboardType: TextInputType.number,
+          inputFormatters: [FilteringTextInputFormatter.digitsOnly, LengthLimitingTextInputFormatter(6)],
+          autofillHints: const [AutofillHints.oneTimeCode],
+          decoration: InputDecoration(labelText: 'Verification code', errorText: _validationTarget == 'code' ? _error : null),
+        ),
       ),
       const SizedBox(height: 10),
-      _passwordField(const Key('forgot-new-password'), _newCtrl, 'New password', _showNew, (v) => setState(() => _showNew = v)),
+      GuidedHighlight(
+        key: _newPasswordKey,
+        active: !_busy && (_validationTarget == 'new' || (_validationTarget == null && _codeCtrl.text.length == 6 && !_rulesMet)),
+        pulseVersion: _guidePulse,
+        child: _passwordField(const Key('forgot-new-password'), _newCtrl, 'New password', _showNew, (v) => setState(() => _showNew = v), errorText: _validationTarget == 'new' ? _error : null),
+      ),
       const SizedBox(height: 8),
       for (final (label, test) in passwordRules)
         _ruleRow(label, test(_newCtrl.text)),
       _ruleRow('Must be different from your current password', null),
       const SizedBox(height: 10),
-      _passwordField(const Key('forgot-confirm-password'), _confirmCtrl, 'Confirm new password', _showConfirm,
-          (v) => setState(() => _showConfirm = v)),
+      GuidedHighlight(
+        key: _confirmPasswordKey,
+        active: !_busy && (_validationTarget == 'confirm' || (_validationTarget == null && _codeCtrl.text.length == 6 && _rulesMet && _confirmCtrl.text != _newCtrl.text)),
+        pulseVersion: _guidePulse,
+        child: _passwordField(const Key('forgot-confirm-password'), _confirmCtrl, 'Confirm new password', _showConfirm,
+            (v) => setState(() => _showConfirm = v), errorText: _validationTarget == 'confirm' ? _error : null),
+      ),
       if (mismatch)
         const Padding(
           padding: EdgeInsets.only(top: 6),
           child: Text('Passwords do not match.', style: TextStyle(color: AppColors.danger, fontSize: 12)),
         ),
       const SizedBox(height: 14),
-      if (_error.isNotEmpty) _errorBanner(),
+      if (_error.isNotEmpty && _validationTarget == null) _errorBanner(),
       ElevatedButton(
         onPressed: _busy ? null : _reset,
         child: _busy ? _spinner() : const Text('Change password'),
@@ -346,6 +411,7 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
                 : () => setState(() {
                       _resetStep = false;
                       _error = '';
+                      _validationTarget = null;
                     }),
             child: const Text('Use a different email or mobile'),
           ),
@@ -354,14 +420,16 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
     ];
   }
 
-  Widget _passwordField(Key key, TextEditingController ctrl, String label, bool visible, ValueChanged<bool> setVisible) {
+  Widget _passwordField(Key key, TextEditingController ctrl, String label, bool visible, ValueChanged<bool> setVisible, {String? errorText}) {
     return TextField(
       key: key,
       controller: ctrl,
       obscureText: !visible,
-      onChanged: (_) => setState(() {}),
+      onChanged: (_) => _fieldChanged(),
       decoration: InputDecoration(
         labelText: label,
+        errorText: errorText,
+        errorMaxLines: 3,
         suffixIcon: GestureDetector(
           behavior: HitTestBehavior.opaque,
           onTapDown: (_) => setVisible(true),

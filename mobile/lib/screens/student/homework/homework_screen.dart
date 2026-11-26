@@ -21,6 +21,7 @@ import 'lightbox.dart';
 import '../../../widgets/pressable_scale.dart';
 import '../../../widgets/image_source_sheet.dart';
 import '../../../widgets/quick_sam_bubble.dart';
+import '../../../widgets/guided_highlight.dart';
 
 enum _HwFilter { all, submitted, notSubmitted, overdue }
 
@@ -202,6 +203,7 @@ class _HomeworkScreenState extends ConsumerState<HomeworkScreen> {
   final Set<String> _expandedSubmission = {};
   final Set<String> _expandedFeedback = {};
   final Set<String> _editingResubmit = {};
+  String? _guidedSubmissionId;
 
   final Map<String, TextEditingController> _answerControllers = {};
   final Map<String, List<String>> _attachmentUrls = {};
@@ -409,6 +411,7 @@ class _HomeworkScreenState extends ConsumerState<HomeworkScreen> {
                                   notifyCount: pendingCount,
                                   onTap: () => setState(() {
                                     _selectedSubject = s;
+                                    _guidedSubmissionId = null;
                                     _filter = _HwFilter.all;
                                     _showHistory = false;
                                     _historyFromDate = null;
@@ -657,6 +660,7 @@ class _HomeworkScreenState extends ConsumerState<HomeworkScreen> {
                                           expandedSubmission: _expandedSubmission.contains(h.id),
                                           expandedFeedback: _expandedFeedback.contains(h.id),
                                           editingResubmit: _editingResubmit.contains(h.id),
+                                          guided: _guidedSubmissionId == h.id || (_guidedSubmissionId == null && cardsToShow.where((item) => !homeworkState(item).submitted).take(1).any((item) => item.id == h.id)),
                                           answerCtrl: _answerCtrlFor(h),
                                           pendingAttachments: _attachmentsFor(h),
                                           uploading: _uploading[h.id] == true,
@@ -665,12 +669,18 @@ class _HomeworkScreenState extends ConsumerState<HomeworkScreen> {
                                           onToggleTeacherInfo: () => setState(() => _toggle(_expandedTeacherInfo, h.id)),
                                           onToggleSubmission: () => setState(() => _toggle(_expandedSubmission, h.id)),
                                           onToggleFeedback: () => setState(() => _toggle(_expandedFeedback, h.id)),
-                                          onStartEditResubmit: () => setState(() => _editingResubmit.add(h.id)),
+                                          onStartEditResubmit: () => setState(() { _editingResubmit.add(h.id); _guidedSubmissionId = h.id; }),
                                           onCancelEditResubmit: () => setState(() {
                                             _editingResubmit.remove(h.id);
                                             _attachmentUrls[h.id] = [];
                                           }),
-                                          onPickImages: () => _pickAndUploadImages(h),
+                                          onGuide: () {
+                                            if (_guidedSubmissionId != h.id) setState(() => _guidedSubmissionId = h.id);
+                                          },
+                                          onPickImages: () {
+                                            setState(() => _guidedSubmissionId = h.id);
+                                            _pickAndUploadImages(h);
+                                          },
                                           onRemoveImage: (url) => _removeAttachment(h, url),
                                           onSubmit: () => _submit(h),
                                           onAskSam: () => openHomeSam(context, ref, homeworkId: h.id),
@@ -1158,6 +1168,7 @@ class _HomeworkCard extends StatelessWidget {
   final bool expandedSubmission;
   final bool expandedFeedback;
   final bool editingResubmit;
+  final bool guided;
   final TextEditingController answerCtrl;
   final List<String> pendingAttachments;
   final bool uploading;
@@ -1169,6 +1180,7 @@ class _HomeworkCard extends StatelessWidget {
   final VoidCallback onStartEditResubmit;
   final VoidCallback onCancelEditResubmit;
   final VoidCallback onPickImages;
+  final VoidCallback onGuide;
   final void Function(String) onRemoveImage;
   final VoidCallback onSubmit;
   final VoidCallback onAskSam;
@@ -1179,6 +1191,7 @@ class _HomeworkCard extends StatelessWidget {
     required this.expandedSubmission,
     required this.expandedFeedback,
     required this.editingResubmit,
+    required this.guided,
     required this.answerCtrl,
     required this.pendingAttachments,
     required this.uploading,
@@ -1190,6 +1203,7 @@ class _HomeworkCard extends StatelessWidget {
     required this.onStartEditResubmit,
     required this.onCancelEditResubmit,
     required this.onPickImages,
+    required this.onGuide,
     required this.onRemoveImage,
     required this.onSubmit,
     required this.onAskSam,
@@ -1355,26 +1369,39 @@ class _HomeworkCard extends StatelessWidget {
             ],
             if (showForm) ...[
               const SizedBox(height: 10),
-              Text(
-                'Your written answer',
-                style: TextStyle(fontSize: 12, color: HomeworkColors.of(context).text(Color(0xFF475569)), fontWeight: FontWeight.w600),
-              ),
-              const SizedBox(height: 6),
-              TextField(
-                controller: answerCtrl,
-                maxLines: 3,
-                decoration: InputDecoration(
-                  hintText: 'Write your answer here (this will be visible to your teacher).',
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-                  filled: true,
-                  fillColor: AppColors.of(context).card,
+              ValueListenableBuilder<TextEditingValue>(
+                valueListenable: answerCtrl,
+                builder: (context, value, _) => GuidedHighlight(
+                  active: guided && value.text.trim().isEmpty && pendingAttachments.isEmpty && !uploading && !submitting,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Your written answer',
+                        style: TextStyle(fontSize: 12, color: HomeworkColors.of(context).text(Color(0xFF475569)), fontWeight: FontWeight.w600),
+                      ),
+                      Text('Write an answer, add photos, or do both.', style: TextStyle(fontSize: 11, color: AppColors.of(context).muted)),
+                      const SizedBox(height: 6),
+                      TextField(
+                        controller: answerCtrl,
+                        onTap: onGuide,
+                        maxLines: 3,
+                        decoration: InputDecoration(
+                          hintText: 'Write your answer here (this will be visible to your teacher).',
+                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                          filled: true,
+                          fillColor: AppColors.of(context).card,
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      _FramedTextButton(
+                        label: uploading ? 'Uploading…' : 'Add photos',
+                        icon: Icons.add_photo_alternate_outlined,
+                        onPressed: uploading ? null : onPickImages,
+                      ),
+                    ],
+                  ),
                 ),
-              ),
-              const SizedBox(height: 10),
-              _FramedTextButton(
-                label: uploading ? 'Uploading…' : 'Add photos',
-                icon: Icons.add_photo_alternate_outlined,
-                onPressed: uploading ? null : onPickImages,
               ),
               if (pendingAttachments.isNotEmpty) ...[
                 const SizedBox(height: 8),
@@ -1407,24 +1434,30 @@ class _HomeworkCard extends StatelessWidget {
                 ),
               ],
               const SizedBox(height: 10),
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton(
-                  onPressed: submitting ? null : onSubmit,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppColors.brand,
-                    foregroundColor: Colors.white,
-                    elevation: 5,
-                    minimumSize: const Size.fromHeight(48),
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+              ValueListenableBuilder<TextEditingValue>(
+                valueListenable: answerCtrl,
+                builder: (context, value, _) => GuidedHighlight(
+                  active: guided && (value.text.trim().isNotEmpty || pendingAttachments.isNotEmpty) && !uploading && !submitting,
+                  child: SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton(
+                      onPressed: submitting ? null : onSubmit,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppColors.brand,
+                        foregroundColor: Colors.white,
+                        elevation: 5,
+                        minimumSize: const Size.fromHeight(48),
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                      ),
+                      child: submitting
+                          ? const SizedBox(height: 18, width: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                          : Text(
+                              canResubmit ? 'Resubmit' : 'Submit',
+                              style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 14),
+                            ),
+                    ),
                   ),
-                  child: submitting
-                      ? const SizedBox(height: 18, width: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                      : Text(
-                          canResubmit ? 'Resubmit' : 'Submit',
-                          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 14),
-                        ),
                 ),
               ),
             ] else if (canResubmitWindow) ...[

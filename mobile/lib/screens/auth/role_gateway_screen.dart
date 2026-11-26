@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import '../../models/session.dart';
 import '../../state/session_provider.dart';
 import '../../theme/app_colors.dart';
+import '../../widgets/guided_highlight.dart';
 import 'forgot_password_screen.dart';
 
 enum _Role { teacher, student }
@@ -275,27 +276,35 @@ class _RoleGatewayScreenState extends ConsumerState<RoleGatewayScreen> {
       child: Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        TextField(
-          key: const Key('login-id'),
-          controller: _loginIdCtrl,
-          autofillHints: const [AutofillHints.username],
-          decoration: const InputDecoration(labelText: 'Login ID'),
+        GuidedHighlight(
+          active: !_busy && _loginIdCtrl.text.trim().isEmpty,
+          child: TextField(
+            key: const Key('login-id'),
+            controller: _loginIdCtrl,
+            onChanged: (_) => setState(() {}),
+            autofillHints: const [AutofillHints.username],
+            decoration: const InputDecoration(labelText: 'Login ID'),
+          ),
         ),
         const SizedBox(height: 10),
-        TextField(
-          key: const Key('login-password'),
-          controller: _passwordCtrl,
-          obscureText: !_showPassword,
-          autofillHints: const [AutofillHints.password],
-          decoration: InputDecoration(
-            labelText: 'Password',
-            suffixIcon: IconButton(
-              tooltip: _showPassword ? 'Hide password' : 'Show password',
-              onPressed: () => setState(() => _showPassword = !_showPassword),
-              icon: Icon(
-                _showPassword ? Icons.visibility_off_rounded : Icons.visibility_rounded,
-                size: 20,
-                color: AppColors.muted,
+        GuidedHighlight(
+          active: !_busy && _loginIdCtrl.text.trim().isNotEmpty && _passwordCtrl.text.isEmpty,
+          child: TextField(
+            key: const Key('login-password'),
+            controller: _passwordCtrl,
+            onChanged: (_) => setState(() {}),
+            obscureText: !_showPassword,
+            autofillHints: const [AutofillHints.password],
+            decoration: InputDecoration(
+              labelText: 'Password',
+              suffixIcon: IconButton(
+                tooltip: _showPassword ? 'Hide password' : 'Show password',
+                onPressed: () => setState(() => _showPassword = !_showPassword),
+                icon: Icon(
+                  _showPassword ? Icons.visibility_off_rounded : Icons.visibility_rounded,
+                  size: 20,
+                  color: AppColors.muted,
+                ),
               ),
             ),
           ),

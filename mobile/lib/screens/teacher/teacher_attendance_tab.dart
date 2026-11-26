@@ -5,10 +5,12 @@ import 'package:intl/intl.dart';
 import '../../state/teacher_providers.dart';
 import '../../widgets/section_card.dart';
 import '../../widgets/section_tab_button.dart';
+import '../../widgets/guided_highlight.dart';
 import 'teacher_report_cards_tab.dart';
 
 class TeacherClassRecordsTab extends StatefulWidget {
-  const TeacherClassRecordsTab({super.key});
+  final bool isActive;
+  const TeacherClassRecordsTab({super.key, this.isActive = true});
 
   @override
   State<TeacherClassRecordsTab> createState() => _TeacherClassRecordsTabState();
@@ -52,9 +54,9 @@ class _TeacherClassRecordsTabState extends State<TeacherClassRecordsTab> {
         child: IndexedStack(
           index: _section,
           children: [
-            const TeacherReportCardsTab(),
+            TeacherReportCardsTab(isActive: widget.isActive && _section == 0),
             if (_openedAttendance)
-              const TeacherAttendanceTab()
+              TeacherAttendanceTab(isActive: widget.isActive && _section == 1)
             else
               const SizedBox.shrink(),
             const Align(
@@ -81,7 +83,8 @@ class _TeacherClassRecordsTabState extends State<TeacherClassRecordsTab> {
 }
 
 class TeacherAttendanceTab extends ConsumerStatefulWidget {
-  const TeacherAttendanceTab({super.key});
+  final bool isActive;
+  const TeacherAttendanceTab({super.key, this.isActive = true});
 
   @override
   ConsumerState<TeacherAttendanceTab> createState() =>
@@ -258,6 +261,8 @@ class _TeacherAttendanceTabState extends ConsumerState<TeacherAttendanceTab> {
     final present = _marks.values.where((value) => value).length;
     final all = present == _students.length;
     final mixed = present > 0 && !all;
+    final needsSave = register != null &&
+        (register['saved'] != true || _students.any((row) => row['present'] != _marks[row['id']]));
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
       children: [
@@ -372,14 +377,17 @@ class _TeacherAttendanceTabState extends ConsumerState<TeacherAttendanceTab> {
                         ),
                 ),
               ),
-            FilledButton(
-              onPressed: _saving || _entries.isEmpty ? null : _save,
-              child: Text(
-                _saving
-                    ? 'Saving…'
-                    : register['saved'] == true
-                    ? 'Save corrections'
-                    : 'Save attendance',
+            GuidedHighlight(
+              active: widget.isActive && needsSave && !_saving && _entries.isNotEmpty,
+              child: FilledButton(
+                onPressed: _saving || _entries.isEmpty ? null : _save,
+                child: Text(
+                  _saving
+                      ? 'Saving…'
+                      : register['saved'] == true
+                      ? 'Save corrections'
+                      : 'Save attendance',
+                ),
               ),
             ),
             if (_notice != null)

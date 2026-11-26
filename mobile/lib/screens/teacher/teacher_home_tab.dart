@@ -9,6 +9,7 @@ import '../../state/teacher_providers.dart';
 import '../../services/attachment_url.dart';
 import '../../theme/app_colors.dart';
 import '../../widgets/section_card.dart';
+import '../../widgets/guided_highlight.dart';
 import '../../widgets/section_tab_button.dart';
 import '../../widgets/strict_exam_students.dart';
 import '../../widgets/image_source_sheet.dart';
@@ -134,8 +135,13 @@ class TeacherHomeTab extends ConsumerStatefulWidget {
 class _TeacherHomeTabState extends ConsumerState<TeacherHomeTab> {
   _TeacherHomeSection _section = _TeacherHomeSection.announcements;
   final _homeworkClassKey = GlobalKey();
+  final _mockClassKey = GlobalKey();
+  final _announcementClassKey = GlobalKey();
   int _classPulse = 0;
+  int _otherClassPulse = 0;
   String? _homeworkClassError;
+  bool _announcementClassError = false;
+  bool _mockClassError = false;
 
   void _showHomeworkClass(String? error) {
     FocusScope.of(context).unfocus();
@@ -146,7 +152,7 @@ class _TeacherHomeTabState extends ConsumerState<TeacherHomeTab> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final target = _homeworkClassKey.currentContext;
       if (!mounted || !widget.isActive || _section != _TeacherHomeSection.homework || target == null) return;
-      Scrollable.ensureVisible(target, alignment: 0.05, duration: const Duration(milliseconds: 350), curve: Curves.easeInOut);
+      Scrollable.ensureVisible(target, alignment: 0.05, duration: guidedScrollDuration(target), curve: Curves.easeInOut);
     });
   }
 
@@ -154,12 +160,23 @@ class _TeacherHomeTabState extends ConsumerState<TeacherHomeTab> {
   Widget build(BuildContext context) {
     final targetClass = ref.watch(teacherTargetClassProvider);
     ref.listen(teacherTargetClassProvider, (previous, next) {
-      if (previous != next && _homeworkClassError != null) {
-        setState(() => _homeworkClassError = null);
+      if (previous != next && (_homeworkClassError != null || _announcementClassError || _mockClassError)) {
+        setState(() {
+          _homeworkClassError = null;
+          _announcementClassError = false;
+          _mockClassError = false;
+        });
       }
     });
     final panels = [
-      _AnnouncementsPanel(targetClass: targetClass),
+      _AnnouncementsPanel(
+        targetClass: targetClass,
+        isActive: widget.isActive && _section == _TeacherHomeSection.announcements,
+        onShowClass: () {
+          setState(() { _announcementClassError = true; _otherClassPulse++; });
+          if (widget.isActive && _section == _TeacherHomeSection.announcements) showGuidedTarget(_announcementClassKey, canShow: () => mounted && widget.isActive && _section == _TeacherHomeSection.announcements);
+        },
+      ),
       _AssignHomeworkPanel(
         targetClass: targetClass,
         isActive: widget.isActive && _section == _TeacherHomeSection.homework,
@@ -172,6 +189,10 @@ class _TeacherHomeTabState extends ConsumerState<TeacherHomeTab> {
       _MockTestsPanel(
         targetClass: targetClass,
         isActive: widget.isActive && _section == _TeacherHomeSection.tests,
+        onShowClass: () {
+          setState(() { _mockClassError = true; _otherClassPulse++; });
+          if (widget.isActive && _section == _TeacherHomeSection.tests) showGuidedTarget(_mockClassKey, canShow: () => mounted && widget.isActive && _section == _TeacherHomeSection.tests);
+        },
       ),
     ];
     return Column(
@@ -225,7 +246,7 @@ class _TeacherHomeTabState extends ConsumerState<TeacherHomeTab> {
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
                           if (index == _TeacherHomeSection.homework.index)
-                            _GuidedHighlight(
+                            GuidedHighlight(
                               key: _homeworkClassKey,
                               active: widget.isActive && _section == _TeacherHomeSection.homework && (targetClass == 'all' || _homeworkClassError != null),
                               pulseVersion: _classPulse,
@@ -244,8 +265,34 @@ class _TeacherHomeTabState extends ConsumerState<TeacherHomeTab> {
                                 ],
                               ),
                             )
+                          else if (index == _TeacherHomeSection.tests.index)
+                            GuidedHighlight(
+                              key: _mockClassKey,
+                              active: widget.isActive && _section == _TeacherHomeSection.tests && targetClass == 'all',
+                              pulseVersion: _otherClassPulse,
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.stretch,
+                                children: [
+                                  widget.activeClassBanner,
+                                  if (_mockClassError)
+                                    Semantics(liveRegion: true, child: Text('Select a class before creating a test.', style: TextStyle(fontSize: 12, color: AppColors.readableAccent(AppColors.danger, dark: AppColors.of(context).isDark)))),
+                                ],
+                              ),
+                            )
                           else
-                            widget.activeClassBanner,
+                            GuidedHighlight(
+                              key: _announcementClassKey,
+                              active: widget.isActive && _section == _TeacherHomeSection.announcements && targetClass == 'all',
+                              pulseVersion: _otherClassPulse,
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.stretch,
+                                children: [
+                                  widget.activeClassBanner,
+                                  if (_announcementClassError)
+                                    Semantics(liveRegion: true, child: Text('Select a class before posting.', style: TextStyle(fontSize: 12, color: AppColors.readableAccent(AppColors.danger, dark: AppColors.of(context).isDark)))),
+                                ],
+                              ),
+                            ),
                           const SizedBox(height: 10),
                           panel,
                         ],
@@ -328,8 +375,10 @@ class _DateTimeField extends StatelessWidget {
 
 class _AnnouncementsPanel extends ConsumerStatefulWidget {
   final String targetClass;
+  final bool isActive;
+  final VoidCallback onShowClass;
 
-  const _AnnouncementsPanel({required this.targetClass});
+  const _AnnouncementsPanel({required this.targetClass, required this.isActive, required this.onShowClass});
 
   @override
   ConsumerState<_AnnouncementsPanel> createState() => _AnnouncementsPanelState();
@@ -342,6 +391,14 @@ class _AnnouncementsPanelState extends ConsumerState<_AnnouncementsPanel> {
   DateTime? _visibleUntil;
   bool _posting = false;
   String? _error;
+  final _titleKey = GlobalKey();
+  final _messageKey = GlobalKey();
+  final _scheduleKey = GlobalKey();
+  final _editingTitleKey = GlobalKey();
+  final _editingMessageKey = GlobalKey();
+  final _editingScheduleKey = GlobalKey();
+  int _guidePulse = 0;
+  String? _invalidField;
 
   String? _editingAnnId;
   final _editingTitleCtrl = TextEditingController();
@@ -350,6 +407,13 @@ class _AnnouncementsPanelState extends ConsumerState<_AnnouncementsPanel> {
   DateTime? _editingVisibleUntil;
   bool _editingSaving = false;
   String? _editingError;
+
+  void _clearInvalidField() {
+    if (_invalidField == null) return;
+    _invalidField = null;
+    _error = null;
+    _editingError = null;
+  }
 
   @override
   void dispose() {
@@ -362,20 +426,33 @@ class _AnnouncementsPanelState extends ConsumerState<_AnnouncementsPanel> {
 
   Future<void> _submit() async {
     if (_titleCtrl.text.trim().isEmpty || _messageCtrl.text.trim().isEmpty) {
-      setState(() => _error = 'Please enter both a title and a message.');
+      final titleMissing = _titleCtrl.text.trim().isEmpty;
+      setState(() {
+        _error = 'Please enter both a title and a message.';
+        _invalidField = titleMissing ? 'title' : 'message';
+        _guidePulse++;
+      });
+      if (widget.isActive) showGuidedTarget(titleMissing ? _titleKey : _messageKey, canShow: () => mounted && widget.isActive);
       return;
     }
     if (widget.targetClass == 'all') {
       setState(() => _error = 'Please select a class at the top of the page before posting an announcement.');
+      widget.onShowClass();
       return;
     }
     if (_visibleFrom != null && _visibleUntil != null && !_visibleUntil!.isAfter(_visibleFrom!)) {
-      setState(() => _error = 'End time must be after the start time.');
+      setState(() {
+        _error = 'End time must be after the start time.';
+        _invalidField = 'schedule';
+        _guidePulse++;
+      });
+      if (widget.isActive) showGuidedTarget(_scheduleKey, canShow: () => mounted && widget.isActive);
       return;
     }
     setState(() {
       _posting = true;
       _error = null;
+      _invalidField = null;
     });
     try {
       await ref.read(teacherApiServiceProvider).postAnnouncement(
@@ -407,6 +484,7 @@ class _AnnouncementsPanelState extends ConsumerState<_AnnouncementsPanel> {
       _editingVisibleFrom = _parseDate(a['startAt'] ?? a['start_at'])?.toLocal();
       _editingVisibleUntil = _parseDate(a['endAt'] ?? a['end_at'])?.toLocal();
       _editingError = null;
+      _invalidField = null;
     });
   }
 
@@ -423,9 +501,24 @@ class _AnnouncementsPanelState extends ConsumerState<_AnnouncementsPanel> {
 
   Future<void> _saveEdit() async {
     final id = _editingAnnId;
-    if (id == null || _editingTitleCtrl.text.trim().isEmpty || _editingMessageCtrl.text.trim().isEmpty) return;
+    if (id == null) return;
+    if (_editingTitleCtrl.text.trim().isEmpty || _editingMessageCtrl.text.trim().isEmpty) {
+      final titleMissing = _editingTitleCtrl.text.trim().isEmpty;
+      setState(() {
+        _editingError = 'Please enter both a title and a message.';
+        _invalidField = titleMissing ? 'edit-title' : 'edit-message';
+        _guidePulse++;
+      });
+      if (widget.isActive) showGuidedTarget(titleMissing ? _editingTitleKey : _editingMessageKey, canShow: () => mounted && widget.isActive);
+      return;
+    }
     if (_editingVisibleFrom != null && _editingVisibleUntil != null && !_editingVisibleUntil!.isAfter(_editingVisibleFrom!)) {
-      setState(() => _editingError = 'End time must be after the start time.');
+      setState(() {
+        _editingError = 'End time must be after the start time.';
+        _invalidField = 'edit-schedule';
+        _guidePulse++;
+      });
+      if (widget.isActive) showGuidedTarget(_editingScheduleKey, canShow: () => mounted && widget.isActive);
       return;
     }
     setState(() {
@@ -504,18 +597,35 @@ class _AnnouncementsPanelState extends ConsumerState<_AnnouncementsPanel> {
             ),
           ),
           const SizedBox(height: 10),
-          TextField(controller: _titleCtrl, decoration: const InputDecoration(hintText: 'Announcement title')),
-          const SizedBox(height: 8),
-          TextField(controller: _messageCtrl, maxLines: 3, decoration: const InputDecoration(hintText: 'Type announcement message')),
-          const SizedBox(height: 10),
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Expanded(child: _DateTimeField(label: 'VISIBLE FROM (OPTIONAL)', value: _visibleFrom, onChanged: (v) => setState(() => _visibleFrom = v))),
-              const SizedBox(width: 10),
-              Expanded(child: _DateTimeField(label: 'VISIBLE UNTIL (OPTIONAL)', value: _visibleUntil, onChanged: (v) => setState(() => _visibleUntil = v))),
-            ],
+          GuidedHighlight(
+            key: _titleKey,
+            active: widget.isActive && _editingAnnId == null && (_invalidField == 'title' || (widget.targetClass != 'all' && _titleCtrl.text.trim().isEmpty)),
+            pulseVersion: _guidePulse,
+            child: TextField(controller: _titleCtrl, onChanged: (_) => setState(_clearInvalidField), decoration: InputDecoration(hintText: 'Announcement title', errorText: _invalidField == 'title' ? 'Enter a title.' : null)),
           ),
+          const SizedBox(height: 8),
+          GuidedHighlight(
+            key: _messageKey,
+            active: widget.isActive && _editingAnnId == null && (_invalidField == 'message' || (widget.targetClass != 'all' && _titleCtrl.text.trim().isNotEmpty && _messageCtrl.text.trim().isEmpty)),
+            pulseVersion: _guidePulse,
+            child: TextField(controller: _messageCtrl, onChanged: (_) => setState(_clearInvalidField), maxLines: 3, decoration: InputDecoration(hintText: 'Type announcement message', errorText: _invalidField == 'message' ? 'Enter a message.' : null)),
+          ),
+          const SizedBox(height: 10),
+          GuidedHighlight(
+            key: _scheduleKey,
+            active: widget.isActive && _invalidField == 'schedule',
+            pulseVersion: _guidePulse,
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(child: _DateTimeField(label: 'VISIBLE FROM (OPTIONAL)', value: _visibleFrom, onChanged: (v) => setState(() { _visibleFrom = v; _clearInvalidField(); }))),
+                const SizedBox(width: 10),
+                Expanded(child: _DateTimeField(label: 'VISIBLE UNTIL (OPTIONAL)', value: _visibleUntil, onChanged: (v) => setState(() { _visibleUntil = v; _clearInvalidField(); }))),
+              ],
+            ),
+          ),
+          if (_invalidField == 'schedule')
+            Text('End time must be after the start time.', style: TextStyle(fontSize: 12, color: AppColors.readableAccent(AppColors.danger, dark: AppColors.of(context).isDark))),
           const SizedBox(height: 6),
           Text('Leave blank to post immediately and keep it visible indefinitely.', style: TextStyle(fontSize: 11, color: AppColors.of(context).muted)),
           const SizedBox(height: 12),
@@ -530,7 +640,7 @@ class _AnnouncementsPanelState extends ConsumerState<_AnnouncementsPanel> {
                       : 'Post to ${widget.targetClass}'),
             ),
           ),
-          if (_error != null) ...[
+          if (_error != null && _invalidField != 'schedule') ...[
             const SizedBox(height: 8),
             Text(_error!, style: const TextStyle(color: AppColors.danger, fontSize: 12)),
           ],
@@ -564,18 +674,35 @@ class _AnnouncementsPanelState extends ConsumerState<_AnnouncementsPanel> {
                 children: [
                   const Text('Edit Announcement', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w800)),
                   const SizedBox(height: 10),
-                  TextField(controller: _editingTitleCtrl, decoration: const InputDecoration(hintText: 'Announcement title')),
-                  const SizedBox(height: 8),
-                  TextField(controller: _editingMessageCtrl, maxLines: 3, decoration: const InputDecoration(hintText: 'Type announcement message')),
-                  const SizedBox(height: 10),
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Expanded(child: _DateTimeField(label: 'VISIBLE FROM (OPTIONAL)', value: _editingVisibleFrom, onChanged: (v) => setState(() => _editingVisibleFrom = v))),
-                      const SizedBox(width: 10),
-                      Expanded(child: _DateTimeField(label: 'VISIBLE UNTIL (OPTIONAL)', value: _editingVisibleUntil, onChanged: (v) => setState(() => _editingVisibleUntil = v))),
-                    ],
+                  GuidedHighlight(
+                    key: _editingTitleKey,
+                    active: widget.isActive && _invalidField == 'edit-title',
+                    pulseVersion: _guidePulse,
+                    child: TextField(controller: _editingTitleCtrl, onChanged: (_) => setState(_clearInvalidField), decoration: InputDecoration(hintText: 'Announcement title', errorText: _invalidField == 'edit-title' ? 'Enter a title.' : null)),
                   ),
+                  const SizedBox(height: 8),
+                  GuidedHighlight(
+                    key: _editingMessageKey,
+                    active: widget.isActive && _invalidField == 'edit-message',
+                    pulseVersion: _guidePulse,
+                    child: TextField(controller: _editingMessageCtrl, onChanged: (_) => setState(_clearInvalidField), maxLines: 3, decoration: InputDecoration(hintText: 'Type announcement message', errorText: _invalidField == 'edit-message' ? 'Enter a message.' : null)),
+                  ),
+                  const SizedBox(height: 10),
+                  GuidedHighlight(
+                    key: _editingScheduleKey,
+                    active: widget.isActive && _invalidField == 'edit-schedule',
+                    pulseVersion: _guidePulse,
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(child: _DateTimeField(label: 'VISIBLE FROM (OPTIONAL)', value: _editingVisibleFrom, onChanged: (v) => setState(() { _editingVisibleFrom = v; _clearInvalidField(); }))),
+                        const SizedBox(width: 10),
+                        Expanded(child: _DateTimeField(label: 'VISIBLE UNTIL (OPTIONAL)', value: _editingVisibleUntil, onChanged: (v) => setState(() { _editingVisibleUntil = v; _clearInvalidField(); }))),
+                      ],
+                    ),
+                  ),
+                  if (_invalidField == 'edit-schedule')
+                    Text('End time must be after the start time.', style: TextStyle(fontSize: 12, color: AppColors.readableAccent(AppColors.danger, dark: AppColors.of(context).isDark))),
                   const SizedBox(height: 12),
                   Row(
                     children: [
@@ -595,7 +722,7 @@ class _AnnouncementsPanelState extends ConsumerState<_AnnouncementsPanel> {
                       ),
                     ],
                   ),
-                  if (_editingError != null) ...[
+                  if (_editingError != null && _invalidField != 'edit-schedule') ...[
                     const SizedBox(height: 8),
                     Text(_editingError!, style: const TextStyle(fontSize: 12, color: AppColors.danger)),
                   ],
@@ -727,6 +854,8 @@ class _AssignHomeworkPanelState extends ConsumerState<_AssignHomeworkPanel> {
   // item in "Recently assigned".
   String? _editingHwId;
   final _editingTitleCtrl = TextEditingController();
+  final _editingHomeworkTitleKey = GlobalKey();
+  bool _editingTitleError = false;
   final _editingNoteCtrl = TextEditingController();
   final _editingGradingGuidanceCtrl = TextEditingController(text: _defaultHomeworkGradingGuidance);
   DateTime? _editingStartAt;
@@ -883,7 +1012,7 @@ class _AssignHomeworkPanelState extends ConsumerState<_AssignHomeworkPanel> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final target = key.currentContext;
       if (!mounted || !widget.isActive || target == null) return;
-      Scrollable.ensureVisible(target, alignment: 0.2, duration: const Duration(milliseconds: 350), curve: Curves.easeInOut);
+      Scrollable.ensureVisible(target, alignment: 0.2, duration: guidedScrollDuration(target), curve: Curves.easeInOut);
     });
   }
 
@@ -928,7 +1057,7 @@ class _AssignHomeworkPanelState extends ConsumerState<_AssignHomeworkPanel> {
       Scrollable.ensureVisible(
         recentContext,
         alignment: 0.05,
-        duration: const Duration(milliseconds: 400),
+        duration: guidedScrollDuration(recentContext, duration: const Duration(milliseconds: 400)),
         curve: Curves.easeInOut,
       );
     });
@@ -954,6 +1083,7 @@ class _AssignHomeworkPanelState extends ConsumerState<_AssignHomeworkPanel> {
         ..addAll(((hw['lessonIds'] ?? hw['lesson_ids']) as List?)?.map((v) => v.toString()) ?? const <String>[]);
       _editingShowLessonPicker = false;
       _editingInfo = null;
+      _editingTitleError = false;
     });
   }
 
@@ -1006,7 +1136,15 @@ class _AssignHomeworkPanelState extends ConsumerState<_AssignHomeworkPanel> {
   /// "✅ Homework updated and resent to all students." on success.
   Future<void> _saveEdit() async {
     final id = _editingHwId;
-    if (id == null || _editingTitleCtrl.text.trim().isEmpty) return;
+    if (id == null) return;
+    if (_editingTitleCtrl.text.trim().isEmpty) {
+      setState(() {
+        _editingTitleError = true;
+        _validationPulse++;
+      });
+      _showField(_editingHomeworkTitleKey);
+      return;
+    }
     if (_editingUploading) {
       setState(() => _editingInfo = 'Please wait for image upload to finish before saving.');
       return;
@@ -1157,7 +1295,7 @@ class _AssignHomeworkPanelState extends ConsumerState<_AssignHomeworkPanel> {
                     onPressed: () {
                       final recentContext = _recentKey.currentContext;
                       if (recentContext != null) {
-                        Scrollable.ensureVisible(recentContext, alignment: 0.05, duration: const Duration(milliseconds: 400), curve: Curves.easeInOut);
+                        Scrollable.ensureVisible(recentContext, alignment: 0.05, duration: guidedScrollDuration(recentContext, duration: const Duration(milliseconds: 400)), curve: Curves.easeInOut);
                       }
                     },
                     icon: const Icon(Icons.assignment_outlined, size: 16),
@@ -1212,7 +1350,7 @@ class _AssignHomeworkPanelState extends ConsumerState<_AssignHomeworkPanel> {
               const SizedBox(height: 14),
               const _FormStep(number: '1', title: 'Homework details', subtitle: 'What should students do?'),
               const SizedBox(height: 10),
-              _GuidedHighlight(
+              GuidedHighlight(
                 key: _titleKey,
                 active: widget.isActive && !needsClass && needsTitle,
                 pulseVersion: _validationPulse,
@@ -1238,7 +1376,7 @@ class _AssignHomeworkPanelState extends ConsumerState<_AssignHomeworkPanel> {
                 child: Text(subject.isEmpty ? 'Not set' : subject),
               ),
               const SizedBox(height: 10),
-              _GuidedHighlight(
+              GuidedHighlight(
                 key: _instructionsKey,
                 active: widget.isActive && !needsClass && !needsTitle && _startError == null && _dueError == null && _guideStep == _HomeworkGuideStep.instructions,
                 child: TextField(
@@ -1258,7 +1396,7 @@ class _AssignHomeworkPanelState extends ConsumerState<_AssignHomeworkPanel> {
                 ),
               ),
               const SizedBox(height: 18),
-              _GuidedHighlight(
+              GuidedHighlight(
                 key: _resourcesKey,
                 active: widget.isActive && !needsClass && !needsTitle && _startError == null && _dueError == null && _guideStep == _HomeworkGuideStep.resources,
                 child: const _FormStep(number: '2', title: 'Resources & marking', subtitle: 'Optional: link units, add images or customize AI guidance.'),
@@ -1388,7 +1526,7 @@ class _AssignHomeworkPanelState extends ConsumerState<_AssignHomeworkPanel> {
                 ),
               ],
               const SizedBox(height: 18),
-              _GuidedHighlight(
+              GuidedHighlight(
                 key: _scheduleKey,
                 active: widget.isActive && !needsClass && !needsTitle && _startError == null && _dueError == null && _guideStep == _HomeworkGuideStep.schedule,
                 child: Column(
@@ -1400,7 +1538,7 @@ class _AssignHomeworkPanelState extends ConsumerState<_AssignHomeworkPanel> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Expanded(
-                          child: _GuidedHighlight(
+                          child: GuidedHighlight(
                             key: _startKey,
                             active: widget.isActive && !needsClass && !needsTitle && _startError != null,
                             pulseVersion: _validationPulse,
@@ -1418,7 +1556,7 @@ class _AssignHomeworkPanelState extends ConsumerState<_AssignHomeworkPanel> {
                         ),
                         const SizedBox(width: 10),
                         Expanded(
-                          child: _GuidedHighlight(
+                          child: GuidedHighlight(
                             key: _dueKey,
                             active: widget.isActive && !needsClass && !needsTitle && _startError == null && _dueError != null,
                             pulseVersion: _validationPulse,
@@ -1447,7 +1585,7 @@ class _AssignHomeworkPanelState extends ConsumerState<_AssignHomeworkPanel> {
                 ),
               ),
               const SizedBox(height: 12),
-              _GuidedHighlight(
+              GuidedHighlight(
                 key: _assignKey,
                 active: widget.isActive && !needsClass && !needsTitle && _startError == null && _dueError == null && _guideStep == _HomeworkGuideStep.assign && !_assigning,
                 child: SizedBox(
@@ -1523,7 +1661,16 @@ class _AssignHomeworkPanelState extends ConsumerState<_AssignHomeworkPanel> {
                       children: [
                         const Text('Edit Homework', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w800)),
                         const SizedBox(height: 10),
-                        TextField(controller: _editingTitleCtrl, decoration: const InputDecoration(hintText: 'Homework title')),
+                        GuidedHighlight(
+                          key: _editingHomeworkTitleKey,
+                          active: widget.isActive && _editingTitleError,
+                          pulseVersion: _validationPulse,
+                          child: TextField(
+                            controller: _editingTitleCtrl,
+                            onChanged: (_) => setState(() => _editingTitleError = false),
+                            decoration: InputDecoration(hintText: 'Homework title', errorText: _editingTitleError ? 'Enter a homework title.' : null),
+                          ),
+                        ),
                         const SizedBox(height: 8),
                         IgnorePointer(
                           child: TextField(
@@ -1699,75 +1846,6 @@ class _AssignHomeworkPanelState extends ConsumerState<_AssignHomeworkPanel> {
           ),
         ),
       ],
-    );
-  }
-}
-
-class _GuidedHighlight extends StatefulWidget {
-  final bool active;
-  final int pulseVersion;
-  final Widget child;
-
-  const _GuidedHighlight({super.key, required this.active, this.pulseVersion = 0, required this.child});
-
-  @override
-  State<_GuidedHighlight> createState() => _GuidedHighlightState();
-}
-
-class _GuidedHighlightState extends State<_GuidedHighlight> with SingleTickerProviderStateMixin {
-  late final AnimationController _pulse = AnimationController(vsync: this, duration: const Duration(milliseconds: 900));
-  bool? _animating;
-
-  void _syncAnimation({bool restart = false}) {
-    final media = MediaQuery.of(context);
-    final animate = widget.active && !media.disableAnimations && !media.accessibleNavigation;
-    if (!restart && animate == _animating) return;
-    _animating = animate;
-    _pulse.stop();
-    if (animate) {
-      _pulse.value = 0;
-      _pulse.repeat(reverse: true, count: 4);
-    }
-  }
-
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    _syncAnimation();
-  }
-
-  @override
-  void didUpdateWidget(covariant _GuidedHighlight oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    _syncAnimation(restart: widget.active && oldWidget.pulseVersion != widget.pulseVersion);
-  }
-
-  @override
-  void dispose() {
-    _pulse.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final color = AppColors.of(context).isDark ? const Color(0xFF82D8FF) : const Color(0xFF147BB6);
-    return AnimatedBuilder(
-      animation: _pulse,
-      child: widget.child,
-      builder: (context, child) {
-        final glow = _animating == true ? _pulse.value : 0.5;
-        return Container(
-          padding: const EdgeInsets.all(3),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(13),
-            border: Border.all(color: widget.active ? color.withValues(alpha: 0.65 + 0.35 * glow) : Colors.transparent, width: 1.5),
-            boxShadow: widget.active
-                ? [BoxShadow(color: color.withValues(alpha: 0.12 + 0.2 * glow), blurRadius: 5 + 7 * glow)]
-                : null,
-          ),
-          child: child,
-        );
-      },
     );
   }
 }
@@ -2187,11 +2265,17 @@ class _HistoryCalendarSheetState extends State<_HistoryCalendarSheet> {
 
 // ── Mock Tests ────────────────────────────────────────────────────────────
 
+bool _isTestScheduleError(String? note) =>
+    note == 'Set both an opens-at and closes-at time before assigning this test.' ||
+    note == 'The closing time must be after the opening time.' ||
+    note == 'The closing time must be in the future.';
+
 class _MockTestsPanel extends ConsumerStatefulWidget {
   final String targetClass;
   final bool isActive;
+  final VoidCallback onShowClass;
 
-  const _MockTestsPanel({required this.targetClass, required this.isActive});
+  const _MockTestsPanel({required this.targetClass, required this.isActive, required this.onShowClass});
 
   @override
   ConsumerState<_MockTestsPanel> createState() => _MockTestsPanelState();
@@ -2209,6 +2293,16 @@ class _MockTestsPanelState extends ConsumerState<_MockTestsPanel> {
   final _testsKey = GlobalKey();
   final _questionsKey = GlobalKey();
   final _selectedTestKey = GlobalKey();
+  final _testTitleKey = GlobalKey();
+  final _questionTextKey = GlobalKey();
+  final _optionKeys = List.generate(4, (_) => GlobalKey());
+  final _editingTestTitleKey = GlobalKey();
+  final _editingOptionKeys = List.generate(4, (_) => GlobalKey());
+  final Map<String, GlobalKey> _scheduleKeys = {};
+  int _guidePulse = 0;
+  bool _testTitleError = false;
+  bool _editingTestTitleError = false;
+  bool _editingOptionsError = false;
 
   final _questionCtrl = TextEditingController();
   final List<TextEditingController> _optionCtrls = List.generate(4, (_) => TextEditingController());
@@ -2261,7 +2355,10 @@ class _MockTestsPanelState extends ConsumerState<_MockTestsPanel> {
       setState(() {
         _noteArea = 'create';
         _note = 'Please enter a test title.';
+        _testTitleError = true;
+        _guidePulse++;
       });
+      _scrollTo(_testTitleKey);
       return;
     }
     if (widget.targetClass == 'all') {
@@ -2269,6 +2366,7 @@ class _MockTestsPanelState extends ConsumerState<_MockTestsPanel> {
         _noteArea = 'create';
         _note = 'Please select a class at the top of the page before creating a test.';
       });
+      widget.onShowClass();
       return;
     }
     FocusScope.of(context).unfocus();
@@ -2318,7 +2416,7 @@ class _MockTestsPanelState extends ConsumerState<_MockTestsPanel> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final target = key.currentContext;
       if (!mounted || !widget.isActive || target == null) return;
-      Scrollable.ensureVisible(target, alignment: 0.05, duration: const Duration(milliseconds: 350), curve: Curves.easeInOut);
+      Scrollable.ensureVisible(target, alignment: 0.05, duration: guidedScrollDuration(target), curve: Curves.easeInOut);
     });
   }
 
@@ -2328,7 +2426,7 @@ class _MockTestsPanelState extends ConsumerState<_MockTestsPanel> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final target = _selectedTestKey.currentContext ?? _testsKey.currentContext;
       if (!mounted || !widget.isActive || target == null) return;
-      Scrollable.ensureVisible(target, alignment: 0.05, duration: const Duration(milliseconds: 350), curve: Curves.easeInOut);
+      Scrollable.ensureVisible(target, alignment: 0.05, duration: guidedScrollDuration(target), curve: Curves.easeInOut);
     });
   }
 
@@ -2363,16 +2461,28 @@ class _MockTestsPanelState extends ConsumerState<_MockTestsPanel> {
     _noteArea = 'question';
     if (_createdTestId == null) return;
     if (_questionCtrl.text.trim().isEmpty) {
-      setState(() => _note = 'Please enter a question.');
+      setState(() {
+        _note = 'Please enter a question.';
+        _guidePulse++;
+      });
+      _scrollTo(_questionTextKey);
       return;
     }
     final options = _optionCtrls.map((c) => c.text.trim()).where((t) => t.isNotEmpty).toList();
     if (options.length < 2) {
-      setState(() => _note = 'Add at least 2 non-empty options.');
+      setState(() {
+        _note = 'Add at least 2 non-empty options.';
+        _guidePulse++;
+      });
+      _scrollTo(_optionKeys[_optionCtrls.indexWhere((c) => c.text.trim().isEmpty)]);
       return;
     }
     if (_correctOption < 0 || _correctOption >= options.length) {
-      setState(() => _note = 'Select a correct option among the filled options.');
+      setState(() {
+        _note = 'Select a correct option among the filled options.';
+        _guidePulse++;
+      });
+      _scrollTo(_optionKeys[_correctOption.clamp(0, _optionKeys.length - 1)]);
       return;
     }
     setState(() {
@@ -2414,6 +2524,7 @@ class _MockTestsPanelState extends ConsumerState<_MockTestsPanel> {
         _editingOptionCtrls[i].text = i < options.length ? options[i] : '';
       }
       _editingCorrectOption = (q['correctOption'] as num?)?.toInt() ?? 0;
+      _editingOptionsError = false;
     });
   }
 
@@ -2435,7 +2546,11 @@ class _MockTestsPanelState extends ConsumerState<_MockTestsPanel> {
     if (testId == null || questionId == null) return;
     final options = _editingOptionCtrls.map((c) => c.text.trim()).where((t) => t.isNotEmpty).toList();
     if (options.length < 2) {
-      setState(() => _note = 'Add at least 2 non-empty options.');
+      setState(() {
+        _editingOptionsError = true;
+        _guidePulse++;
+      });
+      _scrollTo(_editingOptionKeys[_editingOptionCtrls.indexWhere((c) => c.text.trim().isEmpty)]);
       return;
     }
     setState(() {
@@ -2483,6 +2598,7 @@ class _MockTestsPanelState extends ConsumerState<_MockTestsPanel> {
       _editingTitleCtrl.text = test['title']?.toString() ?? '';
       _editingClassCtrl.text = (test['className'] ?? test['class_name'])?.toString() ?? '';
       _editingDurationCtrl.text = ((test['durationMinutes'] ?? test['duration_minutes']) as num?)?.toInt().toString() ?? '30';
+      _editingTestTitleError = false;
     });
   }
 
@@ -2490,7 +2606,15 @@ class _MockTestsPanelState extends ConsumerState<_MockTestsPanel> {
 
   Future<void> _saveTestEdit() async {
     final testId = _editingTestId;
-    if (testId == null || _editingTitleCtrl.text.trim().isEmpty) return;
+    if (testId == null) return;
+    if (_editingTitleCtrl.text.trim().isEmpty) {
+      setState(() {
+        _editingTestTitleError = true;
+        _guidePulse++;
+      });
+      _scrollTo(_editingTestTitleKey);
+      return;
+    }
     _noteArea = 'test:$testId';
     setState(() => _savingTest = true);
     final subject = ref.read(teacherProfileProvider).value?['subject']?.toString();
@@ -2519,7 +2643,12 @@ class _MockTestsPanelState extends ConsumerState<_MockTestsPanel> {
     final start = _assignStartByTestId[testId];
     final end = _assignEndByTestId[testId];
     if (start == null || end == null) {
-      setState(() => _note = 'Set both an opens-at and closes-at time before assigning this test.');
+      setState(() {
+        _note = 'Set both an opens-at and closes-at time before assigning this test.';
+        _guidePulse++;
+      });
+      final key = _scheduleKeys[testId];
+      if (key != null) _scrollTo(key);
       return;
     }
     setState(() => _assigningId = testId);
@@ -2533,7 +2662,13 @@ class _MockTestsPanelState extends ConsumerState<_MockTestsPanel> {
       ref.invalidate(teacherTestsProvider);
       setState(() => _note = 'Test assigned.');
     } catch (e) {
-      setState(() => _note = e.toString().replaceFirst('Exception: ', ''));
+      final error = e.toString().replaceFirst('Exception: ', '');
+      setState(() {
+        _note = error;
+        if (_isTestScheduleError(error)) _guidePulse++;
+      });
+      final key = _scheduleKeys[testId];
+      if (_isTestScheduleError(error) && key != null) _scrollTo(key);
     } finally {
       if (mounted) setState(() => _assigningId = null);
     }
@@ -2612,7 +2747,12 @@ class _MockTestsPanelState extends ConsumerState<_MockTestsPanel> {
               const SizedBox(height: 14),
               const _FormStep(number: '1', title: 'Create a draft', subtitle: 'A draft is not visible to students.'),
               const SizedBox(height: 10),
-              TextField(controller: _titleCtrl, decoration: const InputDecoration(labelText: 'Test title', hintText: 'Test title')),
+              GuidedHighlight(
+                key: _testTitleKey,
+                active: widget.isActive && (_testTitleError || (_createdTestId == null && widget.targetClass != 'all')) && _titleCtrl.text.trim().isEmpty,
+                pulseVersion: _guidePulse,
+                child: TextField(controller: _titleCtrl, onChanged: (_) => setState(() => _testTitleError = false), decoration: InputDecoration(labelText: 'Test title', hintText: 'Test title', errorText: _testTitleError ? 'Please enter a test title.' : null)),
+              ),
               const SizedBox(height: 8),
               TextField(controller: _durationCtrl, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Duration (minutes)', hintText: 'Duration (minutes)')),
               const SizedBox(height: 10),
@@ -2623,7 +2763,7 @@ class _MockTestsPanelState extends ConsumerState<_MockTestsPanel> {
                   child: Text(_creating ? 'Creating...' : (widget.targetClass == 'all' ? 'Select a class first' : 'Create Test for ${widget.targetClass}')),
                 ),
               ),
-              if (_note != null && _noteArea == 'create') ...[
+              if (_note != null && _noteArea == 'create' && !_testTitleError) ...[
                 const SizedBox(height: 8),
                 Text(_note!, style: TextStyle(fontSize: 12, color: AppColors.readableAccent(AppColors.danger, dark: AppColors.of(context).isDark))),
               ],
@@ -2657,26 +2797,53 @@ class _MockTestsPanelState extends ConsumerState<_MockTestsPanel> {
                     ],
                   ),
                   const SizedBox(height: 4),
-                  TextField(controller: _questionCtrl, maxLines: 2, decoration: const InputDecoration(labelText: 'Question', hintText: 'Question text', alignLabelWithHint: true)),
+                  GuidedHighlight(
+                    key: _questionTextKey,
+                    active: widget.isActive && !_loadingQuestions && _questionCtrl.text.trim().isEmpty,
+                    pulseVersion: _guidePulse,
+                    child: TextField(controller: _questionCtrl, onChanged: (_) => setState(() {}), maxLines: 2, decoration: InputDecoration(labelText: 'Question', hintText: 'Question text', alignLabelWithHint: true, errorText: _noteArea == 'question' && _note == 'Please enter a question.' && _questionCtrl.text.trim().isEmpty ? _note : null)),
+                  ),
                   const SizedBox(height: 8),
                   RadioGroup<int>(
                     groupValue: _correctOption,
-                    onChanged: (v) => setState(() => _correctOption = v ?? 0),
+                    onChanged: (v) => setState(() {
+                      _correctOption = v ?? 0;
+                      if (_note == 'Select a correct option among the filled options.') _note = null;
+                    }),
                     child: Column(
                       children: [
                         for (var i = 0; i < 4; i++)
                           Padding(
                             padding: const EdgeInsets.only(bottom: 6),
-                            child: Row(
-                              children: [
-                                Radio<int>(value: i),
-                                Expanded(
-                                  child: TextField(
-                                    controller: _optionCtrls[i],
-                                    decoration: InputDecoration(labelText: 'Option ${i + 1}${_correctOption == i ? ' (correct)' : ''}', hintText: 'Option ${i + 1}'),
+                            child: GuidedHighlight(
+                              key: _optionKeys[i],
+                              active: widget.isActive && _questionCtrl.text.trim().isNotEmpty &&
+                                  ((_optionCtrls.where((c) => c.text.trim().isNotEmpty).length < 2 &&
+                                  _optionCtrls.indexWhere((c) => c.text.trim().isEmpty) == i) ||
+                                  (_noteArea == 'question' && _note == 'Select a correct option among the filled options.' && _correctOption == i)),
+                              pulseVersion: _guidePulse,
+                              child: Row(
+                                children: [
+                                  Radio<int>(value: i),
+                                  Expanded(
+                                    child: TextField(
+                                      controller: _optionCtrls[i],
+                                      onChanged: (_) => setState(() {
+                                        if (_note == 'Add at least 2 non-empty options.' || _note == 'Select a correct option among the filled options.') _note = null;
+                                      }),
+                                      decoration: InputDecoration(
+                                        labelText: 'Option ${i + 1}${_correctOption == i ? ' (correct)' : ''}',
+                                        hintText: 'Option ${i + 1}',
+                                        errorMaxLines: 3,
+                                        errorText: _noteArea == 'question' &&
+                                            ((_note == 'Add at least 2 non-empty options.' && _optionCtrls.indexWhere((c) => c.text.trim().isEmpty) == i) ||
+                                            (_note == 'Select a correct option among the filled options.' && _correctOption == i))
+                                            ? _note : null,
+                                      ),
+                                    ),
                                   ),
-                                ),
-                              ],
+                                ],
+                              ),
                             ),
                           ),
                       ],
@@ -2689,7 +2856,10 @@ class _MockTestsPanelState extends ConsumerState<_MockTestsPanel> {
                       child: Text(_addingQuestion ? 'Adding...' : 'Add Question'),
                     ),
                   ),
-                  if (_note != null && _noteArea == 'question') ...[
+                  if (_note != null && _noteArea == 'question' &&
+                      !(_note == 'Please enter a question.' && _questionCtrl.text.trim().isEmpty) &&
+                      _note != 'Add at least 2 non-empty options.' &&
+                      _note != 'Select a correct option among the filled options.') ...[
                     const SizedBox(height: 8),
                     Text(_note!, style: TextStyle(fontSize: 12, color: AppColors.of(context).text)),
                   ],
@@ -2727,16 +2897,26 @@ class _MockTestsPanelState extends ConsumerState<_MockTestsPanel> {
                           for (var i = 0; i < 4; i++)
                             Padding(
                               padding: const EdgeInsets.only(bottom: 6),
-                              child: Row(
-                                children: [
-                                  Radio<int>(value: i),
-                                  Expanded(
-                                    child: TextField(
-                                      controller: _editingOptionCtrls[i],
-                                      decoration: InputDecoration(hintText: 'Option ${i + 1}'),
+                              child: GuidedHighlight(
+                                key: _editingOptionKeys[i],
+                                active: widget.isActive && _editingOptionsError && _editingOptionCtrls.indexWhere((c) => c.text.trim().isEmpty) == i,
+                                pulseVersion: _guidePulse,
+                                child: Row(
+                                  children: [
+                                    Radio<int>(value: i),
+                                    Expanded(
+                                      child: TextField(
+                                        controller: _editingOptionCtrls[i],
+                                        onChanged: (_) => setState(() => _editingOptionsError = false),
+                                        decoration: InputDecoration(
+                                          hintText: 'Option ${i + 1}',
+                                          errorText: _editingOptionsError && _editingOptionCtrls.indexWhere((c) => c.text.trim().isEmpty) == i ? 'Add at least 2 non-empty options.' : null,
+                                          errorMaxLines: 3,
+                                        ),
+                                      ),
                                     ),
-                                  ),
-                                ],
+                                  ],
+                                ),
                               ),
                             ),
                         ],
@@ -2798,8 +2978,15 @@ class _MockTestsPanelState extends ConsumerState<_MockTestsPanel> {
                         key: _createdTestId != null && t['id']?.toString() == _createdTestId ? _selectedTestKey : ValueKey('test-${t['id']}'),
                         test: t,
                         selected: _createdTestId != null && t['id']?.toString() == _createdTestId,
+                        guideActive: widget.isActive && _createdTestId != null && t['id']?.toString() == _createdTestId,
+                        panelActive: widget.isActive,
+                        scheduleKey: t['id'] == null ? null : _scheduleKeys.putIfAbsent(t['id'].toString(), GlobalKey.new),
                         editing: _editingTestId == t['id']?.toString(),
                         editingTitleCtrl: _editingTitleCtrl,
+                        editingTitleKey: _editingTestTitleKey,
+                        editingTitleError: _editingTestTitleError,
+                        guidePulse: _guidePulse,
+                        onEditingTitleChanged: () => setState(() => _editingTestTitleError = false),
                         editingClassCtrl: _editingClassCtrl,
                         editingDurationCtrl: _editingDurationCtrl,
                         savingEdit: _savingTest,
@@ -2813,8 +3000,14 @@ class _MockTestsPanelState extends ConsumerState<_MockTestsPanel> {
                         assigning: _assigningId == t['id']?.toString(),
                         assignStart: _assignStartByTestId[t['id']?.toString() ?? ''],
                         assignEnd: _assignEndByTestId[t['id']?.toString() ?? ''],
-                        onAssignStartChanged: (v) => setState(() => _assignStartByTestId[t['id']?.toString() ?? ''] = v),
-                        onAssignEndChanged: (v) => setState(() => _assignEndByTestId[t['id']?.toString() ?? ''] = v),
+                        onAssignStartChanged: (v) => setState(() {
+                          _assignStartByTestId[t['id']?.toString() ?? ''] = v;
+                          if (_noteArea == 'test:${t['id']}' && _isTestScheduleError(_note)) _note = null;
+                        }),
+                        onAssignEndChanged: (v) => setState(() {
+                          _assignEndByTestId[t['id']?.toString() ?? ''] = v;
+                          if (_noteArea == 'test:${t['id']}' && _isTestScheduleError(_note)) _note = null;
+                        }),
                         onAssign: () => _assignTest(t['id']?.toString() ?? ''),
                         strictMode: _strictByTestId[t['id']?.toString() ?? ''] == true,
                         onStrictChanged: (value) => setState(() => _strictByTestId[t['id']?.toString() ?? ''] = value),
@@ -2833,8 +3026,15 @@ class _MockTestsPanelState extends ConsumerState<_MockTestsPanel> {
 class _TestTile extends StatelessWidget {
   final Map<String, dynamic> test;
   final bool selected;
+  final bool guideActive;
+  final bool panelActive;
+  final GlobalKey? scheduleKey;
   final bool editing;
   final TextEditingController editingTitleCtrl;
+  final GlobalKey editingTitleKey;
+  final bool editingTitleError;
+  final int guidePulse;
+  final VoidCallback onEditingTitleChanged;
   final TextEditingController editingClassCtrl;
   final TextEditingController editingDurationCtrl;
   final bool savingEdit;
@@ -2859,8 +3059,15 @@ class _TestTile extends StatelessWidget {
     super.key,
     required this.test,
     required this.selected,
+    required this.guideActive,
+    required this.panelActive,
+    required this.scheduleKey,
     required this.editing,
     required this.editingTitleCtrl,
+    required this.editingTitleKey,
+    required this.editingTitleError,
+    required this.guidePulse,
+    required this.onEditingTitleChanged,
     required this.editingClassCtrl,
     required this.editingDurationCtrl,
     required this.savingEdit,
@@ -2945,7 +3152,12 @@ class _TestTile extends StatelessWidget {
           ),
           if (editing) ...[
             const SizedBox(height: 8),
-            TextField(controller: editingTitleCtrl, decoration: const InputDecoration(hintText: 'Test title', isDense: true)),
+            GuidedHighlight(
+              key: editingTitleKey,
+              active: panelActive && editingTitleError,
+              pulseVersion: guidePulse,
+              child: TextField(controller: editingTitleCtrl, onChanged: (_) => onEditingTitleChanged(), decoration: InputDecoration(hintText: 'Test title', isDense: true, errorText: editingTitleError ? 'Enter a test title.' : null)),
+            ),
             const SizedBox(height: 6),
             TextField(controller: editingClassCtrl, decoration: const InputDecoration(hintText: 'Class name', isDense: true)),
             const SizedBox(height: 6),
@@ -2981,13 +3193,20 @@ class _TestTile extends StatelessWidget {
                     onChanged: assigning ? null : (value) => onStrictChanged(value == true),
                   ),
                 ),
-                Row(
-                  children: [
-                    Expanded(child: _DateTimeField(label: 'Opens At', value: assignStart, onChanged: onAssignStartChanged)),
-                    const SizedBox(width: 8),
-                    Expanded(child: _DateTimeField(label: 'Closes At', value: assignEnd, onChanged: onAssignEndChanged)),
-                  ],
+                GuidedHighlight(
+                  key: scheduleKey,
+                  active: panelActive && (_isTestScheduleError(note) || (guideActive && (assignStart == null || assignEnd == null))),
+                  pulseVersion: guidePulse,
+                  child: Row(
+                    children: [
+                      Expanded(child: _DateTimeField(label: 'Opens At', value: assignStart, onChanged: onAssignStartChanged)),
+                      const SizedBox(width: 8),
+                      Expanded(child: _DateTimeField(label: 'Closes At', value: assignEnd, onChanged: onAssignEndChanged)),
+                    ],
+                  ),
                 ),
+                if (_isTestScheduleError(note))
+                  Text(note!, style: TextStyle(fontSize: 12, color: AppColors.readableAccent(AppColors.danger, dark: AppColors.of(context).isDark))),
                 const SizedBox(height: 8),
                 SizedBox(
                   width: double.infinity,
@@ -3000,7 +3219,7 @@ class _TestTile extends StatelessWidget {
             Text('Attempt window: ${fmt.format(startAt)} \u2192 ${fmt.format(endAt)}', style: TextStyle(fontSize: 11, color: AppColors.of(context).muted)),
           ],
           if (isAssigned && test['strictMode'] == true) StrictExamStudents(testId: test['id'].toString()),
-          if (note != null) ...[
+          if (note != null && !_isTestScheduleError(note)) ...[
             const SizedBox(height: 8),
             Text(note!, style: TextStyle(fontSize: 12, color: AppColors.of(context).text)),
           ],

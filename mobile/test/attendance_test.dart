@@ -7,6 +7,7 @@ import 'package:mobile/screens/teacher/teacher_attendance_tab.dart';
 import 'package:mobile/services/api_client.dart';
 import 'package:mobile/services/teacher_api_service.dart';
 import 'package:mobile/state/teacher_providers.dart';
+import 'package:mobile/widgets/guided_highlight.dart';
 
 const _period = {'startDate': '2026-04-01', 'endDate': '2026-12-01'};
 
@@ -55,6 +56,7 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
+    expect(tester.widget<GuidedHighlight>(find.ancestor(of: find.text('Save attendance'), matching: find.byType(GuidedHighlight))).active, isTrue);
     final all = find.text('Select all present');
     expect(find.text('2 present · 0 absent'), findsOneWidget);
     await tester.tap(all);
@@ -75,6 +77,7 @@ void main() {
       {'studentId': 'b', 'present': false},
     ]);
     expect(find.text('Attendance saved.'), findsOneWidget);
+    expect(tester.widget<GuidedHighlight>(find.ancestor(of: find.text('Save corrections'), matching: find.byType(GuidedHighlight))).active, isFalse);
   });
 
   testWidgets('the student Attendance icon opens the saved percentage', (

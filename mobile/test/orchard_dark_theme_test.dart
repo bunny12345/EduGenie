@@ -14,6 +14,7 @@ import 'package:mobile/state/student_providers.dart';
 import 'package:mobile/state/tutor_providers.dart';
 import 'package:mobile/theme/app_colors.dart';
 import 'package:mobile/widgets/orchard/orchard_colors.dart';
+import 'package:mobile/widgets/guided_highlight.dart';
 
 final _chapter = OrchardChapter.fromJson({
   'chapterId': 'plants',
@@ -317,6 +318,8 @@ void main() {
           );
           await tester.tap(find.text('Open'));
           await tester.pumpAndSettle();
+          expect(find.text('Next: answer question 1.'), findsOneWidget);
+          expect(tester.widget<GuidedHighlight>(find.ancestor(of: find.text('Roots'), matching: find.byType(GuidedHighlight)).first).active, isTrue);
           _expectContrast(tester, find.text('🧠 1-Week Memory Check · Plants'));
           _expectContrast(tester, find.text('Leaves'));
           _expectContrast(tester, find.text('Roots'));
@@ -331,6 +334,8 @@ void main() {
           );
           await tester.tap(find.text(passed ? 'Roots' : 'Leaves'));
           await tester.pump();
+          expect(find.text('Review your choices, then submit.'), findsOneWidget);
+          expect(tester.widget<GuidedHighlight>(find.ancestor(of: find.text('Submit'), matching: find.byType(GuidedHighlight)).first).active, isTrue);
           _expectContrast(tester, find.text(passed ? 'Roots' : 'Leaves'));
           dark.value = !isDark;
           await _pump(tester);

@@ -7,6 +7,7 @@ import '../../../state/student_providers.dart';
 import '../../../state/tutor_providers.dart';
 import '../../../theme/app_colors.dart';
 import '../../../widgets/orchard/orchard_colors.dart';
+import '../../../widgets/guided_highlight.dart';
 
 /// Blossom/Fruit retention check — mirrors
 /// `web/src/components/orchard/RetentionCheckModal.jsx`: a quick 3-question
@@ -126,6 +127,7 @@ class _RetentionCheckDialogState extends ConsumerState<_RetentionCheckDialog> {
   @override
   Widget build(BuildContext context) {
     final allAnswered = _questions.isNotEmpty && _questions.every((q) => _answers.containsKey(q.id));
+    final nextUnanswered = _questions.indexWhere((q) => !_answers.containsKey(q.id));
     final label = widget.reviewType == 'month' ? '1-Month Memory Check' : '1-Week Memory Check';
 
     return Dialog(
@@ -182,12 +184,20 @@ class _RetentionCheckDialogState extends ConsumerState<_RetentionCheckDialog> {
                               : Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
+                                    Text(
+                                      allAnswered ? 'Review your choices, then submit.' : 'Next: answer question ${nextUnanswered + 1}.',
+                                      style: TextStyle(fontSize: 12, color: AppColors.of(context).muted),
+                                    ),
+                                    const SizedBox(height: 8),
                                     for (var i = 0; i < _questions.length; i++) ...[
-                                      _QuestionBlock(
-                                        index: i,
-                                        question: _questions[i],
-                                        selected: _answers[_questions[i].id],
-                                        onSelect: (idx) => _select(_questions[i].id, idx),
+                                      GuidedHighlight(
+                                        active: i == nextUnanswered && !_submitting,
+                                        child: _QuestionBlock(
+                                          index: i,
+                                          question: _questions[i],
+                                          selected: _answers[_questions[i].id],
+                                          onSelect: (idx) => _select(_questions[i].id, idx),
+                                        ),
                                       ),
                                       const SizedBox(height: 14),
                                     ],
@@ -221,10 +231,13 @@ class _RetentionCheckDialogState extends ConsumerState<_RetentionCheckDialog> {
                         child: const Text('Cancel'),
                       ),
                       const SizedBox(width: 8),
-                      ElevatedButton(
-                        onPressed: (!allAnswered || _submitting || _loading || _error.isNotEmpty) ? null : _submit,
-                        style: ElevatedButton.styleFrom(backgroundColor: AppColors.brand, foregroundColor: Colors.white),
-                        child: Text(_submitting ? 'Submitting…' : 'Submit'),
+                      GuidedHighlight(
+                        active: allAnswered && !_submitting && _error.isEmpty,
+                        child: ElevatedButton(
+                          onPressed: (!allAnswered || _submitting || _loading || _error.isNotEmpty) ? null : _submit,
+                          style: ElevatedButton.styleFrom(backgroundColor: AppColors.brand, foregroundColor: Colors.white),
+                          child: Text(_submitting ? 'Submitting…' : 'Submit'),
+                        ),
                       ),
                     ],
                   ],

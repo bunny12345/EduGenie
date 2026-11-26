@@ -4,8 +4,31 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:mobile/models/calendar_event.dart';
 import 'package:mobile/screens/student/student_calendar_screen.dart';
 import 'package:mobile/state/student_providers.dart';
+import 'package:mobile/widgets/guided_highlight.dart';
 
 void main() {
+  testWidgets('empty calendar title is highlighted and brought into view', (tester) async {
+    tester.view.physicalSize = const Size(320, 650);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    await tester.pumpWidget(ProviderScope(
+      overrides: [calendarEventsProvider.overrideWith((ref) async => [])],
+      child: const MaterialApp(home: StudentCalendarScreen()),
+    ));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('Add Event'));
+    await tester.tap(find.text('Add Event'));
+    await tester.pumpAndSettle();
+    expect(find.text('Enter an event title.'), findsOneWidget);
+    final title = find.byWidgetPredicate((w) => w is TextField && w.decoration?.hintText == 'Event title');
+    expect(title.hitTestable(), findsOneWidget);
+    expect(tester.widget<GuidedHighlight>(find.ancestor(of: title, matching: find.byType(GuidedHighlight)).first).active, isTrue);
+    await tester.enterText(title, 'Exam day');
+    await tester.pumpAndSettle();
+    expect(find.text('Enter an event title.'), findsNothing);
+  });
+
   for (final dark in [false, true]) {
     for (final width in [320.0, 390.0]) {
       for (final scale in [1.0, 1.5, 2.0]) {
