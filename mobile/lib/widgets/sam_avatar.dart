@@ -299,7 +299,7 @@ class _SamRig extends ChangeNotifier {
   double lookX = 0, lookY = 0;
   double browLiftL = 0, browLiftR = 0;
   double headTilt = 0, headBob = 0, bodyBob = 0, bodyShiftX = 0;
-  final List<double> dots = [0, 0, 0];
+  final List<double> dots = [0, 0, 0, 0];
 
   double _randRange(double a, double b) => a + _rand.nextDouble() * (b - a);
 
@@ -518,7 +518,7 @@ class _SamRig extends ChangeNotifier {
     bodyBob = math.sin(t * 1.6) * 1.6;
     bodyShiftX = speaking ? _noise(t * 0.9, 23) * 2 + lean : 0;
 
-    for (var i = 0; i < 3; i++) {
+    for (var i = 0; i < dots.length; i++) {
       dots[i] = mode == SamMode.thinking ? 0.8 + 0.2 * math.sin(t * 5 - i * 1.1) : 0.0;
     }
     notifyListeners();
@@ -601,7 +601,7 @@ class _SamAvatarState extends State<SamAvatar> with SingleTickerProviderStateMix
 class _SamPainter extends CustomPainter {
   static const _vestPath = 'M124 532 Q130 482 124 410 Q126 380 152 368 L186 360 L200 412 L214 360 L248 368 Q274 380 276 410 Q270 482 276 532 Q200 540 124 532 Z';
   static const _skirtPath = 'M124 529 Q200 537 276 529 L306 668 Q200 684 94 668 Z';
-  static const _thoughtCloud = 'M374 145 C363 145 357 139 359 132 C360 126 365 123 372 123 C371 112 383 106 393 111 C400 102 415 105 418 117 C428 117 435 123 434 132 C433 141 426 145 416 145 Z';
+  static const _thoughtCloud = 'M400 109 C407 101 420 104 422 115 C432 113 440 122 436 132 C444 139 440 150 432 153 C434 162 426 169 416 166 C411 175 400 176 394 169 C385 174 375 169 374 160 C365 161 359 152 363 143 C356 136 360 125 369 122 C368 112 378 107 387 112 C389 105 395 105 400 109 Z';
   final _SamRig rig;
   final Color shirtColor;
   final double viewTop;
@@ -1230,7 +1230,7 @@ class _SamPainter extends CustomPainter {
   void _thoughtTrail(Canvas canvas) {
     if (rig.mode != SamMode.thinking) return;
     const edge = Color(0xFFA5B4FC);
-    const bubbles = [(311.0, 180.0, 5.0), (338.0, 159.0, 8.0)];
+    const bubbles = [(310.0, 187.0, 4.0), (330.0, 176.0, 6.0), (350.0, 165.0, 7.5)];
     for (var i = 0; i < bubbles.length; i++) {
       final o = rig.dots[i];
       final b = bubbles[i];
@@ -1238,7 +1238,7 @@ class _SamPainter extends CustomPainter {
       canvas.drawCircle(Offset(b.$1, b.$2), b.$3, _stroke(edge, 2.5, opacity: o));
     }
     final cloud = _svg(_thoughtCloud);
-    final opacity = rig.dots[2];
+    final opacity = rig.dots[3];
     canvas.drawPath(cloud, _fill(Colors.white, opacity));
     canvas.drawPath(cloud, _stroke(edge, 2.5, opacity: opacity, join: StrokeJoin.round));
   }

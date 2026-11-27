@@ -305,7 +305,7 @@ function Arm({ upRef, foreRef, store, uid }) {
 
 const VEST = 'M124 532 Q130 482 124 410 Q126 380 152 368 L186 360 L200 412 L214 360 L248 368 Q274 380 276 410 Q270 482 276 532 Q200 540 124 532 Z';
 const SKIRT = 'M124 529 Q200 537 276 529 L306 668 Q200 684 94 668 Z';
-const THOUGHT_CLOUD = 'M374 145 C363 145 357 139 359 132 C360 126 365 123 372 123 C371 112 383 106 393 111 C400 102 415 105 418 117 C428 117 435 123 434 132 C433 141 426 145 416 145 Z';
+const THOUGHT_CLOUD = 'M400 109 C407 101 420 104 422 115 C432 113 440 122 436 132 C444 139 440 150 432 153 C434 162 426 169 416 166 C411 175 400 176 394 169 C385 174 375 169 374 160 C365 161 359 152 363 143 C356 136 360 125 369 122 C368 112 378 107 387 112 C389 105 395 105 400 109 Z';
 
 export default function SamAvatar({ mode = 'idle', schoolName = '', shirtColor = '#23318f', getLevel, celebrate = false }) {
   const modeRef = useRef(mode);
@@ -976,10 +976,10 @@ export default function SamAvatar({ mode = 'idle', schoolName = '', shirtColor =
             </g>
           </g>
           <g className="eg-sam-thought-trail" aria-hidden="true" fill="#fff" stroke="#a5b4fc" strokeWidth="2.5" strokeLinejoin="round">
-            {[[311, 180, 5], [338, 159, 8]].map(([x, y, r], i) => (
+            {[[310, 187, 4], [330, 176, 6], [350, 165, 7.5]].map(([x, y, r], i) => (
               <circle key={i} ref={(el) => { dots.current[i] = el; }} cx={x} cy={y} r={r} style={{ opacity: 0 }} />
             ))}
-            <path ref={(el) => { dots.current[2] = el; }} d={THOUGHT_CLOUD} style={{ opacity: 0 }} />
+            <path ref={(el) => { dots.current[3] = el; }} d={THOUGHT_CLOUD} style={{ opacity: 0 }} />
           </g>
         </g>
       </g>

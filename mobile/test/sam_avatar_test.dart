@@ -12,7 +12,7 @@ import 'package:mobile/widgets/sam_avatar.dart';
 void main() {
   testWidgets('Sam’s thought cloud is visible inside the mobile crop only while thinking', (tester) async {
     const avatar = Key('cropped-avatar');
-    Future<int?> cloudAlpha(SamMode mode) async {
+    Future<List<int>?> thoughtAlphas(SamMode mode) async {
       await tester.pumpWidget(Directionality(
         textDirection: TextDirection.ltr,
         child: Center(
@@ -31,15 +31,18 @@ void main() {
         final image = await boundary.toImage();
         try {
           final pixels = (await image.toByteData(format: ui.ImageByteFormat.rawRgba))!;
-          return pixels.getUint8((image.width * 35 + 460) * 4 + 3);
+          return [
+            for (final (x, y) in [(460, 35), (460, 66), (410, 69)])
+              pixels.getUint8((image.width * y + x) * 4 + 3),
+          ];
         } finally {
           image.dispose();
         }
       });
     }
 
-    expect(await cloudAlpha(SamMode.thinking), greaterThan(140));
-    expect(await cloudAlpha(SamMode.idle), isZero);
+    expect(await thoughtAlphas(SamMode.thinking), everyElement(greaterThan(140)));
+    expect(await thoughtAlphas(SamMode.idle), everyElement(isZero));
   });
 
   testWidgets('SamAvatar paints in every mode without errors', (tester) async {
