@@ -56,7 +56,10 @@ class _StudentMoreScreenState extends ConsumerState<StudentMoreScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final session = ref.watch(sessionProvider).value;
+    final profile = ref.watch(sessionProvider.select((session) {
+      final value = session.value;
+      return value == null ? null : (value.name, value.className);
+    }));
     final isDark = ref.watch(themeModeProvider) == ThemeMode.dark;
     final palette = AppColors.of(context);
 
@@ -82,8 +85,8 @@ class _StudentMoreScreenState extends ConsumerState<StudentMoreScreen> {
       body: ListView(
         padding: const EdgeInsets.fromLTRB(16, 8, 16, 28),
         children: [
-          if (session != null)
-            _ProfileCard(name: session.name, className: session.className),
+          if (profile != null)
+            _ProfileCard(name: profile.$1, className: profile.$2),
           const _GroupLabel('Preferences'),
           SectionCard(
             padding: const EdgeInsets.symmetric(vertical: 4),

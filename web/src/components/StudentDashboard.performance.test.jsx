@@ -87,6 +87,17 @@ test('Home preserves summary data but does not fetch unopened library, calendar 
   await waitFor(() => expect(api.getLibrary).toHaveBeenCalledTimes(1));
 });
 
+test('a parent rerender during session renewal does not reload student data', async () => {
+  const { rerender } = render(<StudentDashboard studentId="student" onLogout={() => {}} />);
+  await waitFor(() => expect(api.getDashboard).toHaveBeenCalledTimes(1));
+  await waitFor(() => expect(api.getHomework).toHaveBeenCalledTimes(1));
+  await act(async () => rerender(<StudentDashboard studentId="student" onLogout={() => {}} />));
+  expect(api.getDashboard).toHaveBeenCalledTimes(1);
+  expect(api.getHomework).toHaveBeenCalledTimes(1);
+  expect(api.getProgress).toHaveBeenCalledTimes(1);
+  expect(api.getTests).toHaveBeenCalledTimes(1);
+});
+
 test('restored Calendar hash fetches calendar without fetching unrelated homework or tutor data', async () => {
   window.location.hash = 'Calendar';
   render(<StudentDashboard studentId="student" onLogout={() => {}} />);

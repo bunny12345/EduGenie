@@ -59,8 +59,8 @@ final teacherThemeModeProvider = NotifierProvider<ThemeModeNotifier, ThemeMode>(
 
 /// Signed-out and unsupported-role screens never inherit a portal's theme.
 final activeThemeModeProvider = Provider<ThemeMode>((ref) {
-  final session = ref.watch(sessionProvider).value;
-  if (session?.isTeacher == true) return ref.watch(teacherThemeModeProvider);
-  if (session?.isStudent == true) return ref.watch(themeModeProvider);
+  final role = ref.watch(sessionProvider.select((session) => session.value?.role));
+  if (role == 'teacher') return ref.watch(teacherThemeModeProvider);
+  if (role == 'student') return ref.watch(themeModeProvider);
   return ThemeMode.light;
 });

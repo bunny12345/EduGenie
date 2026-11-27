@@ -27,6 +27,8 @@ class _Session extends SessionNotifier {
     role == null ? null : Session(role: role, userId: role, token: 'fixture'),
   );
 
+  void setSession(Session session) => state = AsyncData(session);
+
   @override
   Future<void> logout() async => state = const AsyncData(null);
 }
@@ -80,12 +82,16 @@ void main() {
       tester.view.devicePixelRatio = 1;
       addTearDown(tester.view.resetPhysicalSize);
       addTearDown(tester.view.resetDevicePixelRatio);
+      var profileRequests = 0;
       final container = ProviderContainer(
         overrides: [
           sessionProvider.overrideWith(_Session.new),
           teacherApiServiceProvider.overrideWithValue(_TeacherApi()),
           teacherProfileProvider.overrideWith(
-            (ref) async => {'subject': 'Mathematics', 'grades': ['Class 8']},
+            (ref) async {
+              profileRequests++;
+              return {'subject': 'Mathematics', 'grades': ['Class 8']};
+            },
           ),
           teacherClassOptionsProvider.overrideWith((ref) async => []),
           teacherAnnouncementsProvider.overrideWith((ref) async => []),
@@ -111,6 +117,18 @@ void main() {
 
       await tester.tap(find.text('Students'));
       await tester.pump(const Duration(milliseconds: 250));
+      final session = container.read(sessionProvider.notifier) as _Session;
+      final requestsBeforeRenewal = profileRequests;
+      for (var i = 0; i < 3; i++) {
+        session.setSession(Session(role: 'teacher', userId: 'teacher', token: 'new-$i', name: 'Teacher'));
+        await tester.pump();
+      }
+      expect(profileRequests, requestsBeforeRenewal);
+      expect(identical(tester.state(find.byType(TeacherShell)), shell), isTrue);
+      expect(find.byIcon(Icons.people_rounded), findsOneWidget);
+      session.setSession(const Session(role: 'teacher', userId: 'teacher', token: 'new-2', name: 'Updated'));
+      await tester.pump();
+      expect(find.text('Hi, Updated'), findsOneWidget);
       await tester.tap(find.byIcon(Icons.more_vert_rounded));
       await tester.pumpAndSettle();
       expect(

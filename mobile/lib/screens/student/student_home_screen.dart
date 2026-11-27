@@ -307,7 +307,7 @@ class _AnnouncementBell extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     ref.watch(announcementRefreshProvider);
     final announcements = ref.watch(dashboardProvider).value?.announcements;
-    final studentId = ref.watch(sessionProvider).value?.userId;
+    final studentId = ref.watch(sessionProvider.select((session) => session.value?.userId));
     final seen = studentId == null
         ? null
         : ref.watch(seenAnnouncementsProvider(studentId)).value;
@@ -612,10 +612,13 @@ class _ProfileChipState extends ConsumerState<_ProfileChip> {
 
   @override
   Widget build(BuildContext context) {
-    final session = ref.watch(sessionProvider).value;
+    final profile = ref.watch(sessionProvider.select((session) {
+      final value = session.value;
+      return (value?.name, value?.className);
+    }));
     final dashboard = ref.watch(dashboardProvider).value;
-    final name = session?.name.isNotEmpty == true ? session!.name : 'Student';
-    final className = dashboard?.className ?? session?.className ?? '';
+    final name = profile.$1?.isNotEmpty == true ? profile.$1! : 'Student';
+    final className = dashboard?.className ?? profile.$2 ?? '';
     final badge = ref.watch(reportCardsProvider).value?.badge;
 
     return CompositedTransformTarget(

@@ -61,8 +61,8 @@ class _StudentReportCardScreenState extends ConsumerState<StudentReportCardScree
   @override
   Widget build(BuildContext context) {
     final cardsAsync = ref.watch(reportCardsProvider);
-    final session = ref.watch(sessionProvider).value;
-    final studentName = session?.name.isNotEmpty == true ? session!.name : 'Student';
+    final name = ref.watch(sessionProvider.select((session) => session.value?.name));
+    final studentName = name?.isNotEmpty == true ? name! : 'Student';
 
     return Scaffold(
       backgroundColor: AppColors.of(context).background,

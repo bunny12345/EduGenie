@@ -48,6 +48,25 @@ test('multiple registered classes are offered even if the roster contains one', 
   expect(select.value).toBe('Class 9');
 });
 
+test('a renewed session does not reload teacher data or reset the selected class', async () => {
+  api.getTeacherProfile.mockResolvedValue({ profile: { subject: 'Science', grades: ['Class 8', 'Class 9'] } });
+  const { container, rerender } = render(
+    <TeacherDashboard session={{ userId: 'teacher', subject: 'Science', token: 'old' }} onLogout={() => {}} />
+  );
+  const select = container.querySelector('.td-class-banner-select');
+  await waitFor(() => expect([...select.options].map((option) => option.value)).toContain('Class 9'));
+  await act(async () => fireEvent.change(select, { target: { value: 'Class 9' } }));
+  await waitFor(() => expect(api.listCurriculumLessons).toHaveBeenCalledWith(expect.objectContaining({ className: 'Class 9' })));
+  const requests = api.getTeacherProfile.mock.calls.length;
+  const lessons = api.listCurriculumLessons.mock.calls.length;
+  await act(async () => rerender(
+    <TeacherDashboard session={{ userId: 'teacher', subject: 'Science', token: 'new' }} onLogout={() => {}} />
+  ));
+  expect(select.value).toBe('Class 9');
+  expect(api.getTeacherProfile).toHaveBeenCalledTimes(requests);
+  expect(api.listCurriculumLessons).toHaveBeenCalledTimes(lessons);
+});
+
 test('a manual class choice is preserved when a delayed profile arrives', async () => {
   let resolveProfile;
   api.getTeacherProfile.mockReturnValue(new Promise((resolve) => { resolveProfile = resolve; }));

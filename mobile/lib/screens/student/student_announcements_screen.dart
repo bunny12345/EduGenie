@@ -35,7 +35,7 @@ class _StudentAnnouncementsScreenState
   Widget build(BuildContext context) {
     ref.watch(announcementRefreshProvider);
     final dashboardAsync = ref.watch(dashboardProvider);
-    final studentId = ref.watch(sessionProvider).value?.userId;
+    final studentId = ref.watch(sessionProvider.select((session) => session.value?.userId));
 
     return Scaffold(
       appBar: AppBar(title: const Text('Announcements')),

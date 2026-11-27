@@ -23,12 +23,12 @@ class TeacherProfileChip extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final profile = ref.watch(teacherProfileProvider).value;
-    final session = ref.watch(sessionProvider).value;
+    final sessionName = ref.watch(sessionProvider.select((session) => session.value?.name));
     final name = profile?['name']?.toString().trim();
     final displayName = name?.isNotEmpty == true
         ? name!
-        : session?.name.isNotEmpty == true
-        ? session!.name
+        : sessionName?.isNotEmpty == true
+        ? sessionName!
         : 'Teacher';
     return PopupMenuButton<void>(
       tooltip: 'Open teacher profile',
@@ -102,7 +102,7 @@ class _TeacherProfileDetails extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final profileAsync = ref.watch(teacherProfileProvider);
     final profile = profileAsync.value;
-    final session = ref.watch(sessionProvider).value;
+    final sessionName = ref.watch(sessionProvider.select((session) => session.value?.name));
     final name = profile?['name']?.toString().trim();
     final grades = profile?['grades'];
     final classes = grades is List
@@ -142,7 +142,7 @@ class _TeacherProfileDetails extends ConsumerWidget {
         const SizedBox(height: 6),
         Center(
           child: Text(
-            name?.isNotEmpty == true ? name! : session?.name ?? 'Teacher',
+            name?.isNotEmpty == true ? name! : sessionName ?? 'Teacher',
             textAlign: TextAlign.center,
             style: TextStyle(
               fontSize: 15,

@@ -22,7 +22,11 @@ final studentApiServiceProvider = Provider<StudentApiService>(
 /// Throws if called while signed out — every provider below is only ever
 /// watched from inside the student portal shell, where a session is guaranteed.
 String _requireStudentId(Ref ref) {
-  final id = ref.watch(sessionProvider).value?.userId ?? '';
+  final identity = ref.watch(sessionProvider.select((session) {
+    final value = session.value;
+    return (value?.role, value?.schoolId, value?.userId);
+  }));
+  final id = identity.$3 ?? '';
   if (id.isEmpty) throw Exception('No signed-in student');
   return id;
 }

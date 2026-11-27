@@ -14,16 +14,18 @@ class RoleRouter extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final sessionAsync = ref.watch(sessionProvider);
+    final sessionAsync = ref.watch(
+      sessionProvider.select((session) => session.whenData((value) => value?.role)),
+    );
 
     return sessionAsync.when(
       loading: () =>
           const Scaffold(body: Center(child: CircularProgressIndicator())),
       error: (err, stack) => const RoleGatewayScreen(),
-      data: (session) {
-        if (session == null) return const RoleGatewayScreen();
-        if (session.isTeacher) return const TeacherShell();
-        if (session.isStudent) return const StudentShell();
+      data: (role) {
+        if (role == null) return const RoleGatewayScreen();
+        if (role == 'teacher') return const TeacherShell();
+        if (role == 'student') return const StudentShell();
         return Scaffold(
           appBar: AppBar(title: const Text('AcademiX')),
           body: SafeArea(
@@ -34,7 +36,7 @@ class RoleRouter extends ConsumerWidget {
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   Text(
-                    session.isSchoolAdmin
+                    role == 'school_admin'
                         ? 'School administration is available on the AcademiX website only.'
                         : 'This account role is not supported in the mobile app.',
                   ),

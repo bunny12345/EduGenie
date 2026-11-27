@@ -7,15 +7,21 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mobile/main.dart';
+import 'package:mobile/models/dashboard.dart';
+import 'package:mobile/models/learning_score.dart';
+import 'package:mobile/models/orchard_data.dart';
 import 'package:mobile/models/session.dart';
+import 'package:mobile/models/subject_score.dart';
 import 'package:mobile/services/api_client.dart';
 import 'package:mobile/services/auth_service.dart';
 import 'package:mobile/services/secure_storage_service.dart';
+import 'package:mobile/services/student_api_service.dart';
 import 'package:mobile/state/session_provider.dart';
+import 'package:mobile/state/student_providers.dart';
 
-String _token(DateTime expiry) {
+String _token(DateTime expiry, {String role = 'teacher', String sub = 'teacher'}) {
   final payload = base64Url.encode(utf8.encode(jsonEncode({
-    'sub': 'teacher', 'role': 'teacher',
+    'sub': sub, 'role': role,
     'exp': expiry.millisecondsSinceEpoch ~/ 1000,
   }))).replaceAll('=', '');
   return 'header.$payload.signature';
@@ -43,11 +49,118 @@ class _Auth extends AuthService {
   Future<String> renewSession(String token) {
     renewals++;
     if (failure != null) return Future.error(failure!);
-    return pending?.future ?? Future.value(_token(now().add(const Duration(hours: 48))));
+    final claims = Session(role: '', token: token).tokenClaims!;
+    return pending?.future ?? Future.value(_token(
+      now().add(const Duration(hours: 48)),
+      role: claims['role'] as String,
+      sub: claims['sub'] as String,
+    ));
+  }
+}
+
+class _StudentApi extends StudentApiService {
+  _StudentApi() : super(ApiClient());
+  final dashboardIds = <String>[];
+  final orchardIds = <String>[];
+  final progressIds = <String>[];
+  final learningScoreIds = <String>[];
+
+  @override
+  Future<DashboardData> getDashboard(String studentId) async {
+    dashboardIds.add(studentId);
+    return const DashboardData();
+  }
+
+  @override
+  Future<OrchardData> getOrchard(String studentId) async {
+    orchardIds.add(studentId);
+    return const OrchardData();
+  }
+
+  @override
+  Future<List<SubjectScore>> getProgress(String studentId, {String period = 'week'}) async {
+    progressIds.add(studentId);
+    return [];
+  }
+
+  @override
+  Future<LearningScoreData> getLearningScore(String studentId) async {
+    learningScoreIds.add(studentId);
+    return LearningScoreData.fromJson({});
   }
 }
 
 void main() {
+  testWidgets('renewals keep student data loaded while identity changes invalidate it', (tester) async {
+    var now = DateTime.utc(2026, 1, 1);
+    final initial = Session(
+      role: 'student', userId: 'student', schoolId: 'school',
+      token: _token(now.add(const Duration(hours: 24)), role: 'student', sub: 'student'),
+    );
+    final storage = _MemoryStorage(jsonEncode(initial.toJson()));
+    final auth = _Auth(() => now);
+    final api = ApiClient();
+    final studentApi = _StudentApi();
+    final container = ProviderContainer(overrides: [
+      secureStorageServiceProvider.overrideWithValue(storage),
+      apiClientProvider.overrideWithValue(api),
+      authServiceProvider.overrideWithValue(auth),
+      studentApiServiceProvider.overrideWithValue(studentApi),
+      sessionClockProvider.overrideWithValue(() => now),
+    ]);
+    await container.read(sessionProvider.future);
+    final dashboard = container.listen(dashboardProvider, (_, _) {});
+    final orchard = container.listen(orchardProvider, (_, _) {});
+    final progress = container.listen(progressProvider, (_, _) {});
+    final learningScore = container.listen(learningScoreProvider, (_, _) {});
+    await container.read(dashboardProvider.future);
+    await container.read(orchardProvider.future);
+    await container.read(progressProvider.future);
+    await container.read(learningScoreProvider.future);
+
+    final notifier = container.read(sessionProvider.notifier);
+    for (var i = 0; i < 2; i++) {
+      now = now.add(const Duration(seconds: 6));
+      notifier.recordActivity();
+      await tester.pump(const Duration(seconds: 6));
+      await tester.pump();
+    }
+    expect(auth.renewals, 2);
+    expect(studentApi.dashboardIds, ['student']);
+    expect(studentApi.orchardIds, ['student']);
+    expect(studentApi.progressIds, ['student']);
+    expect(studentApi.learningScoreIds, ['student']);
+    expect(api.authToken, container.read(sessionProvider).value!.token);
+    expect(Session.fromJson(jsonDecode(storage.value!) as Map<String, dynamic>).token, api.authToken);
+
+    await notifier.login(Session(
+      role: 'student', userId: 'other', schoolId: 'school',
+      token: _token(now.add(const Duration(hours: 48)), role: 'student', sub: 'other'),
+    ));
+    await tester.pump();
+    await container.read(dashboardProvider.future);
+    await container.read(orchardProvider.future);
+    await container.read(progressProvider.future);
+    await container.read(learningScoreProvider.future);
+    expect(studentApi.dashboardIds, ['student', 'other']);
+    expect(studentApi.orchardIds, ['student', 'other']);
+    expect(studentApi.progressIds, ['student', 'other']);
+    expect(studentApi.learningScoreIds, ['student', 'other']);
+
+    await notifier.logout();
+    await tester.pump();
+    expect(container.read(dashboardProvider).hasError, isTrue);
+    expect(container.read(orchardProvider).hasError, isTrue);
+    expect(container.read(progressProvider).hasError, isTrue);
+    expect(container.read(learningScoreProvider).hasError, isTrue);
+    dashboard.close();
+    orchard.close();
+    progress.close();
+    learningScore.close();
+    container.dispose();
+    await tester.pump();
+  });
+
   test('an expired stored session is cleared on startup', () async {
     final now = DateTime.utc(2026, 1, 1);
     final session = Session(role: 'teacher', userId: 'teacher', token: _token(now));

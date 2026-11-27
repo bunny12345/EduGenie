@@ -581,6 +581,21 @@ test('school sidebar restores progress from the hash and reuses both student rep
   expect(screen.queryByTestId('school-support')).not.toBeInTheDocument();
 });
 
+test('a renewed session does not reload school progress or reset the selected student', async () => {
+  const { rerender } = render(<SchoolDashboard session={{ ...session, token: 'old' }} onLogout={() => {}} />);
+  await screen.findByTestId('learning-report');
+  fireEvent.click(screen.getByRole('button', { name: /Banu Class 9/ }));
+  expect(screen.getByTestId('learning-report')).toHaveTextContent('Banu');
+  const rosterRequests = getSchoolProgressStudents.mock.calls.length;
+  const scoreRequests = getSchoolStudentLearningScore.mock.calls.length;
+  const reportRequests = getSchoolStudentReportCards.mock.calls.length;
+  await act(async () => rerender(<SchoolDashboard session={{ ...session, token: 'new' }} onLogout={() => {}} />));
+  expect(screen.getByTestId('learning-report')).toHaveTextContent('Banu');
+  expect(getSchoolProgressStudents).toHaveBeenCalledTimes(rosterRequests);
+  expect(getSchoolStudentLearningScore).toHaveBeenCalledTimes(scoreRequests);
+  expect(getSchoolStudentReportCards).toHaveBeenCalledTimes(reportRequests);
+});
+
 test('school graph dates sit at the top and saving refreshes the selected student report', async () => {
   render(<SchoolDashboard session={session} onLogout={jest.fn()} />);
   await screen.findByTestId('learning-report');
