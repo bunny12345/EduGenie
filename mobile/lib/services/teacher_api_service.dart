@@ -6,6 +6,7 @@ import 'api_client.dart';
 /// Teacher-facing GET endpoints — mirrors the teacher calls in `web/src/api.js`.
 class TeacherApiService {
   final ApiClient _client;
+  final _pendingStudents = <(String?, String, String), Future<List<Map<String, dynamic>>>>{};
 
   TeacherApiService(this._client);
 
@@ -112,11 +113,10 @@ class TeacherApiService {
   /// Distinct, sorted class names across this teacher's students — mirrors
   /// `allKnownClasses` (built from `getTeacherStudents`) in `TeacherDashboard.jsx`.
   Future<List<String>> getClassOptions() async {
-    final json = await _get('/teacher/students', const {});
-    final list = json['students'] as List? ?? [];
+    final list = await getStudents();
     final classes = <String>{};
     for (final entry in list) {
-      final className = (entry as Map)['className']?.toString().trim() ?? '';
+      final className = entry['className']?.toString().trim() ?? '';
       if (className.isNotEmpty) classes.add(className);
     }
     final sorted = classes.toList()..sort();
@@ -129,13 +129,25 @@ class TeacherApiService {
     String search = '',
     String className = '',
   }) async {
-    final json = await _get('/teacher/students', {
-      if (search.trim().isNotEmpty) 'q': search.trim(),
-      if (className.trim().isNotEmpty && className.toLowerCase() != 'all')
-        'className': className.trim(),
-    });
-    final list = json['students'] as List? ?? [];
-    return list.map((s) => Map<String, dynamic>.from(s as Map)).toList();
+    final query = search.trim();
+    final filter = className.toLowerCase() == 'all' ? '' : className.trim();
+    final key = (_client.authToken, query, filter);
+    final existing = _pendingStudents[key];
+    if (existing != null) return existing;
+    final request = () async {
+      final json = await _get('/teacher/students', {
+        if (query.isNotEmpty) 'q': query,
+        if (filter.isNotEmpty) 'className': filter,
+      });
+      final list = json['students'] as List? ?? [];
+      return list.map((s) => Map<String, dynamic>.from(s as Map)).toList();
+    }();
+    _pendingStudents[key] = request;
+    try {
+      return await request;
+    } finally {
+      _pendingStudents.remove(key);
+    }
   }
 
   /// One student's full homework list with status/grade/attempt info —

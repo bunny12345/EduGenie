@@ -69,6 +69,7 @@ test('dashboard reads independent panels concurrently while preserving profile, 
   auth.resolveStudentProfile = async () => ({
     id: studentId, name: 'Student', className: 'Class 8', schoolId: 'school', teacherId: 'teacher',
   });
+
   auth.listClassTeachers = async () => [{ id: 'teacher', name: 'Teacher', subject: 'Science' }];
   const feed = new LocalFeedService();
   const controller = new DashboardController(db, feed, auth);
@@ -101,4 +102,68 @@ test('dashboard reads independent panels concurrently while preserving profile, 
   assert.deepEqual(refreshed.announcements.find((a) => a.id === 'class-post'), {
     id: 'class-post', title: edit.title, message: edit.message, audience: 'class:Class 8', createdAt: today,
   });
+});
+
+test('teacher dashboard overlaps independent reads and retains subject and school scope', async () => {
+  const started: string[] = [];
+  const deferred = <T>(name: string) => {
+    let resolve!: (value: T) => void;
+    const promise = new Promise<T>((done) => { resolve = done; });
+    return {
+      start: () => { started.push(name); return promise; },
+      resolve: (value: T) => resolve(value),
+    };
+  };
+  const grades = deferred<string[]>('grades');
+  const subject = deferred<string>('subject');
+  const announcements = deferred<{ data: unknown[] }>('announcements');
+  const invites = deferred<{ invites: unknown[] }>('invites');
+  const homework = deferred<{ data: unknown[] }>('homework');
+  const progress = deferred<{ data: unknown[] }>('progress_metrics');
+  const scopeCalls: unknown[] = [];
+  const db = Object.create(SupabaseService.prototype);
+  db.client = {
+    from(table: string) {
+      const query = {
+        select: () => query,
+        in: (_column: string, ids: string[]) => { assert.deepEqual(ids, ['s1']); return query; },
+        order: () => query,
+        limit: () => ({ announcements, homework, progress_metrics: progress }[table]!.start()),
+      };
+      return query;
+    },
+  };
+  const auth = Object.create(StudentAuthService.prototype);
+  auth.resolveTeacherGrades = () => grades.start();
+  auth.resolveTeacherSubject = () => subject.start();
+  auth.listStudentsByScope = async (scope: unknown) => {
+    scopeCalls.push(scope);
+    return { students: [{ id: 's1', name: 'Student', class_name: 'Class 8' }] };
+  };
+  auth.listInvitesByScope = (scope: unknown) => {
+    assert.deepEqual(scope, { schoolId: 'school', teacherId: 'teacher', role: 'student' });
+    return invites.start();
+  };
+  const controller = new TeacherController(db, auth, new LocalFeedService(), null!, null!);
+  const pending = controller.dashboard({ user: { role: 'teacher', sub: 'teacher', schoolId: 'school' } });
+
+  assert.deepEqual(started, ['grades', 'subject', 'announcements', 'invites']);
+  grades.resolve(['Class 8']);
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  assert.deepEqual(scopeCalls, [{ teacherId: 'teacher', schoolId: 'school', grades: ['Class 8'] }]);
+  assert.deepEqual(started.slice(-2), ['homework', 'progress_metrics']);
+  subject.resolve('Science');
+  announcements.resolve({ data: [{ id: 'notice', title: 'Notice' }] });
+  invites.resolve({ invites: [{ id: 'invite', status: 'active' }] });
+  homework.resolve({ data: [
+    { subject: 'Science', status: 'pending' },
+    { subject: 'Mathematics', status: 'pending' },
+  ] });
+  progress.resolve({ data: [{ metric_value: 60 }, { metric_value: 80 }] });
+  const result = await pending;
+  assert.equal(result.summary.studentsCount, 1);
+  assert.equal(result.summary.activeHomework, 1);
+  assert.equal(result.summary.avgScore, 70);
+  assert.equal(result.summary.announcementsCount, 1);
+  assert.equal(result.summary.activeInvites, 1);
 });

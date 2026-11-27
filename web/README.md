@@ -231,6 +231,9 @@ refreshes and refresh stale visible data when returning. Tutor history polls
 only while AI Tutor is open. User actions still refresh their affected data.
 Errors continue to appear through the existing panel messages.
 
+The teacher dashboard makes one initial roster request; the same filter effect
+continues to refresh it when search or class selection changes.
+
 Student, teacher and school web portals omit manual Refresh buttons. Existing
 background updates and post-save reloads remain active; browser reload fetches
 fresh data. Failed requests still offer retry controls where available.

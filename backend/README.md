@@ -659,6 +659,8 @@ Dashboard profile and summary reads run concurrently where independent, includin
 the optional streak sources. Existing limits, class filtering, local fallbacks
 and dashboard cache behavior remain unchanged. This speeds up the shared API
 used by both the website and mobile app without changing its response contract.
+The teacher dashboard overlaps roster, subject, announcements and invite reads,
+then reads homework and progress concurrently after the roster is known.
 Concurrent learning-score requests for the same student share one in-flight
 calculation; completed results and failures are not cached. Different students
 remain isolated, and all historical evidence and score formulas are unchanged.

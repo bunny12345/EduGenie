@@ -7,12 +7,14 @@ import 'package:mobile/models/rewards_data.dart';
 import 'package:mobile/models/session.dart';
 import 'package:mobile/navigation/student_nav_shell.dart';
 import 'package:mobile/screens/student/student_services_screen.dart';
+import 'package:mobile/screens/student/student_home_screen.dart';
 import 'package:mobile/state/focus_lock_provider.dart';
 import 'package:mobile/state/exam_access_provider.dart';
 import 'package:mobile/state/session_provider.dart';
 import 'package:mobile/state/student_providers.dart';
 import 'package:mobile/theme/app_colors.dart';
 import 'package:mobile/theme/app_theme.dart';
+import 'package:mobile/widgets/student_shortcut_tile.dart';
 
 class _UnlockedFocus extends FocusLockNotifier {
   @override
@@ -25,6 +27,25 @@ class _SignedOutSession extends SessionNotifier {
 }
 
 void main() {
+  testWidgets('shortcut animation decodes at its displayed physical size', (tester) async {
+    tester.view.devicePixelRatio = 3;
+    addTearDown(tester.view.resetDevicePixelRatio);
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: StudentShortcutTile(
+          label: 'AI Tutor',
+          asset: 'assets/gifs/ai-tutor.gif',
+          accent: Colors.blue,
+          onTap: () {},
+        ),
+      ),
+    ));
+    final image = tester.widget<Image>(find.byType(Image));
+    final resized = image.image as ResizeImage;
+    expect(resized.width, 120);
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
   for (final dark in [false, true]) {
     testWidgets(
       'Services filled icon matches Home selection and compact sizing in ${dark ? 'dark' : 'light'} mode',
@@ -65,8 +86,14 @@ void main() {
           palette.muted,
         );
         expect(find.byIcon(Icons.home_rounded), findsOneWidget);
+        final home = tester.element(find.byType(StudentHomeScreen, skipOffstage: false));
+        final services = tester.element(find.byType(StudentServicesScreen, skipOffstage: false));
+        expect(TickerMode.valuesOf(home).enabled, isTrue);
+        expect(TickerMode.valuesOf(services).enabled, isFalse);
         await tester.tap(find.text('Services'));
         await tester.pump(const Duration(milliseconds: 250));
+        expect(TickerMode.valuesOf(home).enabled, isFalse);
+        expect(TickerMode.valuesOf(services).enabled, isTrue);
         expect(servicesIcon(), findsOneWidget);
         expect(icon().size, 22);
         expect(icon().color, palette.accent);
@@ -104,6 +131,8 @@ void main() {
         expect(find.text('Services'), findsOneWidget);
         await tester.tap(find.byIcon(Icons.home_outlined));
         await tester.pump(const Duration(milliseconds: 250));
+        expect(TickerMode.valuesOf(home).enabled, isTrue);
+        expect(TickerMode.valuesOf(services).enabled, isFalse);
         expect(find.byIcon(Icons.home_rounded), findsOneWidget);
         expect(find.byIcon(Icons.grid_view_outlined), findsOneWidget);
         expect(tester.takeException(), isNull);

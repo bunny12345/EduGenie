@@ -143,7 +143,13 @@ class _StudentShellState extends State<StudentShell> {
           child: Scaffold(
             body: NotificationListener<ScrollNotification>(
               onNotification: _onScrollNotification,
-              child: IndexedStack(index: index, children: _screens),
+              child: IndexedStack(
+                index: index,
+                children: [
+                  for (final (screenIndex, screen) in _screens.indexed)
+                    TickerMode(enabled: screenIndex == index, child: screen),
+                ],
+              ),
             ),
             bottomNavigationBar: SafeArea(
               minimum: const EdgeInsets.fromLTRB(16, 0, 16, 10),

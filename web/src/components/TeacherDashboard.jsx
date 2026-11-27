@@ -1147,7 +1147,6 @@ export default function TeacherDashboard({ session, onLogout }) {
     async function bootstrap() {
       await Promise.all([
         loadSummaryPanel(),
-        loadStudentsPanel(''),
         loadAnnouncementsPanel(),
         loadTestsPanel(),
         getTeacherProfile().then((res) => {

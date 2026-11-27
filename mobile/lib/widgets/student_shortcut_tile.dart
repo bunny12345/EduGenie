@@ -96,6 +96,7 @@ class StudentShortcutTile extends StatelessWidget {
                     asset,
                     width: 40,
                     height: 40,
+                    cacheWidth: (40 * MediaQuery.devicePixelRatioOf(context)).ceil(),
                     fit: BoxFit.contain,
                     excludeFromSemantics: true,
                   ),

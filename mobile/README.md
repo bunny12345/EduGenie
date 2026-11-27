@@ -6,6 +6,16 @@ sessions show a web-only/unsupported notice and can sign out, never fall through
 to the student portal. Web school administration and existing API/session
 contracts remain unchanged.
 
+## Navigation performance
+
+Student shortcut animations decode at their displayed device-pixel width and
+pause on hidden bottom-navigation tabs; tab state and animations resume when
+reopened. Simultaneous identical teacher roster requests share the in-flight
+response for the same token and filters. Completed results and failures are not
+cached, so later requests still fetch fresh data.
+
+Run `flutter test test/student_nav_shell_test.dart test/teacher_api_service_test.dart`.
+
 ## App updates
 
 Student More and the teacher three-dot menu show the installed version.

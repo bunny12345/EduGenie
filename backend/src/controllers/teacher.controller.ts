@@ -210,35 +210,38 @@ export class TeacherController {
   async dashboard(@Req() req: any) {
     this.ensureTeacher(req);
     try {
-      const scopedStudentsRes = await this.studentAuth.listStudentsByScope(await this.teacherScope(req));
-      const students = Array.isArray(scopedStudentsRes.students) ? scopedStudentsRes.students : [];
-      const studentIds = students.map((s: any) => s.id).filter(Boolean);
-      const subjectScope = await this.teacherSubject(req);
-
-      let homeworkRows: any[] = [];
-      if (studentIds.length) {
-        const homeworkRes = await this.db.client.from('homework').select('*').in('student_id', studentIds).order('created_at', { ascending: false }).limit(500);
-        homeworkRows = Array.isArray((homeworkRes as any)?.data) ? (homeworkRes as any).data : [];
-      }
+      const rosterAndMetrics = (async () => {
+        const scopedStudentsRes = await this.studentAuth.listStudentsByScope(await this.teacherScope(req));
+        const students = Array.isArray(scopedStudentsRes.students) ? scopedStudentsRes.students : [];
+        const studentIds = students.map((s: any) => s.id).filter(Boolean);
+        const [homeworkRes, progressRes] = await Promise.all([
+          (async () => studentIds.length
+            ? this.db.client.from('homework').select('*').in('student_id', studentIds).order('created_at', { ascending: false }).limit(500)
+            : null)(),
+          (async () => studentIds.length
+            ? this.db.client.from('progress_metrics').select('*').in('student_id', studentIds).order(METRIC_ORDER_COLUMN, { ascending: false }).limit(1000)
+            : null)()
+        ]);
+        return { students, studentIds, homeworkRes, progressRes };
+      })();
+      const [{ students, studentIds, homeworkRes, progressRes }, subjectScope, announcementsRes, inviteRes] = await Promise.all([
+        rosterAndMetrics,
+        this.teacherSubject(req),
+        (async () => this.db.client.from('announcements').select('*').order('created_at', { ascending: false }).limit(20))(),
+        (async () => this.studentAuth.listInvitesByScope({
+          schoolId: req?.user?.schoolId || undefined,
+          teacherId: req?.user?.sub || undefined,
+          role: 'student'
+        }))()
+      ]);
+      let homeworkRows: any[] = Array.isArray((homeworkRes as any)?.data) ? (homeworkRes as any).data : [];
       // Subject scoping: only count homework for the teacher's own subject.
       if (subjectScope) {
         homeworkRows = homeworkRows.filter((h: any) => String(h?.subject || '').trim().toLowerCase() === subjectScope);
       }
 
-      let progressRows: any[] = [];
-      if (studentIds.length) {
-        const progressRes = await this.db.client.from('progress_metrics').select('*').in('student_id', studentIds).order(METRIC_ORDER_COLUMN, { ascending: false }).limit(1000);
-        progressRows = Array.isArray((progressRes as any)?.data) ? (progressRes as any).data : [];
-      }
-
-      const announcementsRes = await this.db.client.from('announcements').select('*').order('created_at', { ascending: false }).limit(20);
+      const progressRows: any[] = Array.isArray((progressRes as any)?.data) ? (progressRes as any).data : [];
       const announcements = Array.isArray((announcementsRes as any)?.data) ? (announcementsRes as any).data : [];
-
-      const inviteRes = await this.studentAuth.listInvitesByScope({
-        schoolId: req?.user?.schoolId || undefined,
-        teacherId: req?.user?.sub || undefined,
-        role: 'student'
-      });
       const invites = Array.isArray(inviteRes.invites) ? inviteRes.invites : [];
 
       const avgScore = progressRows.length

@@ -26,6 +26,14 @@ function openDashboard() {
   return { ...result, select: result.container.querySelector('.td-class-banner-select') };
 }
 
+test('teacher startup requests the initial roster only once', async () => {
+  api.getTeacherProfile.mockResolvedValue({ profile: { subject: 'Science', grades: ['Class 8', 'Class 9'] } });
+  openDashboard();
+  await waitFor(() => expect(api.getTeacherProfile).toHaveBeenCalledTimes(1));
+  await act(async () => {});
+  expect(api.getTeacherStudents).toHaveBeenCalledTimes(1);
+});
+
 test('a sole registered class is selected even without students', async () => {
   api.getTeacherProfile.mockResolvedValue({ profile: { subject: 'Science', grades: ['Class 9'] } });
   const { select } = openDashboard();
