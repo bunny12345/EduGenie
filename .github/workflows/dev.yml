@@ -1,0 +1,174 @@
+name: Development deployment
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: "Start, stop, or build and deploy development"
+        required: true
+        type: choice
+        options: [deploy, start, stop]
+        default: deploy
+      allow_failed_tests:
+        description: "Deploy despite failed tests (review the test logs first)"
+        required: true
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: academix-dev
+  cancel-in-progress: false
+
+jobs:
+  build:
+    if: inputs.action == 'deploy'
+    runs-on: ubuntu-latest
+    environment: dev
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - name: Test dev controls
+        run: PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s infra/dev -p 'test_ci_control.py' -v
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.44.4'
+          channel: stable
+      - name: Build backend
+        working-directory: backend
+        run: |
+          npm ci
+          npm run build
+      - name: Install website dependencies
+        working-directory: web
+        run: npm ci
+      - name: Test website
+        id: web_tests
+        continue-on-error: true
+        working-directory: web
+        run: CI=true npm test -- --watchAll=false --passWithNoTests
+      - name: Build website
+        working-directory: web
+        env:
+          REACT_APP_API_URL: https://dev.academix.now
+          REACT_APP_SUPABASE_URL: https://mgrkatzzzkuyudwakshx.supabase.co
+          REACT_APP_SUPABASE_ANON_KEY: ${{ secrets.DEV_SUPABASE_ANON_KEY }}
+          REACT_APP_USE_PROXY: ''
+          REACT_APP_DEV_TOKEN: ''
+        run: |
+          test -n "$REACT_APP_SUPABASE_ANON_KEY" || { echo "Missing DEV_SUPABASE_ANON_KEY"; exit 1; }
+          python3 -c 'import base64,json,os,sys
+          try:
+              part = os.environ["REACT_APP_SUPABASE_ANON_KEY"].split(".")[1]
+              claims = json.loads(base64.urlsafe_b64decode(part + "=" * (-len(part) % 4)))
+              assert claims.get("role") == "anon" and claims.get("ref") == "mgrkatzzzkuyudwakshx"
+          except (ValueError, IndexError, KeyError, AssertionError):
+              sys.exit("DEV_SUPABASE_ANON_KEY must be the legacy anon JWT for AcademiX-Dev")'
+          CI=false npm run build
+          if grep -rq 'htydcedtuuczxjwtqrqx' build; then
+            echo "Refusing website build containing the production Supabase reference"
+            exit 1
+          fi
+      - name: Install Flutter dependencies
+        working-directory: mobile
+        run: flutter pub get
+      - name: Test Flutter app
+        id: mobile_tests
+        continue-on-error: true
+        working-directory: mobile
+        run: flutter test
+      - name: Check test results
+        env:
+          WEB_RESULT: ${{ steps.web_tests.outcome }}
+          MOBILE_RESULT: ${{ steps.mobile_tests.outcome }}
+          ALLOW_FAILED_TESTS: ${{ inputs.allow_failed_tests }}
+        run: |
+          echo "Web tests: $WEB_RESULT; Flutter tests: $MOBILE_RESULT" | tee -a "$GITHUB_STEP_SUMMARY"
+          if [ "$WEB_RESULT" != success ] || [ "$MOBILE_RESULT" != success ]; then
+            echo "::warning::Tests failed. Review their logs; this is not a production release gate."
+            if [ "$ALLOW_FAILED_TESTS" != true ]; then
+              echo "Deployment blocked. To deploy for development anyway, rerun with allow_failed_tests enabled."
+              exit 1
+            fi
+            echo "**Tests failed; deployment was explicitly allowed despite failures.**" >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - name: Build Android dev APK
+        working-directory: mobile
+        run: |
+          flutter build apk --debug --dart-define=API_BASE_URL=https://dev.academix.now
+      - name: Save website build
+        uses: actions/upload-artifact@v4
+        with:
+          name: dev-website
+          path: web/build/
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 7
+      - name: Save Android APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: academix-dev-android-apk
+          path: mobile/build/app/outputs/flutter-apk/app-debug.apk
+          if-no-files-found: error
+          retention-days: 7
+
+  control:
+    if: inputs.action != 'deploy'
+    runs-on: ubuntu-latest
+    environment: dev
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.DEV_AWS_ROLE_ARN }}
+          aws-region: ap-south-1
+          allowed-account-ids: '931886962745'
+      - name: Start or stop dev
+        env:
+          ACTION: ${{ inputs.action }}
+        run: infra/dev/ci-control.sh "$ACTION"
+
+  deploy:
+    needs: build
+    if: inputs.action == 'deploy'
+    runs-on: ubuntu-latest
+    environment: dev
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: dev-website
+          path: web/build
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.DEV_AWS_ROLE_ARN }}
+          aws-region: ap-south-1
+          allowed-account-ids: '931886962745'
+      - name: Deploy to dev
+        env:
+          DEV_SSH_KEY: ${{ secrets.DEV_SSH_KEY }}
+          DEV_SSH_KNOWN_HOST: ${{ secrets.DEV_SSH_KNOWN_HOST }}
+        run: infra/dev/ci-deploy.sh
+      - name: Show testing links
+        run: |
+          echo "### Dev deployment" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Website: https://dev.academix.now (approved networks only)" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Download **academix-dev-android-apk** from this run's artifacts." >> "$GITHUB_STEP_SUMMARY"
+          echo "- Stop dev using this workflow's **stop** action when finished." >> "$GITHUB_STEP_SUMMARY"

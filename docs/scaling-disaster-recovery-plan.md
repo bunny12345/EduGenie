@@ -44,11 +44,13 @@ backups for development. Production recovery remains a separate later phase.
    costs, troubleshooting and rebuilding disposable test data. Verify
    end-to-end before treating the development environment as ready.
 
-**Status (November 27, 2026): Phase 1 implemented and verified.** See
+**Status (November 27, 2026): Phase 1 partially verified.** See
 [`infra/dev/README.md`](../infra/dev/README.md) for operation, cost and limits.
 Dev uses an IP allow-list of the operator's ISP /16 range (the ISP rotates the public IP
 every few seconds, so a single-IP rule was unusable). Email, SMS, push and owner
-credentials are intentionally absent from dev.
+credentials are intentionally absent from dev. End-to-end AI, authorization
+isolation and complete RLS policy equivalence still need verification. GitHub
+Actions automation requires one-time configuration and a successful live run.
 
 ## Phase 2: measure and prepare production
 

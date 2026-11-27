@@ -1,0 +1,56 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Restricted GitHub Actions role for the existing AcademiX dev host.
+Parameters:
+  GitHubOidcProviderArn:
+    Type: String
+    Description: ARN of the existing token.actions.githubusercontent.com IAM OIDC provider.
+Resources:
+  DevActionsRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: academix-dev-github-actions
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Federated: !Ref GitHubOidcProviderArn
+            Action: sts:AssumeRoleWithWebIdentity
+            Condition:
+              StringEquals:
+                token.actions.githubusercontent.com:aud: sts.amazonaws.com
+                token.actions.githubusercontent.com:sub: 'repo:bunny12345/EduGenie:environment:dev'
+      Policies:
+        - PolicyName: dev-only
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - ec2:DescribeInstances
+                  - ec2:DescribeSecurityGroupRules
+                Resource: '*'
+              - Effect: Allow
+                Action:
+                  - ec2:StartInstances
+                  - ec2:StopInstances
+                Resource: 'arn:aws:ec2:ap-south-1:931886962745:instance/i-052e104af76d23a8d'
+              - Effect: Allow
+                Action:
+                  - ec2:AuthorizeSecurityGroupIngress
+                  - ec2:RevokeSecurityGroupIngress
+                Resource: 'arn:aws:ec2:ap-south-1:931886962745:security-group/sg-0ba8af62c9cb078d8'
+              - Effect: Allow
+                Action: route53:ListResourceRecordSets
+                Resource: 'arn:aws:route53:::hostedzone/Z00076871CJRZNP45H78P'
+              - Effect: Allow
+                Action: route53:ChangeResourceRecordSets
+                Resource: 'arn:aws:route53:::hostedzone/Z00076871CJRZNP45H78P'
+                Condition:
+                  ForAllValues:StringEquals:
+                    route53:ChangeResourceRecordSetsNormalizedRecordNames: dev.academix.now
+                    route53:ChangeResourceRecordSetsRecordTypes: A
+                    route53:ChangeResourceRecordSetsActions: [UPSERT, DELETE]
+Outputs:
+  RoleArn:
+    Value: !GetAtt DevActionsRole.Arn

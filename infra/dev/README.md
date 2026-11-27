@@ -32,6 +32,90 @@ cd infra/dev
 After `down`/`up` the public IP changes; `up` fixes DNS and the firewall
 automatically. Data lives in the dev Supabase project, so it survives.
 
+## GitHub Actions: build, deploy and stop
+
+The manually triggered **Development deployment** workflow uses the selected
+branch's committed code, not uncommitted local changes. It targets only the
+existing dev host and database; it never invokes the production deployment.
+It does not apply database migrations or seed data. Apply and verify any
+required migration separately against **dev only**, without changing RLS.
+
+### One-time setup
+
+These steps require repository administrator access and AWS IAM/CloudFormation
+permissions. Do not paste credentials into chat or commit them.
+
+1. Make the workflow available on the repository's default branch. In GitHub
+   Settings > Environments create an environment named `dev`. Restrict its
+   deployment branches to branches you trust and enable required reviewers if
+   available. Environment approval and branch protection are important: the
+   OIDC role trusts workflows using this environment, and those workflows can
+   deploy code with access to dev's backend credentials and data.
+2. In AWS account `931886962745`, ensure an IAM OIDC identity provider exists
+   for `https://token.actions.githubusercontent.com` with audience
+   `sts.amazonaws.com`. Use the existing provider if present.
+3. In CloudFormation, create a stack from
+   [`github-actions-role.yaml`](github-actions-role.yaml), supplying that OIDC
+   provider's ARN and acknowledging named IAM resource creation. Copy the
+   stack's `RoleArn` output. This role can operate only the existing dev
+   instance, its security group, and the dev A record; it cannot deploy
+   production. The role and instance IDs are specific to this installation.
+4. In GitHub Settings > Environments > `dev` > Environment secrets, add:
+   - `DEV_AWS_ROLE_ARN`: the CloudFormation `RoleArn`.
+   - `DEV_SSH_KEY`: the complete contents of the existing dev private SSH key
+     (`~/.ssh/academix/academix-dev.pem`). Treat it as sensitive.
+   - `DEV_SSH_KNOWN_HOST`: the verified host's **ed25519 public host key** in
+     known_hosts format, with `dev.academix.now` as the first field. Obtain it
+     over an already trusted SSH connection by reading
+     `/etc/ssh/ssh_host_ed25519_key.pub`, then prepend `dev.academix.now `.
+     Verify its fingerprint independently; do not blindly trust `ssh-keyscan`.
+     Replace it if the dev host is rebuilt.
+   - `DEV_SUPABASE_ANON_KEY`: the **AcademiX-Dev** project's legacy anon JWT, not the
+     production key. This public client key is embedded in the website build;
+     RLS is still required. The workflow checks the JWT's project reference and
+     `anon` role (not its signature). Never use a service-role key here.
+
+The backend's existing `/srv/academix/backend/.env` stays on the instance.
+Actions checks its Supabase URL is the dev project before deployment. Set up
+that file separately using the existing local procedure; the workflow does not
+recreate it or import production credentials. Secrets are accessible to trusted
+workflow code; do not run untrusted branches in the `dev` environment.
+
+### Running it
+
+1. In GitHub, open **Actions > Development deployment > Run workflow** and
+   select the committed branch and `deploy`. The run checks the backend build,
+   runs web and Flutter tests, builds the dev website and Android debug APK,
+   starts the instance, updates dev DNS, deploys and checks `/health` and the
+   website. It leaves the instance running for testing.
+2. Open `https://dev.academix.now` from an approved network. Download
+   `academix-dev-android-apk` from the successful run's **Artifacts** to
+   install on an Android device. GitHub cannot open Chrome or install an app
+   on your device automatically. The APK is not published to Google Play and
+   cannot be promoted as a production release.
+3. Run the workflow again with `stop` when finished; use `start` to resume
+   without redeploying. Start changes DNS but deliberately does **not** change
+   your approved network ranges. Manage those locally with `./dev.sh allow...`.
+   DNS and certificate readiness can take time after starting.
+
+The full existing test suites currently have failures. A normal deployment
+stops on failed tests; after reviewing the run logs you may explicitly select
+`allow_failed_tests` to deploy to **dev only** for investigation. The run
+summary flags that override. Build failures still block deployment. Passing
+these automated checks does not prove complete user flows, authorization or
+production readiness.
+
+The deploy job temporarily adds its runner's exact IPv4 address to SSH and
+HTTPS, and removes only its own rules on exit. If a runner is abruptly lost,
+cleanup may not run: check the dev security group for rules described
+`GitHub-Actions-dev-deploy` and remove stale rules. Existing user rules are
+preserved. The current local `allow-me` default is a broad ISP /16, not a
+single user, and should be tightened when practical.
+
+There is no production promotion pipeline yet. A future production release
+must use its own production configuration, signing and explicit approval;
+the debug APK is dev-only. iOS/TestFlight automation is not included.
+
 ### Deploying the code you want to test
 
 ```bash
@@ -90,9 +174,10 @@ Mobile data uses other carrier ranges and will be blocked.
 
 `db/baseline-schema.sql` is a schema-only export of the production `public` schema
 (61 tables, 76 RLS policies, functions, grants) with **no rows**. `align-grants.sql`
-resets `anon`/`authenticated` table privileges to exactly match production (without
-it Supabase's default grants add `TRUNCATE`, which bypasses RLS). Both were verified to
-match production counts and privileges. When production gets a new migration, add it
+resets `anon`/`authenticated` table privileges to match production (without
+it Supabase's default grants add `TRUNCATE`, which bypasses RLS). Counts and
+privileges were compared, but policy definitions and complete isolation were
+not independently verified. When production gets a new migration, add it
 to dev (apply the migration file to the dev project) before testing the new release.
 
 Prerequisites on your computer: `aws` (profile with EC2/Route53/S3-state access),
